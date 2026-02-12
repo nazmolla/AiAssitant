@@ -1,77 +1,63 @@
-Nexus Agent: Sovereign Proactive Personal AI Specification
+# Nexus Agent: Sovereign Proactive Personal AI
 
-Nexus is a standalone, background-running "Personal Sovereign Agent" designed for a single user. It integrates deep memory, proactive environmental awareness via the Model Context Protocol (MCP), and a Human-in-the-Loop (HITL) safety architecture.
+Nexus is a standalone, background-running **Personal Sovereign Agent** designed for a single user. It integrates deep memory, proactive environmental awareness via the Model Context Protocol (MCP), and a Human-in-the-Loop (HITL) safety architecture.
 
-1. High-Level Architecture
+---
 
-The system follows a "Sense-Think-Act" loop. It doesn't just respond to prompts; it observes its environment through connected services and acts autonomously based on a persistent knowledge base of user preferences.
+## Quick Start
 
-Core Architectural Principles:
+```bash
+# 1. Install dependencies
+npm install
 
-Single User Sovereignty: All data, history, and "knowledge" are stored in a local SQLite database.
+# 2. Copy and configure environment variables
+cp .env.example .env
+# Edit .env with your API keys and auth provider credentials
 
-Proactive Intelligence: A background scheduler periodically triggers the agent to analyze external services (Email, GitHub, Azure) via MCPs.
+# 3. Initialize the SQLite database
+npm run db:init
 
-Human-in-the-Loop (HITL): Sensitive actions are intercepted and held in an approval queue until the owner grants permission.
+# 4. Start the development server
+npm run dev
+```
 
-Native SDKs: Direct use of official Azure AI, Anthropic, and MCP SDKs for maximum control (No LangChain).
+Open [http://localhost:3000](http://localhost:3000) to access the Command Center.
 
-Identity-Locked: Authenticated via Azure AD or Google OIDC, pinned to a single owner subject ID.
+---
 
-2. Technical Stack Requirements
+## 1. High-Level Architecture
 
-Layer
+The system follows a **Sense-Think-Act** loop. It doesn't just respond to prompts; it observes its environment through connected services and acts autonomously based on a persistent knowledge base of user preferences.
 
-Component
+### Core Architectural Principles
 
-Requirement
+- **Single User Sovereignty** — All data, history, and "knowledge" are stored in a local SQLite database.
+- **Proactive Intelligence** — A background scheduler periodically triggers the agent to analyze external services (Email, GitHub, Azure) via MCPs.
+- **Human-in-the-Loop (HITL)** — Sensitive actions are intercepted and held in an approval queue until the owner grants permission.
+- **Native SDKs** — Direct use of official Azure AI, Anthropic, and MCP SDKs for maximum control (No LangChain).
+- **Identity-Locked** — Authenticated via Azure AD or Google OIDC, pinned to a single owner subject ID.
 
-Runtime
+---
 
-Node.js
+## 2. Technical Stack Requirements
 
-v20.x or higher (LTS)
+| Layer | Component | Requirement |
+|-------|-----------|-------------|
+| Runtime | Node.js | v20.x or higher (LTS) |
+| Language | TypeScript | v5.x with Strict Mode enabled |
+| Database | SQLite | `better-sqlite3` for synchronous, low-latency state |
+| Frontend | Next.js | v14+ (App Router), TailwindCSS, ShadcnUI |
+| LLM SDKs | Native | `@azure/openai`, `@anthropic-ai/sdk`, `openai` |
+| Protocol | MCP | `@modelcontextprotocol/sdk` |
+| Auth | OIDC | Auth.js (NextAuth) with Azure AD or Google Provider |
 
-Language
+---
 
-TypeScript
+## 3. Database Schema (SQLite)
 
-v5.x with Strict Mode enabled
+### A. Identity & Configuration
 
-Database
-
-SQLite
-
-better-sqlite3 for synchronous, low-latency state
-
-Frontend
-
-Next.js
-
-v14+ (App Router), TailwindCSS, ShadcnUI
-
-LLM SDKs
-
-Native
-
-@azure/openai, @anthropic-ai/sdk, openai
-
-Protocol
-
-MCP
-
-@modelcontextprotocol/sdk
-
-Auth
-
-OIDC
-
-Auth.js (NextAuth) with Azure AD or Google Provider
-
-3. Database Schema (SQLite)
-
-A. Identity & Configuration
-
+```sql
 CREATE TABLE identity_config (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     owner_email TEXT NOT NULL,
@@ -88,10 +74,11 @@ CREATE TABLE mcp_servers (
     args TEXT,                      -- JSON array string
     env_vars TEXT                   -- JSON object string
 );
+```
 
+### B. Memory & Knowledge
 
-B. Memory & Knowledge
-
+```sql
 CREATE TABLE user_knowledge (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity TEXT NOT NULL,           -- e.g., 'Project X'
@@ -116,10 +103,11 @@ CREATE TABLE messages (
     tool_calls TEXT,                -- JSON blob of tool requests
     tool_results TEXT               -- JSON blob of tool outputs
 );
+```
 
+### C. Safety & Proactive Actions
 
-C. Safety & Proactive Actions
-
+```sql
 CREATE TABLE tool_policies (
     tool_name TEXT PRIMARY KEY,     -- e.g., 'github.create_issue'
     mcp_id TEXT REFERENCES mcp_servers(id),
@@ -135,54 +123,51 @@ CREATE TABLE approval_queue (
     reasoning TEXT,                 -- LLM's explanation for the action
     status TEXT DEFAULT 'pending'   -- 'pending' | 'approved' | 'rejected'
 );
+```
 
+---
 
-4. Component Requirements & Logic
+## 4. Component Requirements & Logic
 
-1. The Intelligence Adapter (LLM Layer)
+### 4.1 The Intelligence Adapter (LLM Layer)
 
-Logic: Must implement a ChatProvider interface. It dynamically switches between Azure OpenAI and Anthropic SDKs based on the identity_config.
+- **Logic:** Must implement a `ChatProvider` interface. It dynamically switches between Azure OpenAI and Anthropic SDKs based on the `identity_config`.
+- **Tool Mapping:** Logic to convert MCP JSON-RPC tool definitions into OpenAI-compatible or Anthropic-compatible tool schemas.
 
-Tool Mapping: Logic to convert MCP JSON-RPC tool definitions into OpenAI-compatible or Anthropic-compatible tool schemas.
+### 4.2 The Proactive Scheduler (The Observer)
 
-2. The Proactive Scheduler (The Observer)
+- **Logic:** Runs as a background cron job (e.g., every 15 minutes).
+- Polls data from proactive-enabled MCPs (e.g., `gmail.list_messages`).
+- Fetches relevant `user_knowledge` for context.
+- Calls the LLM to assess if any retrieved information requires a reminder or action.
+- If action is triggered, it checks `tool_policies`. If restricted, it inserts a record into `approval_queue` and notifies the user via WhatsApp/Web Portal.
 
-Logic: Runs as a background cron job (e.g., every 15 minutes).
+### 4.3 The Human-in-the-Loop (HITL) Gatekeeper
 
-Polls data from proactive-enabled MCPs (e.g., gmail.list_messages).
+- **Logic:** A wrapper around the MCP `callTool` function.
+- **Intercepts calls:**
+  ```
+  if (policy.requires_approval) { pause_thread(); create_approval_request(); }
+  ```
+- Thread state is frozen in SQLite until the `approval_queue.status` changes to `'approved'` via a WebSocket/API call from the Next.js UI.
 
-Fetches relevant user_knowledge for context.
+---
 
-Calls the LLM to assess if any retrieved information requires a reminder or action.
+## 5. User Interface (The Command Center)
 
-If action is triggered, it checks tool_policies. If restricted, it inserts a record into approval_queue and notifies the user via WhatsApp/Web Portal.
+- **Dashboard** — Real-time stream of agent "thoughts" and logs.
+- **Approval Inbox** — List of pending actions with "Approve", "Edit", and "Deny" buttons.
+- **Knowledge Vault** — CRUD interface for the `user_knowledge` table, allowing manual correction of learned facts.
+- **MCP Config** — Interface to add/remove MCP servers and toggle "Manual Approval" for every specific tool discovered.
 
-3. The Human-in-the-Loop (HITL) Gatekeeper
+---
 
-Logic: A wrapper around the MCP callTool function.
+## 6. Development & AI Prompting Roadmap
 
-Intercepts calls: if (policy.requires_approval) { pause_thread(); create_approval_request(); }
-
-Thread state is frozen in SQLite until the approval_queue.status changes to 'approved' via a WebSocket/API call from the Next.js UI.
-
-5. User Interface (The Command Center)
-
-Dashboard: Real-time stream of agent "thoughts" and logs.
-
-Approval Inbox: List of pending actions with "Approve", "Edit", and "Deny" buttons.
-
-Knowledge Vault: CRUD interface for the user_knowledge table, allowing manual correction of learned facts.
-
-MCP Config: Interface to add/remove MCP servers and toggle "Manual Approval" for every specific tool discovered.
-
-6. Development & AI Prompting Roadmap
-
-Phase 1 (Database): "Initialize a Node.js TypeScript project with better-sqlite3. Implement the schema defined in nexus_agent_spec.md."
-
-Phase 2 (Auth): "Implement Auth.js (NextAuth) with an Azure AD or Google provider. Create a middleware that ensures only the owner (first registered user) can access the API."
-
-Phase 3 (MCP Client): "Build an MCP Manager using @modelcontextprotocol/sdk that can connect to stdio and SSE transports and list available tools."
-
-Phase 4 (Agent Logic): "Create an agent loop using native Azure OpenAI SDK. Implement the tool-policy gatekeeper that checks the SQLite database before executing any MCP tool."
-
-Phase 5 (Proactive): "Implement a cron-based proactive service that polls MCP tools and uses the LLM to generate reminders or draft actions."
+| Phase | Focus | Description |
+|-------|-------|-------------|
+| **Phase 1** | Database | Initialize a Node.js TypeScript project with `better-sqlite3`. Implement the schema defined in `nexus_agent_spec.md`. |
+| **Phase 2** | Auth | Implement Auth.js (NextAuth) with an Azure AD or Google provider. Create a middleware that ensures only the owner (first registered user) can access the API. |
+| **Phase 3** | MCP Client | Build an MCP Manager using `@modelcontextprotocol/sdk` that can connect to stdio and SSE transports and list available tools. |
+| **Phase 4** | Agent Logic | Create an agent loop using native Azure OpenAI SDK. Implement the tool-policy gatekeeper that checks the SQLite database before executing any MCP tool. |
+| **Phase 5** | Proactive | Implement a cron-based proactive service that polls MCP tools and uses the LLM to generate reminders or draft actions. |

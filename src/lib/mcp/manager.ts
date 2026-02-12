@@ -1,0 +1,169 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+// import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { listMcpServers, type McpServerRecord } from "@/lib/db";
+import { addLog } from "@/lib/db";
+import type { ToolDefinition } from "@/lib/llm";
+
+export interface ConnectedMcpServer {
+  record: McpServerRecord;
+  client: Client;
+  tools: ToolDefinition[];
+}
+
+/**
+ * MCP Manager: connects to configured MCP servers, discovers tools,
+ * and provides a unified interface for tool invocation.
+ */
+class McpManager {
+  private connections = new Map<string, ConnectedMcpServer>();
+
+  /**
+   * Connect to all configured MCP servers from the database.
+   */
+  async connectAll(): Promise<void> {
+    const servers = listMcpServers();
+    for (const server of servers) {
+      try {
+        await this.connect(server);
+      } catch (err) {
+        addLog({
+          level: "error",
+          source: "mcp",
+          message: `Failed to connect to MCP server "${server.name}": ${err}`,
+          metadata: JSON.stringify({ serverId: server.id }),
+        });
+      }
+    }
+  }
+
+  /**
+   * Connect to a single MCP server.
+   */
+  async connect(server: McpServerRecord): Promise<ConnectedMcpServer> {
+    // Disconnect existing connection if any
+    if (this.connections.has(server.id)) {
+      await this.disconnect(server.id);
+    }
+
+    const args = server.args ? JSON.parse(server.args) : [];
+    const envVars = server.env_vars ? JSON.parse(server.env_vars) : {};
+
+    const client = new Client(
+      { name: "nexus-agent", version: "1.0.0" },
+      { capabilities: { tools: {} } }
+    );
+
+    if (server.transport_type === "stdio") {
+      const transport = new StdioClientTransport({
+        command: server.command,
+        args,
+        env: { ...process.env, ...envVars } as Record<string, string>,
+      });
+      await client.connect(transport);
+    } else {
+      // SSE transport - for future implementation
+      throw new Error(`Transport type "${server.transport_type}" not yet supported.`);
+    }
+
+    // Discover tools
+    const toolsResult = await client.listTools();
+    const tools: ToolDefinition[] = toolsResult.tools.map((t) => ({
+      name: `${server.id}.${t.name}`,
+      description: t.description || "",
+      inputSchema: (t.inputSchema as Record<string, unknown>) || {},
+    }));
+
+    const connection: ConnectedMcpServer = { record: server, client, tools };
+    this.connections.set(server.id, connection);
+
+    addLog({
+      level: "info",
+      source: "mcp",
+      message: `Connected to MCP server "${server.name}" with ${tools.length} tools.`,
+      metadata: JSON.stringify({ tools: tools.map((t) => t.name) }),
+    });
+
+    return connection;
+  }
+
+  /**
+   * Disconnect a specific MCP server.
+   */
+  async disconnect(serverId: string): Promise<void> {
+    const conn = this.connections.get(serverId);
+    if (conn) {
+      await conn.client.close();
+      this.connections.delete(serverId);
+    }
+  }
+
+  /**
+   * Disconnect all MCP servers.
+   */
+  async disconnectAll(): Promise<void> {
+    for (const [id] of this.connections) {
+      await this.disconnect(id);
+    }
+  }
+
+  /**
+   * Get all available tools across all connected MCP servers.
+   */
+  getAllTools(): ToolDefinition[] {
+    const all: ToolDefinition[] = [];
+    for (const conn of this.connections.values()) {
+      all.push(...conn.tools);
+    }
+    return all;
+  }
+
+  /**
+   * Call a tool on the appropriate MCP server.
+   * Tool names are prefixed with the server ID: `serverId.toolName`
+   */
+  async callTool(
+    qualifiedName: string,
+    args: Record<string, unknown>
+  ): Promise<unknown> {
+    const dotIndex = qualifiedName.indexOf(".");
+    if (dotIndex === -1) {
+      throw new Error(`Invalid tool name format: "${qualifiedName}". Expected "serverId.toolName".`);
+    }
+
+    const serverId = qualifiedName.substring(0, dotIndex);
+    const toolName = qualifiedName.substring(dotIndex + 1);
+
+    const conn = this.connections.get(serverId);
+    if (!conn) {
+      throw new Error(`MCP server "${serverId}" is not connected.`);
+    }
+
+    const result = await conn.client.callTool({ name: toolName, arguments: args });
+    return result;
+  }
+
+  /**
+   * Get the list of connected server IDs.
+   */
+  getConnectedServerIds(): string[] {
+    return Array.from(this.connections.keys());
+  }
+
+  /**
+   * Check if a server is connected.
+   */
+  isConnected(serverId: string): boolean {
+    return this.connections.has(serverId);
+  }
+}
+
+// Singleton instance
+let _manager: McpManager | null = null;
+
+export function getMcpManager(): McpManager {
+  if (!_manager) {
+    _manager = new McpManager();
+  }
+  return _manager;
+}
