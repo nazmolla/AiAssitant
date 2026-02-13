@@ -5,10 +5,17 @@
  * Azure OpenAI, OpenAI, and Anthropic SDKs. No LangChain.
  */
 
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } }
+  | { type: "file"; file: { url: string; mimeType: string; filename: string } };
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
+  contentParts?: ContentPart[];        // multimodal content — takes precedence over `content` when present
   tool_call_id?: string;
+  tool_calls?: ToolCall[];             // tool calls made by the assistant (needed for proper round-tripping)
   name?: string;
 }
 

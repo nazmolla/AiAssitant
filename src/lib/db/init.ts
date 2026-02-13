@@ -10,10 +10,30 @@ function ensureIdentityPasswordColumn(): void {
   }
 }
 
+function ensureLlmProviderPurposeColumn(): void {
+  const db = getDb();
+  const columns = db.prepare("PRAGMA table_info(llm_providers)").all() as { name: string }[];
+  const hasPurpose = columns.some((col) => col.name === "purpose");
+  if (!hasPurpose) {
+    db.prepare("ALTER TABLE llm_providers ADD COLUMN purpose TEXT NOT NULL DEFAULT 'chat'").run();
+  }
+}
+
+function ensureMessageAttachmentsColumn(): void {
+  const db = getDb();
+  const columns = db.prepare("PRAGMA table_info(messages)").all() as { name: string }[];
+  const hasAttachments = columns.some((col) => col.name === "attachments");
+  if (!hasAttachments) {
+    db.prepare("ALTER TABLE messages ADD COLUMN attachments TEXT").run();
+  }
+}
+
 export function initializeDatabase(): void {
   const db = getDb();
   db.exec(SCHEMA_SQL);
   ensureIdentityPasswordColumn();
+  ensureLlmProviderPurposeColumn();
+  ensureMessageAttachmentsColumn();
   console.log("[Nexus DB] Schema initialized successfully.");
 }
 

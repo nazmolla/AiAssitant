@@ -16,9 +16,6 @@ interface KnowledgeEntry {
 
 export function KnowledgeVault() {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
-  const [newEntity, setNewEntity] = useState("");
-  const [newAttribute, setNewAttribute] = useState("");
-  const [newValue, setNewValue] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
 
@@ -32,24 +29,6 @@ export function KnowledgeVault() {
   useEffect(() => {
     fetchKnowledge();
   }, []);
-
-  async function addEntry() {
-    if (!newEntity || !newAttribute || !newValue) return;
-
-    await fetch("/api/knowledge", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        entity: newEntity,
-        attribute: newAttribute,
-        value: newValue,
-      }),
-    });
-    setNewEntity("");
-    setNewAttribute("");
-    setNewValue("");
-    fetchKnowledge();
-  }
 
   async function updateEntry(id: number) {
     await fetch("/api/knowledge", {
@@ -68,36 +47,12 @@ export function KnowledgeVault() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Knowledge Vault</h2>
-
-      {/* Add New Entry */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Add Knowledge</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Entity (e.g., Project X)"
-              value={newEntity}
-              onChange={(e) => setNewEntity(e.target.value)}
-            />
-            <Input
-              placeholder="Attribute (e.g., Tech Stack)"
-              value={newAttribute}
-              onChange={(e) => setNewAttribute(e.target.value)}
-            />
-            <Input
-              placeholder="Value (e.g., React + Azure)"
-              value={newValue}
-              onChange={(e) => setNewValue(e.target.value)}
-            />
-            <Button onClick={addEntry} disabled={!newEntity || !newAttribute || !newValue}>
-              Add
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div>
+        <h2 className="text-2xl font-bold">Knowledge Vault</h2>
+        <p className="text-sm text-muted-foreground">
+          Nexus continuously captures durable facts from every chat turn and proactive scan. Review and curate them here when necessary.
+        </p>
+      </div>
 
       {/* Knowledge Table */}
       <Card>
@@ -170,7 +125,7 @@ export function KnowledgeVault() {
               {entries.length === 0 && (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-muted-foreground">
-                    No knowledge entries yet. Add facts Nexus should remember.
+                    No knowledge captured yet. Start chatting or connect proactive MCP sources.
                   </td>
                 </tr>
               )}

@@ -13,13 +13,14 @@ import { getMcpManager } from "@/lib/mcp";
 import { createChatProvider } from "@/lib/llm";
 import {
   listToolPolicies,
-  listKnowledge,
   getToolPolicy,
   addLog,
   createApprovalRequest,
   createThread,
   addMessage,
 } from "@/lib/db";
+import { ingestKnowledgeFromText } from "@/lib/knowledge";
+import { retrieveKnowledge } from "@/lib/knowledge/retriever";
 
 const PROACTIVE_SYSTEM_PROMPT = `You are the Nexus proactive observer. You have been given data polled from external services.
 
@@ -57,17 +58,17 @@ export async function runProactiveScan(): Promise<void> {
     return;
   }
 
-  // Build knowledge context
-  const knowledge = listKnowledge();
-  const knowledgeContext = knowledge
-    .map((k) => `- ${k.entity} / ${k.attribute}: ${k.value}`)
-    .join("\n");
-
   for (const policy of policies) {
     try {
       // Poll the tool for data (assuming list/read-type tools)
       const result = await mcpManager.callTool(policy.tool_name, {});
       const polledData = JSON.stringify(result);
+
+      await ingestKnowledgeFromText({
+        source: `mcp:${policy.tool_name}:poll`,
+        text: `[Polled Data from ${policy.tool_name}]\n${polledData}`,
+        contextHint: "Extract durable facts about the owner discovered via proactive scanning.",
+      });
 
       addLog({
         level: "info",
@@ -78,11 +79,16 @@ export async function runProactiveScan(): Promise<void> {
 
       // Ask the LLM to assess
       const provider = createChatProvider();
+      const knowledgeFacts = await retrieveKnowledge(polledData, 6);
+      const knowledgeContext = knowledgeFacts
+        .map((k) => `- ${k.entity} / ${k.attribute}: ${k.value}`)
+        .join("\n");
+
       const response = await provider.chat(
         [
           {
             role: "user",
-            content: `[Polled Data from ${policy.tool_name}]\n${polledData}\n\n[User Knowledge]\n${knowledgeContext}`,
+            content: `[Polled Data from ${policy.tool_name}]\n${polledData}\n\n[User Knowledge Context]\n${knowledgeContext || "(none)"}`,
           },
         ],
         undefined,
@@ -93,6 +99,11 @@ export async function runProactiveScan(): Promise<void> {
 
       try {
         const assessment = JSON.parse(response.content);
+
+        await ingestKnowledgeFromText({
+          source: `mcp:${policy.tool_name}:assessment`,
+          text: response.content,
+        });
 
         if (assessment.action_needed) {
           const actionTool = assessment.tool || policy.tool_name;

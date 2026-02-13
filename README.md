@@ -35,6 +35,8 @@ The system follows a **Sense-Think-Act** loop. It doesn't just respond to prompt
 
 - **Single User Sovereignty** — All data, history, and "knowledge" are stored in a local SQLite database.
 - **Proactive Intelligence** — A background scheduler periodically triggers the agent to analyze external services (Email, GitHub, Azure) via MCPs.
+- **Autonomous Knowledge Capture** — Every chat turn and proactive observation is mined for durable user facts, so the Knowledge Vault stays up to date without manual entry.
+- **Vector-Aware Reasoning** — Before responding or acting, Nexus semantically retrieves the most relevant knowledge embeddings to ground the LLM's decisions.
 - **Human-in-the-Loop (HITL)** — Sensitive actions are intercepted and held in an approval queue until the owner grants permission.
 - **Native SDKs** — Direct use of official Azure AI, Anthropic, and MCP SDKs for maximum control (No LangChain).
 - **Identity-Locked** — Authenticated via Azure AD or Google OIDC, pinned to a single owner subject ID.

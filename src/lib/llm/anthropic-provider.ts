@@ -1,15 +1,26 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition } from "./types";
+import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ContentPart } from "./types";
+
+export interface AnthropicProviderOptions {
+  apiKey?: string;
+  model?: string;
+}
 
 /**
  * Anthropic chat provider using the official `@anthropic-ai/sdk`.
  */
 export class AnthropicChatProvider implements ChatProvider {
   private client: Anthropic;
-  private model = "claude-sonnet-4-20250514";
+  private model: string;
 
-  constructor() {
-    this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+  constructor(options?: AnthropicProviderOptions) {
+    const apiKey = options?.apiKey || process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error("[Nexus] Missing Anthropic API key.");
+    }
+
+    this.client = new Anthropic({ apiKey });
+    this.model = options?.model || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
   }
 
   async chat(
@@ -32,6 +43,27 @@ export class AnthropicChatProvider implements ChatProvider {
             },
           ],
         });
+      } else if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
+        // Assistant message with tool calls — must include tool_use blocks
+        const blocks: (Anthropic.TextBlockParam | Anthropic.ToolUseBlockParam)[] = [];
+        if (msg.content) {
+          blocks.push({ type: "text", text: msg.content });
+        }
+        for (const tc of msg.tool_calls) {
+          blocks.push({
+            type: "tool_use",
+            id: tc.id,
+            name: tc.name,
+            input: tc.arguments,
+          });
+        }
+        anthropicMessages.push({ role: "assistant", content: blocks });
+      } else if (msg.contentParts && msg.contentParts.length > 0 && msg.role === "user") {
+        // Multimodal user message
+        const parts = msg.contentParts.map((p) =>
+          toAnthropicPart(p)
+        );
+        anthropicMessages.push({ role: "user", content: parts as Anthropic.MessageParam["content"] });
       } else {
         anthropicMessages.push({
           role: msg.role === "assistant" ? "assistant" : "user",
@@ -75,4 +107,37 @@ export class AnthropicChatProvider implements ChatProvider {
       finishReason: response.stop_reason || "end_turn",
     };
   }
+}
+
+function toAnthropicPart(part: ContentPart): Anthropic.ImageBlockParam | Anthropic.TextBlockParam {
+  if (part.type === "text") {
+    return { type: "text", text: part.text };
+  }
+  if (part.type === "image_url") {
+    // Anthropic expects base64 source; the URL may be a data URI or http URL.
+    const url = part.image_url.url;
+    if (url.startsWith("data:")) {
+      const match = url.match(/^data:(image\/[^;]+);base64,(.+)$/);
+      if (match) {
+        return {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: match[1] as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+            data: match[2],
+          },
+        };
+      }
+    }
+    // Fallback: send as URL source
+    return {
+      type: "image",
+      source: { type: "url" as "base64", media_type: "image/jpeg", data: url },
+    };
+  }
+  // Documents / videos — describe as text
+  return {
+    type: "text",
+    text: `[Attached file: ${part.file.filename} (${part.file.mimeType})]`,
+  };
 }
