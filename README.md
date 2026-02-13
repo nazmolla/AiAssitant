@@ -23,6 +23,8 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) to access the Command Center.
 
+> 💡 **First-time login:** You can either authenticate with a configured OIDC provider (Azure AD / Google) or create a local owner account directly on the sign-in page using an email + password. Once an owner is established, that identity becomes the only account allowed to access the agent.
+
 ---
 
 ## 1. High-Level Architecture

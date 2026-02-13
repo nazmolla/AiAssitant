@@ -8,6 +8,7 @@ export interface IdentityConfig {
   owner_email: string;
   provider_id: string;
   external_sub_id: string | null;
+  password_hash: string | null;
   api_keys_encrypted: string | null;
 }
 
@@ -15,16 +16,27 @@ export function getIdentity(): IdentityConfig | undefined {
   return getDb().prepare("SELECT * FROM identity_config WHERE id = 1").get() as IdentityConfig | undefined;
 }
 
-export function upsertIdentity(email: string, providerId: string, subId: string): void {
+interface UpsertIdentityArgs {
+  email: string;
+  providerId: string;
+  subId: string | null;
+  passwordHash?: string | null;
+}
+
+export function upsertIdentity({ email, providerId, subId, passwordHash = null }: UpsertIdentityArgs): void {
   getDb()
     .prepare(
-      `INSERT INTO identity_config (id, owner_email, provider_id, external_sub_id)
-       VALUES (1, ?, ?, ?)
+      `INSERT INTO identity_config (id, owner_email, provider_id, external_sub_id, password_hash)
+       VALUES (1, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET owner_email = excluded.owner_email,
          provider_id = excluded.provider_id,
-         external_sub_id = excluded.external_sub_id`
+         external_sub_id = excluded.external_sub_id,
+         password_hash = CASE
+           WHEN excluded.password_hash IS NULL THEN identity_config.password_hash
+           ELSE excluded.password_hash
+         END`
     )
-    .run(email, providerId, subId);
+    .run(email, providerId, subId, passwordHash);
 }
 
 // ─── MCP Servers ─────────────────────────────────────────────

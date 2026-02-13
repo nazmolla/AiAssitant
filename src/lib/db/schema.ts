@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS identity_config (
     owner_email TEXT NOT NULL,
     provider_id TEXT NOT NULL,          -- 'azure-ad' | 'google'
     external_sub_id TEXT UNIQUE,        -- OIDC Subject ID
+    password_hash TEXT,                 -- bcrypt hash for local owner auth
     api_keys_encrypted TEXT             -- JSON blob of encrypted keys
 );
 

@@ -14,6 +14,7 @@ import { createChatProvider } from "@/lib/llm";
 import {
   listToolPolicies,
   listKnowledge,
+  getToolPolicy,
   addLog,
   createApprovalRequest,
   createThread,
@@ -94,6 +95,17 @@ export async function runProactiveScan(): Promise<void> {
         const assessment = JSON.parse(response.content);
 
         if (assessment.action_needed) {
+          const actionTool = assessment.tool || policy.tool_name;
+          const actionPolicy =
+            actionTool === policy.tool_name ? policy : getToolPolicy(actionTool);
+          const requiresApproval = actionPolicy
+            ? actionPolicy.requires_approval !== 0
+            : true;
+          const actionArgs =
+            assessment.args && typeof assessment.args === "object" && !Array.isArray(assessment.args)
+              ? (assessment.args as Record<string, unknown>)
+              : {};
+
           addLog({
             level: "info",
             source: "scheduler",
@@ -112,13 +124,61 @@ export async function runProactiveScan(): Promise<void> {
             tool_results: null,
           });
 
-          // If the action tool requires approval, create an approval request
-          createApprovalRequest({
-            thread_id: thread.id,
-            tool_name: assessment.tool || policy.tool_name,
-            args: JSON.stringify(assessment.args || {}),
-            reasoning: assessment.reasoning,
-          });
+          if (requiresApproval) {
+            createApprovalRequest({
+              thread_id: thread.id,
+              tool_name: actionTool,
+              args: JSON.stringify(actionArgs),
+              reasoning: assessment.reasoning,
+            });
+          } else {
+            try {
+              const executionResult = await mcpManager.callTool(
+                actionTool,
+                actionArgs
+              );
+
+              addLog({
+                level: "info",
+                source: "scheduler",
+                message: `Proactive tool "${actionTool}" executed automatically.`,
+                metadata: JSON.stringify({
+                  resultPreview: JSON.stringify(executionResult).substring(0, 200),
+                }),
+              });
+
+              addMessage({
+                thread_id: thread.id,
+                role: "tool",
+                content: JSON.stringify(executionResult),
+                tool_calls: null,
+                tool_results: JSON.stringify({ name: actionTool, result: executionResult }),
+              });
+
+              addMessage({
+                thread_id: thread.id,
+                role: "assistant",
+                content: `✅ Proactive action "${actionTool}" completed: ${assessment.reasoning}`,
+                tool_calls: null,
+                tool_results: null,
+              });
+            } catch (executionError) {
+              addLog({
+                level: "error",
+                source: "scheduler",
+                message: `Auto-executed tool "${actionTool}" failed: ${executionError}`,
+                metadata: null,
+              });
+
+              addMessage({
+                thread_id: thread.id,
+                role: "system",
+                content: `⚠️ Failed to execute proactive action "${actionTool}": ${executionError}`,
+                tool_calls: null,
+                tool_results: null,
+              });
+            }
+          }
         } else {
           addLog({
             level: "info",

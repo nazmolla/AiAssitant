@@ -1,8 +1,18 @@
 import { withAuth } from "next-auth/middleware";
 
+type OwnerToken = {
+  sub?: string;
+  ownerSub?: string;
+};
+
 export default withAuth({
   callbacks: {
-    authorized: ({ token }) => !!token,
+    authorized: ({ token }) => {
+      if (!token) return false;
+      const ownerSub = (token as OwnerToken).ownerSub;
+      if (!ownerSub) return false;
+      return token.sub === ownerSub;
+    },
   },
 });
 

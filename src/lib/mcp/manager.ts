@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-// import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { listMcpServers, type McpServerRecord } from "@/lib/db";
 import { addLog } from "@/lib/db";
 import type { ToolDefinition } from "@/lib/llm";
@@ -54,16 +54,27 @@ class McpManager {
       { capabilities: { tools: {} } }
     );
 
-    if (server.transport_type === "stdio") {
+    const transportType = server.transport_type || "stdio";
+
+    if (transportType === "stdio") {
       const transport = new StdioClientTransport({
         command: server.command,
         args,
         env: { ...process.env, ...envVars } as Record<string, string>,
       });
       await client.connect(transport);
+    } else if (transportType === "sse") {
+      if (!server.command) {
+        throw new Error("SSE transport requires the command field to be a valid URL.");
+      }
+
+      const endpoint = new URL(server.command);
+      const transport = new SSEClientTransport(endpoint, {
+        headers: envVars as Record<string, string>,
+      });
+      await client.connect(transport);
     } else {
-      // SSE transport - for future implementation
-      throw new Error(`Transport type "${server.transport_type}" not yet supported.`);
+      throw new Error(`Transport type "${transportType}" not supported.`);
     }
 
     // Discover tools
