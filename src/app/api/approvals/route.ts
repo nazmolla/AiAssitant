@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/auth";
-import { listPendingApprovals, updateApprovalStatus } from "@/lib/db";
-import { executeApprovedTool } from "@/lib/agent";
+import { listPendingApprovals, updateApprovalStatus, getThreadMessages, addMessage } from "@/lib/db";
+import { executeApprovedTool, continueAgentLoop } from "@/lib/agent";
+import type { ToolCall } from "@/lib/llm";
 
 export async function GET() {
   const denied = await requireOwner();
@@ -9,6 +10,25 @@ export async function GET() {
 
   const pending = listPendingApprovals();
   return NextResponse.json(pending);
+}
+
+/**
+ * Find the tool_call_id for a given tool name from the thread's message history.
+ * Searches backwards to find the most recent assistant message containing this tool call.
+ */
+function findToolCallId(threadId: string, toolName: string): string | undefined {
+  const messages = getThreadMessages(threadId);
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "assistant" && m.tool_calls) {
+      try {
+        const toolCalls: ToolCall[] = JSON.parse(m.tool_calls);
+        const match = toolCalls.find((tc) => tc.name === toolName);
+        if (match) return match.id;
+      } catch {}
+    }
+  }
+  return undefined;
 }
 
 export async function POST(req: NextRequest) {
@@ -39,6 +59,49 @@ export async function POST(req: NextRequest) {
     // Execute the tool now
     const args = JSON.parse(approval.args);
     const result = await executeApprovedTool(approval.tool_name, args, approval.thread_id);
+
+    if (result.status === "executed") {
+      // Find the original tool_call_id so the LLM can match the result
+      const toolCallId = findToolCallId(approval.thread_id, approval.tool_name);
+
+      if (toolCallId) {
+        // Save the tool result as a message so it appears in thread history
+        const toolResultContent = JSON.stringify(result.result);
+        addMessage({
+          thread_id: approval.thread_id,
+          role: "tool",
+          content: toolResultContent.length > 15000
+            ? toolResultContent.slice(0, 15000) + "\n... [truncated]"
+            : toolResultContent,
+          tool_calls: null,
+          tool_results: JSON.stringify({
+            tool_call_id: toolCallId,
+            name: approval.tool_name,
+            result: result.result,
+          }),
+          attachments: null,
+        });
+      }
+
+      // Resume the agent loop so the LLM can process the tool result
+      try {
+        const agentResponse = await continueAgentLoop(approval.thread_id);
+        return NextResponse.json({
+          status: "approved",
+          result,
+          agentResponse,
+        });
+      } catch (err) {
+        // Tool executed successfully but continuation failed — still report success
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({
+          status: "approved",
+          result,
+          continuationError: errorMsg,
+        });
+      }
+    }
+
     return NextResponse.json({ status: "approved", result });
   }
 

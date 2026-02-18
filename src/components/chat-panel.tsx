@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 interface Thread {
@@ -116,6 +115,26 @@ export function ChatPanel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Listen for approval-resolved events to refresh messages and threads
+  useEffect(() => {
+    function handleApprovalResolved() {
+      // Refresh messages in the active thread
+      if (activeThread) {
+        fetch(`/api/threads/${activeThread}`)
+          .then((r) => r.json())
+          .then((data) => setMessages(data.messages || []))
+          .catch(console.error);
+      }
+      // Refresh thread list (status may have changed)
+      fetch("/api/threads")
+        .then((r) => r.json())
+        .then(setThreads)
+        .catch(console.error);
+    }
+    window.addEventListener("approval-resolved", handleApprovalResolved);
+    return () => window.removeEventListener("approval-resolved", handleApprovalResolved);
+  }, [activeThread]);
 
   async function createThread() {
     const res = await fetch("/api/threads", {
@@ -243,6 +262,8 @@ export function ChatPanel() {
         const threadRes = await fetch(`/api/threads/${activeThread}`);
         const threadData = await threadRes.json();
         setMessages(threadData.messages || []);
+        // Refresh thread list to pick up auto-generated title
+        fetch("/api/threads").then((r) => r.json()).then(setThreads).catch(console.error);
       }
     } catch (err) {
       setMessages((prev) => [
@@ -256,52 +277,56 @@ export function ChatPanel() {
 
   return (
     <div className="flex h-full">
-      {/* Thread Sidebar */}
-      <div className="w-64 border-r flex flex-col">
-        <div className="p-3 border-b">
-          <Button onClick={createThread} className="w-full" size="sm">
-            + New Thread
+      {/* Thread Sidebar — Glass panel */}
+      <div className="w-64 border-r border-white/[0.06] flex flex-col bg-white/[0.02] backdrop-blur-md">
+        <div className="p-3 border-b border-white/[0.06]">
+          <Button onClick={createThread} className="w-full rounded-xl" size="sm" variant="outline">
+            <span className="mr-1.5 text-primary">+</span> New Thread
           </Button>
         </div>
         <ScrollArea className="flex-1">
-          {threads.map((thread) => (
-            <div
-              key={thread.id}
-              className={`relative group flex items-start border-b hover:bg-muted transition-colors ${
-                activeThread === thread.id ? "bg-muted" : ""
-              }`}
-            >
-              <button
-                onClick={() => setActiveThread(thread.id)}
-                className="flex-1 text-left px-3 py-2 text-sm"
+          <div className="py-2 px-2 space-y-0.5">
+            {threads.map((thread) => (
+              <div
+                key={thread.id}
+                className={`relative group flex items-start rounded-xl transition-all duration-300 ${
+                  activeThread === thread.id
+                    ? "bg-primary/10 border border-primary/15 shadow-sm shadow-primary/5"
+                    : "hover:bg-white/[0.04] border border-transparent"
+                }`}
               >
-                <div className="font-medium truncate pr-6">{thread.title}</div>
-                <div className="flex items-center gap-1 mt-1">
-                  <Badge
-                    variant={
-                      thread.status === "active"
-                        ? "success"
-                        : thread.status === "awaiting_approval"
-                        ? "warning"
-                        : "secondary"
-                    }
-                  >
-                    {thread.status}
-                  </Badge>
-                </div>
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteThread(thread.id);
-                }}
-                className="absolute right-1 top-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive hover:text-destructive-foreground text-muted-foreground text-xs"
-                title="Delete thread"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+                <button
+                  onClick={() => setActiveThread(thread.id)}
+                  className="flex-1 text-left px-3 py-2.5"
+                >
+                  <div className="text-[13px] font-medium truncate pr-5">{thread.title}</div>
+                  <div className="flex items-center gap-1 mt-1.5">
+                    <Badge
+                      variant={
+                        thread.status === "active"
+                          ? "success"
+                          : thread.status === "awaiting_approval"
+                          ? "warning"
+                          : "secondary"
+                      }
+                    >
+                      {thread.status}
+                    </Badge>
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteThread(thread.id);
+                  }}
+                  className="absolute right-2 top-2.5 opacity-0 group-hover:opacity-100 transition-all duration-200 p-1 rounded-lg hover:bg-red-500/10 text-muted-foreground/60 hover:text-red-400 text-xs"
+                  title="Delete thread"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
         </ScrollArea>
       </div>
 
@@ -323,20 +348,22 @@ export function ChatPanel() {
                         msg.role === "user" ? "justify-end" : "justify-start"
                       }`}
                     >
-                      <Card
-                        className={`max-w-[80%] p-3 ${
+                      <div
+                        className={`max-w-[80%] rounded-2xl px-4 py-3 transition-all duration-200 ${
                           msg.role === "user"
-                            ? "bg-primary text-primary-foreground"
+                            ? "bg-primary text-primary-foreground rounded-br-lg shadow-md shadow-primary/20"
                             : msg.role === "system"
-                            ? "bg-muted border-yellow-500/50"
+                            ? "bg-orange-500/5 border border-orange-500/15 rounded-bl-lg backdrop-blur-sm"
                             : msg.role === "tool"
-                            ? "bg-muted border-blue-500/50 font-mono text-xs"
-                            : "bg-card"
+                            ? "bg-white/[0.03] border border-white/[0.06] font-mono text-xs rounded-bl-lg backdrop-blur-sm"
+                            : "bg-gradient-to-b from-white/[0.06] to-white/[0.02] border border-white/[0.08] rounded-bl-lg shadow-lg shadow-black/20 backdrop-blur-md"
                         }`}
                       >
-                        <div className="text-xs font-medium mb-1 opacity-70 uppercase">
-                          {msg.role}
-                        </div>
+                        {msg.role !== "user" && (
+                          <div className="text-[10px] font-medium mb-1 text-muted-foreground uppercase tracking-wider">
+                            {msg.role === "assistant" ? "Nexus" : msg.role}
+                          </div>
+                        )}
 
                         {/* Attachments */}
                         {attachments.length > 0 && (
@@ -347,7 +374,7 @@ export function ChatPanel() {
                           </div>
                         )}
 
-                        <div className="whitespace-pre-wrap text-sm">
+                        <div className="whitespace-pre-wrap text-[13px] leading-relaxed">
                           {msg.role === "tool"
                             ? sanitizeToolContent(msg.content, attachments.length > 0)
                             : msg.role === "assistant"
@@ -355,11 +382,16 @@ export function ChatPanel() {
                             : msg.content || (attachments.length > 0 ? "" : "(no content)")}
                         </div>
                         {msg.tool_calls && (
-                          <div className="mt-2 text-xs opacity-70">
-                            🔧 Tool calls: {msg.tool_calls}
-                          </div>
+                          <details className="mt-2">
+                            <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
+                              Tool calls
+                            </summary>
+                            <div className="text-[10px] mt-1 text-muted-foreground font-mono">
+                              {msg.tool_calls}
+                            </div>
+                          </details>
                         )}
-                      </Card>
+                      </div>
                     </div>
                   );
                 })}
@@ -367,30 +399,30 @@ export function ChatPanel() {
               </div>
             </ScrollArea>
 
-            {/* Input Bar */}
-            <div className="border-t p-4">
+            {/* Input Bar — Floating glass panel */}
+            <div className="border-t border-white/[0.06] p-3 bg-white/[0.02] backdrop-blur-xl">
               <div className="max-w-3xl mx-auto">
                 {/* Pending file previews */}
                 {pendingFiles.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2">
+                  <div className="flex flex-wrap gap-1.5 mb-2">
                     {pendingFiles.map((pf, idx) => (
                       <div
                         key={idx}
-                        className="relative group flex items-center gap-1.5 bg-muted rounded-md px-2 py-1 text-xs"
+                        className="relative group flex items-center gap-1.5 bg-white/[0.04] rounded-xl px-2.5 py-1.5 text-xs border border-white/[0.08]"
                       >
                         {pf.previewUrl ? (
                           <img
                             src={pf.previewUrl}
                             alt={pf.file.name}
-                            className="h-8 w-8 object-cover rounded"
+                            className="h-7 w-7 object-cover rounded-md"
                           />
                         ) : (
-                          <span className="text-lg">📄</span>
+                          <span className="text-sm">📄</span>
                         )}
-                        <span className="max-w-[120px] truncate">{pf.file.name}</span>
+                        <span className="max-w-[100px] truncate text-[11px]">{pf.file.name}</span>
                         <button
                           onClick={() => removePendingFile(idx)}
-                          className="ml-1 text-muted-foreground hover:text-destructive transition-colors"
+                          className="ml-0.5 text-muted-foreground hover:text-red-500 transition-colors"
                           title="Remove"
                         >
                           ✕
@@ -400,7 +432,7 @@ export function ChatPanel() {
                   </div>
                 )}
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -410,12 +442,12 @@ export function ChatPanel() {
                     className="hidden"
                   />
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="icon"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={loading || !activeThread}
                     title="Attach files"
-                    className="shrink-0"
+                    className="shrink-0 h-9 w-9 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/5"
                   >
                     📎
                   </Button>
@@ -423,22 +455,40 @@ export function ChatPanel() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-                    placeholder="Send a message to Nexus..."
+                    placeholder="Message Nexus..."
                     disabled={loading}
+                    className="rounded-xl bg-white/[0.03] border-white/[0.08] focus-visible:border-primary/30"
                   />
                   <Button
                     onClick={sendMessage}
                     disabled={loading || (!input.trim() && pendingFiles.length === 0)}
+                    size="icon"
+                    className="shrink-0 h-9 w-9 rounded-xl shadow-md shadow-primary/20"
                   >
-                    {loading ? "Thinking..." : "Send"}
+                    {loading ? (
+                      <span className="h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M2 8L14 2L8 14L7 9L2 8Z" fill="currentColor" />
+                      </svg>
+                    )}
                   </Button>
                 </div>
               </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground">
-            Select or create a thread to start chatting.
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4 relative">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-64 h-64 bg-primary/3 rounded-full blur-3xl" />
+            </div>
+            <div className="relative z-10 flex flex-col items-center gap-4">
+              <div className="text-5xl opacity-60">💬</div>
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-foreground/60">No thread selected</p>
+                <p className="text-xs text-muted-foreground/60 font-light">Select or create a thread to start chatting.</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -459,7 +509,7 @@ function AttachmentPreview({ attachment }: { attachment: AttachmentMeta }) {
         <img
           src={url}
           alt={attachment.filename}
-          className="max-h-[400px] max-w-full rounded border object-contain cursor-zoom-in"
+          className="max-h-[400px] max-w-full rounded-xl object-contain cursor-zoom-in ring-1 ring-white/[0.08] hover:ring-primary/30 transition-all duration-300"
         />
       </a>
     );
@@ -470,7 +520,7 @@ function AttachmentPreview({ attachment }: { attachment: AttachmentMeta }) {
       <video
         src={url}
         controls
-        className="max-h-48 max-w-xs rounded border"
+        className="max-h-48 max-w-xs rounded-xl ring-1 ring-white/[0.08]"
       />
     );
   }
@@ -480,12 +530,12 @@ function AttachmentPreview({ attachment }: { attachment: AttachmentMeta }) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-1.5 bg-background/50 rounded-md px-2 py-1 text-xs border hover:bg-muted transition-colors"
+      className="flex items-center gap-1.5 bg-white/[0.04] rounded-xl px-3 py-2 text-xs border border-white/[0.08] hover:bg-white/[0.06] hover:border-primary/20 transition-all duration-300"
     >
-      <span className="text-lg">📄</span>
-      <span className="max-w-[160px] truncate">{attachment.filename}</span>
-      <span className="opacity-50">
-        ({(attachment.sizeBytes / 1024).toFixed(0)} KB)
+      <span className="text-sm">📄</span>
+      <span className="max-w-[140px] truncate text-[11px]">{attachment.filename}</span>
+      <span className="text-[10px] text-muted-foreground/60">
+        {(attachment.sizeBytes / 1024).toFixed(0)} KB
       </span>
     </a>
   );

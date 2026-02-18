@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/guard";
 import { runAgentLoop } from "@/lib/agent";
 import { getThread } from "@/lib/db";
 import type { ContentPart } from "@/lib/llm";
@@ -8,12 +8,16 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { threadId: string } }
 ) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
 
   const thread = getThread(params.threadId);
   if (!thread) {
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+  }
+  // Ensure user owns this thread
+  if (thread.user_id && thread.user_id !== auth.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   if (thread.status === "awaiting_approval") {
@@ -73,7 +77,9 @@ export async function POST(
       params.threadId,
       message || "(see attached files)",
       contentParts,
-      attachments
+      attachments,
+      undefined,
+      auth.user.id
     );
     return NextResponse.json(response);
   } catch (err) {

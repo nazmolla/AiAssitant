@@ -11,11 +11,12 @@ function AuthErrorContent() {
   const error = searchParams.get("error");
 
   return (
-    <div className="flex h-screen items-center justify-center">
-      <Card className="w-full max-w-md">
+    <div className="flex h-screen items-center justify-center bg-background noise relative overflow-hidden">
+      <div className="absolute top-1/3 left-1/3 w-72 h-72 bg-destructive/5 rounded-full blur-3xl" />
+      <Card className="w-full max-w-md relative z-10">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl text-destructive">Access Denied</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-2xl font-display text-destructive">Access Denied</CardTitle>
+          <CardDescription className="text-muted-foreground/60">
             {error === "AccessDenied"
               ? "Only the owner of this Nexus instance can sign in. This agent is identity-locked."
               : `Authentication error: ${error}`}

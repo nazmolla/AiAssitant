@@ -6,6 +6,7 @@ export interface KnowledgeIngestionPayload {
   text: string;
   source: string;
   contextHint?: string;
+  userId?: string;
 }
 
 const EXTRACTION_SYSTEM_PROMPT = `You are the Nexus Knowledge Curator.
@@ -55,12 +56,16 @@ export async function ingestKnowledgeFromText(payload: KnowledgeIngestionPayload
     let saved = 0;
     for (const fact of parsed) {
       if (!fact.entity || !fact.attribute || !fact.value) continue;
-      const knowledgeId = upsertKnowledge({
-        entity: fact.entity,
-        attribute: fact.attribute,
-        value: fact.value,
-        source_context: buildSourceContext(payload.source, text),
-      });
+      const knowledgeId = upsertKnowledge(
+        {
+          user_id: payload.userId ?? null,
+          entity: fact.entity,
+          attribute: fact.attribute,
+          value: fact.value,
+          source_context: buildSourceContext(payload.source, text),
+        },
+        payload.userId
+      );
       await indexEmbedding(knowledgeId, `${fact.entity} ${fact.attribute} ${fact.value}`);
       saved++;
     }

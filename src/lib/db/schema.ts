@@ -1,20 +1,35 @@
 export const SCHEMA_SQL = `
--- ═══ Identity & Configuration ═══
+-- ═══ Users ═══
+
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,                -- UUID
+    email TEXT UNIQUE NOT NULL,
+    display_name TEXT NOT NULL DEFAULT '',
+    provider_id TEXT NOT NULL,          -- 'local' | 'azure-ad' | 'google'
+    external_sub_id TEXT,               -- OIDC Subject ID (unique per provider)
+    password_hash TEXT,                 -- bcrypt hash for local auth
+    role TEXT NOT NULL DEFAULT 'user',  -- 'admin' | 'user'
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ═══ Identity & Configuration (legacy — kept for migration) ═══
 
 CREATE TABLE IF NOT EXISTS identity_config (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     owner_email TEXT NOT NULL,
-    provider_id TEXT NOT NULL,          -- 'azure-ad' | 'google'
-    external_sub_id TEXT UNIQUE,        -- OIDC Subject ID
-    password_hash TEXT,                 -- bcrypt hash for local owner auth
-    api_keys_encrypted TEXT             -- JSON blob of encrypted keys
+    provider_id TEXT NOT NULL,
+    external_sub_id TEXT UNIQUE,
+    password_hash TEXT,
+    api_keys_encrypted TEXT
 );
+
+-- ═══ User Profiles (per-user) ═══
 
 CREATE TABLE IF NOT EXISTS owner_profile (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     display_name TEXT NOT NULL DEFAULT '',
-    title TEXT DEFAULT '',              -- e.g., 'Senior Software Engineer'
-    bio TEXT DEFAULT '',                -- short summary
+    title TEXT DEFAULT '',
+    bio TEXT DEFAULT '',
     location TEXT DEFAULT '',
     phone TEXT DEFAULT '',
     email TEXT DEFAULT '',
@@ -22,54 +37,85 @@ CREATE TABLE IF NOT EXISTS owner_profile (
     linkedin TEXT DEFAULT '',
     github TEXT DEFAULT '',
     twitter TEXT DEFAULT '',
-    skills TEXT DEFAULT '[]',           -- JSON array of strings
-    languages TEXT DEFAULT '[]',        -- JSON array of strings
+    skills TEXT DEFAULT '[]',
+    languages TEXT DEFAULT '[]',
     company TEXT DEFAULT '',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    display_name TEXT NOT NULL DEFAULT '',
+    title TEXT DEFAULT '',
+    bio TEXT DEFAULT '',
+    location TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    website TEXT DEFAULT '',
+    linkedin TEXT DEFAULT '',
+    github TEXT DEFAULT '',
+    twitter TEXT DEFAULT '',
+    skills TEXT DEFAULT '[]',
+    languages TEXT DEFAULT '[]',
+    company TEXT DEFAULT '',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ═══ MCP Servers (user_id NULL = global) ═══
+
 CREATE TABLE IF NOT EXISTS mcp_servers (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    transport_type TEXT,                -- 'stdio' | 'sse'
-    command TEXT NOT NULL,              -- e.g., 'npx'
-    args TEXT,                          -- JSON array string
-    env_vars TEXT                       -- JSON object string
+    transport_type TEXT,
+    command TEXT,
+    args TEXT,
+    env_vars TEXT,
+    url TEXT,
+    auth_type TEXT DEFAULT 'none',
+    access_token TEXT,
+    client_id TEXT,
+    client_secret TEXT,
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    scope TEXT DEFAULT 'global'         -- 'global' | 'user'
 );
 
 CREATE TABLE IF NOT EXISTS llm_providers (
     id TEXT PRIMARY KEY,
     label TEXT NOT NULL,
-    provider_type TEXT NOT NULL,        -- 'azure-openai' | 'openai' | 'anthropic'
-    purpose TEXT NOT NULL DEFAULT 'chat', -- 'chat' | 'embedding'
-    config_json TEXT NOT NULL,          -- Provider-specific credentials/config
+    provider_type TEXT NOT NULL,
+    purpose TEXT NOT NULL DEFAULT 'chat',
+    config_json TEXT NOT NULL,
     is_default BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- ═══ Memory & Knowledge ═══
+-- ═══ Memory & Knowledge (per-user) ═══
 
 CREATE TABLE IF NOT EXISTS user_knowledge (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    entity TEXT NOT NULL,               -- e.g., 'Project X'
-    attribute TEXT NOT NULL,            -- e.g., 'Preferred Tech'
-    value TEXT NOT NULL,                -- e.g., 'Azure AI'
-    source_context TEXT,                -- Snippet of conversation where fact was learned
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    entity TEXT NOT NULL,
+    attribute TEXT NOT NULL,
+    value TEXT NOT NULL,
+    source_context TEXT,
     last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_knowledge_unique
-    ON user_knowledge(entity, attribute, value);
+    ON user_knowledge(user_id, entity, attribute, value);
 
 CREATE TABLE IF NOT EXISTS knowledge_embeddings (
     knowledge_id INTEGER PRIMARY KEY REFERENCES user_knowledge(id) ON DELETE CASCADE,
-    embedding TEXT NOT NULL              -- JSON array of floats
+    embedding TEXT NOT NULL
 );
 
+-- ═══ Threads (per-user) ═══
+
 CREATE TABLE IF NOT EXISTS threads (
-    id TEXT PRIMARY KEY,                -- UUID
+    id TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     title TEXT,
-    status TEXT DEFAULT 'active',       -- 'active' | 'awaiting_approval' | 'archived'
+    status TEXT DEFAULT 'active',
     last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -78,26 +124,26 @@ CREATE TABLE IF NOT EXISTS messages (
     thread_id TEXT REFERENCES threads(id),
     role TEXT CHECK(role IN ('user', 'assistant', 'system', 'tool')),
     content TEXT,
-    tool_calls TEXT,                    -- JSON blob of tool requests
-    tool_results TEXT,                  -- JSON blob of tool outputs
-    attachments TEXT                    -- JSON array of attachment metadata
+    tool_calls TEXT,
+    tool_results TEXT,
+    attachments TEXT
 );
 
 CREATE TABLE IF NOT EXISTS attachments (
-    id TEXT PRIMARY KEY,                -- UUID
+    id TEXT PRIMARY KEY,
     thread_id TEXT REFERENCES threads(id),
     message_id INTEGER REFERENCES messages(id),
     filename TEXT NOT NULL,
     mime_type TEXT NOT NULL,
     size_bytes INTEGER NOT NULL,
-    storage_path TEXT NOT NULL,         -- relative path under data/attachments/
+    storage_path TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ═══ Safety & Proactive Actions ═══
 
 CREATE TABLE IF NOT EXISTS tool_policies (
-    tool_name TEXT PRIMARY KEY,         -- e.g., 'github.create_issue'
+    tool_name TEXT PRIMARY KEY,
     mcp_id TEXT REFERENCES mcp_servers(id),
     requires_approval BOOLEAN DEFAULT 1,
     is_proactive_enabled BOOLEAN DEFAULT 0
@@ -107,9 +153,9 @@ CREATE TABLE IF NOT EXISTS approval_queue (
     id TEXT PRIMARY KEY,
     thread_id TEXT REFERENCES threads(id),
     tool_name TEXT,
-    args TEXT,                          -- JSON arguments
-    reasoning TEXT,                     -- LLM's explanation for the action
-    status TEXT DEFAULT 'pending',      -- 'pending' | 'approved' | 'rejected'
+    args TEXT,
+    reasoning TEXT,
+    status TEXT DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -117,22 +163,33 @@ CREATE TABLE IF NOT EXISTS approval_queue (
 
 CREATE TABLE IF NOT EXISTS agent_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    level TEXT DEFAULT 'info',          -- 'info' | 'warn' | 'error' | 'thought'
-    source TEXT,                        -- 'scheduler' | 'agent' | 'mcp' | 'hitl'
+    level TEXT DEFAULT 'info',
+    source TEXT,
     message TEXT NOT NULL,
-    metadata TEXT,                      -- JSON
+    metadata TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ═══ Communication Channels ═══
 
 CREATE TABLE IF NOT EXISTS channels (
-    id TEXT PRIMARY KEY,                -- UUID
-    channel_type TEXT NOT NULL,         -- 'whatsapp' | 'slack' | 'email' | 'telegram' | 'discord' | 'teams'
-    label TEXT NOT NULL,                -- user-friendly name
+    id TEXT PRIMARY KEY,
+    channel_type TEXT NOT NULL,
+    label TEXT NOT NULL,
     enabled BOOLEAN DEFAULT 1,
-    config_json TEXT NOT NULL,          -- channel-specific credentials/config
-    webhook_secret TEXT,                -- secret for verifying inbound webhooks
+    config_json TEXT NOT NULL,
+    webhook_secret TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ═══ Channel → User Mappings ═══
+
+CREATE TABLE IF NOT EXISTS channel_user_mappings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    external_id TEXT NOT NULL,           -- e.g., phone number, slack user ID
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(channel_id, external_id)
 );
 `;

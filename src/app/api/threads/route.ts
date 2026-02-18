@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/guard";
 import { listThreads, createThread } from "@/lib/db";
 import { initializeDatabase } from "@/lib/db";
 
@@ -7,18 +7,18 @@ import { initializeDatabase } from "@/lib/db";
 try { initializeDatabase(); } catch {}
 
 export async function GET() {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
 
-  const threads = listThreads();
+  const threads = listThreads(auth.user.id);
   return NextResponse.json(threads);
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
 
   const body = await req.json();
-  const thread = createThread(body.title);
+  const thread = createThread(body.title, auth.user.id);
   return NextResponse.json(thread, { status: 201 });
 }

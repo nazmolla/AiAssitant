@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/guard";
 import { listKnowledge, upsertKnowledge, updateKnowledge, deleteKnowledge } from "@/lib/db";
 
 export async function GET() {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
 
-  const knowledge = listKnowledge();
+  const knowledge = listKnowledge(auth.user.id);
   return NextResponse.json(knowledge);
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
 
   const body = await req.json();
   const { entity, attribute, value, source_context } = body;
@@ -24,13 +24,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  upsertKnowledge({ entity, attribute, value, source_context: source_context || null });
+  upsertKnowledge(
+    { user_id: auth.user.id, entity, attribute, value, source_context: source_context || null },
+    auth.user.id
+  );
   return NextResponse.json({ success: true }, { status: 201 });
 }
 
 export async function PUT(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
 
   const body = await req.json();
   const { id, ...updates } = body;
@@ -44,8 +47,8 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");

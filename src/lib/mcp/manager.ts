@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { listMcpServers, type McpServerRecord } from "@/lib/db";
 import { addLog } from "@/lib/db";
 import type { ToolDefinition } from "@/lib/llm";
@@ -56,7 +57,16 @@ class McpManager {
 
     const transportType = server.transport_type || "stdio";
 
+    // Build auth headers for HTTP-based transports
+    const authHeaders: Record<string, string> = {};
+    if (server.auth_type === "bearer" && server.access_token) {
+      authHeaders["Authorization"] = `Bearer ${server.access_token}`;
+    }
+
     if (transportType === "stdio") {
+      if (!server.command) {
+        throw new Error("stdio transport requires the command field.");
+      }
       const transport = new StdioClientTransport({
         command: server.command,
         args,
@@ -64,16 +74,26 @@ class McpManager {
       });
       await client.connect(transport);
     } else if (transportType === "sse") {
-      if (!server.command) {
-        throw new Error("SSE transport requires the command field to be a valid URL.");
+      const endpoint = server.url || server.command;
+      if (!endpoint) {
+        throw new Error("SSE transport requires a URL or command field with a valid URL.");
       }
-
-      const endpoint = new URL(server.command);
-      const transport = new SSEClientTransport(endpoint, {
+      const transport = new SSEClientTransport(new URL(endpoint), {
         requestInit: {
-          headers: envVars as Record<string, string>,
+          headers: { ...envVars, ...authHeaders } as Record<string, string>,
         },
       } as any);
+      await client.connect(transport);
+    } else if (transportType === "streamablehttp") {
+      const endpoint = server.url || server.command;
+      if (!endpoint) {
+        throw new Error("Streamable HTTP transport requires a URL.");
+      }
+      const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
+        requestInit: {
+          headers: { ...authHeaders } as Record<string, string>,
+        },
+      });
       await client.connect(transport);
     } else {
       throw new Error(`Transport type "${transportType}" not supported.`);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/auth";
 import { getMcpManager } from "@/lib/mcp";
-import { getMcpServer } from "@/lib/db";
+import { getMcpServer, upsertToolPolicy, getToolPolicy } from "@/lib/db";
 
 export async function POST(
   _req: NextRequest,
@@ -18,6 +18,20 @@ export async function POST(
   try {
     const mcpManager = getMcpManager();
     const connection = await mcpManager.connect(server);
+
+    // Auto-create tool policies for discovered tools (default: requires approval, not proactive)
+    for (const tool of connection.tools) {
+      const existing = getToolPolicy(tool.name);
+      if (!existing) {
+        upsertToolPolicy({
+          tool_name: tool.name,
+          mcp_id: server.id,
+          requires_approval: 1,
+          is_proactive_enabled: 0,
+        });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       tools: connection.tools,

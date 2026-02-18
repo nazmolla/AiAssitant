@@ -137,10 +137,11 @@ export function ChannelsConfig() {
     <div className="space-y-4">
       {/* Existing channels */}
       {channels.length === 0 && !showForm && (
-        <Card className="border-dashed">
-          <CardContent className="py-8 text-center text-muted-foreground">
-            <p className="text-lg mb-1">No channels connected</p>
-            <p className="text-sm">Connect a messaging platform to chat with Nexus from anywhere.</p>
+        <Card className="border-dashed border-white/[0.08]">
+          <CardContent className="py-12 text-center">
+            <div className="text-3xl mb-3 opacity-30">📡</div>
+            <p className="text-sm font-medium text-foreground/60 mb-1">No channels connected</p>
+            <p className="text-xs text-muted-foreground/50 font-light">Connect a messaging platform to chat with Nexus from anywhere.</p>
           </CardContent>
         </Card>
       )}
@@ -198,7 +199,7 @@ export function ChannelsConfig() {
       {showForm ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Connect a Channel</CardTitle>
+            <CardTitle className="text-lg font-display">Connect a Channel</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Step 1: Choose type */}
@@ -208,11 +209,10 @@ export function ChannelsConfig() {
                   <button
                     key={opt.value}
                     onClick={() => setSelectedType(opt.value)}
-                    className="flex flex-col items-center gap-2 p-4 rounded-lg border hover:bg-muted transition-colors text-center"
+                    className="flex flex-col items-center gap-2 p-5 rounded-xl border border-white/[0.06] hover:bg-white/[0.04] hover:border-primary/20 transition-all duration-300 text-center"
                   >
-                    <span className="text-3xl">{opt.icon}</span>
-                    <span className="font-medium text-sm">{opt.label}</span>
-                    <span className="text-xs text-muted-foreground">{opt.description}</span>
+                    <span className="font-medium text-sm">{opt.icon} {opt.label}</span>
+                    <span className="text-xs text-muted-foreground/60 font-light">{opt.description}</span>
                   </button>
                 ))}
               </div>
@@ -274,9 +274,9 @@ export function ChannelsConfig() {
 
       {/* How it works info */}
       {channels.length > 0 && (
-        <Card className="bg-muted/50">
-          <CardContent className="py-4 text-sm text-muted-foreground space-y-2">
-            <p className="font-medium text-foreground">How channels work</p>
+        <Card className="bg-white/[0.02] border-white/[0.06]">
+          <CardContent className="py-4 text-sm text-muted-foreground/60 space-y-2">
+            <p className="font-medium text-foreground/80">How channels work</p>
             <ol className="list-decimal ml-4 space-y-1">
               <li>Copy the webhook URL for a channel using the 📋 button above.</li>
               <li>In your messaging platform&apos;s settings, set the webhook/callback URL to the copied URL.</li>

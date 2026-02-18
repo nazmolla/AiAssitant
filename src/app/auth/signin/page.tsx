@@ -41,11 +41,13 @@ export default function SignInPage() {
   }
 
   return (
-    <div className="flex h-screen items-center justify-center">
-      <Card className="w-full max-w-md">
+    <div className="flex h-screen items-center justify-center bg-background noise relative overflow-hidden">
+      <div className="absolute top-1/3 left-1/3 w-72 h-72 bg-primary/5 rounded-full blur-3xl" />
+      <div className="absolute bottom-1/3 right-1/3 w-72 h-72 bg-primary/3 rounded-full blur-3xl" />
+      <Card className="w-full max-w-md relative z-10">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl">Nexus Agent</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-3xl font-display gradient-text">Nexus</CardTitle>
+          <CardDescription className="text-muted-foreground/60">
             Sign in to access your sovereign personal AI.
           </CardDescription>
         </CardHeader>
@@ -66,7 +68,7 @@ export default function SignInPage() {
             Sign in with Google
           </Button>
           </div>
-          <div className="text-center text-xs uppercase tracking-wide text-muted-foreground">
+          <div className="text-center text-[10px] uppercase tracking-widest text-muted-foreground/40 font-medium">
             or use local credentials
           </div>
           <form className="space-y-3" onSubmit={handleLocalSubmit}>
@@ -93,14 +95,14 @@ export default function SignInPage() {
               <p
                 className={
                   status.type === "error"
-                    ? "text-center text-sm text-destructive"
-                    : "text-center text-sm text-emerald-600"
+                    ? "text-center text-sm text-red-400"
+                    : "text-center text-sm text-green-400"
                 }
               >
                 {status.message}
               </p>
             ) : null}
-            <p className="text-center text-xs text-muted-foreground">
+            <p className="text-center text-[11px] text-muted-foreground/50 font-light">
               First-time owners can create their account by submitting an email + password here.
             </p>
           </form>

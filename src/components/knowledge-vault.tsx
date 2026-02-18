@@ -48,9 +48,9 @@ export function KnowledgeVault() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">Knowledge Vault</h2>
-        <p className="text-sm text-muted-foreground">
-          Nexus continuously captures durable facts from every chat turn and proactive scan. Review and curate them here when necessary.
+        <h2 className="text-2xl font-display font-bold gradient-text">Knowledge Vault</h2>
+        <p className="text-sm text-muted-foreground/60 mt-1 font-light">
+          Nexus continuously captures durable facts from every chat turn. Review and curate them here.
         </p>
       </div>
 
@@ -59,20 +59,20 @@ export function KnowledgeVault() {
         <CardContent className="p-0">
           <table className="w-full">
             <thead>
-              <tr className="border-b text-left text-sm text-muted-foreground">
-                <th className="p-3">Entity</th>
-                <th className="p-3">Attribute</th>
-                <th className="p-3">Value</th>
-                <th className="p-3">Updated</th>
-                <th className="p-3 text-right">Actions</th>
+              <tr className="border-b border-white/[0.06] text-left text-[11px] text-muted-foreground/50 uppercase tracking-wider">
+                <th className="p-4 font-medium">Entity</th>
+                <th className="p-4 font-medium">Attribute</th>
+                <th className="p-4 font-medium">Value</th>
+                <th className="p-4 font-medium">Updated</th>
+                <th className="p-4 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {entries.map((entry) => (
-                <tr key={entry.id} className="border-b hover:bg-muted/50">
-                  <td className="p-3 text-sm font-medium">{entry.entity}</td>
-                  <td className="p-3 text-sm">{entry.attribute}</td>
-                  <td className="p-3 text-sm">
+                <tr key={entry.id} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors duration-200">
+                  <td className="p-4 text-sm font-medium">{entry.entity}</td>
+                  <td className="p-4 text-sm text-foreground/80">{entry.attribute}</td>
+                  <td className="p-4 text-sm">
                     {editingId === entry.id ? (
                       <div className="flex gap-1">
                         <Input
@@ -95,10 +95,10 @@ export function KnowledgeVault() {
                       entry.value
                     )}
                   </td>
-                  <td className="p-3 text-xs text-muted-foreground">
+                  <td className="p-4 text-xs text-muted-foreground/50">
                     {new Date(entry.last_updated).toLocaleDateString()}
                   </td>
-                  <td className="p-3 text-right">
+                  <td className="p-4 text-right">
                     <div className="flex justify-end gap-1">
                       <Button
                         size="sm"
@@ -124,8 +124,11 @@ export function KnowledgeVault() {
               ))}
               {entries.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-muted-foreground">
-                    No knowledge captured yet. Start chatting or connect proactive MCP sources.
+                  <td colSpan={5} className="p-12 text-center">
+                    <div className="text-3xl mb-3 opacity-30">🧠</div>
+                    <p className="text-sm text-muted-foreground/60 font-light">
+                      No knowledge captured yet. Start chatting or connect proactive MCP sources.
+                    </p>
                   </td>
                 </tr>
               )}

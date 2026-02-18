@@ -1,17 +1,12 @@
 import { withAuth } from "next-auth/middleware";
 
-type OwnerToken = {
-  sub?: string;
-  ownerSub?: string;
-};
-
 export default withAuth({
   callbacks: {
     authorized: ({ token }) => {
       if (!token) return false;
-      const ownerSub = (token as OwnerToken).ownerSub;
-      if (!ownerSub) return false;
-      return token.sub === ownerSub;
+      // Multi-user: any authenticated user with a userId is allowed
+      const userId = (token as Record<string, unknown>).userId;
+      return !!userId;
     },
   },
 });
@@ -24,5 +19,6 @@ export const config = {
     "/api/mcp/:path*",
     "/api/policies/:path*",
     "/api/logs/:path*",
+    "/api/config/:path*",
   ],
 };

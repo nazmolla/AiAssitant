@@ -1,7 +1,70 @@
 import { getDb } from "./connection";
 import { v4 as uuid } from "uuid";
 
-// ─── Identity ────────────────────────────────────────────────
+// ─── Users ───────────────────────────────────────────────────
+
+export interface UserRecord {
+  id: string;
+  email: string;
+  display_name: string;
+  provider_id: string;
+  external_sub_id: string | null;
+  password_hash: string | null;
+  role: string;
+  created_at: string;
+}
+
+export function getUserById(id: string): UserRecord | undefined {
+  return getDb().prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRecord | undefined;
+}
+
+export function getUserByEmail(email: string): UserRecord | undefined {
+  return getDb().prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(email) as UserRecord | undefined;
+}
+
+export function getUserByExternalSub(subId: string): UserRecord | undefined {
+  return getDb().prepare("SELECT * FROM users WHERE external_sub_id = ?").get(subId) as UserRecord | undefined;
+}
+
+export function createUser(args: {
+  email: string;
+  displayName?: string;
+  providerId: string;
+  externalSubId: string | null;
+  passwordHash?: string | null;
+  role?: string;
+}): UserRecord {
+  const id = uuid();
+  getDb()
+    .prepare(
+      `INSERT INTO users (id, email, display_name, provider_id, external_sub_id, password_hash, role)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      id,
+      args.email,
+      args.displayName || args.email.split("@")[0],
+      args.providerId,
+      args.externalSubId,
+      args.passwordHash ?? null,
+      args.role || "user"
+    );
+  return getUserById(id)!;
+}
+
+export function updateUserPassword(userId: string, passwordHash: string): void {
+  getDb().prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, userId);
+}
+
+export function listUsers(): UserRecord[] {
+  return getDb().prepare("SELECT * FROM users ORDER BY created_at ASC").all() as UserRecord[];
+}
+
+export function getUserCount(): number {
+  return (getDb().prepare("SELECT COUNT(*) as c FROM users").get() as { c: number }).c;
+}
+
+// ─── Identity (legacy — kept for backward compat) ────────────
 
 export interface IdentityConfig {
   id: number;
@@ -16,8 +79,77 @@ export function getIdentity(): IdentityConfig | undefined {
   return getDb().prepare("SELECT * FROM identity_config WHERE id = 1").get() as IdentityConfig | undefined;
 }
 
-// ─── Owner Profile ───────────────────────────────────────────
+// ─── User Profiles (per-user) ────────────────────────────────
 
+export interface UserProfile {
+  user_id: string;
+  display_name: string;
+  title: string;
+  bio: string;
+  location: string;
+  phone: string;
+  email: string;
+  website: string;
+  linkedin: string;
+  github: string;
+  twitter: string;
+  skills: string;
+  languages: string;
+  company: string;
+  updated_at: string;
+}
+
+export function getUserProfile(userId: string): UserProfile | undefined {
+  return getDb().prepare("SELECT * FROM user_profiles WHERE user_id = ?").get(userId) as UserProfile | undefined;
+}
+
+export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProfile, "user_id" | "updated_at">>): UserProfile {
+  const existing = getUserProfile(userId);
+  const p = {
+    display_name: profile.display_name ?? existing?.display_name ?? "",
+    title: profile.title ?? existing?.title ?? "",
+    bio: profile.bio ?? existing?.bio ?? "",
+    location: profile.location ?? existing?.location ?? "",
+    phone: profile.phone ?? existing?.phone ?? "",
+    email: profile.email ?? existing?.email ?? "",
+    website: profile.website ?? existing?.website ?? "",
+    linkedin: profile.linkedin ?? existing?.linkedin ?? "",
+    github: profile.github ?? existing?.github ?? "",
+    twitter: profile.twitter ?? existing?.twitter ?? "",
+    skills: profile.skills ?? existing?.skills ?? "[]",
+    languages: profile.languages ?? existing?.languages ?? "[]",
+    company: profile.company ?? existing?.company ?? "",
+  };
+  getDb()
+    .prepare(
+      `INSERT INTO user_profiles (user_id, display_name, title, bio, location, phone, email, website, linkedin, github, twitter, skills, languages, company, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(user_id) DO UPDATE SET
+         display_name = excluded.display_name,
+         title = excluded.title,
+         bio = excluded.bio,
+         location = excluded.location,
+         phone = excluded.phone,
+         email = excluded.email,
+         website = excluded.website,
+         linkedin = excluded.linkedin,
+         github = excluded.github,
+         twitter = excluded.twitter,
+         skills = excluded.skills,
+         languages = excluded.languages,
+         company = excluded.company,
+         updated_at = CURRENT_TIMESTAMP`
+    )
+    .run(
+      userId,
+      p.display_name, p.title, p.bio, p.location,
+      p.phone, p.email, p.website, p.linkedin,
+      p.github, p.twitter, p.skills, p.languages, p.company
+    );
+  return getUserProfile(userId)!;
+}
+
+// Legacy owner profile functions (kept for backward compat during migration)
 export interface OwnerProfile {
   id: number;
   display_name: string;
@@ -30,8 +162,8 @@ export interface OwnerProfile {
   linkedin: string;
   github: string;
   twitter: string;
-  skills: string;     // JSON array
-  languages: string;  // JSON array
+  skills: string;
+  languages: string;
   company: string;
   updated_at: string;
 }
@@ -230,18 +362,31 @@ export function deleteLlmProvider(id: string): void {
   }
 }
 
-// ─── MCP Servers ─────────────────────────────────────────────
+// ─── MCP Servers (user-scoped + global) ──────────────────────
 
 export interface McpServerRecord {
   id: string;
   name: string;
   transport_type: string | null;
-  command: string;
+  command: string | null;
   args: string | null;
   env_vars: string | null;
+  url: string | null;
+  auth_type: string | null;
+  access_token: string | null;
+  client_id: string | null;
+  client_secret: string | null;
+  user_id: string | null;
+  scope: string;
 }
 
-export function listMcpServers(): McpServerRecord[] {
+/** List servers visible to a user: their own + global ones */
+export function listMcpServers(userId?: string): McpServerRecord[] {
+  if (userId) {
+    return getDb()
+      .prepare("SELECT * FROM mcp_servers WHERE user_id IS NULL OR scope = 'global' OR user_id = ?")
+      .all(userId) as McpServerRecord[];
+  }
   return getDb().prepare("SELECT * FROM mcp_servers").all() as McpServerRecord[];
 }
 
@@ -252,25 +397,39 @@ export function getMcpServer(id: string): McpServerRecord | undefined {
 export function upsertMcpServer(server: McpServerRecord): void {
   getDb()
     .prepare(
-      `INSERT INTO mcp_servers (id, name, transport_type, command, args, env_vars)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO mcp_servers (id, name, transport_type, command, args, env_vars, url, auth_type, access_token, client_id, client_secret, user_id, scope)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET name = excluded.name,
          transport_type = excluded.transport_type,
          command = excluded.command,
          args = excluded.args,
-         env_vars = excluded.env_vars`
+         env_vars = excluded.env_vars,
+         url = excluded.url,
+         auth_type = excluded.auth_type,
+         access_token = excluded.access_token,
+         client_id = excluded.client_id,
+         client_secret = excluded.client_secret,
+         user_id = excluded.user_id,
+         scope = excluded.scope`
     )
-    .run(server.id, server.name, server.transport_type, server.command, server.args, server.env_vars);
+    .run(
+      server.id, server.name, server.transport_type, server.command,
+      server.args, server.env_vars, server.url ?? null,
+      server.auth_type ?? "none", server.access_token ?? null,
+      server.client_id ?? null, server.client_secret ?? null,
+      server.user_id ?? null, server.scope ?? "global"
+    );
 }
 
 export function deleteMcpServer(id: string): void {
   getDb().prepare("DELETE FROM mcp_servers WHERE id = ?").run(id);
 }
 
-// ─── User Knowledge ──────────────────────────────────────────
+// ─── User Knowledge (per-user) ───────────────────────────────
 
 export interface KnowledgeEntry {
   id: number;
+  user_id: string | null;
   entity: string;
   attribute: string;
   value: string;
@@ -278,11 +437,25 @@ export interface KnowledgeEntry {
   last_updated: string;
 }
 
-export function listKnowledge(): KnowledgeEntry[] {
+export function listKnowledge(userId?: string): KnowledgeEntry[] {
+  if (userId) {
+    return getDb()
+      .prepare("SELECT * FROM user_knowledge WHERE user_id = ? ORDER BY last_updated DESC")
+      .all(userId) as KnowledgeEntry[];
+  }
   return getDb().prepare("SELECT * FROM user_knowledge ORDER BY last_updated DESC").all() as KnowledgeEntry[];
 }
 
-export function searchKnowledge(query: string): KnowledgeEntry[] {
+export function searchKnowledge(query: string, userId?: string): KnowledgeEntry[] {
+  if (userId) {
+    return getDb()
+      .prepare(
+        `SELECT * FROM user_knowledge
+         WHERE user_id = ? AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
+         ORDER BY last_updated DESC`
+      )
+      .all(userId, `%${query}%`, `%${query}%`, `%${query}%`) as KnowledgeEntry[];
+  }
   return getDb()
     .prepare(
       `SELECT * FROM user_knowledge
@@ -292,18 +465,19 @@ export function searchKnowledge(query: string): KnowledgeEntry[] {
     .all(`%${query}%`, `%${query}%`, `%${query}%`) as KnowledgeEntry[];
 }
 
-export function upsertKnowledge(entry: Omit<KnowledgeEntry, "id" | "last_updated">): number {
+export function upsertKnowledge(entry: Omit<KnowledgeEntry, "id" | "last_updated">, userId?: string): number {
+  const uid = entry.user_id ?? userId ?? null;
   const row = getDb()
     .prepare(
-      `INSERT INTO user_knowledge (entity, attribute, value, source_context)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(entity, attribute, value) DO UPDATE SET
+      `INSERT INTO user_knowledge (user_id, entity, attribute, value, source_context)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, entity, attribute, value) DO UPDATE SET
          value = excluded.value,
          source_context = excluded.source_context,
          last_updated = CURRENT_TIMESTAMP
        RETURNING id`
     )
-    .get(entry.entity, entry.attribute, entry.value, entry.source_context) as { id: number } | undefined;
+    .get(uid, entry.entity, entry.attribute, entry.value, entry.source_context) as { id: number } | undefined;
 
   if (!row) {
     throw new Error("Failed to upsert knowledge entry");
@@ -327,7 +501,7 @@ export function deleteKnowledge(id: number): void {
   getDb().prepare("DELETE FROM user_knowledge WHERE id = ?").run(id);
 }
 
-// ─── Knowledge Embeddings ───────────────────────────────────
+// ─── Knowledge Embeddings (per-user via FK) ─────────────────
 
 interface KnowledgeEmbeddingRow {
   knowledge_id: number;
@@ -344,7 +518,18 @@ export function upsertKnowledgeEmbedding(knowledgeId: number, embedding: number[
     .run(knowledgeId, JSON.stringify(embedding));
 }
 
-export function listKnowledgeEmbeddings(): KnowledgeEmbeddingRow[] {
+/** List embeddings scoped to a user (via JOIN on user_knowledge) */
+export function listKnowledgeEmbeddings(userId?: string): KnowledgeEmbeddingRow[] {
+  if (userId) {
+    return getDb()
+      .prepare(
+        `SELECT ke.knowledge_id, ke.embedding
+         FROM knowledge_embeddings ke
+         JOIN user_knowledge uk ON ke.knowledge_id = uk.id
+         WHERE uk.user_id = ?`
+      )
+      .all(userId) as KnowledgeEmbeddingRow[];
+  }
   return getDb()
     .prepare("SELECT knowledge_id, embedding FROM knowledge_embeddings")
     .all() as KnowledgeEmbeddingRow[];
@@ -358,24 +543,30 @@ export function getKnowledgeEntriesByIds(ids: number[]): KnowledgeEntry[] {
     .all(...ids) as KnowledgeEntry[];
 }
 
-// ─── Threads ─────────────────────────────────────────────────
+// ─── Threads (per-user) ──────────────────────────────────────
 
 export interface Thread {
   id: string;
+  user_id: string | null;
   title: string | null;
   status: string;
   last_message_at: string;
 }
 
-export function createThread(title?: string): Thread {
+export function createThread(title?: string, userId?: string): Thread {
   const id = uuid();
   getDb()
-    .prepare("INSERT INTO threads (id, title) VALUES (?, ?)")
-    .run(id, title || "New Thread");
+    .prepare("INSERT INTO threads (id, user_id, title) VALUES (?, ?, ?)")
+    .run(id, userId ?? null, title || "New Thread");
   return getDb().prepare("SELECT * FROM threads WHERE id = ?").get(id) as Thread;
 }
 
-export function listThreads(): Thread[] {
+export function listThreads(userId?: string): Thread[] {
+  if (userId) {
+    return getDb()
+      .prepare("SELECT * FROM threads WHERE user_id = ? ORDER BY last_message_at DESC")
+      .all(userId) as Thread[];
+  }
   return getDb().prepare("SELECT * FROM threads ORDER BY last_message_at DESC").all() as Thread[];
 }
 
@@ -385,6 +576,10 @@ export function getThread(id: string): Thread | undefined {
 
 export function updateThreadStatus(id: string, status: string): void {
   getDb().prepare("UPDATE threads SET status = ? WHERE id = ?").run(status, id);
+}
+
+export function updateThreadTitle(id: string, title: string): void {
+  getDb().prepare("UPDATE threads SET title = ? WHERE id = ?").run(title, id);
 }
 
 export function deleteThread(id: string): void {
@@ -614,4 +809,42 @@ export function updateChannel(args: {
 
 export function deleteChannel(id: string): void {
   getDb().prepare("DELETE FROM channels WHERE id = ?").run(id);
+}
+
+// ─── Channel User Mappings ───────────────────────────────────
+
+export interface ChannelUserMapping {
+  id: number;
+  channel_id: string;
+  external_id: string;
+  user_id: string;
+  created_at: string;
+}
+
+export function getChannelUserMapping(channelId: string, externalId: string): ChannelUserMapping | undefined {
+  return getDb()
+    .prepare("SELECT * FROM channel_user_mappings WHERE channel_id = ? AND external_id = ?")
+    .get(channelId, externalId) as ChannelUserMapping | undefined;
+}
+
+export function upsertChannelUserMapping(channelId: string, externalId: string, userId: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO channel_user_mappings (channel_id, external_id, user_id)
+       VALUES (?, ?, ?)
+       ON CONFLICT(channel_id, external_id) DO UPDATE SET user_id = excluded.user_id`
+    )
+    .run(channelId, externalId, userId);
+}
+
+export function listChannelUserMappings(channelId: string): ChannelUserMapping[] {
+  return getDb()
+    .prepare("SELECT * FROM channel_user_mappings WHERE channel_id = ?")
+    .all(channelId) as ChannelUserMapping[];
+}
+
+export function deleteChannelUserMapping(channelId: string, externalId: string): void {
+  getDb()
+    .prepare("DELETE FROM channel_user_mappings WHERE channel_id = ? AND external_id = ?")
+    .run(channelId, externalId);
 }

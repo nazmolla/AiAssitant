@@ -101,14 +101,14 @@ export function ProfileConfig() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const labelClass = "text-sm font-medium text-muted-foreground";
+  const labelClass = "text-[11px] font-medium text-muted-foreground/60 mb-1.5 block uppercase tracking-wider";
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {/* Personal Information */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Personal Information</CardTitle>
+          <CardTitle className="text-lg font-display">Personal Information</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div>
@@ -158,7 +158,7 @@ export function ProfileConfig() {
       {/* Contact & Social Links */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Contact & Links</CardTitle>
+          <CardTitle className="text-lg font-display">Contact & Links</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div>
@@ -216,7 +216,7 @@ export function ProfileConfig() {
       {/* Skills */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Skills</CardTitle>
+          <CardTitle className="text-lg font-display">Skills</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-1.5">
@@ -243,7 +243,7 @@ export function ProfileConfig() {
       {/* Languages */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Languages</CardTitle>
+          <CardTitle className="text-lg font-display">Languages</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-1.5">
@@ -269,7 +269,7 @@ export function ProfileConfig() {
 
       {/* Save Button */}
       <div className="md:col-span-2 flex justify-end gap-2 items-center">
-        {saved && <span className="text-sm text-green-500">Saved!</span>}
+        {saved && <span className="text-sm text-green-400">Saved!</span>}
         <Button onClick={save} disabled={saving}>
           {saving ? "Saving…" : "Save Profile"}
         </Button>

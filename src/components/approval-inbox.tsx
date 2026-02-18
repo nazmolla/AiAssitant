@@ -35,12 +35,18 @@ export function ApprovalInbox() {
   async function handleAction(approvalId: string, action: "approved" | "rejected") {
     setActing(approvalId);
     try {
-      await fetch("/api/approvals", {
+      const res = await fetch("/api/approvals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ approvalId, action }),
       });
+      const data = await res.json();
       fetchApprovals();
+
+      // Notify the chat panel to refresh messages (agent loop may have continued)
+      if (action === "approved" && data.agentResponse) {
+        window.dispatchEvent(new CustomEvent("approval-resolved", { detail: data }));
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -51,7 +57,10 @@ export function ApprovalInbox() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Approval Inbox</h2>
+        <div>
+          <h2 className="text-2xl font-display font-bold gradient-text">Approval Inbox</h2>
+          <p className="text-sm text-muted-foreground/60 font-light mt-1">Review and authorize agent actions</p>
+        </div>
         <Badge variant={approvals.length > 0 ? "warning" : "success"}>
           {approvals.length} pending
         </Badge>
@@ -59,8 +68,11 @@ export function ApprovalInbox() {
 
       {approvals.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No pending approvals. All clear.
+          <CardContent className="py-16 text-center">
+            <div className="text-4xl mb-3 opacity-40">✅</div>
+            <p className="text-sm text-muted-foreground/60 font-light">
+              No pending approvals. All clear.
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -72,30 +84,30 @@ export function ApprovalInbox() {
             } catch {}
 
             return (
-              <Card key={approval.id}>
+              <Card key={approval.id} className="hover:border-primary/20 transition-all duration-300">
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">{approval.tool_name}</CardTitle>
+                    <CardTitle className="text-base font-display">{approval.tool_name}</CardTitle>
                     <Badge variant="warning">Pending</Badge>
                   </div>
-                  <CardDescription>
+                  <CardDescription className="text-muted-foreground/50">
                     {new Date(approval.created_at).toLocaleString()}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {approval.reasoning && (
                     <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1">
+                      <div className="text-[11px] font-medium text-muted-foreground/60 mb-1 uppercase tracking-wider">
                         Agent&apos;s Reasoning
                       </div>
-                      <p className="text-sm">{approval.reasoning}</p>
+                      <p className="text-sm text-foreground/80">{approval.reasoning}</p>
                     </div>
                   )}
                   <div>
-                    <div className="text-xs font-medium text-muted-foreground mb-1">
+                    <div className="text-[11px] font-medium text-muted-foreground/60 mb-1 uppercase tracking-wider">
                       Arguments
                     </div>
-                    <pre className="text-xs bg-muted p-2 rounded-md overflow-auto">
+                    <pre className="text-xs bg-white/[0.03] p-3 rounded-xl overflow-auto border border-white/[0.06]">
                       {JSON.stringify(parsedArgs, null, 2)}
                     </pre>
                   </div>

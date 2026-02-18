@@ -11,24 +11,24 @@ interface SemanticMatch {
   score: number;
 }
 
-export async function retrieveKnowledge(query: string, limit = 6): Promise<KnowledgeEntry[]> {
-  const semantic = await semanticSearch(query, limit);
+export async function retrieveKnowledge(query: string, limit = 6, userId?: string): Promise<KnowledgeEntry[]> {
+  const semantic = await semanticSearch(query, limit, userId);
   const missing = limit - semantic.length;
 
   if (missing <= 0) {
     return semantic;
   }
 
-  const fallback = keywordFallback(query, limit);
+  const fallback = keywordFallback(query, limit, userId);
   const merged = mergeEntries(semantic, fallback).slice(0, limit);
   return merged;
 }
 
-async function semanticSearch(query: string, limit: number): Promise<KnowledgeEntry[]> {
+async function semanticSearch(query: string, limit: number, userId?: string): Promise<KnowledgeEntry[]> {
   const embedding = await generateEmbedding(query);
   if (embedding.length === 0) return [];
 
-  const stored = listKnowledgeEmbeddings();
+  const stored = listKnowledgeEmbeddings(userId);
   if (stored.length === 0) return [];
 
   const matches: SemanticMatch[] = [];
@@ -52,9 +52,9 @@ async function semanticSearch(query: string, limit: number): Promise<KnowledgeEn
     .filter((entry): entry is KnowledgeEntry => Boolean(entry));
 }
 
-function keywordFallback(query: string, limit: number): KnowledgeEntry[] {
+function keywordFallback(query: string, limit: number, userId?: string): KnowledgeEntry[] {
   if (!query.trim()) return [];
-  return searchKnowledge(query).slice(0, limit);
+  return searchKnowledge(query, userId).slice(0, limit);
 }
 
 function mergeEntries(primary: KnowledgeEntry[], secondary: KnowledgeEntry[]): KnowledgeEntry[] {

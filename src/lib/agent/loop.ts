@@ -24,6 +24,8 @@ import { BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool } from "./fs-tools";
 import {
   addMessage,
   getThreadMessages,
+  getThread,
+  updateThreadTitle,
   addLog,
   addAttachment,
   type Message,
@@ -81,6 +83,9 @@ export interface AgentResponse {
 
 /**
  * Run the agent loop for a given thread and user message.
+ * When `continuation` is true, skips saving a new user message and resumes
+ * from the existing DB state (used after tool-approval execution).
+ * `userId` scopes knowledge retrieval/ingestion to the specific user.
  */
 export async function runAgentLoop(
   threadId: string,
@@ -92,54 +97,67 @@ export async function runAgentLoop(
     mimeType: string;
     sizeBytes: number;
     storagePath: string;
-  }>
+  }>,
+  continuation?: boolean,
+  userId?: string
 ): Promise<AgentResponse> {
   const provider = createChatProvider();
   const mcpManager = getMcpManager();
   const mcpTools = mcpManager.getAllTools();
   const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...mcpTools];
 
-  // Build attachment metadata JSON
-  const attachmentsMeta: AttachmentMeta[] | null =
-    attachments && attachments.length > 0
-      ? attachments.map((a) => ({
-          id: a.id,
-          filename: a.filename,
-          mimeType: a.mimeType,
-          sizeBytes: a.sizeBytes,
-          storagePath: a.storagePath,
-        }))
-      : null;
+  if (!continuation) {
+    // Build attachment metadata JSON
+    const attachmentsMeta: AttachmentMeta[] | null =
+      attachments && attachments.length > 0
+        ? attachments.map((a) => ({
+            id: a.id,
+            filename: a.filename,
+            mimeType: a.mimeType,
+            sizeBytes: a.sizeBytes,
+            storagePath: a.storagePath,
+          }))
+        : null;
 
-  // Save the user message (with attachment metadata)
-  const savedMsg = addMessage({
-    thread_id: threadId,
-    role: "user",
-    content: userMessage,
-    tool_calls: null,
-    tool_results: null,
-    attachments: attachmentsMeta ? JSON.stringify(attachmentsMeta) : null,
-  });
+    // Save the user message (with attachment metadata)
+    const savedMsg = addMessage({
+      thread_id: threadId,
+      role: "user",
+      content: userMessage,
+      tool_calls: null,
+      tool_results: null,
+      attachments: attachmentsMeta ? JSON.stringify(attachmentsMeta) : null,
+    });
 
-  // Persist attachment records in the attachments table
-  if (attachmentsMeta) {
-    for (const att of attachmentsMeta) {
-      addAttachment({
-        id: att.id,
-        thread_id: threadId,
-        message_id: savedMsg.id,
-        filename: att.filename,
-        mime_type: att.mimeType,
-        size_bytes: att.sizeBytes,
-        storage_path: att.storagePath,
-      });
+    // Persist attachment records in the attachments table
+    if (attachmentsMeta) {
+      for (const att of attachmentsMeta) {
+        addAttachment({
+          id: att.id,
+          thread_id: threadId,
+          message_id: savedMsg.id,
+          filename: att.filename,
+          mime_type: att.mimeType,
+          size_bytes: att.sizeBytes,
+          storage_path: att.storagePath,
+        });
+      }
     }
   }
 
-  const knowledgeSnippets: string[] = [`[User]\n${userMessage}`];
+  // In continuation mode, extract the last user message from DB for knowledge retrieval
+  const queryText = continuation
+    ? (() => {
+        const msgs = getThreadMessages(threadId);
+        const lastUser = [...msgs].reverse().find((m) => m.role === "user");
+        return lastUser?.content || "";
+      })()
+    : userMessage;
 
-  // Build context from knowledge vault
-  const relevantKnowledge = await retrieveKnowledge(userMessage, 8);
+  const knowledgeSnippets: string[] = [`[User]\n${queryText}`];
+
+  // Build context from knowledge vault (scoped to user)
+  const relevantKnowledge = await retrieveKnowledge(queryText, 8, userId);
   let knowledgeContext = "";
   if (relevantKnowledge.length > 0) {
     knowledgeContext =
@@ -151,7 +169,7 @@ export async function runAgentLoop(
 
   // Build message history
   const dbMessages = getThreadMessages(threadId);
-  const chatMessages = dbMessagesToChat(dbMessages, contentParts);
+  const chatMessages = dbMessagesToChat(dbMessages, continuation ? undefined : contentParts);
 
   const toolsUsed: string[] = [];
   const pendingApprovals: string[] = [];
@@ -161,8 +179,10 @@ export async function runAgentLoop(
   addLog({
     level: "thought",
     source: "agent",
-    message: `Processing user message in thread ${threadId}`,
-    metadata: JSON.stringify({ messagePreview: userMessage.substring(0, 100) }),
+    message: continuation
+      ? `Continuing agent loop in thread ${threadId} after approval`
+      : `Processing user message in thread ${threadId}`,
+    metadata: JSON.stringify({ messagePreview: queryText.substring(0, 100) }),
   });
 
   while (iterations < MAX_TOOL_ITERATIONS) {
@@ -351,7 +371,7 @@ export async function runAgentLoop(
         }
 
         screenshotAttachments.length = 0;
-        await persistKnowledgeFromTurn(threadId, knowledgeSnippets);
+        await persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId);
         return { content: finalContent, toolsUsed, pendingApprovals, attachments: [] };
       }
 
@@ -398,7 +418,12 @@ export async function runAgentLoop(
       metadata: JSON.stringify({ threadId, toolsUsed }),
     });
 
-    await persistKnowledgeFromTurn(threadId, knowledgeSnippets);
+    // Auto-generate thread title from first exchange (skip for continuations)
+    if (!continuation) {
+      await maybeUpdateThreadTitle(threadId, queryText, finalText);
+    }
+
+    await persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId);
     return { content: finalContent, toolsUsed, pendingApprovals, attachments: attachmentsForResponse };
   }
 
@@ -414,9 +439,20 @@ export async function runAgentLoop(
   });
 
   knowledgeSnippets.push(`[Assistant]\n${fallback}`);
-  await persistKnowledgeFromTurn(threadId, knowledgeSnippets);
+  await persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId);
 
   return { content: fallback, toolsUsed, pendingApprovals, attachments: [] };
+}
+
+/**
+ * Resume the agent loop after a tool approval.
+ * Loads thread history (including the now-saved tool result) and continues the LLM loop.
+ */
+export async function continueAgentLoop(threadId: string): Promise<AgentResponse> {
+  // Resolve userId from the thread record
+  const thread = getThread(threadId);
+  const userId = thread?.user_id ?? undefined;
+  return runAgentLoop(threadId, "", undefined, undefined, true, userId);
 }
 
 function dbMessagesToChat(
@@ -680,15 +716,73 @@ async function executeBuiltinFsToolWithGatekeeper(
   }
 }
 
+/**
+ * Auto-generate a short descriptive thread title from the first user message + response.
+ * Only updates if the thread still has the default "New Thread" title.
+ */
+async function maybeUpdateThreadTitle(
+  threadId: string,
+  userMessage: string,
+  assistantResponse: string
+): Promise<void> {
+  try {
+    const thread = getThread(threadId);
+    if (!thread || thread.title !== "New Thread") return;
+
+    // Generate a short title from the user's first message
+    const msg = userMessage.trim().slice(0, 200);
+    let title: string;
+
+    // Try to use the LLM to generate a concise title
+    try {
+      const provider = createChatProvider();
+      const titleResponse = await provider.chat(
+        [
+          {
+            role: "user",
+            content: `Generate a very short title (3-6 words, no quotes, no punctuation at the end) that summarizes this conversation topic:\n\nUser: ${msg}\nAssistant: ${assistantResponse.slice(0, 300)}`,
+          },
+        ],
+        undefined,
+        "You generate ultra-concise chat thread titles. Reply with ONLY the title, nothing else. No quotes, no period."
+      );
+      title = (titleResponse.content || "").replace(/^["']|["']$/g, "").replace(/\.+$/, "").trim();
+    } catch {
+      // Fallback: extract from the user message
+      title = msg;
+    }
+
+    // Ensure title is reasonable length
+    if (!title || title.length < 2) {
+      title = msg;
+    }
+    if (title.length > 60) {
+      title = title.slice(0, 57) + "...";
+    }
+
+    updateThreadTitle(threadId, title);
+  } catch (err) {
+    // Non-critical — just log and move on
+    addLog({
+      level: "warn",
+      source: "agent",
+      message: `Failed to auto-title thread: ${err}`,
+      metadata: JSON.stringify({ threadId }),
+    });
+  }
+}
+
 async function persistKnowledgeFromTurn(
   threadId: string,
-  snippets: string[]
+  snippets: string[],
+  userId?: string
 ): Promise<void> {
   const payload = snippets.join("\n\n").slice(0, 8000);
   if (!payload.trim()) return;
   await ingestKnowledgeFromText({
     source: `chat:${threadId}`,
     text: payload,
-    contextHint: "Extract durable owner knowledge from this conversation turn.",
+    contextHint: "Extract durable user knowledge from this conversation turn.",
+    userId,
   });
 }

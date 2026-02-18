@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAgentLoop, type AgentResponse } from "@/lib/agent";
-import { getChannel, getDb, type AttachmentMeta } from "@/lib/db";
+import { getChannel, getDb, getChannelUserMapping, type AttachmentMeta } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 import fs from "fs";
 import path from "path";
@@ -45,10 +45,21 @@ export async function POST(
       return NextResponse.json({ ok: true }); // ACK without processing
     }
 
-    // Create a thread for this channel conversation (or reuse one)
-    const threadId = resolveThread(channel.id, message.senderId);
+    // Resolve sender → user mapping
+    const mapping = getChannelUserMapping(channel.id, message.senderId);
+    const userId = mapping?.user_id ?? null;
 
-    const result = await runAgentLoop(threadId, message.text);
+    // Create a thread for this channel conversation (or reuse one)
+    const threadId = resolveThread(channel.id, message.senderId, userId);
+
+    const result = await runAgentLoop(
+      threadId,
+      message.text,
+      undefined,
+      undefined,
+      undefined,
+      userId ?? undefined
+    );
     const channelConfig = parseConfig(channel.config_json);
     await dispatchOutboundResponse(channel.channel_type, channelConfig, message.senderId, result);
 
@@ -296,8 +307,9 @@ function extractMessage(
 
 /**
  * Finds or creates a thread for a given channel + sender combination.
+ * Associates the thread with a user if a mapping exists.
  */
-function resolveThread(channelId: string, senderId: string): string {
+function resolveThread(channelId: string, senderId: string, userId: string | null): string {
   const db = getDb();
   const tag = `channel:${channelId}:${senderId}`;
 
@@ -310,8 +322,8 @@ function resolveThread(channelId: string, senderId: string): string {
 
   const id = uuid();
   db.prepare(
-    "INSERT INTO threads (id, title, status) VALUES (?, ?, 'active')"
-  ).run(id, tag);
+    "INSERT INTO threads (id, user_id, title, status) VALUES (?, ?, ?, 'active')"
+  ).run(id, userId, tag);
 
   return id;
 }

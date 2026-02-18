@@ -185,8 +185,8 @@ export function LlmConfig() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Add LLM Provider</CardTitle>
-          <CardDescription>Configure Azure OpenAI, OpenAI, or Anthropic credentials.</CardDescription>
+          <CardTitle className="text-base font-display">Add LLM Provider</CardTitle>
+          <CardDescription className="text-muted-foreground/60">Configure Azure OpenAI, OpenAI, or Anthropic credentials.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleCreate}>
@@ -198,12 +198,12 @@ export function LlmConfig() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Provider</label>
                 <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-sm transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 appearance-none"
                   value={providerType}
                   onChange={(e) => setProviderType(e.target.value as LlmProviderType)}
                 >
                   {PROVIDER_SELECT.map((option) => (
-                    <option key={option.value} value={option.value}>
+                    <option key={option.value} value={option.value} className="bg-card">
                       {option.label}
                     </option>
                   ))}
@@ -212,14 +212,14 @@ export function LlmConfig() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Purpose</label>
                 <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-sm transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 appearance-none"
                   value={purpose}
                   onChange={(e) => setPurpose(e.target.value as LlmProviderPurpose)}
                 >
                   {PURPOSE_OPTIONS
                     .filter((o) => o.value === "chat" || EMBEDDING_CAPABLE_PROVIDERS.has(providerType))
                     .map((option) => (
-                      <option key={option.value} value={option.value}>
+                      <option key={option.value} value={option.value} className="bg-card">
                         {option.label}
                       </option>
                     ))}
@@ -229,10 +229,10 @@ export function LlmConfig() {
 
             <div className="grid gap-4 md:grid-cols-2">
               {currentFields.map((field) => (
-                <div key={field.key} className="space-y-2">
-                  <label className="text-sm font-medium flex items-center justify-between">
+                <div key={field.key} className="space-y-1.5">
+                  <label className="text-[13px] font-medium flex items-center justify-between">
                     {field.label}
-                    {field.required && <span className="text-xs text-muted-foreground">Required</span>}
+                    {field.required && <span className="text-[11px] text-muted-foreground">Required</span>}
                   </label>
                   <Input
                     type={field.type || "text"}
@@ -245,8 +245,8 @@ export function LlmConfig() {
               ))}
             </div>
 
-            {formError && <p className="text-sm text-red-500">{formError}</p>}
-            {formSuccess && <p className="text-sm text-green-600">{formSuccess}</p>}
+            {formError && <p className="text-sm text-red-400">{formError}</p>}
+            {formSuccess && <p className="text-sm text-green-400">{formSuccess}</p>}
 
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" onClick={resetForm}>
@@ -262,27 +262,30 @@ export function LlmConfig() {
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold">Configured Providers</h3>
-          <span className="text-sm text-muted-foreground">
+          <h3 className="text-base font-display font-semibold">Configured Providers</h3>
+          <span className="text-sm text-muted-foreground/50 font-light">
             {providers.length === 0 ? "No providers yet" : `${providers.length} configured`}
           </span>
         </div>
 
         {providers.length === 0 ? (
           <Card>
-            <CardContent className="text-sm text-muted-foreground">
-              No providers configured. Add one to unlock the agent loop.
+            <CardContent className="py-12 text-center">
+              <div className="text-3xl mb-3 opacity-30">🤖</div>
+              <p className="text-sm text-muted-foreground/60 font-light">
+                No providers configured. Add one to unlock the agent loop.
+              </p>
             </CardContent>
           </Card>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {providers.map((provider) => (
-              <Card key={provider.id} className={cn(provider.is_default && "border-primary") }>
+              <Card key={provider.id} className={cn(provider.is_default && "border-primary/40 shadow-md shadow-primary/10") }>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle className="text-lg">{provider.label}</CardTitle>
-                      <CardDescription>
+                      <CardTitle className="text-lg font-display">{provider.label}</CardTitle>
+                      <CardDescription className="text-muted-foreground/50">
                         {PROVIDER_LABELS[provider.provider_type]} • {new Date(provider.created_at).toLocaleDateString()}
                       </CardDescription>
                     </div>
@@ -304,7 +307,7 @@ export function LlmConfig() {
                 <CardContent className="space-y-3">
                   <dl className="grid gap-2 text-sm">
                     {Object.entries(provider.config).map(([key, value]) => (
-                      <div key={key} className="flex items-center justify-between border-b border-dashed border-border/60 pb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                      <div key={key} className="flex items-center justify-between border-b border-dashed border-white/[0.06] pb-1.5 text-xs uppercase tracking-wide text-muted-foreground/50">
                         <span>{key}</span>
                         <span className="text-foreground font-mono text-[11px]">
                           {typeof value === "string" && value.length > 0 ? value : "—"}
@@ -312,7 +315,7 @@ export function LlmConfig() {
                       </div>
                     ))}
                     {provider.has_api_key === false && (
-                      <div className="text-xs text-red-500">No API key captured. Edit to add credentials.</div>
+                      <div className="text-xs text-red-400">No API key captured. Edit to add credentials.</div>
                     )}
                   </dl>
                 </CardContent>
