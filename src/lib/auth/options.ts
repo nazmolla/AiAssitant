@@ -102,7 +102,7 @@ export const authOptions: NextAuthOptions = {
     },
     async jwt({ token, account, user }) {
       if (account?.provider === "credentials" && user) {
-        token.sub = (user as Record<string, unknown>).id as string;
+        token.sub = (user as unknown as Record<string, unknown>).id as string;
       } else if (account) {
         token.sub = account.providerAccountId;
       }

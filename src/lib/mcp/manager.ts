@@ -51,7 +51,7 @@ class McpManager {
 
     const client = new Client(
       { name: "nexus-agent", version: "1.0.0" },
-      { capabilities: { tools: {} } }
+      { capabilities: {} }
     );
 
     const transportType = server.transport_type || "stdio";
@@ -70,8 +70,10 @@ class McpManager {
 
       const endpoint = new URL(server.command);
       const transport = new SSEClientTransport(endpoint, {
-        headers: envVars as Record<string, string>,
-      });
+        requestInit: {
+          headers: envVars as Record<string, string>,
+        },
+      } as any);
       await client.connect(transport);
     } else {
       throw new Error(`Transport type "${transportType}" not supported.`);
@@ -113,7 +115,7 @@ class McpManager {
    * Disconnect all MCP servers.
    */
   async disconnectAll(): Promise<void> {
-    for (const [id] of this.connections) {
+    for (const id of Array.from(this.connections.keys())) {
       await this.disconnect(id);
     }
   }
@@ -123,7 +125,7 @@ class McpManager {
    */
   getAllTools(): ToolDefinition[] {
     const all: ToolDefinition[] = [];
-    for (const conn of this.connections.values()) {
+    for (const conn of Array.from(this.connections.values())) {
       all.push(...conn.tools);
     }
     return all;

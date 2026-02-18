@@ -47,7 +47,7 @@ const PURPOSE_OPTIONS: Array<{ label: string; value: LlmProviderPurpose }> = [
 ];
 
 // Anthropic doesn't offer an embeddings API
-const EMBEDDING_CAPABLE_PROVIDERS: Set<LlmProviderType> = new Set(["azure-openai", "openai"]);
+const EMBEDDING_CAPABLE_PROVIDERS: Set<LlmProviderType> = new Set<LlmProviderType>(["azure-openai", "openai"]);
 
 interface LlmProvider {
   id: string;

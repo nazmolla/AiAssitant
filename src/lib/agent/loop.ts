@@ -20,6 +20,7 @@ import { getMcpManager } from "@/lib/mcp";
 import { executeWithGatekeeper } from "./gatekeeper";
 import { BUILTIN_WEB_TOOLS, isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
 import { BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool } from "./browser-tools";
+import { BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool } from "./fs-tools";
 import {
   addMessage,
   getThreadMessages,
@@ -30,6 +31,9 @@ import {
 } from "@/lib/db";
 import { ingestKnowledgeFromText } from "@/lib/knowledge";
 import { retrieveKnowledge } from "@/lib/knowledge/retriever";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
 
 const SYSTEM_PROMPT = `You are Nexus, a sovereign personal AI agent. You serve a single owner with deep personal knowledge and proactive intelligence.
 
@@ -38,6 +42,9 @@ Your capabilities:
 - Web search: search the internet for current information, news, facts
 - Web browsing: fetch and read web pages, extract specific information from URLs
 - Full browser automation: navigate websites, click buttons, fill forms, submit applications, create accounts, upload files — like a human using a real browser
+- File system access: read files and directories, create new files, search for files by pattern, get file metadata
+- File system mutation (requires approval): update/overwrite existing files, delete files and directories
+- Script execution (requires approval): run shell commands and scripts on the local system
 - A persistent knowledge vault of user preferences and facts
 - Ability to generate reminders and proactive suggestions
 - Transparent reasoning: always explain WHY you want to take an action
@@ -48,7 +55,7 @@ Browser automation guidelines:
 - Use browser_click to click buttons and links
 - Use browser_get_content to read page text
 - For multi-step workflows (e.g., job applications), work step by step: navigate → read → fill → submit
-- Use browser_screenshot if you need to visually verify the page state
+- Use browser_screenshot if you need to visually verify the page state — screenshots are AUTOMATICALLY rendered inline in the chat as images. After taking a screenshot, NEVER include file paths, sandbox paths, image URLs, markdown image syntax, or any reference to where the screenshot is saved in your response. The user can already see the image. Just continue with the task or say "Here is the screenshot" at most.
 - Always browser_close when you're done with a browsing session
 - If a page requires login, inform the user and ask for credentials rather than guessing
 
@@ -59,6 +66,8 @@ Rules:
 - When asked about current events, real-time data, or anything you're unsure about, use web_search
 - When the user shares a URL or asks about a specific webpage, use web_fetch or web_extract
 - For complex web interactions (filling forms, applying to jobs, creating profiles), use the browser tools
+- For file system operations, use fs_read_file, fs_read_directory, fs_file_info, fs_search_files for reading; fs_create_file for creating new files
+- Modifying (fs_update_file), deleting (fs_delete_file, fs_delete_directory), and script execution (fs_execute_script) require owner approval — explain WHY you need to perform the action
 - Be concise but thorough`;
 
 const MAX_TOOL_ITERATIONS = 25;
@@ -67,6 +76,7 @@ export interface AgentResponse {
   content: string;
   toolsUsed: string[];
   pendingApprovals: string[];
+  attachments: AttachmentMeta[];
 }
 
 /**
@@ -87,7 +97,7 @@ export async function runAgentLoop(
   const provider = createChatProvider();
   const mcpManager = getMcpManager();
   const mcpTools = mcpManager.getAllTools();
-  const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...mcpTools];
+  const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...mcpTools];
 
   // Build attachment metadata JSON
   const attachmentsMeta: AttachmentMeta[] | null =
@@ -145,6 +155,7 @@ export async function runAgentLoop(
 
   const toolsUsed: string[] = [];
   const pendingApprovals: string[] = [];
+  const screenshotAttachments: AttachmentMeta[] = [];
   let iterations = 0;
 
   addLog({
@@ -192,7 +203,9 @@ export async function runAgentLoop(
           ? await executeBuiltinTool(toolCall, threadId, response.content || undefined)
           : isBrowserTool(toolCall.name)
             ? await executeBuiltinBrowserTool(toolCall, threadId, response.content || undefined)
-            : await executeWithGatekeeper(toolCall, threadId, response.content || undefined);
+            : isFsTool(toolCall.name)
+              ? await executeBuiltinFsToolWithGatekeeper(toolCall, threadId, response.content || undefined)
+              : await executeWithGatekeeper(toolCall, threadId, response.content || undefined);
 
         if (result.status === "pending_approval") {
           pendingApprovals.push(toolCall.name);
@@ -209,18 +222,100 @@ export async function runAgentLoop(
             ? toolResultRaw.slice(0, 15000) + "\n... [truncated]"
             : toolResultRaw;
 
-          addMessage({
+          // Detect screenshots in tool results (browser_screenshot)
+          let toolAttachments: string | null = null;
+          let llmToolResult = toolResult; // version sent to LLM (may have paths stripped)
+          const isScreenshotTool = toolCall.name === "builtin.browser_screenshot";
+          const resultObj = result.result as Record<string, unknown> | undefined;
+          if (isScreenshotTool) {
+            const rawScreenshotPath =
+              typeof resultObj?.screenshotPath === "string" ? (resultObj.screenshotPath as string) : "";
+            const normalizedScreenshotPath = rawScreenshotPath.replace(/^sandbox:\//, "");
+            const relPathRaw = typeof resultObj?.relativePath === "string" ? (resultObj.relativePath as string) : rawScreenshotPath;
+            const relPathNormalized = relPathRaw.replace(/^sandbox:\//, "");
+
+            let storagePath = relPathNormalized || normalizedScreenshotPath;
+            const dataIdx = storagePath.indexOf("data/");
+            if (dataIdx >= 0) {
+              storagePath = storagePath.slice(dataIdx + "data/".length);
+            }
+            storagePath = storagePath.replace(/^data\//, "").replace(/^\/+/, "");
+            if (!storagePath && relPathNormalized.includes("screenshots")) {
+              const idx = relPathNormalized.lastIndexOf("screenshots/");
+              storagePath = relPathNormalized.slice(idx);
+            }
+            if (!storagePath && normalizedScreenshotPath.includes("screenshots")) {
+              const idx = normalizedScreenshotPath.lastIndexOf("screenshots/");
+              storagePath = normalizedScreenshotPath.slice(idx);
+            }
+
+            let sizeBytes = 0;
+            for (const candidate of [normalizedScreenshotPath, rawScreenshotPath]) {
+              if (!candidate) continue;
+              try {
+                const stats = fs.statSync(candidate);
+                sizeBytes = stats.size;
+                break;
+              } catch {
+                // Try next candidate
+              }
+            }
+
+            if (storagePath) {
+              const filename = path.basename(normalizedScreenshotPath || rawScreenshotPath) || `screenshot-${Date.now()}.png`;
+              const attMeta: AttachmentMeta = {
+                id: crypto.randomUUID(),
+                filename,
+                mimeType: "image/png",
+                sizeBytes,
+                storagePath,
+              };
+              toolAttachments = JSON.stringify([attMeta]);
+              screenshotAttachments.push(attMeta);
+            } else {
+              addLog({
+                level: "warn",
+                source: "agent",
+                message: "browser_screenshot result missing relative path; screenshot will not render inline.",
+                metadata: JSON.stringify({ threadId, rawResult: resultObj }),
+              });
+            }
+
+            llmToolResult = JSON.stringify({
+              status: "screenshot_taken",
+              note: "Screenshot attached inline. Do NOT output any file path, URL, or markdown image. If you reference it, just say 'Here is the screenshot.'",
+            });
+          }
+
+          // Store the sanitized version in DB so history never leaks paths to the LLM
+          const savedMsg = addMessage({
             thread_id: threadId,
             role: "tool",
-            content: toolResult,
+            content: llmToolResult,
             tool_calls: null,
             tool_results: JSON.stringify({ tool_call_id: toolCall.id, name: toolCall.name, result: result.result }),
-            attachments: null,
+            attachments: toolAttachments,
           });
+
+          // Persist screenshot attachment record in DB
+          if (toolAttachments) {
+            const atts: AttachmentMeta[] = JSON.parse(toolAttachments);
+            for (const att of atts) {
+              addAttachment({
+                id: att.id,
+                thread_id: threadId,
+                message_id: savedMsg.id,
+                filename: att.filename,
+                mime_type: att.mimeType,
+                size_bytes: att.sizeBytes,
+                storage_path: att.storagePath,
+              });
+            }
+          }
 
           chatMessages.push({
             role: "tool",
-            content: toolResult,
+            content: llmToolResult,
             tool_call_id: toolCall.id,
           });
 
@@ -255,23 +350,46 @@ export async function runAgentLoop(
           knowledgeSnippets.push(`[Assistant]\n${finalContent}`);
         }
 
+        screenshotAttachments.length = 0;
         await persistKnowledgeFromTurn(threadId, knowledgeSnippets);
-        return { content: finalContent, toolsUsed, pendingApprovals };
+        return { content: finalContent, toolsUsed, pendingApprovals, attachments: [] };
       }
 
       continue; // Loop again to let LLM process tool results
     }
 
     // No tool calls — final response
-    const finalContent = response.content || "I have nothing to add.";
-    addMessage({
+    const finalText = response.content || "I have nothing to add.";
+    const attachmentsForResponse = screenshotAttachments.map((att) => ({ ...att }));
+    const finalContent = attachmentsForResponse.length > 0 ? "" : finalText;
+    const finalAttachments = attachmentsForResponse.length > 0
+      ? JSON.stringify(attachmentsForResponse)
+      : null;
+    const savedFinal = addMessage({
       thread_id: threadId,
       role: "assistant",
       content: finalContent,
       tool_calls: null,
       tool_results: null,
-      attachments: null,
+      attachments: finalAttachments,
     });
+
+    // Persist screenshot attachments on the final assistant message too
+    if (attachmentsForResponse.length > 0) {
+      for (const att of attachmentsForResponse) {
+        addAttachment({
+          id: crypto.randomUUID(), // new ID for this message's copy
+          thread_id: threadId,
+          message_id: savedFinal.id,
+          filename: att.filename,
+          mime_type: att.mimeType,
+          size_bytes: att.sizeBytes,
+          storage_path: att.storagePath,
+        });
+      }
+    }
+    // Clear for next iteration
+    screenshotAttachments.length = 0;
 
     addLog({
       level: "info",
@@ -281,7 +399,7 @@ export async function runAgentLoop(
     });
 
     await persistKnowledgeFromTurn(threadId, knowledgeSnippets);
-    return { content: finalContent, toolsUsed, pendingApprovals };
+    return { content: finalContent, toolsUsed, pendingApprovals, attachments: attachmentsForResponse };
   }
 
   // Max iterations reached
@@ -298,7 +416,7 @@ export async function runAgentLoop(
   knowledgeSnippets.push(`[Assistant]\n${fallback}`);
   await persistKnowledgeFromTurn(threadId, knowledgeSnippets);
 
-  return { content: fallback, toolsUsed, pendingApprovals };
+  return { content: fallback, toolsUsed, pendingApprovals, attachments: [] };
 }
 
 function dbMessagesToChat(
@@ -349,9 +467,17 @@ function dbMessagesToChat(
       // or whose tool_call_id doesn't match a known assistant tool call
       if (!toolCallId || !knownToolCallIds.has(toolCallId)) continue;
 
+      // Sanitize any historical screenshot tool results that still contain file paths
+      let toolContent = m.content || "";
+      if (toolContent.includes('"screenshotPath"') || toolContent.includes('"relativePath"')) {
+        toolContent = JSON.stringify({
+          status: "screenshot_taken",
+          note: "The screenshot image is already displayed to the user in the chat. Do NOT output any file path, URL, or markdown image.",
+        });
+      }
       result.push({
         role: "tool",
-        content: m.content || "",
+        content: toolContent,
         tool_call_id: toolCallId,
       });
       continue;
@@ -488,6 +614,66 @@ async function executeBuiltinTool(
       level: "error",
       source: "agent",
       message: `Built-in tool "${toolCall.name}" failed: ${err.message}`,
+      metadata: JSON.stringify({ threadId }),
+    });
+    return { status: "error", error: err.message };
+  }
+}
+
+/**
+ * Execute a built-in filesystem tool.
+ * Goes through gatekeeper policy check first.
+ */
+async function executeBuiltinFsToolWithGatekeeper(
+  toolCall: ToolCall,
+  threadId: string,
+  reasoning?: string
+): Promise<import("./gatekeeper").GatekeeperResult> {
+  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg } = await import("@/lib/db");
+  const policy = getToolPolicy(toolCall.name);
+
+  if (policy && policy.requires_approval) {
+    addLog({
+      level: "info",
+      source: "hitl",
+      message: `FS tool "${toolCall.name}" requires approval.`,
+      metadata: JSON.stringify({ threadId, args: toolCall.arguments }),
+    });
+
+    const approval = createApprovalRequest({
+      thread_id: threadId,
+      tool_name: toolCall.name,
+      args: JSON.stringify(toolCall.arguments),
+      reasoning: reasoning || null,
+    });
+
+    updateThreadStatus(threadId, "awaiting_approval");
+    addMsg({
+      thread_id: threadId,
+      role: "system",
+      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.`,
+      tool_calls: null,
+      tool_results: null,
+      attachments: null,
+    });
+
+    return { status: "pending_approval", approvalId: approval.id };
+  }
+
+  try {
+    const result = await executeBuiltinFsTool(toolCall.name, toolCall.arguments);
+    addLog({
+      level: "info",
+      source: "agent",
+      message: `FS tool "${toolCall.name}" executed successfully.`,
+      metadata: JSON.stringify({ threadId }),
+    });
+    return { status: "executed", result };
+  } catch (err: any) {
+    addLog({
+      level: "error",
+      source: "agent",
+      message: `FS tool "${toolCall.name}" failed: ${err.message}`,
       metadata: JSON.stringify({ threadId }),
     });
     return { status: "error", error: err.message };

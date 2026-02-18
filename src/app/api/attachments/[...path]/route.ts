@@ -3,7 +3,8 @@ import { requireOwner } from "@/lib/auth";
 import fs from "fs";
 import path from "path";
 
-const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
+const DATA_DIR = path.join(process.cwd(), "data");
+const ALLOWED_SUBDIRS = ["attachments", "screenshots"];
 
 export async function GET(
   req: NextRequest,
@@ -13,10 +14,17 @@ export async function GET(
   if (denied) return denied;
 
   const relativePath = params.path.join("/");
-  const filePath = path.join(ATTACHMENTS_DIR, relativePath);
+
+  // Only allow known subdirectories (attachments, screenshots)
+  const firstSegment = params.path[0];
+  if (!ALLOWED_SUBDIRS.includes(firstSegment)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const filePath = path.join(DATA_DIR, relativePath);
 
   // Prevent directory traversal
-  if (!filePath.startsWith(ATTACHMENTS_DIR)) {
+  if (!filePath.startsWith(DATA_DIR)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

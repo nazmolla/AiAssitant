@@ -7,6 +7,9 @@
  */
 
 import { getMcpManager } from "@/lib/mcp";
+import { isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
+import { isBrowserTool, executeBrowserTool } from "./browser-tools";
+import { isFsTool, executeBuiltinFsTool } from "./fs-tools";
 import {
   getToolPolicy,
   createApprovalRequest,
@@ -60,6 +63,7 @@ export async function executeWithGatekeeper(
       content: `⏸️ Action paused: "${toolCall.name}" requires your approval. Check the Approval Inbox.`,
       tool_calls: null,
       tool_results: null,
+      attachments: null,
     });
 
     return {
@@ -106,7 +110,18 @@ export async function executeApprovedTool(
   threadId: string
 ): Promise<GatekeeperResult> {
   try {
-    const result = await getMcpManager().callTool(toolName, args);
+    let result: unknown;
+
+    // Route to the correct executor based on tool type
+    if (isBuiltinWebTool(toolName)) {
+      result = await executeBuiltinWebTool(toolName, args);
+    } else if (isBrowserTool(toolName)) {
+      result = await executeBrowserTool(toolName, args);
+    } else if (isFsTool(toolName)) {
+      result = await executeBuiltinFsTool(toolName, args);
+    } else {
+      result = await getMcpManager().callTool(toolName, args);
+    }
 
     // Resume the thread
     updateThreadStatus(threadId, "active");

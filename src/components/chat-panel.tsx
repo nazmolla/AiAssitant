@@ -47,6 +47,44 @@ const ALLOWED_EXTENSIONS = [
 
 const ACCEPT_STRING = ALLOWED_EXTENSIONS.join(",");
 
+/** Sanitize tool message content: hide raw screenshot paths when attachments are present */
+function sanitizeToolContent(content: string | null, hasAttachments: boolean): string {
+  if (!content) return hasAttachments ? "" : "(no content)";
+  // If the tool message contains screenshot paths and we have inline attachments, hide the raw JSON
+  if (hasAttachments && (content.includes('"screenshotPath"') || content.includes('"relativePath"'))) {
+    return "";
+  }
+  // Even without attachments, clean up raw screenshot result JSON so users never see paths
+  if (content.includes('"screenshotPath"') || content.includes('"relativePath"')) {
+    return "📸 Screenshot captured.";
+  }
+  return content;
+}
+
+/** Strip sandbox/file paths from assistant messages so users see clean text */
+function sanitizeAssistantContent(content: string | null, hasAttachments: boolean): string {
+  if (!content) return hasAttachments ? "" : "(no content)";
+  let cleaned = content;
+  // Remove markdown links with sandbox: or absolute file paths
+  cleaned = cleaned.replace(/\[([^\]]*?)\]\(sandbox:[^)]*\)/g, "");
+  cleaned = cleaned.replace(/\[([^\]]*?)\]\(\/home\/[^)]*\)/g, "");
+  cleaned = cleaned.replace(/\[([^\]]*?)\]\(\/[a-zA-Z][^)]*\.png[^)]*\)/g, "");
+  // Remove raw sandbox: paths
+  cleaned = cleaned.replace(/sandbox:\/[^\s)]+/g, "");
+  // Remove raw absolute file paths to screenshots
+  cleaned = cleaned.replace(/\/home\/[^\s)]*screenshots\/[^\s)]+/g, "");
+  cleaned = cleaned.replace(/\/home\/[^\s)]*\.png/g, "");
+  // Remove leftover "You can view it" type phrases that referenced removed links
+  cleaned = cleaned.replace(/You can view (?:it|the screenshot)\s*\.?\s*/gi, "");
+  cleaned = cleaned.replace(/Here(?:'s| is) the screenshot\s*\.?/gi, (m) => m); // keep this one
+  // Collapse extra whitespace/newlines
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
+  // If the assistant only had a path link and nothing else, show a clean fallback
+  if (!cleaned && hasAttachments) return "";
+  if (!cleaned) return "(no content)";
+  return cleaned;
+}
+
 export function ChatPanel() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeThread, setActiveThread] = useState<string | null>(null);
@@ -310,7 +348,11 @@ export function ChatPanel() {
                         )}
 
                         <div className="whitespace-pre-wrap text-sm">
-                          {msg.content || (attachments.length > 0 ? "" : "(no content)")}
+                          {msg.role === "tool"
+                            ? sanitizeToolContent(msg.content, attachments.length > 0)
+                            : msg.role === "assistant"
+                            ? sanitizeAssistantContent(msg.content, attachments.length > 0)
+                            : msg.content || (attachments.length > 0 ? "" : "(no content)")}
                         </div>
                         {msg.tool_calls && (
                           <div className="mt-2 text-xs opacity-70">
@@ -417,7 +459,7 @@ function AttachmentPreview({ attachment }: { attachment: AttachmentMeta }) {
         <img
           src={url}
           alt={attachment.filename}
-          className="max-h-48 max-w-xs rounded border object-cover"
+          className="max-h-[400px] max-w-full rounded border object-contain cursor-zoom-in"
         />
       </a>
     );

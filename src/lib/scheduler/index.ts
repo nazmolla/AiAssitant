@@ -133,6 +133,7 @@ export async function runProactiveScan(): Promise<void> {
             content: `Proactive scan detected an action from "${policy.tool_name}": ${assessment.reasoning}`,
             tool_calls: null,
             tool_results: null,
+            attachments: null,
           });
 
           if (requiresApproval) {
@@ -164,6 +165,7 @@ export async function runProactiveScan(): Promise<void> {
                 content: JSON.stringify(executionResult),
                 tool_calls: null,
                 tool_results: JSON.stringify({ name: actionTool, result: executionResult }),
+                attachments: null,
               });
 
               addMessage({
@@ -172,6 +174,7 @@ export async function runProactiveScan(): Promise<void> {
                 content: `✅ Proactive action "${actionTool}" completed: ${assessment.reasoning}`,
                 tool_calls: null,
                 tool_results: null,
+                attachments: null,
               });
             } catch (executionError) {
               addLog({
@@ -187,6 +190,7 @@ export async function runProactiveScan(): Promise<void> {
                 content: `⚠️ Failed to execute proactive action "${actionTool}": ${executionError}`,
                 tool_calls: null,
                 tool_results: null,
+                attachments: null,
               });
             }
           }

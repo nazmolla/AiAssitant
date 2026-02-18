@@ -1,5 +1,6 @@
 import { getDb } from "./connection";
 import { SCHEMA_SQL } from "./schema";
+import { FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
 
 function ensureIdentityPasswordColumn(): void {
   const db = getDb();
@@ -28,12 +29,28 @@ function ensureMessageAttachmentsColumn(): void {
   }
 }
 
+/**
+ * Seed approval-required policies for destructive filesystem tools.
+ * Only inserts if the policy doesn't already exist (won't override user changes).
+ */
+function seedFsToolPolicies(): void {
+  const db = getDb();
+  const stmt = db.prepare(
+    `INSERT OR IGNORE INTO tool_policies (tool_name, mcp_id, requires_approval, is_proactive_enabled)
+     VALUES (?, NULL, 1, 0)`
+  );
+  for (const toolName of FS_TOOLS_REQUIRING_APPROVAL) {
+    stmt.run(toolName);
+  }
+}
+
 export function initializeDatabase(): void {
   const db = getDb();
   db.exec(SCHEMA_SQL);
   ensureIdentityPasswordColumn();
   ensureLlmProviderPurposeColumn();
   ensureMessageAttachmentsColumn();
+  seedFsToolPolicies();
   console.log("[Nexus DB] Schema initialized successfully.");
 }
 
