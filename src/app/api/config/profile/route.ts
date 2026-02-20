@@ -10,7 +10,7 @@ export async function GET() {
     const profile = getUserProfile(auth.user.id);
     return NextResponse.json(profile ?? null);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -20,9 +20,19 @@ export async function PUT(req: Request) {
     if ("error" in auth) return auth.error;
 
     const body = await req.json();
-    const updated = upsertUserProfile(auth.user.id, body);
+    // Whitelist allowed profile fields to prevent mass assignment
+    const ALLOWED_FIELDS = [
+      "display_name", "title", "bio", "location", "phone",
+      "email", "website", "linkedin", "github", "twitter",
+      "skills", "languages", "company",
+    ] as const;
+    const sanitized: Record<string, unknown> = {};
+    for (const key of ALLOWED_FIELDS) {
+      if (body[key] !== undefined) sanitized[key] = body[key];
+    }
+    const updated = upsertUserProfile(auth.user.id, sanitized);
     return NextResponse.json(updated);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

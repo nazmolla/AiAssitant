@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import {
   listChannels,
   createChannel,
@@ -29,7 +29,7 @@ function maskSecrets(configJson: string): string {
           key.toLowerCase().includes("password") ||
           key.toLowerCase().includes("key"))
       ) {
-        masked[key] = value.length > 6 ? value.slice(0, 3) + "***" + value.slice(-3) : "***";
+        masked[key] = value.length > 0 ? "••••••" : "";
       } else {
         masked[key] = value;
       }
@@ -41,8 +41,8 @@ function maskSecrets(configJson: string): string {
 }
 
 export async function GET() {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const channels = listChannels().map((ch) => ({
     ...ch,
@@ -53,8 +53,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const body = await req.json();
   const { label, channelType, config } = body;
@@ -85,8 +85,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const body = await req.json();
   const { id, label, channelType, config, enabled } = body;
@@ -117,8 +117,8 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");

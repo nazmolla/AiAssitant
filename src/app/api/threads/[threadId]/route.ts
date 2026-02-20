@@ -14,7 +14,7 @@ export async function GET(
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
   }
   // Ensure user owns this thread
-  if (thread.user_id && thread.user_id !== auth.user.id) {
+  if (thread.user_id !== auth.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -33,7 +33,7 @@ export async function DELETE(
   if (!thread) {
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
   }
-  if (thread.user_id && thread.user_id !== auth.user.id) {
+  if (thread.user_id !== auth.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

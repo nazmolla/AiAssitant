@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { getMcpManager } from "@/lib/mcp";
 import { getMcpServer, upsertToolPolicy, getToolPolicy } from "@/lib/db";
 
@@ -7,8 +7,8 @@ export async function POST(
   _req: NextRequest,
   { params }: { params: { serverId: string } }
 ) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const server = getMcpServer(params.serverId);
   if (!server) {
@@ -46,8 +46,8 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: { serverId: string } }
 ) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const mcpManager = getMcpManager();
   await mcpManager.disconnect(params.serverId);

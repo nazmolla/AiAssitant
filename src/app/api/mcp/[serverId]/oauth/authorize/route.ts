@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { getMcpServer } from "@/lib/db";
+import { randomUUID } from "crypto";
 
 /**
  * Initiates the OAuth authorization flow for an MCP server.
@@ -11,8 +12,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { serverId: string } }
 ) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const server = getMcpServer(params.serverId);
   if (!server) {
@@ -35,8 +36,8 @@ export async function GET(
   // Client ID: use stored client_id, or default to our app's base URL (IndieAuth convention)
   const clientId = server.client_id || appBaseUrl;
 
-  // Generate a random state for CSRF protection
-  const state = Math.random().toString(36).substring(2, 15);
+  // Generate a cryptographically secure state for CSRF protection
+  const state = randomUUID();
 
   // Store state in a cookie for validation on callback
   const authUrl = new URL(`${baseUrl}/auth/authorize`);
@@ -48,7 +49,7 @@ export async function GET(
   const response = NextResponse.redirect(authUrl.toString());
   response.cookies.set(`mcp_oauth_state_${params.serverId}`, state, {
     httpOnly: true,
-    secure: false, // LAN deployment, allow HTTP
+    secure: process.env.NODE_ENV === "production",
     maxAge: 600, // 10 minutes
     path: "/",
     sameSite: "lax",

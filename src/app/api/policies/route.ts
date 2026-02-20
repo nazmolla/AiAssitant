@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { listToolPolicies, upsertToolPolicy } from "@/lib/db";
 
 export async function GET() {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const policies = listToolPolicies();
   return NextResponse.json(policies);
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const body = await req.json();
   const { tool_name, mcp_id, requires_approval, is_proactive_enabled } = body;

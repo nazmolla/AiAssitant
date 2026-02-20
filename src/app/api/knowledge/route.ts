@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { listKnowledge, upsertKnowledge, updateKnowledge, deleteKnowledge } from "@/lib/db";
+import { listKnowledge, upsertKnowledge, updateKnowledge, deleteKnowledge, getKnowledgeEntry } from "@/lib/db";
 
 export async function GET() {
   const auth = await requireUser();
@@ -42,6 +42,12 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "id is required." }, { status: 400 });
   }
 
+  // Verify ownership
+  const entry = getKnowledgeEntry(id);
+  if (!entry || entry.user_id !== auth.user.id) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   updateKnowledge(id, updates);
   return NextResponse.json({ success: true });
 }
@@ -55,6 +61,12 @@ export async function DELETE(req: NextRequest) {
 
   if (!id) {
     return NextResponse.json({ error: "id is required." }, { status: 400 });
+  }
+
+  // Verify ownership
+  const entry = getKnowledgeEntry(Number(id));
+  if (!entry || entry.user_id !== auth.user.id) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   deleteKnowledge(Number(id));

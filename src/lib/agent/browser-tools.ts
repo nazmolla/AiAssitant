@@ -16,6 +16,42 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 import type { ToolDefinition } from "@/lib/llm";
 import * as fs from "fs";
 import * as path from "path";
+import * as net from "net";
+
+// ── SSRF Protection ───────────────────────────────────────────
+
+function assertExternalUrl(urlStr: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(urlStr);
+  } catch {
+    throw new Error("Invalid URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`Blocked: unsupported protocol "${parsed.protocol}". Only http/https allowed.`);
+  }
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+  const blockedHostnames = ["localhost", "metadata.google.internal"];
+  if (blockedHostnames.includes(hostname.toLowerCase())) {
+    throw new Error("Blocked: request to internal/private address is not allowed.");
+  }
+  if (net.isIP(hostname)) {
+    if (net.isIPv4(hostname)) {
+      const parts = hostname.split(".").map(Number);
+      const blocked =
+        parts[0] === 127 || parts[0] === 10 ||
+        (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+        (parts[0] === 192 && parts[1] === 168) ||
+        (parts[0] === 169 && parts[1] === 254) ||
+        parts[0] === 0;
+      if (blocked) throw new Error("Blocked: request to internal/private address is not allowed.");
+    } else {
+      if (hostname === "::1" || hostname.startsWith("fe80") || hostname.startsWith("fc") || hostname.startsWith("fd")) {
+        throw new Error("Blocked: request to internal/private IPv6 address is not allowed.");
+      }
+    }
+  }
+}
 
 // ── Tool Definitions ──────────────────────────────────────────
 
@@ -516,6 +552,9 @@ export async function executeBrowserTool(
     case "builtin.browser_navigate": {
       const page = await session.getPage();
       const url = args.url as string;
+
+      // SSRF protection: block internal/private URLs
+      assertExternalUrl(url);
 
       try {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });

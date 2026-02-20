@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import {
   listLlmProviders,
   createLlmProvider,
@@ -12,16 +12,16 @@ import {
 } from "@/lib/db";
 
 export async function GET() {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const providers = listLlmProviders().map(serializeRecord);
   return NextResponse.json(providers);
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const body = await req.json();
   const label = typeof body.label === "string" ? body.label.trim() : "";
@@ -54,8 +54,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const body = await req.json();
   const id = typeof body.id === "string" ? body.id : null;
@@ -123,8 +123,8 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");

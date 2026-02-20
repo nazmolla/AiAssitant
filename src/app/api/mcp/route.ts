@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { listMcpServers, upsertMcpServer, deleteMcpServer } from "@/lib/db";
+import { listMcpServers, upsertMcpServer, deleteMcpServer, getMcpServer } from "@/lib/db";
 import { getMcpManager } from "@/lib/mcp";
 
 export async function GET() {
@@ -10,8 +10,11 @@ export async function GET() {
   const servers = listMcpServers(auth.user.id);
   const mcpManager = getMcpManager();
 
+  // Redact secrets before sending to client
   const serversWithStatus = servers.map((s) => ({
     ...s,
+    access_token: s.access_token ? "••••••" : null,
+    client_secret: s.client_secret ? "••••••" : null,
     connected: mcpManager.isConnected(s.id),
   }));
 
@@ -29,9 +32,19 @@ export async function POST(req: NextRequest) {
   const isStdio = transport === "stdio";
   const serverScope = scope || "global";
 
-  if (!id || !name) {
+  // Only admins can create global servers
+  if (serverScope === "global" && auth.user.role !== "admin") {
     return NextResponse.json(
-      { error: "id and name are required." },
+      { error: "Only admins can create global MCP servers." },
+      { status: 403 }
+    );
+  }
+
+  // Validate server ID format (prevent overwriting via user-controlled ID)
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!id || !name || !UUID_RE.test(id)) {
+    return NextResponse.json(
+      { error: "Valid UUID id and name are required." },
       { status: 400 }
     );
   }
@@ -78,6 +91,18 @@ export async function DELETE(req: NextRequest) {
 
   if (!id) {
     return NextResponse.json({ error: "id is required." }, { status: 400 });
+  }
+
+  // Verify ownership: only admin can delete global servers, users can only delete their own
+  const server = getMcpServer(id);
+  if (!server) {
+    return NextResponse.json({ error: "Server not found." }, { status: 404 });
+  }
+  if (server.scope === "global" && auth.user.role !== "admin") {
+    return NextResponse.json({ error: "Only admins can delete global servers." }, { status: 403 });
+  }
+  if (server.scope === "user" && server.user_id !== auth.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const mcpManager = getMcpManager();

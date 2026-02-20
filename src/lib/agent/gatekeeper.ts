@@ -36,8 +36,9 @@ export async function executeWithGatekeeper(
 ): Promise<GatekeeperResult> {
   const policy = getToolPolicy(toolCall.name);
 
-  // If policy exists and requires approval
-  if (policy && policy.requires_approval) {
+  // Default-deny: if no policy exists OR policy requires approval, ask for approval.
+  // Tools must be explicitly marked as NOT requiring approval to auto-execute.
+  if (!policy || policy.requires_approval) {
     addLog({
       level: "info",
       source: "hitl",

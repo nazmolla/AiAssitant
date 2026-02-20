@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/guard";
 import fs from "fs";
 import path from "path";
 
@@ -10,8 +10,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { path: string[] } }
 ) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
 
   const relativePath = params.path.join("/");
 

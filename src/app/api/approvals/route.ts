@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { listPendingApprovals, updateApprovalStatus, getThreadMessages, addMessage } from "@/lib/db";
 import { executeApprovedTool, continueAgentLoop } from "@/lib/agent";
 import type { ToolCall } from "@/lib/llm";
 
 export async function GET() {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const pending = listPendingApprovals();
   return NextResponse.json(pending);
@@ -32,8 +32,8 @@ function findToolCallId(threadId: string, toolName: string): string | undefined 
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const body = await req.json();
   const { approvalId, action } = body;

@@ -20,5 +20,6 @@ export const config = {
     "/api/policies/:path*",
     "/api/logs/:path*",
     "/api/config/:path*",
+    "/api/attachments/:path*",
   ],
 };

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { getMcpManager } from "@/lib/mcp";
 
 export async function GET() {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const tools = getMcpManager().getAllTools();
   return NextResponse.json(tools);

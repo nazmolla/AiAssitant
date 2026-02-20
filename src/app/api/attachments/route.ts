@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/guard";
 import { addAttachment } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 import fs from "fs";
@@ -33,8 +33,8 @@ const ALLOWED_MIME_TYPES = new Set([
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
 export async function POST(req: NextRequest) {
-  const denied = await requireOwner();
-  if (denied) return denied;
+  const auth = await requireUser();
+  if ("error" in auth) return auth.error;
 
   try {
     const formData = await req.formData();
@@ -46,6 +46,11 @@ export async function POST(req: NextRequest) {
     }
     if (!threadId) {
       return NextResponse.json({ error: "threadId is required" }, { status: 400 });
+    }
+    // Validate threadId is a UUID to prevent path traversal
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(threadId)) {
+      return NextResponse.json({ error: "Invalid threadId format" }, { status: 400 });
     }
     if (!ALLOWED_MIME_TYPES.has(file.type)) {
       return NextResponse.json(

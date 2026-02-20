@@ -266,9 +266,31 @@ export const BUILTIN_FS_TOOLS: ToolDefinition[] = [
 
 // ── Helpers ───────────────────────────────────────────────────
 
-/** Resolve a path, making relative paths relative to cwd. */
+/**
+ * Allowed root directory for all FS operations.
+ * Defaults to cwd, can be overridden via FS_ALLOWED_ROOT env var.
+ */
+const FS_ALLOWED_ROOT = path.resolve(
+  process.env.FS_ALLOWED_ROOT || process.cwd()
+);
+
+/**
+ * Resolve a path, making relative paths relative to cwd,
+ * then enforce that the result is within FS_ALLOWED_ROOT.
+ */
 function resolvePath(p: string): string {
-  return path.resolve(p);
+  const resolved = path.resolve(p);
+  // Normalise both to use consistent separators
+  const normalised = path.normalize(resolved);
+  if (
+    !normalised.startsWith(FS_ALLOWED_ROOT + path.sep) &&
+    normalised !== FS_ALLOWED_ROOT
+  ) {
+    throw new Error(
+      `Access denied: path "${p}" is outside the allowed root directory.`
+    );
+  }
+  return resolved;
 }
 
 /** Simple glob-like pattern matching (supports * and ?). */
@@ -585,7 +607,9 @@ async function fsExecuteScript(args: Record<string, unknown>): Promise<unknown> 
   const command = args.command as string;
   const cwd = args.cwd ? resolvePath(args.cwd as string) : process.cwd();
   const timeout = Math.min((args.timeout as number) || SCRIPT_TIMEOUT_MS, 120_000);
-  const shell = (args.shell as string) || undefined;
+
+  // Ignore user-supplied shell to prevent shell injection — always use system default
+  const shell = undefined;
 
   if (cwd && !fs.existsSync(cwd)) {
     throw new Error(`Working directory not found: ${cwd}`);

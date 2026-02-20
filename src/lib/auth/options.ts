@@ -30,6 +30,10 @@ export const authOptions: NextAuthOptions = {
 
         // New user signup: first user becomes admin, subsequent users become regular users
         if (!existing) {
+          // Check if open registration is disabled
+          if (process.env.DISABLE_REGISTRATION === "true" && getUserCount() > 0) {
+            return null; // Registration disabled — reject new signups
+          }
           const isFirst = getUserCount() === 0;
           const passwordHash = await hash(credentials.password, LOCAL_SALT_ROUNDS);
           const user = createUser({
@@ -103,6 +107,9 @@ export const authOptions: NextAuthOptions = {
       }
 
       // New OAuth user — create account
+      if (process.env.DISABLE_REGISTRATION === "true" && getUserCount() > 0) {
+        return false; // Registration disabled
+      }
       const isFirst = getUserCount() === 0;
       createUser({
         email: user.email,
@@ -138,6 +145,14 @@ export const authOptions: NextAuthOptions = {
               token.userId = byEmail.id;
             }
           }
+        }
+      }
+
+      // Backfill userId for existing sessions from before multi-user migration
+      if (!token.userId && token.email) {
+        const byEmail = getUserByEmail(token.email as string);
+        if (byEmail) {
+          token.userId = byEmail.id;
         }
       }
 

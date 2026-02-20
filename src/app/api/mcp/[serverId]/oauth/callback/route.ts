@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth/guard";
 import { getMcpServer, upsertMcpServer, type McpServerRecord } from "@/lib/db";
 
 /**
@@ -10,6 +11,12 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { serverId: string } }
 ) {
+  // Require authentication on the callback
+  const user = await getAuthenticatedUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const state = searchParams.get("state");

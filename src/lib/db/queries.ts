@@ -446,6 +446,12 @@ export function listKnowledge(userId?: string): KnowledgeEntry[] {
   return getDb().prepare("SELECT * FROM user_knowledge ORDER BY last_updated DESC").all() as KnowledgeEntry[];
 }
 
+export function getKnowledgeEntry(id: number): KnowledgeEntry | undefined {
+  return getDb()
+    .prepare("SELECT * FROM user_knowledge WHERE id = ?")
+    .get(id) as KnowledgeEntry | undefined;
+}
+
 export function searchKnowledge(query: string, userId?: string): KnowledgeEntry[] {
   if (userId) {
     return getDb()

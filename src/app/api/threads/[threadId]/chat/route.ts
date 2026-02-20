@@ -16,7 +16,7 @@ export async function POST(
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
   }
   // Ensure user owns this thread
-  if (thread.user_id && thread.user_id !== auth.user.id) {
+  if (thread.user_id !== auth.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -88,8 +88,10 @@ export async function POST(
   }
 }
 
-function getBaseUrl(req: NextRequest): string {
-  const proto = req.headers.get("x-forwarded-proto") || "http";
-  const host = req.headers.get("host") || "localhost:3000";
-  return `${proto}://${host}`;
+function getBaseUrl(_req: NextRequest): string {
+  // Use NEXTAUTH_URL to prevent host header injection
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL.replace(/\/$/, "");
+  }
+  return "http://localhost:3000";
 }

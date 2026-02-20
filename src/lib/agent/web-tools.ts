@@ -10,6 +10,58 @@
  */
 
 import type { ToolDefinition } from "@/lib/llm";
+import { URL } from "url";
+import * as net from "net";
+
+// ── SSRF Protection ───────────────────────────────────────────
+
+/**
+ * Block requests to internal/private network addresses.
+ * Prevents SSRF attacks that could probe internal infrastructure.
+ */
+function assertExternalUrl(urlStr: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(urlStr);
+  } catch {
+    throw new Error("Invalid URL");
+  }
+
+  // Only allow http/https
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`Blocked: unsupported protocol "${parsed.protocol}". Only http/https allowed.`);
+  }
+
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, ""); // strip IPv6 brackets
+
+  // Block well-known internal hostnames
+  const blockedHostnames = ["localhost", "metadata.google.internal"];
+  if (blockedHostnames.includes(hostname.toLowerCase())) {
+    throw new Error("Blocked: request to internal/private address is not allowed.");
+  }
+
+  // Check IP-based hostnames
+  if (net.isIP(hostname)) {
+    if (net.isIPv4(hostname)) {
+      const parts = hostname.split(".").map(Number);
+      const blocked =
+        parts[0] === 127 ||                                    // 127.0.0.0/8  loopback
+        parts[0] === 10 ||                                     // 10.0.0.0/8   private
+        (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || // 172.16-31.x  private
+        (parts[0] === 192 && parts[1] === 168) ||              // 192.168.x.x  private
+        (parts[0] === 169 && parts[1] === 254) ||              // 169.254.x.x  link-local / cloud metadata
+        parts[0] === 0;                                        // 0.0.0.0
+      if (blocked) {
+        throw new Error("Blocked: request to internal/private address is not allowed.");
+      }
+    } else {
+      // IPv6 loopback or link-local
+      if (hostname === "::1" || hostname.startsWith("fe80") || hostname.startsWith("fc") || hostname.startsWith("fd")) {
+        throw new Error("Blocked: request to internal/private IPv6 address is not allowed.");
+      }
+    }
+  }
+}
 
 // ── Tool Definitions ──────────────────────────────────────────
 
@@ -164,6 +216,7 @@ async function webFetch(
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
     throw new Error("URL must start with http:// or https://");
   }
+  assertExternalUrl(url);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);

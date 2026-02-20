@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runAgentLoop, type AgentResponse } from "@/lib/agent";
 import { getChannel, getDb, getChannelUserMapping, type AttachmentMeta } from "@/lib/db";
 import { v4 as uuid } from "uuid";
+import { timingSafeEqual } from "crypto";
 import fs from "fs";
 import path from "path";
 
@@ -23,11 +24,19 @@ export async function POST(
     return NextResponse.json({ error: "Channel is disabled" }, { status: 403 });
   }
 
-  // Verify webhook secret (passed as header or query param)
-  const secret =
-    req.headers.get("x-webhook-secret") ||
-    new URL(req.url).searchParams.get("secret");
-  if (!secret || secret !== channel.webhook_secret) {
+  // Verify webhook secret (header only — never accept in query string)
+  const secret = req.headers.get("x-webhook-secret");
+  if (!secret || !channel.webhook_secret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Constant-time comparison to prevent timing attacks
+  try {
+    const a = Buffer.from(secret, "utf-8");
+    const b = Buffer.from(channel.webhook_secret, "utf-8");
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
