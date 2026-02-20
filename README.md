@@ -1,6 +1,6 @@
 # Nexus Agent: Multi-User Proactive Personal AI
 
-Nexus is a self-hosted, multi-user **Proactive AI Agent** with deep memory, browser automation, file-system tools, and extensibility through the Model Context Protocol (MCP). It features per-user knowledge isolation, a Human-in-the-Loop (HITL) safety architecture, and multi-channel communication (web chat, WhatsApp, and more).
+Nexus is a self-hosted, multi-user **Proactive AI Agent** with deep memory, browser automation, file-system tools, and extensibility through the Model Context Protocol (MCP). It features per-user knowledge isolation, a Human-in-the-Loop (HITL) safety architecture, and multi-channel communication (web chat, WhatsApp, Discord, and more).
 
 ---
 
@@ -43,7 +43,8 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 | **Native SDKs** | Direct use of Azure OpenAI, OpenAI, Anthropic, and MCP SDKs — no LangChain. |
 | **Browser Automation** | Playwright-powered tools let the agent navigate pages, fill forms, take screenshots, and manage sessions. |
 | **File System Access** | Built-in tools to read, write, list, and search files — with HITL gating on destructive operations. |
-| **Multi-Channel Comms** | WhatsApp, webhooks, and web chat — each channel resolves senders to internal users. |
+| **Multi-Channel Comms** | WhatsApp, Discord, webhooks, and web chat — each channel resolves senders to internal users. |
+| **Screen Sharing** | Share your screen with the agent via browser `getDisplayMedia()` — the agent sees what you see and can reason about it. |
 
 ---
 
@@ -54,9 +55,10 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 | Runtime | Node.js | v20+ (LTS). Tested on x86 and ARM64 (Jetson Nano). |
 | Language | TypeScript | v5.x, Strict Mode |
 | Database | SQLite | `better-sqlite3` — zero-config, single-file persistence |
-| Frontend | Next.js 14 | App Router, TailwindCSS, Radix UI primitives |
+| Frontend | Next.js 14 | App Router, TailwindCSS, Radix UI primitives, screen sharing via getDisplayMedia |
 | LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk` |
 | MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports |
+| Discord | discord.js | Gateway bot with mentions, DMs, and slash commands |
 | Auth | NextAuth v4 | Credentials (email + password) and OAuth (Azure AD, Google) |
 | Browser | Playwright | Chromium headless/headful for automation |
 | Design | Custom | OpenClaw.ai-inspired dark theme with coral accent, glass effects |
@@ -81,7 +83,7 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 
 ### Channel User Mapping
 
-Communication channels (WhatsApp, Slack, etc.) map external sender identities to internal users via `channel_user_mappings`:
+Communication channels (WhatsApp, Discord, etc.) map external sender identities to internal users via `channel_user_mappings`:
 
 ```
 channel_id + external_id (e.g., phone number)  →  user_id
@@ -212,7 +214,7 @@ CREATE TABLE approval_queue (
 ```sql
 CREATE TABLE channels (
     id TEXT PRIMARY KEY,
-    channel_type TEXT NOT NULL,          -- 'whatsapp' | 'slack' | 'webhook'
+    channel_type TEXT NOT NULL,          -- 'whatsapp' | 'discord' | 'webhook'
     label TEXT NOT NULL,
     enabled BOOLEAN DEFAULT 1,
     config_json TEXT NOT NULL,
@@ -278,6 +280,7 @@ Connect external services via the Model Context Protocol. Supports three transpo
 
 | Transport | Use Case | Example |
 |-----------|----------|---------|
+| **Discord** | Gateway bot | Responds to mentions, DMs, and `/ask` slash commands |
 | **Stdio** | Local CLI tools | `npx @modelcontextprotocol/server-github` |
 | **SSE** | Remote servers (legacy) | `http://homeassistant:8123/mcp/sse` |
 | **Streamable HTTP** | Remote servers (modern) | `http://homeassistant:8123/mcp` |
@@ -317,13 +320,13 @@ Premium dark theme inspired by OpenClaw.ai, with coral accent colors, glass morp
 | Tab | Description |
 |-----|-------------|
 | **Dashboard** | Real-time agent activity logs with level-based filtering (info, warning, error) |
-| **Chat** | Threaded conversations with file attachment support, inline screenshots, and streaming responses |
+| **Chat** | Threaded conversations with file attachments, inline screenshots, streaming responses, and **live screen sharing** (sends captured frames to the agent as vision input) |
 | **Approvals** | Pending tool execution requests with approve/reject controls |
 | **Knowledge** | Searchable CRUD interface for the user's knowledge vault |
 | **MCP Servers** | Add/remove/connect MCP servers with transport auto-detection, scope control, and OAuth flow |
-| **Channels** | Configure communication channels (WhatsApp, webhooks) with sender-to-user mapping |
+| **Channels** | Configure communication channels (WhatsApp, Discord, webhooks) with sender-to-user mapping |
 | **LLM Config** | Add/switch between chat and embedding providers at runtime |
-| **Profile** | Per-user profile editor (name, bio, skills, social links) |
+| **Profile** | Per-user profile editor (name, bio, skills, social links) with feature toggles (e.g., screen sharing) |
 
 ---
 
@@ -399,6 +402,8 @@ NODE_OPTIONS='--max-old-space-size=256' npx next start -p 3000
 | `AZURE_AD_TENANT_ID` | Optional | Azure AD tenant ID |
 | `GOOGLE_CLIENT_ID` | Optional | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Optional | Google OAuth client secret |
+| `DISCORD_BOT_TOKEN` | Optional | Discord bot token for Gateway integration |
+| `DISCORD_APPLICATION_ID` | Optional | Discord application ID for slash commands |
 
 ---
 
@@ -468,6 +473,8 @@ src/
 │   │   ├── anthropic-provider.ts
 │   │   ├── embeddings.ts       # Embedding generation
 │   │   └── types.ts            # ChatProvider interface
+│   ├── channels/               # Channel integrations
+│   │   └── discord.ts          # Discord Gateway bot (mentions, DMs, slash commands)
 │   ├── mcp/                    # MCP client management
 │   │   └── manager.ts          # Connect, discover, invoke
 │   ├── scheduler/              # Proactive cron scheduler

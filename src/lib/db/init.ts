@@ -208,6 +208,17 @@ function seedFsToolPolicies(): void {
   }
 }
 
+function ensureScreenSharingColumn(): void {
+  const db = getDb();
+  for (const table of ["owner_profile", "user_profiles"] as const) {
+    if (!tableExists(table)) continue;
+    const cols = getColumns(table);
+    if (!cols.has("screen_sharing_enabled")) {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN screen_sharing_enabled INTEGER DEFAULT 1`).run();
+    }
+  }
+}
+
 export function initializeDatabase(): void {
   const db = getDb();
   db.exec(SCHEMA_SQL);
@@ -216,6 +227,7 @@ export function initializeDatabase(): void {
   ensureMessageAttachmentsColumn();
   ensureUserIdColumns();
   ensureMcpServerNewColumns();
+  ensureScreenSharingColumn();
   migrateToMultiUser();
   seedFsToolPolicies();
   console.log("[Nexus DB] Schema initialized successfully.");

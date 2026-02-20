@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS owner_profile (
     skills TEXT DEFAULT '[]',
     languages TEXT DEFAULT '[]',
     company TEXT DEFAULT '',
+    screen_sharing_enabled INTEGER DEFAULT 1,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     skills TEXT DEFAULT '[]',
     languages TEXT DEFAULT '[]',
     company TEXT DEFAULT '',
+    screen_sharing_enabled INTEGER DEFAULT 1,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

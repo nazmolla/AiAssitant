@@ -52,7 +52,6 @@ const CONFIG_FIELDS: Record<ChannelType, { key: string; label: string; type: "te
   discord: [
     { key: "botToken", label: "Bot Token", type: "password" },
     { key: "applicationId", label: "Application ID", type: "text" },
-    { key: "publicKey", label: "Public Key", type: "text" },
   ],
   teams: [
     { key: "appId", label: "App ID", type: "text" },
@@ -162,20 +161,29 @@ export function ChannelsConfig() {
                     <Badge variant={ch.enabled ? "success" : "secondary"} className="text-xs">
                       {ch.enabled ? "Active" : "Disabled"}
                     </Badge>
+                    {ch.channel_type === "discord" && (ch as any).discord_bot_active && (
+                      <Badge variant="success" className="text-xs">
+                        🤖 Bot Online
+                      </Badge>
+                    )}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1 font-mono truncate">
-                    Webhook: /api/channels/{ch.id}/webhook
+                    {ch.channel_type === "discord"
+                      ? "Gateway Bot — responds to mentions, DMs, and /ask"
+                      : `Webhook: /api/channels/${ch.id}/webhook`}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyWebhookUrl(ch)}
-                    title="Copy webhook URL"
-                  >
-                    {copiedId === ch.id ? "✓ Copied" : "📋 Copy URL"}
-                  </Button>
+                  {ch.channel_type !== "discord" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyWebhookUrl(ch)}
+                      title="Copy webhook URL"
+                    >
+                      {copiedId === ch.id ? "✓ Copied" : "📋 Copy URL"}
+                    </Button>
+                  )}
                   <Switch
                     checked={!!ch.enabled}
                     onCheckedChange={() => toggleEnabled(ch)}
@@ -278,10 +286,9 @@ export function ChannelsConfig() {
           <CardContent className="py-4 text-sm text-muted-foreground/60 space-y-2">
             <p className="font-medium text-foreground/80">How channels work</p>
             <ol className="list-decimal ml-4 space-y-1">
-              <li>Copy the webhook URL for a channel using the 📋 button above.</li>
-              <li>In your messaging platform&apos;s settings, set the webhook/callback URL to the copied URL.</li>
-              <li>When someone sends a message on that platform, Nexus will receive it, process it through the agent, and return a response.</li>
-              <li>Your integration layer forwards the response back to the user.</li>
+              <li><strong>Discord:</strong> The bot connects automatically via Gateway. Add it to your server, and it responds to @mentions, DMs, and <code>/ask</code> slash commands.</li>
+              <li><strong>Other platforms:</strong> Copy the webhook URL using the 📋 button, set it as the callback in your platform&apos;s settings, and Nexus will process incoming messages.</li>
+              <li>Map external users to Nexus accounts in the channel settings for personalized responses.</li>
             </ol>
           </CardContent>
         </Card>

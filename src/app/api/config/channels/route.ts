@@ -5,8 +5,10 @@ import {
   createChannel,
   updateChannel,
   deleteChannel,
+  getChannel,
   type ChannelType,
 } from "@/lib/db";
+import { startDiscordBot, stopDiscordBot, isDiscordBotActive } from "@/lib/channels/discord";
 
 const VALID_CHANNEL_TYPES: ChannelType[] = [
   "whatsapp",
@@ -47,6 +49,7 @@ export async function GET() {
   const channels = listChannels().map((ch) => ({
     ...ch,
     config_json: maskSecrets(ch.config_json),
+    discord_bot_active: ch.channel_type === "discord" ? isDiscordBotActive(ch.id) : undefined,
   }));
 
   return NextResponse.json(channels);
@@ -77,6 +80,16 @@ export async function POST(req: NextRequest) {
     channelType,
     configJson: JSON.stringify(config),
   });
+
+  // Auto-start Discord bot when channel is created
+  if (channelType === "discord") {
+    try {
+      await startDiscordBot(record.id, config);
+    } catch (err) {
+      // Channel created but bot failed to start — log it
+      console.error("Discord bot start failed:", err);
+    }
+  }
 
   return NextResponse.json(
     { ...record, config_json: maskSecrets(record.config_json) },
@@ -113,6 +126,21 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Channel not found." }, { status: 404 });
   }
 
+  // Manage Discord bot lifecycle on enable/disable/config change
+  const effectiveType = channelType || updated.channel_type;
+  if (effectiveType === "discord") {
+    if (updated.enabled) {
+      try {
+        const cfg = JSON.parse(updated.config_json);
+        await startDiscordBot(id, cfg);
+      } catch (err) {
+        console.error("Discord bot restart failed:", err);
+      }
+    } else {
+      await stopDiscordBot(id);
+    }
+  }
+
   return NextResponse.json({ ...updated, config_json: maskSecrets(updated.config_json) });
 }
 
@@ -125,6 +153,12 @@ export async function DELETE(req: NextRequest) {
 
   if (!id) {
     return NextResponse.json({ error: "id query param is required." }, { status: 400 });
+  }
+
+  // Stop Discord bot before deleting channel
+  const channel = getChannel(id);
+  if (channel?.channel_type === "discord") {
+    await stopDiscordBot(id);
   }
 
   deleteChannel(id);

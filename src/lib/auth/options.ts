@@ -160,7 +160,13 @@ export const authOptions: NextAuthOptions = {
       if (token.userId) {
         const { getUserById } = await import("@/lib/db");
         const dbUser = getUserById(token.userId as string);
-        token.role = dbUser?.role ?? "user";
+        if (dbUser) {
+          token.role = dbUser.role ?? "user";
+        } else {
+          // User was deleted (e.g. DB reinitialized) — clear stale session
+          delete token.userId;
+          delete token.role;
+        }
       }
 
       return token;

@@ -96,6 +96,7 @@ export interface UserProfile {
   skills: string;
   languages: string;
   company: string;
+  screen_sharing_enabled: number;
   updated_at: string;
 }
 
@@ -119,11 +120,12 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
     skills: profile.skills ?? existing?.skills ?? "[]",
     languages: profile.languages ?? existing?.languages ?? "[]",
     company: profile.company ?? existing?.company ?? "",
+    screen_sharing_enabled: profile.screen_sharing_enabled ?? existing?.screen_sharing_enabled ?? 1,
   };
   getDb()
     .prepare(
-      `INSERT INTO user_profiles (user_id, display_name, title, bio, location, phone, email, website, linkedin, github, twitter, skills, languages, company, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `INSERT INTO user_profiles (user_id, display_name, title, bio, location, phone, email, website, linkedin, github, twitter, skills, languages, company, screen_sharing_enabled, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(user_id) DO UPDATE SET
          display_name = excluded.display_name,
          title = excluded.title,
@@ -138,13 +140,15 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
          skills = excluded.skills,
          languages = excluded.languages,
          company = excluded.company,
+         screen_sharing_enabled = excluded.screen_sharing_enabled,
          updated_at = CURRENT_TIMESTAMP`
     )
     .run(
       userId,
       p.display_name, p.title, p.bio, p.location,
       p.phone, p.email, p.website, p.linkedin,
-      p.github, p.twitter, p.skills, p.languages, p.company
+      p.github, p.twitter, p.skills, p.languages, p.company,
+      p.screen_sharing_enabled
     );
   return getUserProfile(userId)!;
 }

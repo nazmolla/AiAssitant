@@ -41,6 +41,14 @@ export async function POST(
   }
 
   try {
+    // Discord uses Gateway bot (not webhook) — reject webhook calls
+    if (channel.channel_type === "discord") {
+      return NextResponse.json(
+        { error: "Discord channels use the bot integration, not webhooks." },
+        { status: 400 }
+      );
+    }
+
     const body = await req.json();
 
     // Normalize the inbound payload — each adapter can parse differently

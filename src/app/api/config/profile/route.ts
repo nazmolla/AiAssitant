@@ -24,7 +24,7 @@ export async function PUT(req: Request) {
     const ALLOWED_FIELDS = [
       "display_name", "title", "bio", "location", "phone",
       "email", "website", "linkedin", "github", "twitter",
-      "skills", "languages", "company",
+      "skills", "languages", "company", "screen_sharing_enabled",
     ] as const;
     const sanitized: Record<string, unknown> = {};
     for (const key of ALLOWED_FIELDS) {

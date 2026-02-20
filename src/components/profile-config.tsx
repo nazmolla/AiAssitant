@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 
 interface ProfileData {
   display_name: string;
@@ -21,6 +22,7 @@ interface ProfileData {
   skills: string;
   languages: string;
   company: string;
+  screen_sharing_enabled: number;
 }
 
 const EMPTY: ProfileData = {
@@ -37,6 +39,7 @@ const EMPTY: ProfileData = {
   skills: "[]",
   languages: "[]",
   company: "",
+  screen_sharing_enabled: 1,
 };
 
 export function ProfileConfig() {
@@ -64,8 +67,8 @@ export function ProfileConfig() {
     try { return JSON.parse(profile.languages); } catch { return []; }
   })();
 
-  const update = (field: keyof ProfileData, value: string) =>
-    setProfile((p) => ({ ...p, [field]: value }));
+  const update = (field: keyof ProfileData, value: string | number) =>
+    setProfile((p) => ({ ...p, [field]: typeof EMPTY[field] === "number" ? Number(value) : value }));
 
   const addSkill = () => {
     const v = skillInput.trim();
@@ -274,6 +277,25 @@ export function ProfileConfig() {
           {saving ? "Saving…" : "Save Profile"}
         </Button>
       </div>
+
+      {/* Features */}
+      <Card className="md:col-span-2">
+        <CardHeader>
+          <CardTitle className="text-lg font-display">Features</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium">Screen Sharing</div>
+              <div className="text-xs text-muted-foreground/60">Allow sharing your screen with Nexus during chat so it can see what you see.</div>
+            </div>
+            <Switch
+              checked={profile.screen_sharing_enabled === 1}
+              onCheckedChange={(checked) => update("screen_sharing_enabled", checked ? "1" : "0")}
+            />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

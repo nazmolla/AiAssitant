@@ -28,7 +28,7 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { message, attachments } = body as {
+  const { message, attachments, screenFrames } = body as {
     message?: string;
     attachments?: Array<{
       id: string;
@@ -37,17 +37,44 @@ export async function POST(
       sizeBytes: number;
       storagePath: string;
     }>;
+    screenFrames?: string[]; // base64 data URIs from screen sharing
   };
 
-  if ((!message || typeof message !== "string") && (!attachments || attachments.length === 0)) {
-    return NextResponse.json({ error: "Message or attachments required" }, { status: 400 });
+  if (
+    (!message || typeof message !== "string") &&
+    (!attachments || attachments.length === 0) &&
+    (!screenFrames || screenFrames.length === 0)
+  ) {
+    return NextResponse.json({ error: "Message, attachments, or screen frames required" }, { status: 400 });
   }
 
   // Build content parts for multimodal messages
   let contentParts: ContentPart[] | undefined;
-  if (attachments && attachments.length > 0) {
-    contentParts = [];
+
+  // Include screen frames as vision content
+  if (screenFrames && screenFrames.length > 0) {
+    if (!contentParts) contentParts = [];
     if (message) {
+      contentParts.push({ type: "text", text: message });
+    }
+    contentParts.push({
+      type: "text",
+      text: "[Screen Share] The following image(s) show the user's current screen. Describe what you see and help the user with whatever they are asking about. You can reference specific UI elements, text, and content visible on screen.",
+    });
+    for (const frame of screenFrames) {
+      // Validate it's a data URI
+      if (frame.startsWith("data:image/")) {
+        contentParts.push({
+          type: "image_url",
+          image_url: { url: frame, detail: "high" },
+        });
+      }
+    }
+  }
+
+  if (attachments && attachments.length > 0) {
+    if (!contentParts) contentParts = [];
+    if (message && !screenFrames?.length) {
       contentParts.push({ type: "text", text: message });
     }
     for (const att of attachments) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession, signIn } from "next-auth/react";
+import { useSession, signIn, signOut } from "next-auth/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/chat-panel";
@@ -81,6 +81,13 @@ export default function HomePage() {
           <span className="text-[13px] text-muted-foreground font-medium">
             {displayName || session.user?.email}
           </span>
+          <button
+            onClick={() => signOut({ redirect: true })}
+            className="text-xs text-muted-foreground/60 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10"
+            title="Sign out"
+          >
+            Logout
+          </button>
         </div>
       </header>
 

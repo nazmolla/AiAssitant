@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -91,8 +91,138 @@ export function ChatPanel() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [screenShareEnabled, setScreenShareEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Screen sharing state
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [screenSharing, setScreenSharing] = useState(false);
+  const [latestFrame, setLatestFrame] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /** Capture a single frame from the screen share video stream */
+  const captureFrame = useCallback((): string | null => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.videoWidth === 0) return null;
+
+    canvas.width = Math.min(video.videoWidth, 1920);
+    canvas.height = Math.round((canvas.width / video.videoWidth) * video.videoHeight);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.7);
+  }, []);
+
+  /** Start screen sharing */
+  async function startScreenShare() {
+    // Check if getDisplayMedia is available (requires HTTPS or localhost)
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      alert(
+        "Screen sharing is not available.\n\n" +
+        "This feature requires a secure context (HTTPS or localhost).\n" +
+        "If you're accessing via HTTP over a network, enable HTTPS or use localhost."
+      );
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { max: 1 } },
+        audio: false,
+      });
+
+      // Create hidden video element for the stream
+      const video = document.createElement("video");
+      video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+      await video.play();
+      videoRef.current = video;
+
+      // Create hidden canvas for frame capture
+      if (!canvasRef.current) {
+        canvasRef.current = document.createElement("canvas");
+      }
+
+      setScreenStream(stream);
+      setScreenSharing(true);
+
+      // Capture preview frame immediately
+      setTimeout(() => {
+        const frame = captureFrame();
+        if (frame) setLatestFrame(frame);
+      }, 500);
+
+      // Update preview every 3 seconds
+      frameIntervalRef.current = setInterval(() => {
+        const frame = captureFrame();
+        if (frame) setLatestFrame(frame);
+      }, 3000);
+
+      // Handle user stopping share via browser UI
+      stream.getVideoTracks()[0].addEventListener("ended", () => {
+        stopScreenShare();
+      });
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "NotAllowedError") {
+        // User cancelled the dialog — not an error
+        return;
+      }
+      console.error("Screen share failed:", err);
+      alert("Screen sharing failed: " + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+
+  /** Stop screen sharing */
+  function stopScreenShare() {
+    if (frameIntervalRef.current) {
+      clearInterval(frameIntervalRef.current);
+      frameIntervalRef.current = null;
+    }
+    if (screenStream) {
+      screenStream.getTracks().forEach((t) => t.stop());
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+      videoRef.current = null;
+    }
+    setScreenStream(null);
+    setScreenSharing(false);
+    setLatestFrame(null);
+  }
+
+  // Clean up screen share on unmount
+  useEffect(() => {
+    return () => {
+      if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
+      if (screenStream) screenStream.getTracks().forEach((t) => t.stop());
+    };
+  }, [screenStream]);
+
+  // Fetch screen sharing preference (and re-fetch periodically to pick up settings changes)
+  useEffect(() => {
+    function fetchScreenSharePref() {
+      fetch("/api/config/profile")
+        .then((r) => r.json())
+        .then((p) => {
+          if (p && p.screen_sharing_enabled !== undefined) {
+            setScreenShareEnabled(p.screen_sharing_enabled === 1);
+          }
+        })
+        .catch(() => {});
+    }
+    fetchScreenSharePref();
+    // Re-check when tab becomes visible (user may have changed settings)
+    function onVisChange() {
+      if (document.visibilityState === "visible") fetchScreenSharePref();
+    }
+    document.addEventListener("visibilitychange", onVisChange);
+    return () => document.removeEventListener("visibilitychange", onVisChange);
+  }, []);
 
   // Fetch threads
   useEffect(() => {
@@ -204,13 +334,20 @@ export function ChatPanel() {
   }
 
   async function sendMessage() {
-    if ((!input.trim() && pendingFiles.length === 0) || !activeThread) return;
+    if ((!input.trim() && pendingFiles.length === 0 && !screenSharing) || !activeThread) return;
 
     const userMsg = input;
     const filesToSend = [...pendingFiles];
     setInput("");
     setPendingFiles([]);
     setLoading(true);
+
+    // Capture screen frame if sharing is active
+    const frames: string[] = [];
+    if (screenSharing) {
+      const frame = captureFrame();
+      if (frame) frames.push(frame);
+    }
 
     // Optimistic update
     const optimisticAttachments = filesToSend.map((pf) => ({
@@ -246,8 +383,9 @@ export function ChatPanel() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: userMsg || undefined,
+          message: userMsg || (frames.length > 0 ? "(see my screen)" : undefined),
           attachments: uploadedMeta.length > 0 ? uploadedMeta : undefined,
+          screenFrames: frames.length > 0 ? frames : undefined,
         }),
       });
       const data = await res.json();
@@ -402,6 +540,23 @@ export function ChatPanel() {
             {/* Input Bar — Floating glass panel */}
             <div className="border-t border-white/[0.06] p-3 bg-white/[0.02] backdrop-blur-xl">
               <div className="max-w-3xl mx-auto">
+                {/* Screen sharing indicator */}
+                {screenSharing && (
+                  <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 animate-pulse">
+                    <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
+                    <span className="text-xs text-red-400 font-medium">Sharing your screen</span>
+                    {latestFrame && (
+                      <img src={latestFrame} alt="Screen preview" className="h-8 rounded ml-auto ring-1 ring-white/10" />
+                    )}
+                    <button
+                      onClick={stopScreenShare}
+                      className="ml-1 text-xs px-2 py-0.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors"
+                    >
+                      Stop
+                    </button>
+                  </div>
+                )}
+
                 {/* Pending file previews */}
                 {pendingFiles.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-2">
@@ -451,6 +606,22 @@ export function ChatPanel() {
                   >
                     📎
                   </Button>
+                  {screenShareEnabled && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={screenSharing ? stopScreenShare : startScreenShare}
+                      disabled={loading || !activeThread}
+                      title={screenSharing ? "Stop screen sharing" : "Share your screen"}
+                      className={`shrink-0 h-9 w-9 rounded-xl transition-all duration-300 ${
+                        screenSharing
+                          ? "text-red-400 bg-red-500/10 hover:bg-red-500/20 ring-1 ring-red-500/30"
+                          : "text-muted-foreground hover:text-primary hover:bg-primary/5"
+                      }`}
+                    >
+                      🖥️
+                    </Button>
+                  )}
                   <Input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
@@ -461,7 +632,7 @@ export function ChatPanel() {
                   />
                   <Button
                     onClick={sendMessage}
-                    disabled={loading || (!input.trim() && pendingFiles.length === 0)}
+                    disabled={loading || (!input.trim() && pendingFiles.length === 0 && !screenSharing)}
                     size="icon"
                     className="shrink-0 h-9 w-9 rounded-xl shadow-md shadow-primary/20"
                   >

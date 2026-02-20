@@ -40,7 +40,6 @@ export function McpConfig() {
   const [policies, setPolicies] = useState<ToolPolicy[]>([]);
 
   // Add server form
-  const [newId, setNewId] = useState("");
   const [newName, setNewName] = useState("");
   const [newConnectionType, setNewConnectionType] = useState<"local" | "remote">("remote");
   const [newCommand, setNewCommand] = useState("");
@@ -102,7 +101,13 @@ export function McpConfig() {
 
   async function addServer() {
     const isLocal = newConnectionType === "local";
-    if (!newId || !newName) return;
+    const generatedId = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+        });
+    if (!newName) return;
     if (isLocal && !newCommand) return;
     if (!isLocal && !newUrl) return;
 
@@ -114,7 +119,7 @@ export function McpConfig() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: newId,
+          id: generatedId,
           name: newName,
           transport_type: isLocal ? "stdio" : "streamablehttp",
           command: isLocal ? newCommand : undefined,
@@ -132,10 +137,10 @@ export function McpConfig() {
         throw new Error(data.error || "Failed to save server");
       }
 
-      const savedId = newId;
+      const savedId = generatedId;
 
       // Reset form
-      setNewId(""); setNewName(""); setNewCommand(""); setNewArgs("");
+      setNewName(""); setNewCommand(""); setNewArgs("");
       setNewUrl(""); setNewAuthType("none"); setNewAccessToken("");
       setNewClientId(""); setNewClientSecret("");
 
@@ -242,8 +247,7 @@ export function McpConfig() {
           <CardDescription className="text-muted-foreground/60">Configure a new Model Context Protocol server connection.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-3">
-            <Input placeholder="Server ID (e.g., homeassistant)" value={newId} onChange={(e) => setNewId(e.target.value)} />
+          <div className="grid grid-cols-1 gap-3">
             <Input placeholder="Display Name (e.g., Home Assistant)" value={newName} onChange={(e) => setNewName(e.target.value)} />
 
             {/* Connection type toggle */}
@@ -336,7 +340,7 @@ export function McpConfig() {
               onClick={addServer}
               disabled={
                 addingStatus === "saving" || addingStatus === "connecting" ||
-                !newId || !newName ||
+                !newName ||
                 (newConnectionType === "local" ? !newCommand : !newUrl)
               }
             >
