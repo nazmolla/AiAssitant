@@ -15,6 +15,7 @@ import { ProfileConfig } from "@/components/profile-config";
 import { AgentDashboard } from "@/components/agent-dashboard";
 import { UserManagement } from "@/components/user-management";
 import { AuthConfig } from "@/components/auth-config";
+import { ToolPolicies } from "@/components/tool-policies";
 
 export default function HomePage() {
   const router = useRouter();
@@ -160,86 +161,99 @@ export default function HomePage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="config" className="flex-1 overflow-auto m-0 p-6">
-            <div className="max-w-4xl mx-auto">
-              <Tabs defaultValue="profile" className="space-y-6">
-                <TabsList>
-                  {!!perms.llm_config && <TabsTrigger value="llm">🤖 LLM Providers</TabsTrigger>}
-                  {!!perms.mcp_servers && <TabsTrigger value="mcp">🔌 MCP Servers</TabsTrigger>}
-                  {!!perms.channels && <TabsTrigger value="channels">📡 Channels</TabsTrigger>}
-                  <TabsTrigger value="profile">👤 Profile</TabsTrigger>
-                  {userRole === "admin" && <TabsTrigger value="auth">🔐 Authentication</TabsTrigger>}
-                  {userRole === "admin" && <TabsTrigger value="users">👥 Users</TabsTrigger>}
-                </TabsList>
-
-                <TabsContent value="llm" className="mt-4 space-y-4">
-                  <div>
-                    <h2 className="text-2xl font-display font-bold gradient-text">LLM Providers</h2>
-                    <p className="text-sm text-muted-foreground mt-1 font-light">
-                      Centralize Azure OpenAI, OpenAI, and Anthropic credentials.
-                    </p>
-                  </div>
-                  <LlmConfig />
-                </TabsContent>
-
-                <TabsContent value="mcp" className="mt-4 space-y-4">
-                  <div>
-                    <h2 className="text-2xl font-display font-bold gradient-text">MCP Servers & Policies</h2>
-                    <p className="text-sm text-muted-foreground mt-1 font-light">
-                      Manage tool transports and approval / proactive toggles.
-                    </p>
-                  </div>
-                  <McpConfig />
-                </TabsContent>
-
-                <TabsContent value="channels" className="mt-4 space-y-4">
-                  <div>
-                    <h2 className="text-2xl font-display font-bold gradient-text">Communication Channels</h2>
-                    <p className="text-sm text-muted-foreground mt-1 font-light">
-                      Connect messaging platforms so Nexus can chat with you anywhere.
-                    </p>
-                  </div>
-                  <ChannelsConfig />
-                </TabsContent>
-
-                <TabsContent value="profile" className="mt-4 space-y-4">
-                  <div>
-                    <h2 className="text-2xl font-display font-bold gradient-text">Owner Profile</h2>
-                    <p className="text-sm text-muted-foreground mt-1 font-light">
-                      Your identity, skills, and contact info. Nexus uses this to personalize responses.
-                    </p>
-                  </div>
-                  <ProfileConfig />
-                </TabsContent>
-
-                {userRole === "admin" && (
-                  <TabsContent value="auth" className="mt-4 space-y-4">
-                    <div>
-                      <h2 className="text-2xl font-display font-bold gradient-text">Authentication Providers</h2>
-                      <p className="text-sm text-muted-foreground mt-1 font-light">
-                        Configure OAuth login providers and external integrations.
-                      </p>
-                    </div>
-                    <AuthConfig />
-                  </TabsContent>
-                )}
-
-                {userRole === "admin" && (
-                  <TabsContent value="users" className="mt-4 space-y-4">
-                    <div>
-                      <h2 className="text-2xl font-display font-bold gradient-text">User Management</h2>
-                      <p className="text-sm text-muted-foreground mt-1 font-light">
-                        Manage user access, roles, and feature permissions.
-                      </p>
-                    </div>
-                    <UserManagement />
-                  </TabsContent>
-                )}
-              </Tabs>
-            </div>
+          <TabsContent value="config" className="flex-1 overflow-hidden m-0">
+            <SettingsPanel userRole={userRole} perms={perms} />
           </TabsContent>
         </Tabs>
       </main>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Settings Panel — left sidebar navigation                                   */
+/* -------------------------------------------------------------------------- */
+
+interface SettingsPage {
+  key: string;
+  label: string;
+  icon: string;
+  adminOnly?: boolean;
+  permKey?: string;
+}
+
+const SETTINGS_PAGES: SettingsPage[] = [
+  { key: "profile", label: "Profile", icon: "👤" },
+  { key: "llm", label: "Providers", icon: "🤖", permKey: "llm_config" },
+  { key: "channels", label: "Channels", icon: "📡", permKey: "channels" },
+  { key: "mcp", label: "MCP Servers", icon: "🔌", permKey: "mcp_servers" },
+  { key: "policies", label: "Tool Policies", icon: "🛡️", permKey: "mcp_servers" },
+  { key: "auth", label: "Authentication", icon: "🔐", adminOnly: true },
+  { key: "users", label: "Users", icon: "👥", adminOnly: true },
+];
+
+const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
+  profile: { title: "Owner Profile", subtitle: "Your identity, skills, and contact info. Nexus uses this to personalize responses." },
+  llm: { title: "LLM Providers", subtitle: "Centralize Azure OpenAI, OpenAI, and Anthropic credentials." },
+  channels: { title: "Communication Channels", subtitle: "Connect messaging platforms so Nexus can chat with you anywhere." },
+  mcp: { title: "MCP Servers", subtitle: "Manage Model Context Protocol server connections." },
+  policies: { title: "Tool Policies", subtitle: "Configure approval requirements and proactive scanning for each discovered tool." },
+  auth: { title: "Authentication Providers", subtitle: "Configure OAuth login providers and external integrations." },
+  users: { title: "User Management", subtitle: "Manage user access, roles, and feature permissions." },
+};
+
+function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<string, number> }) {
+  const [active, setActive] = useState("profile");
+
+  const visiblePages = SETTINGS_PAGES.filter((p) => {
+    if (p.adminOnly && userRole !== "admin") return false;
+    if (p.permKey && !perms[p.permKey]) return false;
+    return true;
+  });
+
+  const header = SETTINGS_HEADERS[active];
+
+  return (
+    <div className="flex h-full">
+      {/* Left sidebar */}
+      <nav className="w-52 shrink-0 border-r border-white/[0.06] bg-white/[0.01] overflow-y-auto py-4 px-2">
+        <div className="space-y-0.5">
+          {visiblePages.map((page) => (
+            <button
+              key={page.key}
+              onClick={() => setActive(page.key)}
+              className={`w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200 text-left ${
+                active === page.key
+                  ? "bg-primary/10 text-primary border border-primary/15"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
+              }`}
+            >
+              <span className="text-sm">{page.icon}</span>
+              {page.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {/* Content area */}
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-4xl mx-auto space-y-6">
+          {header && (
+            <div>
+              <h2 className="text-2xl font-display font-bold gradient-text">{header.title}</h2>
+              <p className="text-sm text-muted-foreground mt-1 font-light">{header.subtitle}</p>
+            </div>
+          )}
+
+          {active === "profile" && <ProfileConfig />}
+          {active === "llm" && <LlmConfig />}
+          {active === "channels" && <ChannelsConfig />}
+          {active === "mcp" && <McpConfig />}
+          {active === "policies" && <ToolPolicies />}
+          {active === "auth" && userRole === "admin" && <AuthConfig />}
+          {active === "users" && userRole === "admin" && <UserManagement />}
+        </div>
+      </div>
     </div>
   );
 }

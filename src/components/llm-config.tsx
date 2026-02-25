@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -278,48 +278,43 @@ export function LlmConfig() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-2">
             {providers.map((provider) => (
-              <Card key={provider.id} className={cn(provider.is_default && "border-primary/40 shadow-md shadow-primary/10") }>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-lg font-display">{provider.label}</CardTitle>
-                      <CardDescription className="text-muted-foreground/50">
-                        {PROVIDER_LABELS[provider.provider_type]} • {new Date(provider.created_at).toLocaleDateString()}
-                      </CardDescription>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      {provider.is_default ? (
-                        <Badge variant="success">Default</Badge>
-                      ) : (
-                        <Badge variant="secondary">Standby</Badge>
-                      )}
-                      <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
-                        {provider.purpose === "embedding" ? "Embedding" : "Chat"}
-                      </Badge>
-                      <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
-                        {provider.provider_type}
-                      </Badge>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <dl className="grid gap-2 text-sm">
-                    {Object.entries(provider.config).map(([key, value]) => (
-                      <div key={key} className="flex items-center justify-between border-b border-dashed border-white/[0.06] pb-1.5 text-xs uppercase tracking-wide text-muted-foreground/50">
-                        <span>{key}</span>
-                        <span className="text-foreground font-mono text-[11px]">
-                          {typeof value === "string" && value.length > 0 ? value : "—"}
-                        </span>
-                      </div>
-                    ))}
-                    {provider.has_api_key === false && (
-                      <div className="text-xs text-red-400">No API key captured. Edit to add credentials.</div>
+              <div
+                key={provider.id}
+                className={cn(
+                  "flex items-center justify-between rounded-xl border p-4 hover:bg-white/[0.02] transition-all duration-300",
+                  provider.is_default
+                    ? "border-primary/30 bg-primary/[0.03]"
+                    : "border-white/[0.06]"
+                )}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{provider.label}</span>
+                    {provider.is_default ? (
+                      <Badge variant="success" className="text-[10px]">Default</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-[10px]">Standby</Badge>
                     )}
-                  </dl>
-                </CardContent>
-                <CardFooter className="flex justify-end gap-3">
+                    <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
+                      {provider.purpose === "embedding" ? "Embedding" : "Chat"}
+                    </Badge>
+                    <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
+                      {PROVIDER_LABELS[provider.provider_type]}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground/40 mt-1">
+                    {Object.entries(provider.config)
+                      .filter(([, v]) => typeof v === "string" && v.length > 0)
+                      .map(([k, v]) => `${k}: ${v}`)
+                      .join(" · ") || "No config details"}
+                    {provider.has_api_key === false && (
+                      <span className="text-red-400 ml-2">⚠ No API key</span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 ml-3 shrink-0">
                   {!provider.is_default && (
                     <Button size="sm" variant="outline" onClick={() => handleSetDefault(provider.id)}>
                       Make Default
@@ -328,8 +323,8 @@ export function LlmConfig() {
                   <Button size="sm" variant="destructive" onClick={() => handleDelete(provider.id, provider.label)}>
                     Remove
                   </Button>
-                </CardFooter>
-              </Card>
+                </div>
+              </div>
             ))}
           </div>
         )}
