@@ -3,6 +3,19 @@ import { requireUser } from "@/lib/auth/guard";
 import { runAgentLoop } from "@/lib/agent";
 import { getThread } from "@/lib/db";
 import type { ContentPart } from "@/lib/llm";
+import fs from "fs";
+import pathMod from "path";
+
+const ATTACHMENTS_DIR = pathMod.join(process.cwd(), "data", "attachments");
+
+/** MIME types we can read as UTF-8 text and pass directly to the LLM */
+const TEXT_MIME_TYPES = new Set([
+  "text/plain",
+  "text/csv",
+  "text/markdown",
+  "application/json",
+  "image/svg+xml",
+]);
 
 export async function POST(
   req: NextRequest,
@@ -78,22 +91,37 @@ export async function POST(
       contentParts.push({ type: "text", text: message });
     }
     for (const att of attachments) {
-      if (att.mimeType.startsWith("image/")) {
+      const filePath = pathMod.join(ATTACHMENTS_DIR, att.storagePath);
+      const fileExists = fs.existsSync(filePath);
+
+      if (att.mimeType.startsWith("image/") && fileExists) {
+        // Read image from disk → base64 data URI (LLM can't fetch private network URLs)
+        const buf = fs.readFileSync(filePath);
+        const b64 = buf.toString("base64");
+        const dataUri = `data:${att.mimeType};base64,${b64}`;
         contentParts.push({
           type: "image_url",
-          image_url: {
-            url: `${getBaseUrl(req)}/api/attachments/${att.storagePath}`,
-            detail: "auto",
-          },
+          image_url: { url: dataUri, detail: "auto" },
+        });
+      } else if (TEXT_MIME_TYPES.has(att.mimeType) && fileExists) {
+        // Text-based file: read content and pass directly to LLM
+        const textContent = fs.readFileSync(filePath, "utf-8");
+        contentParts.push({
+          type: "text",
+          text: `📎 File: ${att.filename}\n\`\`\`\n${textContent}\n\`\`\``,
+        });
+      } else if (fileExists) {
+        // Binary document (.docx, .pdf, .xlsx, etc.): tell the agent where it is on disk
+        const absPath = pathMod.resolve(filePath);
+        contentParts.push({
+          type: "text",
+          text: `📎 Uploaded file: "${att.filename}" (${att.mimeType}, ${att.sizeBytes} bytes)\nStored at: ${absPath}\nUse the fs_read_file tool with this path to read the file contents.`,
         });
       } else {
+        // File missing from disk
         contentParts.push({
-          type: "file",
-          file: {
-            url: `${getBaseUrl(req)}/api/attachments/${att.storagePath}`,
-            mimeType: att.mimeType,
-            filename: att.filename,
-          },
+          type: "text",
+          text: `📎 File "${att.filename}" was uploaded but could not be found on disk.`,
         });
       }
     }
@@ -115,12 +143,4 @@ export async function POST(
     const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:\\\\[^\s]+/g, "[path]");
     return NextResponse.json({ error: safeMsg }, { status: 500 });
   }
-}
-
-function getBaseUrl(_req: NextRequest): string {
-  // Use NEXTAUTH_URL to prevent host header injection
-  if (process.env.NEXTAUTH_URL) {
-    return process.env.NEXTAUTH_URL.replace(/\/$/, "");
-  }
-  return "http://localhost:3000";
 }

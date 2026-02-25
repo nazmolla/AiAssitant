@@ -37,9 +37,10 @@ export async function executeWithGatekeeper(
 ): Promise<GatekeeperResult> {
   const policy = getToolPolicy(toolCall.name);
 
-  // Default-deny: if no policy exists OR policy requires approval, ask for approval.
-  // Tools must be explicitly marked as NOT requiring approval to auto-execute.
-  if (!policy || policy.requires_approval) {
+  // Default-allow: only require approval if an explicit policy says so.
+  // This is consistent with built-in tools. Owners can configure specific
+  // MCP tools to require approval via the tool-policies UI.
+  if (policy && policy.requires_approval) {
     addLog({
       level: "info",
       source: "hitl",

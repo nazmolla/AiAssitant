@@ -795,8 +795,9 @@ async function executeBuiltinNetworkToolWithGatekeeper(
   const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg } = await import("@/lib/db");
   const policy = getToolPolicy(toolCall.name);
 
-  // Default-deny for network tools: if no policy exists OR policy requires approval
-  if (!policy || policy.requires_approval) {
+  // Consistent default-allow: only require approval if explicit policy says so.
+  // Sensitive network tools are seeded with requires_approval=1 in DB init.
+  if (policy && policy.requires_approval) {
     addLog({
       level: "info",
       source: "hitl",

@@ -17,23 +17,28 @@ export async function GET(
 
   // Only allow known subdirectories (attachments, screenshots)
   const firstSegment = params.path[0];
-  if (!ALLOWED_SUBDIRS.includes(firstSegment)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  let resolvedPath: string;
 
-  const filePath = path.join(DATA_DIR, relativePath);
+  if (ALLOWED_SUBDIRS.includes(firstSegment)) {
+    // URL already includes the subdir, e.g. /api/attachments/attachments/{threadId}/{file}
+    resolvedPath = path.join(DATA_DIR, relativePath);
+  } else {
+    // URL omits the subdir, e.g. /api/attachments/{threadId}/{file}
+    // Default to "attachments" subdir
+    resolvedPath = path.join(DATA_DIR, "attachments", relativePath);
+  }
 
   // Prevent directory traversal
-  if (!filePath.startsWith(DATA_DIR)) {
+  if (!resolvedPath.startsWith(DATA_DIR)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  if (!fs.existsSync(filePath)) {
+  if (!fs.existsSync(resolvedPath)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const buffer = fs.readFileSync(filePath);
-  const ext = path.extname(filePath).toLowerCase();
+  const buffer = fs.readFileSync(resolvedPath);
+  const ext = path.extname(resolvedPath).toLowerCase();
 
   const mimeMap: Record<string, string> = {
     ".jpg": "image/jpeg",
@@ -59,7 +64,7 @@ export async function GET(
   const contentType = mimeMap[ext] || "application/octet-stream";
 
   // Sanitize filename for Content-Disposition header to prevent header injection
-  const safeFilename = path.basename(filePath).replace(/["\r\n]/g, "_");
+  const safeFilename = path.basename(resolvedPath).replace(/["\r\n]/g, "_");
 
   return new NextResponse(buffer, {
     headers: {
