@@ -28,9 +28,10 @@ export function ToolPolicies() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const fetchAll = useCallback(() => {
-    fetch("/api/mcp/tools").then((r) => r.json()).then(setTools).catch(console.error);
-    fetch("/api/policies").then((r) => r.json()).then(setPolicies).catch(console.error);
-    fetch("/api/mcp").then((r) => r.json()).then((servers: McpServer[]) => {
+    fetch("/api/mcp/tools").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setTools(d); }).catch(console.error);
+    fetch("/api/policies").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setPolicies(d); }).catch(console.error);
+    fetch("/api/mcp").then((r) => r.json()).then((servers) => {
+      if (!Array.isArray(servers)) return;
       const map: Record<string, string> = {};
       for (const s of servers) map[s.id] = s.name;
       setServerNames(map);

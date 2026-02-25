@@ -41,7 +41,7 @@ export function McpConfig() {
   const [connectingId, setConnectingId] = useState<string | null>(null);
 
   const fetchAll = useCallback(() => {
-    fetch("/api/mcp").then((r) => r.json()).then(setServers).catch(console.error);
+    fetch("/api/mcp").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setServers(d); }).catch(console.error);
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);

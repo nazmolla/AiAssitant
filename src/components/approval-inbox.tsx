@@ -24,7 +24,7 @@ export function ApprovalInbox() {
   const fetchApprovals = () => {
     fetch("/api/approvals")
       .then((r) => r.json())
-      .then(setApprovals)
+      .then((d) => { if (Array.isArray(d)) setApprovals(d); })
       .catch(console.error);
   };
 

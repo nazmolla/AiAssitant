@@ -72,7 +72,7 @@ export function ChannelsConfig() {
   const fetchChannels = () => {
     fetch("/api/config/channels")
       .then((r) => r.json())
-      .then(setChannels)
+      .then((d) => { if (Array.isArray(d)) setChannels(d); })
       .catch(console.error);
   };
 

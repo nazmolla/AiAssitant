@@ -26,7 +26,7 @@ export function AgentDashboard() {
   const fetchLogs = () => {
     fetch("/api/logs?limit=200")
       .then((r) => r.json())
-      .then(setLogs)
+      .then((d) => { if (Array.isArray(d)) setLogs(d); })
       .catch(console.error);
   };
 

@@ -249,7 +249,7 @@ export function ChatPanel() {
   useEffect(() => {
     fetch("/api/threads")
       .then((r) => r.json())
-      .then(setThreads)
+      .then((d) => { if (Array.isArray(d)) setThreads(d); })
       .catch(console.error);
   }, []);
 
@@ -280,7 +280,7 @@ export function ChatPanel() {
       // Refresh thread list (status may have changed)
       fetch("/api/threads")
         .then((r) => r.json())
-        .then(setThreads)
+        .then((d) => { if (Array.isArray(d)) setThreads(d); })
         .catch(console.error);
     }
     window.addEventListener("approval-resolved", handleApprovalResolved);
@@ -383,7 +383,7 @@ export function ChatPanel() {
         const threadData = await threadRes.json();
         setMessages(threadData.messages || []);
       }
-      fetch("/api/threads").then((r) => r.json()).then(setThreads).catch(console.error);
+      fetch("/api/threads").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setThreads(d); }).catch(console.error);
 
       // Notify other components (approval inbox, dashboard)
       window.dispatchEvent(new CustomEvent("approval-resolved", { detail: data }));
@@ -463,7 +463,7 @@ export function ChatPanel() {
         const threadData = await threadRes.json();
         setMessages(threadData.messages || []);
         // Refresh thread list to pick up auto-generated title
-        fetch("/api/threads").then((r) => r.json()).then(setThreads).catch(console.error);
+        fetch("/api/threads").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setThreads(d); }).catch(console.error);
       }
     } catch (err) {
       setMessages((prev) => [

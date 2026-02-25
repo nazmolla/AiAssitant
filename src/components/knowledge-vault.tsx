@@ -24,7 +24,7 @@ export function KnowledgeVault() {
   const fetchKnowledge = () => {
     fetch("/api/knowledge")
       .then((r) => r.json())
-      .then(setEntries)
+      .then((d) => { if (Array.isArray(d)) setEntries(d); })
       .catch(console.error);
   };
 
