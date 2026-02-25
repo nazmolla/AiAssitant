@@ -376,19 +376,25 @@
 
 /* ── Font overrides ──────────────────────────────────── */
 
-[data-font="calibri"] {
-  --font-sans: 'Calibri', 'Carlito', 'Segoe UI', sans-serif;
-  font-family: var(--font-sans);
+[data-font="calibri"],
+[data-font="calibri"] * {
+  --font-sans: 'Calibri', 'Carlito', 'Segoe UI', sans-serif !important;
+  --font-display: 'Calibri', 'Carlito', 'Segoe UI', sans-serif !important;
+  font-family: 'Calibri', 'Carlito', 'Segoe UI', sans-serif !important;
 }
 
-[data-font="google"] {
-  --font-sans: 'Roboto', 'Arial', sans-serif;
-  font-family: var(--font-sans);
+[data-font="google"],
+[data-font="google"] * {
+  --font-sans: 'Roboto', 'Arial', sans-serif !important;
+  --font-display: 'Roboto', 'Arial', sans-serif !important;
+  font-family: 'Roboto', 'Arial', sans-serif !important;
 }
 
-[data-font="apple"] {
-  --font-sans: -apple-system, 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif;
-  font-family: var(--font-sans);
+[data-font="apple"],
+[data-font="apple"] * {
+  --font-sans: -apple-system, 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif !important;
+  --font-display: -apple-system, 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif !important;
+  font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif !important;
 }
 
 /* Smooth transitions everywhere */

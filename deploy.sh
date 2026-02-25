@@ -120,21 +120,11 @@ ssh "${REMOTE}" "
     tail -10 server.log
     exit 1
   fi
-  
-  # Verify DB has data
-  cat > /tmp/dbcheck.js << 'JSEOF'
-try {
-  var db = require("better-sqlite3")("./nexus.db");
-  var users = db.prepare("SELECT count(*) as c FROM users").get().c;
-  var tables = db.prepare("SELECT count(*) as c FROM sqlite_master WHERE type='table'").get().c;
-  console.log("tables=" + tables + " users=" + users);
-  db.close();
-} catch(e) { console.log("error: " + e.message); }
-JSEOF
-  DATA_CHECK=\$(node /tmp/dbcheck.js 2>/dev/null)
-  rm -f /tmp/dbcheck.js
-  echo \"  DB: \${DATA_CHECK}\"
 "
+
+# DB data integrity check (separate SSH to avoid heredoc quoting issues)
+DB_RESULT=$(ssh "${REMOTE}" "cd ~/AiAssistant && node -e 'var db=require(\"better-sqlite3\")(\"./nexus.db\");var u=db.prepare(\"SELECT count(*) as c FROM users\").get().c;var t=db.prepare(\"SELECT count(*) as c FROM sqlite_master\").get().c;console.log(\"tables=\"+t+\" users=\"+u);db.close()'" 2>/dev/null)
+echo "  DB: ${DB_RESULT}"
 echo ""
 echo "═══ Deploy complete ═══"
 

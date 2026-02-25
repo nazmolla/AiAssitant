@@ -25,6 +25,7 @@ export function ToolPolicies() {
   const [tools, setTools] = useState<ToolDef[]>([]);
   const [policies, setPolicies] = useState<ToolPolicy[]>([]);
   const [serverNames, setServerNames] = useState<Record<string, string>>({});
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const fetchAll = useCallback(() => {
     fetch("/api/mcp/tools").then((r) => r.json()).then(setTools).catch(console.error);
@@ -130,32 +131,42 @@ export function ToolPolicies() {
       {serverIds.map((serverId) => {
         const serverLabel = serverNames[serverId] || serverId;
         const serverTools = grouped[serverId];
+        const isCollapsed = collapsed[serverId] ?? false;
         return (
           <Card key={serverId}>
             <CardHeader className="pb-0 pt-4 px-4">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-display font-semibold text-primary/90">
-                  {serverLabel}
-                  <span className="ml-2 text-[11px] font-normal text-muted-foreground/50">
-                    {serverTools.length} tool{serverTools.length !== 1 ? "s" : ""}
-                  </span>
-                </CardTitle>
-                <div className="flex items-center gap-3 text-[10px]">
-                  <div className="flex items-center gap-1">
-                    <span className="text-muted-foreground/40 uppercase tracking-wider">Approval:</span>
-                    <button onClick={() => toggleGroupPolicies(serverTools, "requires_approval", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
-                    <span className="text-muted-foreground/30">|</span>
-                    <button onClick={() => toggleGroupPolicies(serverTools, "requires_approval", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
+                <button
+                  onClick={() => setCollapsed((prev) => ({ ...prev, [serverId]: !isCollapsed }))}
+                  className="flex items-center gap-2 text-left group"
+                >
+                  <span className={`text-[10px] text-muted-foreground/40 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`}>▶</span>
+                  <CardTitle className="text-sm font-display font-semibold text-primary/90 group-hover:text-primary transition-colors">
+                    {serverLabel}
+                    <span className="ml-2 text-[11px] font-normal text-muted-foreground/50">
+                      {serverTools.length} tool{serverTools.length !== 1 ? "s" : ""}
+                    </span>
+                  </CardTitle>
+                </button>
+                {!isCollapsed && (
+                  <div className="flex items-center gap-3 text-[10px]">
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground/40 uppercase tracking-wider">Approval:</span>
+                      <button onClick={() => toggleGroupPolicies(serverTools, "requires_approval", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
+                      <span className="text-muted-foreground/30">|</span>
+                      <button onClick={() => toggleGroupPolicies(serverTools, "requires_approval", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground/40 uppercase tracking-wider">Proactive:</span>
+                      <button onClick={() => toggleGroupPolicies(serverTools, "is_proactive_enabled", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
+                      <span className="text-muted-foreground/30">|</span>
+                      <button onClick={() => toggleGroupPolicies(serverTools, "is_proactive_enabled", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-muted-foreground/40 uppercase tracking-wider">Proactive:</span>
-                    <button onClick={() => toggleGroupPolicies(serverTools, "is_proactive_enabled", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
-                    <span className="text-muted-foreground/30">|</span>
-                    <button onClick={() => toggleGroupPolicies(serverTools, "is_proactive_enabled", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
-                  </div>
-                </div>
+                )}
               </div>
             </CardHeader>
+            {!isCollapsed && (
             <CardContent className="p-0 pt-2">
               <table className="w-full">
                 <thead>
@@ -196,6 +207,7 @@ export function ToolPolicies() {
                 </tbody>
               </table>
             </CardContent>
+            )}
           </Card>
         );
       })}
