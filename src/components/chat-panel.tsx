@@ -372,7 +372,12 @@ export function ChatPanel() {
       // Mark this approval as resolved in local state (hides buttons immediately)
       setResolvedApprovals((prev) => ({ ...prev, [approvalId]: data.alreadyResolved ? data.status : action }));
 
-      // Refresh messages and threads
+      // Show continuation errors if the agent loop failed after tool execution
+      if (data.continuationError) {
+        console.warn("Agent continuation error:", data.continuationError);
+      }
+
+      // Refresh messages and threads — the agent loop may have added new messages
       if (activeThread) {
         const threadRes = await fetch(`/api/threads/${activeThread}`);
         const threadData = await threadRes.json();
@@ -380,10 +385,8 @@ export function ChatPanel() {
       }
       fetch("/api/threads").then((r) => r.json()).then(setThreads).catch(console.error);
 
-      // Notify other components
-      if (action === "approved") {
-        window.dispatchEvent(new CustomEvent("approval-resolved", { detail: data }));
-      }
+      // Notify other components (approval inbox, dashboard)
+      window.dispatchEvent(new CustomEvent("approval-resolved", { detail: data }));
     } catch (err) {
       console.error("Approval action failed:", err);
       alert(`Approval action failed: ${err instanceof Error ? err.message : String(err)}`);

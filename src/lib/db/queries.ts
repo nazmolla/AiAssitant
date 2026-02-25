@@ -519,7 +519,10 @@ export function upsertMcpServer(server: McpServerRecord): void {
 }
 
 export function deleteMcpServer(id: string): void {
-  getDb().prepare("DELETE FROM mcp_servers WHERE id = ?").run(id);
+  const db = getDb();
+  // Remove tool policies that reference this server to avoid FK constraint errors
+  db.prepare("DELETE FROM tool_policies WHERE mcp_id = ?").run(id);
+  db.prepare("DELETE FROM mcp_servers WHERE id = ?").run(id);
 }
 
 // ─── User Knowledge (per-user) ───────────────────────────────
