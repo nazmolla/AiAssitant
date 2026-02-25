@@ -45,6 +45,7 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 | **File System Access** | Built-in tools to read, write, list, and search files — with HITL gating on destructive operations. |
 | **Multi-Channel Comms** | WhatsApp, Discord, webhooks, and web chat — each channel resolves senders to internal users. |
 | **Screen Sharing** | Share your screen with the agent via browser `getDisplayMedia()` — the agent sees what you see and can reason about it. |
+| **Security Hardened** | Comprehensive prompt injection defense, security headers (CSP, X-Frame-Options, etc.), rate limiting, input validation, and path traversal protection. |
 
 ---
 
@@ -344,7 +345,75 @@ Premium dark theme inspired by OpenClaw.ai, with coral accent colors, glass morp
 
 ---
 
-## 7. API Routes
+## 7. Security
+
+### 7.1 Static Analysis Fixes
+
+Comprehensive static code scan identified and patched the following:
+
+| Category | Fix | Files |
+|----------|-----|-------|
+| **Path Traversal** | `resolvePath()` uses `realpathSync()` to resolve symlinks before checking against allowed root | `fs-tools.ts` |
+| **Command Injection** | `fsExecuteScript()` blocks catastrophic patterns (`rm -rf /`, `dd`, `curl\|sh`, etc.) | `fs-tools.ts` |
+| **SQL Injection** | `updateUserPermissions()` uses `Set.has()` whitelist for dynamic column names | `queries.ts` |
+| **Header Injection** | Attachment `Content-Disposition` filename sanitized, `X-Content-Type-Options: nosniff` added | `attachments/[...path]/route.ts` |
+| **Error Info Leakage** | Internal file paths stripped from error messages in connect, chat, and webhook routes | `connect/route.ts`, `chat/route.ts`, `webhook/route.ts` |
+| **Input Validation** | Channel label length + config type validation; profile field length limits with `sanitizeField()` | `channels/route.ts`, `profile/route.ts` |
+| **UUID Validation** | Admin user management validates `userId` against UUID regex before DB operations | `admin/users/route.ts` |
+
+### 7.2 Prompt Injection Defense
+
+Multi-layered defense against prompt injection across all input vectors:
+
+| Layer | Defense | Location |
+|-------|---------|----------|
+| **System Prompt Hardening** | Anti-injection rules instruct the LLM to never follow instructions found in tool results, knowledge entries, or external messages | `loop.ts` |
+| **Untrusted Content Tagging** | Tool results from web/browser tools wrapped in `<untrusted_external_content>` XML tags | `loop.ts` |
+| **Knowledge Vault Isolation** | Knowledge context delimited with `<knowledge_context type="user_data">` trust boundary; entries marked as DATA, not instructions | `loop.ts` |
+| **Knowledge Entry Validation** | `looksLikeInjection()` scans for 14 injection patterns and blocks suspicious entries from being stored | `knowledge/index.ts` |
+| **Knowledge Extraction Hardening** | User text wrapped in `<document>` tags; extraction prompt instructs LLM to ignore directives within documents | `knowledge/index.ts` |
+| **Vault Poisoning Prevention** | Web/browser tool results excluded from knowledge ingestion pipeline | `loop.ts` |
+| **External Message Tagging** | Discord and webhook messages tagged with `[External Channel Message from ...]` origin marker | `discord.ts`, `webhook/route.ts` |
+| **Historical Context Re-tagging** | Tool results reconstructed from DB history re-tagged as untrusted | `loop.ts` |
+
+### 7.3 HTTP Security (Dynamic Scan Fixes)
+
+| Header/Feature | Value |
+|----------------|-------|
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), interest-cohort=()` |
+| `X-DNS-Prefetch-Control` | `off` |
+| `X-Powered-By` | Removed (disabled via `poweredByHeader: false`) |
+
+### 7.4 Rate Limiting
+
+IP-based sliding-window rate limiter in middleware:
+- **120 requests/minute** per IP on all protected API routes
+- Returns `429 Too Many Requests` with `Retry-After: 60` header when exceeded
+- Stale entries auto-cleaned every 5 minutes
+
+### 7.5 Authentication Responses
+
+- Protected API routes return **`401 JSON`** (`{"error":"Authentication required"}`) for unauthenticated requests
+- Previously returned `200` with sign-in page HTML, which confused API consumers and masked the auth requirement
+
+### 7.6 Verified Secure (Dynamic Scan)
+
+| Test | Result |
+|------|--------|
+| CORS origin reflection | No `Access-Control-Allow-Origin` reflected for any origin |
+| Path traversal (`../../etc/passwd`) | Blocked — 404 |
+| Sensitive files (`.env`, `.git`, `nexus.db`) | All return 404 |
+| XSS reflection | Not reflected |
+| Source maps | Not exposed |
+| Data exposure without auth | No real data leaks — all routes return 401 |
+
+---
+
+## 8. API Routes
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
@@ -371,7 +440,7 @@ Premium dark theme inspired by OpenClaw.ai, with coral accent colors, glass morp
 
 ---
 
-## 8. Deployment
+## 9. Deployment
 
 ### Local Development
 
@@ -426,7 +495,7 @@ NODE_OPTIONS='--max-old-space-size=256' npx next start -p 3000
 
 ---
 
-## 9. Migration from Single-User
+## 10. Migration from Single-User
 
 If upgrading from a previous single-owner installation, the database migration runs automatically on first startup:
 
@@ -439,7 +508,7 @@ No manual steps required — the migration is idempotent and safe to run multipl
 
 ---
 
-## 10. Project Structure
+## 11. Project Structure
 
 ```
 src/
@@ -500,5 +569,5 @@ src/
 │   │   └── manager.ts          # Connect, discover, invoke
 │   ├── scheduler/              # Proactive cron scheduler
 │   └── bootstrap.ts            # Runtime initialization
-└── middleware.ts                # Auth middleware (JWT validation)
+└── middleware.ts                # Auth + rate limiting + security middleware
 ```
