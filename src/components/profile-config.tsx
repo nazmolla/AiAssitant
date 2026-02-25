@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { useTheme, THEMES, ThemeId } from "@/components/theme-provider";
+import { useTheme, THEMES, ThemeId, FONTS, FontId } from "@/components/theme-provider";
 
 interface ProfileData {
   display_name: string;
@@ -25,6 +25,7 @@ interface ProfileData {
   company: string;
   screen_sharing_enabled: number;
   theme: string;
+  font: string;
   timezone: string;
 }
 
@@ -44,6 +45,7 @@ const EMPTY: ProfileData = {
   company: "",
   screen_sharing_enabled: 1,
   theme: "ember",
+  font: "inter",
   timezone: "",
 };
 
@@ -53,7 +55,7 @@ export function ProfileConfig() {
   const [saved, setSaved] = useState(false);
   const [skillInput, setSkillInput] = useState("");
   const [langInput, setLangInput] = useState("");
-  const { theme, setTheme, timezone, setTimezone } = useTheme();
+  const { theme, setTheme, font, setFont, timezone, setTimezone } = useTheme();
 
   const timezones = useMemo(() => {
     try {
@@ -78,6 +80,7 @@ export function ProfileConfig() {
       setProfile(merged);
       // Sync with context — profile is the source of truth
       if (merged.theme && merged.theme !== theme) setTheme(merged.theme as ThemeId);
+      if (merged.font && merged.font !== font) setFont(merged.font as FontId);
       if (merged.timezone !== timezone) setTimezone(merged.timezone || "");
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -325,6 +328,38 @@ export function ProfileConfig() {
                   <div className="min-w-0">
                     <div className="text-[13px] font-medium truncate">{t.label}</div>
                     <div className="text-[10px] text-muted-foreground/60 truncate">{t.description}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Font picker */}
+          <div>
+            <label className={labelClass}>Font</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
+              {FONTS.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => {
+                    update("font", f.id);
+                    setFont(f.id);
+                  }}
+                  className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left border transition-all duration-200 ${
+                    profile.font === f.id
+                      ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                      : "border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.03]"
+                  }`}
+                >
+                  <span
+                    className="text-lg font-medium shrink-0 text-primary/70"
+                    style={{ fontFamily: f.preview }}
+                  >
+                    Aa
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium truncate">{f.label}</div>
+                    <div className="text-[10px] text-muted-foreground/60 truncate">{f.description}</div>
                   </div>
                 </button>
               ))}

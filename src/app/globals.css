@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -370,6 +372,23 @@
     pointer-events: none;
     border-radius: inherit;
   }
+}
+
+/* ── Font overrides ──────────────────────────────────── */
+
+[data-font="calibri"] {
+  --font-sans: 'Calibri', 'Carlito', 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
+}
+
+[data-font="google"] {
+  --font-sans: 'Roboto', 'Arial', sans-serif;
+  font-family: var(--font-sans);
+}
+
+[data-font="apple"] {
+  --font-sans: -apple-system, 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* Smooth transitions everywhere */

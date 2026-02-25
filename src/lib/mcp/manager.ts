@@ -89,11 +89,10 @@ class McpManager {
       if (!endpoint) {
         throw new Error("Streamable HTTP transport requires a URL.");
       }
+      const httpHeaders = { ...envVars, ...authHeaders } as Record<string, string>;
       try {
         const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
-          requestInit: {
-            headers: { ...authHeaders } as Record<string, string>,
-          },
+          requestInit: { headers: httpHeaders },
         });
         await client.connect(transport);
       } catch (streamErr) {
@@ -104,17 +103,35 @@ class McpManager {
           message: `StreamableHTTP failed for "${server.name}", falling back to SSE: ${streamErr}`,
           metadata: JSON.stringify({ serverId: server.id }),
         });
-        client = new Client(
-          { name: "nexus-agent", version: "1.0.0" },
-          { capabilities: {} }
-        );
-        const sseUrl = endpoint.replace(/\/$/, "") + "/sse";
-        const sseTransport = new SSEClientTransport(new URL(sseUrl), {
-          requestInit: {
-            headers: { ...envVars, ...authHeaders } as Record<string, string>,
-          },
-        } as any);
-        await client.connect(sseTransport);
+
+        // Try SSE at the original URL first (some servers use SSE at the same endpoint)
+        try {
+          client = new Client(
+            { name: "nexus-agent", version: "1.0.0" },
+            { capabilities: {} }
+          );
+          const sseTransport = new SSEClientTransport(new URL(endpoint), {
+            requestInit: { headers: httpHeaders },
+          } as any);
+          await client.connect(sseTransport);
+        } catch (_sseErr) {
+          // Last resort: try SSE at endpoint + /sse (legacy MCP convention)
+          addLog({
+            level: "info",
+            source: "mcp",
+            message: `SSE at original URL failed for "${server.name}", trying /sse suffix: ${_sseErr}`,
+            metadata: JSON.stringify({ serverId: server.id }),
+          });
+          client = new Client(
+            { name: "nexus-agent", version: "1.0.0" },
+            { capabilities: {} }
+          );
+          const sseUrl = endpoint.replace(/\/$/, "") + "/sse";
+          const sseTransport2 = new SSEClientTransport(new URL(sseUrl), {
+            requestInit: { headers: httpHeaders },
+          } as any);
+          await client.connect(sseTransport2);
+        }
       }
     } else {
       throw new Error(`Transport type "${transportType}" not supported.`);

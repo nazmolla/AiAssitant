@@ -35,7 +35,7 @@ export async function PUT(req: Request) {
       "display_name", "title", "bio", "location", "phone",
       "email", "website", "linkedin", "github", "twitter",
       "skills", "languages", "company", "screen_sharing_enabled",
-      "theme", "timezone",
+      "theme", "font", "timezone",
     ] as const;
     const sanitized: Record<string, unknown> = {};
     for (const key of ALLOWED_FIELDS) {

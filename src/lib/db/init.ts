@@ -274,6 +274,9 @@ function ensureProfilePreferencesColumns(): void {
     if (!cols.has("theme")) {
       db.prepare(`ALTER TABLE ${table} ADD COLUMN theme TEXT DEFAULT 'ember'`).run();
     }
+    if (!cols.has("font")) {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN font TEXT DEFAULT 'inter'`).run();
+    }
     if (!cols.has("timezone")) {
       db.prepare(`ALTER TABLE ${table} ADD COLUMN timezone TEXT DEFAULT ''`).run();
     }

@@ -16,13 +16,24 @@ interface ToolDef {
   description: string;
 }
 
+interface McpServer {
+  id: string;
+  name: string;
+}
+
 export function ToolPolicies() {
   const [tools, setTools] = useState<ToolDef[]>([]);
   const [policies, setPolicies] = useState<ToolPolicy[]>([]);
+  const [serverNames, setServerNames] = useState<Record<string, string>>({});
 
   const fetchAll = useCallback(() => {
     fetch("/api/mcp/tools").then((r) => r.json()).then(setTools).catch(console.error);
     fetch("/api/policies").then((r) => r.json()).then(setPolicies).catch(console.error);
+    fetch("/api/mcp").then((r) => r.json()).then((servers: McpServer[]) => {
+      const map: Record<string, string> = {};
+      for (const s of servers) map[s.id] = s.name;
+      setServerNames(map);
+    }).catch(console.error);
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -114,7 +125,16 @@ export function ToolPolicies() {
                 const policy = policies.find((p) => p.tool_name === tool.name);
                 return (
                   <tr key={tool.name} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors duration-200">
-                    <td className="p-4 text-sm font-mono text-primary/80">{tool.name}</td>
+                    <td className="p-4 text-sm font-mono text-primary/80">
+                      {(() => {
+                        const dotIdx = tool.name.indexOf(".");
+                        if (dotIdx === -1) return tool.name;
+                        const serverId = tool.name.substring(0, dotIdx);
+                        const toolName = tool.name.substring(dotIdx + 1);
+                        const serverLabel = serverNames[serverId] || serverId;
+                        return <>{serverLabel}<span className="text-muted-foreground/40">.</span>{toolName}</>;
+                      })()}
+                    </td>
                     <td className="p-4 text-sm text-muted-foreground/60">
                       {tool.description.substring(0, 80)}
                       {tool.description.length > 80 ? "..." : ""}

@@ -24,9 +24,28 @@ export const THEMES: ThemeOption[] = [
   { id: "obsidian", label: "Obsidian", description: "Ultra-dark rose", swatch: "hsl(340 75% 58%)", darkOnly: true },
 ];
 
+export type FontId = "inter" | "calibri" | "google" | "apple";
+
+export interface FontOption {
+  id: FontId;
+  label: string;
+  description: string;
+  /** Preview font-family stack (used for swatch label rendering) */
+  preview: string;
+}
+
+export const FONTS: FontOption[] = [
+  { id: "inter", label: "Inter", description: "Clean & modern (default)", preview: "'Inter', system-ui, sans-serif" },
+  { id: "calibri", label: "Calibri", description: "Microsoft classic", preview: "'Calibri', 'Carlito', 'Segoe UI', sans-serif" },
+  { id: "google", label: "Roboto", description: "Google default", preview: "'Roboto', 'Arial', sans-serif" },
+  { id: "apple", label: "SF Pro", description: "Apple system font", preview: "-apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif" },
+];
+
 interface ThemeContextValue {
   theme: ThemeId;
   setTheme: (theme: ThemeId) => void;
+  font: FontId;
+  setFont: (font: FontId) => void;
   timezone: string;
   setTimezone: (tz: string) => void;
   /** Format a UTC date string using the user's preferred timezone */
@@ -36,6 +55,8 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue>({
   theme: "ember",
   setTheme: () => {},
+  font: "inter",
+  setFont: () => {},
   timezone: "",
   setTimezone: () => {},
   formatDate: (d) => new Date(d).toLocaleString(),
@@ -46,9 +67,11 @@ export function useTheme() {
 }
 
 const STORAGE_KEY = "nexus-theme";
+const FONT_STORAGE_KEY = "nexus-font";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeId>("ember");
+  const [font, setFontState] = useState<FontId>("inter");
   const [timezone, setTimezoneState] = useState<string>("");
 
   // Load from localStorage immediately, then override with DB profile
@@ -59,6 +82,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       if (cached && THEMES.some((t) => t.id === cached)) {
         setThemeState(cached);
         applyTheme(cached);
+      }
+      const cachedFont = localStorage.getItem(FONT_STORAGE_KEY) as FontId | null;
+      if (cachedFont && FONTS.some((f) => f.id === cachedFont)) {
+        setFontState(cachedFont);
+        applyFont(cachedFont);
       }
     } catch {}
 
@@ -71,6 +99,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             setThemeState(data.theme);
             applyTheme(data.theme);
             try { localStorage.setItem(STORAGE_KEY, data.theme); } catch {}
+          }
+          if (data.font && FONTS.some((f: FontOption) => f.id === data.font)) {
+            setFontState(data.font);
+            applyFont(data.font);
+            try { localStorage.setItem(FONT_STORAGE_KEY, data.font); } catch {}
           }
           if (typeof data.timezone === "string") {
             setTimezoneState(data.timezone);
@@ -98,6 +131,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     saveToProfile("theme", id);
   }, [saveToProfile]);
 
+  const setFont = useCallback((id: FontId) => {
+    setFontState(id);
+    applyFont(id);
+    try { localStorage.setItem(FONT_STORAGE_KEY, id); } catch {}
+    saveToProfile("font", id);
+  }, [saveToProfile]);
+
   const setTimezone = useCallback((tz: string) => {
     setTimezoneState(tz);
     saveToProfile("timezone", tz);
@@ -114,7 +154,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [timezone]);
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, timezone, setTimezone, formatDate }}>
+    <ThemeContext.Provider value={{ theme, setTheme, font, setFont, timezone, setTimezone, formatDate }}>
       {children}
     </ThemeContext.Provider>
   );
@@ -122,9 +162,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 function applyTheme(id: ThemeId) {
   const html = document.documentElement;
-  // Remove all theme data attributes
   html.removeAttribute("data-theme");
   if (id !== "ember") {
     html.setAttribute("data-theme", id);
+  }
+}
+
+function applyFont(id: FontId) {
+  const html = document.documentElement;
+  html.removeAttribute("data-font");
+  if (id !== "inter") {
+    html.setAttribute("data-font", id);
   }
 }
