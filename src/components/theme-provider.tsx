@@ -27,11 +27,18 @@ export const THEMES: ThemeOption[] = [
 interface ThemeContextValue {
   theme: ThemeId;
   setTheme: (theme: ThemeId) => void;
+  timezone: string;
+  setTimezone: (tz: string) => void;
+  /** Format a UTC date string using the user's preferred timezone */
+  formatDate: (utcDate: string, options?: Intl.DateTimeFormatOptions) => string;
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
   theme: "ember",
   setTheme: () => {},
+  timezone: "",
+  setTimezone: () => {},
+  formatDate: (d) => new Date(d).toLocaleString(),
 });
 
 export function useTheme() {
@@ -42,32 +49,72 @@ const STORAGE_KEY = "nexus-theme";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeId>("ember");
+  const [timezone, setTimezoneState] = useState<string>("");
 
-  // Load saved theme on mount
+  // Load from localStorage immediately, then override with DB profile
   useEffect(() => {
+    // 1. Quick load from localStorage cache (prevents flash)
     try {
-      const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
-      if (saved && THEMES.some((t) => t.id === saved)) {
-        setThemeState(saved);
-        applyTheme(saved);
+      const cached = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
+      if (cached && THEMES.some((t) => t.id === cached)) {
+        setThemeState(cached);
+        applyTheme(cached);
       }
-    } catch {
-      // ignore — SSR or localStorage unavailable
-    }
+    } catch {}
+
+    // 2. Load authoritative values from profile API
+    fetch("/api/config/profile")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && !data.error) {
+          if (data.theme && THEMES.some((t: ThemeOption) => t.id === data.theme)) {
+            setThemeState(data.theme);
+            applyTheme(data.theme);
+            try { localStorage.setItem(STORAGE_KEY, data.theme); } catch {}
+          }
+          if (typeof data.timezone === "string") {
+            setTimezoneState(data.timezone);
+          }
+        }
+      })
+      .catch(() => {
+        // Not logged in or API unavailable — keep localStorage/defaults
+      });
+  }, []);
+
+  /** Save a preference field to the profile API */
+  const saveToProfile = useCallback((field: string, value: string) => {
+    fetch("/api/config/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    }).catch(() => {});
   }, []);
 
   const setTheme = useCallback((id: ThemeId) => {
     setThemeState(id);
     applyTheme(id);
-    try {
-      localStorage.setItem(STORAGE_KEY, id);
-    } catch {
-      // ignore
-    }
-  }, []);
+    try { localStorage.setItem(STORAGE_KEY, id); } catch {}
+    saveToProfile("theme", id);
+  }, [saveToProfile]);
+
+  const setTimezone = useCallback((tz: string) => {
+    setTimezoneState(tz);
+    saveToProfile("timezone", tz);
+  }, [saveToProfile]);
+
+  const formatDate = useCallback((utcDate: string, options?: Intl.DateTimeFormatOptions) => {
+    const normalized = utcDate.endsWith("Z") ? utcDate : utcDate + "Z";
+    const date = new Date(normalized);
+    const opts: Intl.DateTimeFormatOptions = {
+      ...options,
+      ...(timezone ? { timeZone: timezone } : {}),
+    };
+    return date.toLocaleString(undefined, opts);
+  }, [timezone]);
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme }}>
+    <ThemeContext.Provider value={{ theme, setTheme, timezone, setTimezone, formatDate }}>
       {children}
     </ThemeContext.Provider>
   );

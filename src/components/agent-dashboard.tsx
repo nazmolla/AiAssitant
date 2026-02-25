@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useTheme } from "@/components/theme-provider";
 
 interface LogEntry {
   id: number;
@@ -17,6 +18,7 @@ interface LogEntry {
 export function AgentDashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const { formatDate } = useTheme();
 
   const fetchLogs = () => {
     fetch("/api/logs?limit=200")
@@ -126,7 +128,7 @@ export function AgentDashboard() {
                   className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-white/[0.03] text-sm font-mono transition-colors duration-200"
                 >
                   <span className="text-[11px] text-muted-foreground/50 whitespace-nowrap font-light">
-                    {new Date(log.created_at.endsWith("Z") ? log.created_at : log.created_at + "Z").toLocaleTimeString()}
+                    {formatDate(log.created_at, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                   </span>
                   <Badge variant={levelColor(log.level) as "default"}>
                     {log.level}

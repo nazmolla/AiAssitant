@@ -109,4 +109,28 @@ describe("PUT /api/config/profile", () => {
     const data = await res.json();
     expect(data.screen_sharing_enabled).toBe(1);
   });
+
+  test("saves and returns theme preference", async () => {
+    setMockUser({ id: userId, email: "profile-api@example.com", role: "user" });
+    const req = new NextRequest("http://localhost/api/config/profile", {
+      method: "PUT",
+      body: JSON.stringify({ theme: "midnight" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await PUT(req);
+    const data = await res.json();
+    expect(data.theme).toBe("midnight");
+  });
+
+  test("saves and returns timezone preference", async () => {
+    setMockUser({ id: userId, email: "profile-api@example.com", role: "user" });
+    const req = new NextRequest("http://localhost/api/config/profile", {
+      method: "PUT",
+      body: JSON.stringify({ timezone: "Asia/Dubai" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await PUT(req);
+    const data = await res.json();
+    expect(data.timezone).toBe("Asia/Dubai");
+  });
 });

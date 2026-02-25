@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { useTheme, THEMES, ThemeId } from "@/components/theme-provider";
 
 interface ProfileData {
   display_name: string;
@@ -23,6 +24,8 @@ interface ProfileData {
   languages: string;
   company: string;
   screen_sharing_enabled: number;
+  theme: string;
+  timezone: string;
 }
 
 const EMPTY: ProfileData = {
@@ -40,6 +43,8 @@ const EMPTY: ProfileData = {
   languages: "[]",
   company: "",
   screen_sharing_enabled: 1,
+  theme: "ember",
+  timezone: "",
 };
 
 export function ProfileConfig() {
@@ -48,14 +53,34 @@ export function ProfileConfig() {
   const [saved, setSaved] = useState(false);
   const [skillInput, setSkillInput] = useState("");
   const [langInput, setLangInput] = useState("");
+  const { theme, setTheme, timezone, setTimezone } = useTheme();
+
+  const timezones = useMemo(() => {
+    try {
+      return Intl.supportedValuesOf("timeZone");
+    } catch {
+      // Fallback for older engines
+      return [
+        "UTC",
+        "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+        "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Moscow",
+        "Asia/Dubai", "Asia/Kolkata", "Asia/Shanghai", "Asia/Tokyo",
+        "Australia/Sydney", "Pacific/Auckland",
+      ];
+    }
+  }, []);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/config/profile");
     const data = await res.json();
     if (data && !data.error) {
-      setProfile({ ...EMPTY, ...data });
+      const merged = { ...EMPTY, ...data };
+      setProfile(merged);
+      // Sync with context — profile is the source of truth
+      if (merged.theme && merged.theme !== theme) setTheme(merged.theme as ThemeId);
+      if (merged.timezone !== timezone) setTimezone(merged.timezone || "");
     }
-  }, []);
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
 
@@ -266,6 +291,66 @@ export function ProfileConfig() {
             <Button variant="outline" size="sm" onClick={addLang}>
               Add
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Preferences — Theme & Timezone */}
+      <Card className="md:col-span-2">
+        <CardHeader>
+          <CardTitle className="text-lg font-display">Preferences</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Theme picker */}
+          <div>
+            <label className={labelClass}>Theme</label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-1">
+              {THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    update("theme", t.id);
+                    setTheme(t.id);
+                  }}
+                  className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left border transition-all duration-200 ${
+                    profile.theme === t.id
+                      ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                      : "border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.03]"
+                  }`}
+                >
+                  <span
+                    className="h-4 w-4 rounded-full border border-white/20 shrink-0"
+                    style={{ background: t.swatch }}
+                  />
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium truncate">{t.label}</div>
+                    <div className="text-[10px] text-muted-foreground/60 truncate">{t.description}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Timezone picker */}
+          <div>
+            <label className={labelClass}>Timezone</label>
+            <select
+              value={profile.timezone}
+              onChange={(e) => {
+                update("timezone", e.target.value);
+                setTimezone(e.target.value);
+              }}
+              className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            >
+              <option value="">Auto (browser default)</option>
+              {timezones.map((tz) => (
+                <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-muted-foreground/50 mt-1">
+              Controls how dates and times are displayed throughout the app.
+              {timezone ? ` Current: ${timezone}` : " Using your browser's timezone."}
+            </p>
           </div>
         </CardContent>
       </Card>

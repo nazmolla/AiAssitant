@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     languages TEXT DEFAULT '[]',
     company TEXT DEFAULT '',
     screen_sharing_enabled INTEGER DEFAULT 1,
+    theme TEXT DEFAULT 'ember',
+    timezone TEXT DEFAULT '',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

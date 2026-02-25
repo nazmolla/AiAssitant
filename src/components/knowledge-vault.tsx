@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useTheme } from "@/components/theme-provider";
 
 interface KnowledgeEntry {
   id: number;
@@ -18,6 +19,7 @@ export function KnowledgeVault() {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
+  const { formatDate } = useTheme();
 
   const fetchKnowledge = () => {
     fetch("/api/knowledge")
@@ -96,7 +98,7 @@ export function KnowledgeVault() {
                     )}
                   </td>
                   <td className="p-4 text-xs text-muted-foreground/50">
-                    {new Date(entry.last_updated).toLocaleDateString()}
+                    {formatDate(entry.last_updated, { year: "numeric", month: "short", day: "numeric" })}
                   </td>
                   <td className="p-4 text-right">
                     <div className="flex justify-end gap-1">

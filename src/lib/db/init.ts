@@ -266,6 +266,20 @@ function ensureUserAccessManagement(): void {
   }
 }
 
+function ensureProfilePreferencesColumns(): void {
+  const db = getDb();
+  for (const table of ["owner_profile", "user_profiles"] as const) {
+    if (!tableExists(table)) continue;
+    const cols = getColumns(table);
+    if (!cols.has("theme")) {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN theme TEXT DEFAULT 'ember'`).run();
+    }
+    if (!cols.has("timezone")) {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN timezone TEXT DEFAULT ''`).run();
+    }
+  }
+}
+
 export function initializeDatabase(): void {
   const db = getDb();
   db.exec(SCHEMA_SQL);
@@ -278,6 +292,7 @@ export function initializeDatabase(): void {
   migrateToMultiUser();
   ensureChannelUserId();
   ensureUserAccessManagement();
+  ensureProfilePreferencesColumns();
   seedFsToolPolicies();
   console.log("[Nexus DB] Schema initialized successfully.");
 }

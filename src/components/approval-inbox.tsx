@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useTheme } from "@/components/theme-provider";
 
 interface ApprovalRequest {
   id: string;
@@ -18,6 +19,7 @@ interface ApprovalRequest {
 export function ApprovalInbox() {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [acting, setActing] = useState<string | null>(null);
+  const { formatDate } = useTheme();
 
   const fetchApprovals = () => {
     fetch("/api/approvals")
@@ -91,7 +93,7 @@ export function ApprovalInbox() {
                     <Badge variant="warning">Pending</Badge>
                   </div>
                   <CardDescription className="text-muted-foreground/50">
-                    {new Date(approval.created_at.endsWith("Z") ? approval.created_at : approval.created_at + "Z").toLocaleString()}
+                    {formatDate(approval.created_at)}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">

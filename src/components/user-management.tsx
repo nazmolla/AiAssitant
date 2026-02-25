@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { useTheme } from "@/components/theme-provider";
 
 interface UserPermissions {
   user_id: string;
@@ -46,6 +47,7 @@ export function UserManagement() {
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const { formatDate } = useTheme();
 
   const load = useCallback(async () => {
     try {
@@ -158,7 +160,7 @@ export function UserManagement() {
                     )}
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {user.email} · {user.provider_id} · joined {new Date(user.created_at.endsWith("Z") ? user.created_at : user.created_at + "Z").toLocaleDateString()}
+                    {user.email} · {user.provider_id} · joined {formatDate(user.created_at, { year: "numeric", month: "short", day: "numeric" })}
                   </p>
                 </div>
               </div>

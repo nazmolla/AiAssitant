@@ -68,5 +68,17 @@ describe("User Profiles", () => {
     expect(profile.skills).toBe("[]");
     expect(profile.languages).toBe("[]");
     expect(profile.phone).toBe("");
+    expect(profile.theme).toBe("ember");
+    expect(profile.timezone).toBe("");
+  });
+
+  test("upsertUserProfile handles theme and timezone preferences", () => {
+    let profile = upsertUserProfile(userId, { theme: "midnight", timezone: "America/New_York" });
+    expect(profile.theme).toBe("midnight");
+    expect(profile.timezone).toBe("America/New_York");
+    // Update just one field — other should be preserved
+    profile = upsertUserProfile(userId, { timezone: "Europe/London" });
+    expect(profile.theme).toBe("midnight");
+    expect(profile.timezone).toBe("Europe/London");
   });
 });

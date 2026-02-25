@@ -181,6 +181,8 @@ export interface UserProfile {
   languages: string;
   company: string;
   screen_sharing_enabled: number;
+  theme: string;
+  timezone: string;
   updated_at: string;
 }
 
@@ -205,11 +207,13 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
     languages: profile.languages ?? existing?.languages ?? "[]",
     company: profile.company ?? existing?.company ?? "",
     screen_sharing_enabled: profile.screen_sharing_enabled ?? existing?.screen_sharing_enabled ?? 1,
+    theme: profile.theme ?? existing?.theme ?? "ember",
+    timezone: profile.timezone ?? existing?.timezone ?? "",
   };
   getDb()
     .prepare(
-      `INSERT INTO user_profiles (user_id, display_name, title, bio, location, phone, email, website, linkedin, github, twitter, skills, languages, company, screen_sharing_enabled, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `INSERT INTO user_profiles (user_id, display_name, title, bio, location, phone, email, website, linkedin, github, twitter, skills, languages, company, screen_sharing_enabled, theme, timezone, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(user_id) DO UPDATE SET
          display_name = excluded.display_name,
          title = excluded.title,
@@ -225,6 +229,8 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
          languages = excluded.languages,
          company = excluded.company,
          screen_sharing_enabled = excluded.screen_sharing_enabled,
+         theme = excluded.theme,
+         timezone = excluded.timezone,
          updated_at = CURRENT_TIMESTAMP`
     )
     .run(
@@ -232,7 +238,7 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
       p.display_name, p.title, p.bio, p.location,
       p.phone, p.email, p.website, p.linkedin,
       p.github, p.twitter, p.skills, p.languages, p.company,
-      p.screen_sharing_enabled
+      p.screen_sharing_enabled, p.theme, p.timezone
     );
   return getUserProfile(userId)!;
 }
