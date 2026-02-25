@@ -122,21 +122,19 @@ export function McpConfig() {
 
       const savedId = generatedId;
 
-      // Reset form
-      setNewName(""); setNewCommand(""); setNewArgs("");
-      setNewUrl(""); setNewAuthType("none"); setNewAccessToken("");
-      setNewClientId(""); setNewClientSecret("");
-
       // For OAuth without existing token: redirect to OAuth flow
       if (!isLocal && newAuthType === "oauth" && !newAccessToken) {
+        // Reset form only for OAuth redirect (user will return via callback)
+        setNewName(""); setNewCommand(""); setNewArgs("");
+        setNewUrl(""); setNewAuthType("none"); setNewAccessToken("");
+        setNewClientId(""); setNewClientSecret("");
         setAddingStatus("connecting");
         setStatusMessage("Redirecting to OAuth login...");
-        // Redirect to our OAuth initiation endpoint
         window.location.href = `/api/mcp/${savedId}/oauth/authorize`;
         return;
       }
 
-      // Auto-connect
+      // Auto-connect — if this fails we roll back (delete the saved server)
       setAddingStatus("connecting");
       setStatusMessage("Connecting to server and discovering tools...");
 
@@ -144,8 +142,19 @@ export function McpConfig() {
       const connectData = await connectRes.json();
 
       if (!connectRes.ok) {
-        throw new Error(connectData.error || "Connection failed");
+        // Connection failed — remove the server we just saved so it doesn't linger
+        await fetch(`/api/mcp?id=${savedId}`, { method: "DELETE" }).catch(() => {});
+        setAddingStatus("error");
+        setStatusMessage(connectData.error || "Connection failed. Server was not added.");
+        fetchAll();
+        // Do NOT reset form fields so the user can fix and retry
+        return;
       }
+
+      // Success — now clear the form
+      setNewName(""); setNewCommand(""); setNewArgs("");
+      setNewUrl(""); setNewAuthType("none"); setNewAccessToken("");
+      setNewClientId(""); setNewClientSecret("");
 
       setAddingStatus("done");
       setStatusMessage(`Connected! Discovered ${connectData.tools?.length || 0} tools.`);
@@ -155,6 +164,7 @@ export function McpConfig() {
       setAddingStatus("error");
       setStatusMessage(err instanceof Error ? err.message : "An error occurred");
       fetchAll();
+      // Do NOT reset form fields on error
     }
   }
 
