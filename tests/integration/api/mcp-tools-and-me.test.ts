@@ -1,0 +1,86 @@
+/**
+ * Integration tests — MCP Tools API (/api/mcp/tools) and
+ * Admin Users Me API (/api/admin/users/me)
+ */
+import { installAuthMocks, setMockUser } from "../../helpers/mock-auth";
+installAuthMocks();
+
+// Mock MCP manager
+jest.mock("@/lib/mcp", () => ({
+  getMcpManager: jest.fn(() => ({
+    getAllTools: jest.fn(() => [
+      { name: "mcp_tool_1", description: "Tool one", serverId: "s1" },
+      { name: "mcp_tool_2", description: "Tool two", serverId: "s2" },
+    ]),
+  })),
+}));
+
+import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db";
+import { GET as GET_TOOLS } from "@/app/api/mcp/tools/route";
+import { GET as GET_ME } from "@/app/api/admin/users/me/route";
+
+let adminId: string;
+let userId: string;
+
+beforeAll(() => {
+  setupTestDb();
+  adminId = seedTestUser({ email: "tools-admin@test.com", role: "admin" });
+  userId = seedTestUser({ email: "tools-user@test.com", role: "user" });
+});
+afterAll(() => teardownTestDb());
+
+/* ------------------------------------------------------------------ */
+/*  MCP Tools API                                                      */
+/* ------------------------------------------------------------------ */
+describe("GET /api/mcp/tools", () => {
+  test("returns 401 when unauthenticated", async () => {
+    setMockUser(null);
+    const res = await GET_TOOLS();
+    expect(res.status).toBe(401);
+  });
+
+  test("returns 403 for non-admin", async () => {
+    setMockUser({ id: userId, email: "tools-user@test.com", role: "user" });
+    const res = await GET_TOOLS();
+    expect(res.status).toBe(403);
+  });
+
+  test("admin sees all tools", async () => {
+    setMockUser({ id: adminId, email: "tools-admin@test.com", role: "admin" });
+    const res = await GET_TOOLS();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveLength(2);
+    expect(data[0].name).toBe("mcp_tool_1");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Admin Users /me API                                                */
+/* ------------------------------------------------------------------ */
+describe("GET /api/admin/users/me", () => {
+  test("returns 401 when unauthenticated", async () => {
+    setMockUser(null);
+    const res = await GET_ME();
+    expect(res.status).toBe(401);
+  });
+
+  test("regular user gets their role and permissions", async () => {
+    setMockUser({ id: userId, email: "tools-user@test.com", role: "user" });
+    const res = await GET_ME();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.role).toBe("user");
+    expect(data.permissions).toBeDefined();
+    expect(data.permissions.chat).toBeDefined();
+  });
+
+  test("admin user gets admin role", async () => {
+    setMockUser({ id: adminId, email: "tools-admin@test.com", role: "admin" });
+    const res = await GET_ME();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.role).toBe("admin");
+    expect(data.permissions).toBeDefined();
+  });
+});

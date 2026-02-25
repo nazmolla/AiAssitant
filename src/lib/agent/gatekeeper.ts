@@ -149,6 +149,9 @@ export async function executeApprovedTool(
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
 
+    // Still unfreeze the thread — the approval was resolved, don't leave it stuck
+    updateThreadStatus(threadId, "active");
+
     addLog({
       level: "error",
       source: "hitl",

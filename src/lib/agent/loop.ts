@@ -607,11 +607,18 @@ async function executeBuiltinBrowserTool(
       reasoning: reasoning || null,
     });
 
+    const approvalMeta = JSON.stringify({
+      approvalId: approval.id,
+      tool_name: toolCall.name,
+      args: toolCall.arguments,
+      reasoning: reasoning || null,
+    });
+
     updateThreadStatus(threadId, "awaiting_approval");
     addMsg({
       thread_id: threadId,
       role: "system",
-      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.`,
+      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
       tool_calls: null,
       tool_results: null,
       attachments: null,
@@ -668,11 +675,18 @@ async function executeBuiltinTool(
       reasoning: reasoning || null,
     });
 
+    const approvalMeta = JSON.stringify({
+      approvalId: approval.id,
+      tool_name: toolCall.name,
+      args: toolCall.arguments,
+      reasoning: reasoning || null,
+    });
+
     updateThreadStatus(threadId, "awaiting_approval");
     addMsg({
       thread_id: threadId,
       role: "system",
-      content: `⏸️ Action paused: "${toolCall.name}" requires your approval.`,
+      content: `⏸️ Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
       tool_calls: null,
       tool_results: null,
       attachments: null,
@@ -729,11 +743,18 @@ async function executeBuiltinFsToolWithGatekeeper(
       reasoning: reasoning || null,
     });
 
+    const approvalMeta = JSON.stringify({
+      approvalId: approval.id,
+      tool_name: toolCall.name,
+      args: toolCall.arguments,
+      reasoning: reasoning || null,
+    });
+
     updateThreadStatus(threadId, "awaiting_approval");
     addMsg({
       thread_id: threadId,
       role: "system",
-      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.`,
+      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
       tool_calls: null,
       tool_results: null,
       attachments: null,
@@ -790,11 +811,18 @@ async function executeBuiltinNetworkToolWithGatekeeper(
       reasoning: reasoning || null,
     });
 
+    const approvalMeta = JSON.stringify({
+      approvalId: approval.id,
+      tool_name: toolCall.name,
+      args: toolCall.arguments,
+      reasoning: reasoning || null,
+    });
+
     updateThreadStatus(threadId, "awaiting_approval");
     addMsg({
       thread_id: threadId,
       role: "system",
-      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.`,
+      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
       tool_calls: null,
       tool_results: null,
       attachments: null,
