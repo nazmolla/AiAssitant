@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { listPendingApprovals, updateApprovalStatus, getThreadMessages, addMessage, getThread } from "@/lib/db";
+import { listPendingApprovals, getApprovalById, updateApprovalStatus, getThreadMessages, addMessage, getThread } from "@/lib/db";
 import { executeApprovedTool, continueAgentLoop } from "@/lib/agent";
 import type { ToolCall } from "@/lib/llm";
 
@@ -54,12 +54,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Find the approval
-  const pending = listPendingApprovals();
-  const approval = pending.find((a) => a.id === approvalId);
+  // Find the approval — look up by ID directly (not just pending)
+  const approval = getApprovalById(approvalId);
 
   if (!approval) {
-    return NextResponse.json({ error: "Approval not found or already resolved." }, { status: 404 });
+    return NextResponse.json({ error: "Approval not found." }, { status: 404 });
+  }
+
+  // If already resolved, return success with the existing status
+  if (approval.status !== "pending") {
+    return NextResponse.json({ status: approval.status, alreadyResolved: true });
   }
 
   // Ensure user is admin or owns the thread

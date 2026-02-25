@@ -815,6 +815,10 @@ export function createApprovalRequest(req: Omit<ApprovalRequest, "id" | "status"
   return getDb().prepare("SELECT * FROM approval_queue WHERE id = ?").get(id) as ApprovalRequest;
 }
 
+export function getApprovalById(id: string): ApprovalRequest | undefined {
+  return getDb().prepare("SELECT * FROM approval_queue WHERE id = ?").get(id) as ApprovalRequest | undefined;
+}
+
 export function listPendingApprovals(): ApprovalRequest[] {
   return getDb()
     .prepare("SELECT * FROM approval_queue WHERE status = 'pending' ORDER BY created_at DESC")

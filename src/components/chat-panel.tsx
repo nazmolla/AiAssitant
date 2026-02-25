@@ -113,6 +113,7 @@ export function ChatPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [actingApproval, setActingApproval] = useState<string | null>(null);
+  const [resolvedApprovals, setResolvedApprovals] = useState<Record<string, string>>({});
   const [showSidebar, setShowSidebar] = useState(true);
 
   // Screen sharing state
@@ -368,6 +369,9 @@ export function ChatPanel() {
         return;
       }
 
+      // Mark this approval as resolved in local state (hides buttons immediately)
+      setResolvedApprovals((prev) => ({ ...prev, [approvalId]: data.alreadyResolved ? data.status : action }));
+
       // Refresh messages and threads
       if (activeThread) {
         const threadRes = await fetch(`/api/threads/${activeThread}`);
@@ -603,38 +607,49 @@ export function ChatPanel() {
                         </div>
 
                         {/* Inline approval buttons */}
-                        {approvalMeta && (
-                          <div className="mt-3 space-y-2">
-                            <div className="text-[11px] text-muted-foreground/60 space-y-1">
-                              <div><span className="font-medium uppercase tracking-wider">Tool:</span> {approvalMeta.tool_name}</div>
-                              {approvalMeta.reasoning && (
-                                <div><span className="font-medium uppercase tracking-wider">Reason:</span> {approvalMeta.reasoning}</div>
+                        {approvalMeta && (() => {
+                          const resolved = resolvedApprovals[approvalMeta.approvalId];
+                          return (
+                            <div className="mt-3 space-y-2">
+                              <div className="text-[11px] text-muted-foreground/60 space-y-1">
+                                <div><span className="font-medium uppercase tracking-wider">Tool:</span> {approvalMeta.tool_name}</div>
+                                {approvalMeta.reasoning && (
+                                  <div><span className="font-medium uppercase tracking-wider">Reason:</span> {approvalMeta.reasoning}</div>
+                                )}
+                                <details className="mt-1">
+                                  <summary className="cursor-pointer hover:text-foreground transition-colors text-[10px]">Arguments</summary>
+                                  <pre className="text-[10px] bg-white/[0.03] p-2 rounded-lg mt-1 overflow-auto border border-white/[0.06]">
+                                    {JSON.stringify(approvalMeta.args, null, 2)}
+                                  </pre>
+                                </details>
+                              </div>
+                              {resolved ? (
+                                <div className={`text-xs font-medium px-3 py-1.5 rounded-lg inline-block ${
+                                  resolved === "approved" ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" : "bg-red-500/15 text-red-400 border border-red-500/20"
+                                }`}>
+                                  {resolved === "approved" ? "✓ Approved" : "✕ Denied"}
+                                </div>
+                              ) : (
+                                <div className="flex gap-2 pt-1">
+                                  <button
+                                    onClick={() => handleApproval(approvalMeta.approvalId, "approved")}
+                                    disabled={actingApproval === approvalMeta.approvalId}
+                                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/25 transition-all duration-200 disabled:opacity-50"
+                                  >
+                                    {actingApproval === approvalMeta.approvalId ? "Processing..." : "✓ Approve"}
+                                  </button>
+                                  <button
+                                    onClick={() => handleApproval(approvalMeta.approvalId, "rejected")}
+                                    disabled={actingApproval === approvalMeta.approvalId}
+                                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 transition-all duration-200 disabled:opacity-50"
+                                  >
+                                    ✕ Deny
+                                  </button>
+                                </div>
                               )}
-                              <details className="mt-1">
-                                <summary className="cursor-pointer hover:text-foreground transition-colors text-[10px]">Arguments</summary>
-                                <pre className="text-[10px] bg-white/[0.03] p-2 rounded-lg mt-1 overflow-auto border border-white/[0.06]">
-                                  {JSON.stringify(approvalMeta.args, null, 2)}
-                                </pre>
-                              </details>
                             </div>
-                            <div className="flex gap-2 pt-1">
-                              <button
-                                onClick={() => handleApproval(approvalMeta.approvalId, "approved")}
-                                disabled={actingApproval === approvalMeta.approvalId}
-                                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/25 transition-all duration-200 disabled:opacity-50"
-                              >
-                                {actingApproval === approvalMeta.approvalId ? "Processing..." : "✓ Approve"}
-                              </button>
-                              <button
-                                onClick={() => handleApproval(approvalMeta.approvalId, "rejected")}
-                                disabled={actingApproval === approvalMeta.approvalId}
-                                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 transition-all duration-200 disabled:opacity-50"
-                              >
-                                ✕ Deny
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     </div>
                   );

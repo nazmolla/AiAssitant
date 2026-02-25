@@ -190,12 +190,17 @@ export function McpConfig() {
     try {
       const res = await fetch(`/api/mcp?id=${serverId}`, { method: "DELETE" });
       if (!res.ok) {
-        const data = await res.json();
-        alert(data.error || "Failed to remove server");
+        let errorMsg = `Failed to remove server (HTTP ${res.status})`;
+        try {
+          const data = await res.json();
+          if (data.error) errorMsg = data.error;
+        } catch {}
+        alert(errorMsg);
         return;
       }
     } catch (err) {
       console.error("Delete failed:", err);
+      alert(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     fetchAll();
   }

@@ -106,10 +106,20 @@ export async function DELETE(req: NextRequest) {
   }
 
   const mcpManager = getMcpManager();
-  if (mcpManager.isConnected(id)) {
-    await mcpManager.disconnect(id);
+  try {
+    if (mcpManager.isConnected(id)) {
+      await mcpManager.disconnect(id);
+    }
+  } catch (err) {
+    // Disconnect failed — proceed with deletion anyway
+    console.error(`Failed to disconnect MCP server ${id}:`, err);
   }
 
-  deleteMcpServer(id);
+  try {
+    deleteMcpServer(id);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `Failed to delete server: ${msg}` }, { status: 500 });
+  }
   return NextResponse.json({ success: true });
 }
