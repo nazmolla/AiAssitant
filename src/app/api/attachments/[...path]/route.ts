@@ -58,11 +58,15 @@ export async function GET(
 
   const contentType = mimeMap[ext] || "application/octet-stream";
 
+  // Sanitize filename for Content-Disposition header to prevent header injection
+  const safeFilename = path.basename(filePath).replace(/["\r\n]/g, "_");
+
   return new NextResponse(buffer, {
     headers: {
       "Content-Type": contentType,
-      "Content-Disposition": `inline; filename="${path.basename(filePath)}"`,
+      "Content-Disposition": `inline; filename="${safeFilename}"`,
       "Cache-Control": "private, max-age=3600",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

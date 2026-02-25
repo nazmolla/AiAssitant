@@ -280,8 +280,31 @@ const FS_ALLOWED_ROOT = path.resolve(
  */
 function resolvePath(p: string): string {
   const resolved = path.resolve(p);
+  // Resolve symlinks to prevent symlink-based path traversal
+  let realResolved: string;
+  try {
+    realResolved = fs.realpathSync(resolved);
+  } catch {
+    // File may not exist yet (e.g., create operation) — check parent
+    const parentDir = path.dirname(resolved);
+    try {
+      const realParent = fs.realpathSync(parentDir);
+      if (
+        !realParent.startsWith(FS_ALLOWED_ROOT + path.sep) &&
+        realParent !== FS_ALLOWED_ROOT
+      ) {
+        throw new Error(
+          `Access denied: path "${p}" resolves outside the allowed root directory.`
+        );
+      }
+    } catch (parentErr: any) {
+      if (parentErr.message?.startsWith("Access denied")) throw parentErr;
+      // Parent doesn't exist either — fall through to normal check
+    }
+    realResolved = resolved;
+  }
   // Normalise both to use consistent separators
-  const normalised = path.normalize(resolved);
+  const normalised = path.normalize(realResolved);
   if (
     !normalised.startsWith(FS_ALLOWED_ROOT + path.sep) &&
     normalised !== FS_ALLOWED_ROOT
@@ -608,8 +631,23 @@ async function fsExecuteScript(args: Record<string, unknown>): Promise<unknown> 
   const cwd = args.cwd ? resolvePath(args.cwd as string) : process.cwd();
   const timeout = Math.min((args.timeout as number) || SCRIPT_TIMEOUT_MS, 120_000);
 
-  // Ignore user-supplied shell to prevent shell injection — always use system default
-  const shell = undefined;
+  if (!command || typeof command !== "string" || command.trim().length === 0) {
+    throw new Error("Command must be a non-empty string.");
+  }
+
+  // Block known dangerous patterns (despite HITL approval, defence-in-depth)
+  const BLOCKED_PATTERNS = [
+    /\brm\s+(-rf?\s+)?\//i,          // rm -rf /
+    /\bdd\b.*\bof=\/dev\//i,          // dd to devices
+    /\b(mkfs|fdisk|wipefs)\b/i,       // disk formatting
+    /\bcurl\b.*\|.*\b(sh|bash)\b/i,  // curl | sh
+    /\bwget\b.*\|.*\b(sh|bash)\b/i,  // wget | sh
+  ];
+  for (const pat of BLOCKED_PATTERNS) {
+    if (pat.test(command)) {
+      throw new Error(`Blocked: command matches a dangerous pattern and cannot be executed.`);
+    }
+  }
 
   if (cwd && !fs.existsSync(cwd)) {
     throw new Error(`Working directory not found: ${cwd}`);
@@ -620,7 +658,7 @@ async function fsExecuteScript(args: Record<string, unknown>): Promise<unknown> 
       cwd,
       timeout,
       maxBuffer: MAX_SCRIPT_OUTPUT,
-      shell: shell || undefined,
+      shell: undefined,
     });
 
     return {

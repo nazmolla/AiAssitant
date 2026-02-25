@@ -68,9 +68,11 @@ export async function POST(
     // Create a thread for this channel conversation (or reuse one)
     const threadId = resolveThread(channel.id, message.senderId, userId);
 
+    // Tag external webhook messages with origin to enable prompt injection defense
+    const taggedText = `[External Channel Message from ${channel.channel_type} user "${message.senderId}"]\n${message.text}`;
     const result = await runAgentLoop(
       threadId,
-      message.text,
+      taggedText,
       undefined,
       undefined,
       undefined,
@@ -88,7 +90,8 @@ export async function POST(
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error(`[Channel ${channel.channel_type}] Webhook error:`, errorMsg);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    // Don't leak internal error details to external webhook callers
+    return NextResponse.json({ error: "Internal processing error" }, { status: 500 });
   }
 }
 

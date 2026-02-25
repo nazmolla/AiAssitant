@@ -39,6 +39,12 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "userId is required" }, { status: 400 });
   }
 
+  // Validate userId format (UUID)
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(userId)) {
+    return NextResponse.json({ error: "Invalid userId format" }, { status: 400 });
+  }
+
   // Prevent admin from disabling or demoting themselves
   if (userId === guard.user.id) {
     if (role && role !== "admin") {
@@ -82,6 +88,12 @@ export async function DELETE(req: NextRequest) {
 
   if (!userId || typeof userId !== "string") {
     return NextResponse.json({ error: "userId is required" }, { status: 400 });
+  }
+
+  // Validate userId format (UUID)
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(userId)) {
+    return NextResponse.json({ error: "Invalid userId format" }, { status: 400 });
   }
 
   // Prevent admin from deleting themselves

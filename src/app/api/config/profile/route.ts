@@ -2,6 +2,16 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { getUserProfile, upsertUserProfile } from "@/lib/db";
 
+// Maximum lengths for profile fields (defence-in-depth)
+const MAX_FIELD_LEN = 500;
+const MAX_BIO_LEN = 2000;
+
+function sanitizeField(value: unknown, maxLen: number): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") return String(value).slice(0, maxLen);
+  return value.slice(0, maxLen);
+}
+
 export async function GET() {
   try {
     const auth = await requireUser();
@@ -28,7 +38,12 @@ export async function PUT(req: Request) {
     ] as const;
     const sanitized: Record<string, unknown> = {};
     for (const key of ALLOWED_FIELDS) {
-      if (body[key] !== undefined) sanitized[key] = body[key];
+      if (body[key] !== undefined) {
+        const maxLen = key === "bio" ? MAX_BIO_LEN : MAX_FIELD_LEN;
+        sanitized[key] = key === "screen_sharing_enabled"
+          ? (body[key] ? 1 : 0)
+          : sanitizeField(body[key], maxLen);
+      }
     }
     const updated = upsertUserProfile(auth.user.id, sanitized);
     return NextResponse.json(updated);

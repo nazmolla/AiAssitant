@@ -213,6 +213,25 @@ export function McpConfig() {
     fetchAll();
   }
 
+  async function toggleAllPolicies(field: "requires_approval" | "is_proactive_enabled", value: boolean) {
+    await Promise.all(
+      tools.map((tool) => {
+        const existing = policies.find((p) => p.tool_name === tool.name);
+        return fetch("/api/policies", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tool_name: tool.name,
+            mcp_id: existing?.mcp_id || null,
+            requires_approval: field === "requires_approval" ? value : existing?.requires_approval ?? true,
+            is_proactive_enabled: field === "is_proactive_enabled" ? value : existing?.is_proactive_enabled ?? false,
+          }),
+        });
+      })
+    );
+    fetchAll();
+  }
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-display font-semibold sr-only">MCP Configuration</h2>
@@ -418,8 +437,22 @@ export function McpConfig() {
                 <tr className="border-b border-white/[0.06] text-left text-[11px] text-muted-foreground/50 uppercase tracking-wider">
                   <th className="p-4 font-medium">Tool</th>
                   <th className="p-4 font-medium">Description</th>
-                  <th className="p-4 text-center font-medium">Requires Approval</th>
-                  <th className="p-4 text-center font-medium">Proactive Enabled</th>
+                  <th className="p-4 text-center font-medium">
+                    <div>Requires Approval</div>
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      <button onClick={() => toggleAllPolicies("requires_approval", true)} className="text-[10px] text-primary/70 hover:text-primary transition-colors px-1">All</button>
+                      <span className="text-[10px] text-muted-foreground/30">|</span>
+                      <button onClick={() => toggleAllPolicies("requires_approval", false)} className="text-[10px] text-muted-foreground/50 hover:text-primary transition-colors px-1">None</button>
+                    </div>
+                  </th>
+                  <th className="p-4 text-center font-medium">
+                    <div>Proactive Enabled</div>
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      <button onClick={() => toggleAllPolicies("is_proactive_enabled", true)} className="text-[10px] text-primary/70 hover:text-primary transition-colors px-1">All</button>
+                      <span className="text-[10px] text-muted-foreground/30">|</span>
+                      <button onClick={() => toggleAllPolicies("is_proactive_enabled", false)} className="text-[10px] text-muted-foreground/50 hover:text-primary transition-colors px-1">None</button>
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>

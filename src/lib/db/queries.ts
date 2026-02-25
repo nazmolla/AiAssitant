@@ -129,9 +129,11 @@ export function updateUserPermissions(userId: string, perms: Partial<Omit<UserPe
     `INSERT OR IGNORE INTO user_permissions (user_id) VALUES (?)`
   ).run(userId);
 
-  const VALID_FIELDS = ["chat", "knowledge", "dashboard", "approvals", "mcp_servers", "channels", "llm_config", "screen_sharing"];
+  const VALID_FIELDS = new Set(["chat", "knowledge", "dashboard", "approvals", "mcp_servers", "channels", "llm_config", "screen_sharing"]);
   for (const [key, value] of Object.entries(perms)) {
-    if (VALID_FIELDS.includes(key) && (value === 0 || value === 1)) {
+    // Strict whitelist check — key must be an exact match in VALID_FIELDS (prevents SQL injection via key)
+    if (VALID_FIELDS.has(key) && (value === 0 || value === 1)) {
+      // key is guaranteed to be one of the hardcoded VALID_FIELDS strings (Set.has passed)
       db.prepare(`UPDATE user_permissions SET ${key} = ? WHERE user_id = ?`).run(value, userId);
     }
   }

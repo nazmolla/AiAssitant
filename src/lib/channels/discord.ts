@@ -159,9 +159,10 @@ export async function startDiscordBot(
       const userId = getChannelOwnerId(channelId);
       const threadId = resolveThread(channelId, senderId, userId);
 
+      const taggedText = `[External Channel Message from Discord user "${message.author.username}"]\n${text}`;
       const result = await runAgentLoop(
         threadId,
-        text,
+        taggedText,
         undefined,
         undefined,
         undefined,
@@ -225,9 +226,10 @@ export async function startDiscordBot(
         const userId = getChannelOwnerId(channelId);
         const threadId = resolveThread(channelId, senderId, userId);
 
+        const taggedQuestion = `[External Channel Message from Discord user "${interaction.user.username}"]\n${question}`;
         const result = await runAgentLoop(
           threadId,
-          question,
+          taggedQuestion,
           undefined,
           undefined,
           undefined,

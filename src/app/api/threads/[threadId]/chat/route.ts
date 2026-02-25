@@ -111,7 +111,9 @@ export async function POST(
     return NextResponse.json(response);
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    // Sanitize internal paths from error messages
+    const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:\\\\[^\s]+/g, "[path]");
+    return NextResponse.json({ error: safeMsg }, { status: 500 });
   }
 }
 

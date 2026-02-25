@@ -68,6 +68,19 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  // Validate label length to prevent abuse
+  if (typeof label !== "string" || label.length > 100) {
+    return NextResponse.json(
+      { error: "label must be a string of 100 characters or less." },
+      { status: 400 }
+    );
+  }
+  if (typeof config !== "object" || config === null) {
+    return NextResponse.json(
+      { error: "config must be a valid object." },
+      { status: 400 }
+    );
+  }
   if (!VALID_CHANNEL_TYPES.includes(channelType)) {
     return NextResponse.json(
       { error: `Invalid channelType. Must be one of: ${VALID_CHANNEL_TYPES.join(", ")}` },
