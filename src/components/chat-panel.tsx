@@ -113,6 +113,7 @@ export function ChatPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [actingApproval, setActingApproval] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(true);
 
   // Screen sharing state
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
@@ -362,6 +363,11 @@ export function ChatPanel() {
       });
       const data = await res.json();
 
+      if (!res.ok) {
+        alert(data.error || `Failed to ${action === "approved" ? "approve" : "deny"} (HTTP ${res.status})`);
+        return;
+      }
+
       // Refresh messages and threads
       if (activeThread) {
         const threadRes = await fetch(`/api/threads/${activeThread}`);
@@ -371,11 +377,12 @@ export function ChatPanel() {
       fetch("/api/threads").then((r) => r.json()).then(setThreads).catch(console.error);
 
       // Notify other components
-      if (action === "approved" && data.agentResponse) {
+      if (action === "approved") {
         window.dispatchEvent(new CustomEvent("approval-resolved", { detail: data }));
       }
     } catch (err) {
       console.error("Approval action failed:", err);
+      alert(`Approval action failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setActingApproval(null);
     }
@@ -464,7 +471,7 @@ export function ChatPanel() {
   return (
     <div className="flex h-full">
       {/* Thread Sidebar — Glass panel */}
-      <div className="w-64 border-r border-white/[0.06] flex flex-col bg-white/[0.02] backdrop-blur-md">
+      <div className={`${showSidebar ? "flex" : "hidden sm:flex"} w-full sm:w-64 shrink-0 border-r border-white/[0.06] flex-col bg-white/[0.02] backdrop-blur-md`}>
         <div className="p-3 border-b border-white/[0.06]">
           <Button onClick={createThread} className="w-full rounded-xl" size="sm" variant="outline">
             <span className="mr-1.5 text-primary">+</span> New Thread
@@ -482,7 +489,7 @@ export function ChatPanel() {
                 }`}
               >
                 <button
-                  onClick={() => setActiveThread(thread.id)}
+                  onClick={() => { setActiveThread(thread.id); setShowSidebar(false); }}
                   className="flex-1 text-left px-3 py-2.5"
                 >
                   <div className="text-[13px] font-medium truncate pr-5">{thread.title}</div>
@@ -517,9 +524,19 @@ export function ChatPanel() {
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className={`${!showSidebar ? "flex" : "hidden sm:flex"} flex-1 flex-col min-w-0`}>
         {activeThread ? (
           <>
+            {/* Mobile back button */}
+            <div className="sm:hidden flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
+              <button
+                onClick={() => setShowSidebar(true)}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-white/[0.06]"
+              >
+                ← Threads
+              </button>
+              <span className="text-xs text-muted-foreground/60 truncate">{threads.find(t => t.id === activeThread)?.title}</span>
+            </div>
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-4 max-w-3xl mx-auto">
                 {messages.filter((msg) => {
@@ -739,6 +756,15 @@ export function ChatPanel() {
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4 relative">
+            {/* Mobile back button for empty state */}
+            <div className="sm:hidden absolute top-0 left-0 px-3 py-2">
+              <button
+                onClick={() => setShowSidebar(true)}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-white/[0.06]"
+              >
+                ← Threads
+              </button>
+            </div>
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-64 h-64 bg-primary/3 rounded-full blur-3xl" />
             </div>

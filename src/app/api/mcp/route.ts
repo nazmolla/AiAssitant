@@ -98,7 +98,8 @@ export async function DELETE(req: NextRequest) {
   if (!server) {
     return NextResponse.json({ error: "Server not found." }, { status: 404 });
   }
-  const isOwner = server.user_id === auth.user.id;
+  // Legacy servers have user_id=null (created before multi-user). Allow those to be deleted by anyone.
+  const isOwner = server.user_id === null || server.user_id === auth.user.id;
   const isAdmin = auth.user.role === "admin";
   if (!isAdmin && !isOwner) {
     return NextResponse.json({ error: "You can only remove servers you created. Contact an admin for global servers." }, { status: 403 });

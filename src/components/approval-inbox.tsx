@@ -43,14 +43,21 @@ export function ApprovalInbox() {
         body: JSON.stringify({ approvalId, action }),
       });
       const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || `Failed to ${action === "approved" ? "approve" : "deny"} (HTTP ${res.status})`);
+        return;
+      }
+
       fetchApprovals();
 
       // Notify the chat panel to refresh messages (agent loop may have continued)
-      if (action === "approved" && data.agentResponse) {
+      if (action === "approved") {
         window.dispatchEvent(new CustomEvent("approval-resolved", { detail: data }));
       }
     } catch (err) {
       console.error(err);
+      alert(`Action failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setActing(null);
     }
@@ -120,7 +127,7 @@ export function ApprovalInbox() {
                     disabled={acting === approval.id}
                     size="sm"
                   >
-                    Approve
+                    {acting === approval.id ? "Processing..." : "Approve"}
                   </Button>
                   <Button
                     variant="outline"
