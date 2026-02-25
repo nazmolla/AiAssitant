@@ -120,15 +120,15 @@ ssh "${REMOTE}" "
   fi
   
   # Verify DB has data
-  DATA_CHECK=\$(node -e '
+  DATA_CHECK=\$(node -e "
     try {
-      const db = require(\"better-sqlite3\")(\"./nexus.db\");
-      const users = db.prepare(\"SELECT count(*) as c FROM users\").get().c;
-      const tables = db.prepare(\"SELECT count(*) as c FROM sqlite_master WHERE type='table'\").get().c;
-      console.log(\"tables=\" + tables + \" users=\" + users);
+      var db = require('better-sqlite3')('./nexus.db');
+      var users = db.prepare('SELECT count(*) as c FROM users').get().c;
+      var tables = db.prepare(\"SELECT count(*) as c FROM sqlite_master WHERE type='table'\").get().c;
+      console.log('tables=' + tables + ' users=' + users);
       db.close();
-    } catch(e) { console.log(\"error: \" + e.message); }
-  ' 2>/dev/null)
+    } catch(e) { console.log('error: ' + e.message); }
+  " 2>/dev/null)
   echo \"  DB: \${DATA_CHECK}\"
 "
 echo ""
