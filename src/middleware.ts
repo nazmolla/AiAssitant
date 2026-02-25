@@ -21,5 +21,6 @@ export const config = {
     "/api/logs/:path*",
     "/api/config/:path*",
     "/api/attachments/:path*",
+    "/api/admin/:path*",
   ],
 };

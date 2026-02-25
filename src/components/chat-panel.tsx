@@ -60,6 +60,24 @@ function sanitizeToolContent(content: string | null, hasAttachments: boolean): s
   return content;
 }
 
+/** Extract approval metadata from a system message, if any */
+function extractApprovalMeta(content: string | null): { approvalId: string; tool_name: string; args: Record<string, unknown>; reasoning: string | null } | null {
+  if (!content) return null;
+  const match = content.match(/<!-- APPROVAL:(\{[\s\S]*?\}) -->/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+/** Strip approval metadata marker from display text */
+function stripApprovalMeta(content: string | null): string {
+  if (!content) return "";
+  return content.replace(/\n?<!-- APPROVAL:\{[\s\S]*?\} -->/,"").trim();
+}
+
 /** Strip sandbox/file paths from assistant messages so users see clean text */
 function sanitizeAssistantContent(content: string | null, hasAttachments: boolean): string {
   if (!content) return hasAttachments ? "" : "(no content)";
@@ -94,6 +112,7 @@ export function ChatPanel() {
   const [screenShareEnabled, setScreenShareEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [actingApproval, setActingApproval] = useState<string | null>(null);
 
   // Screen sharing state
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
@@ -333,6 +352,35 @@ export function ChatPanel() {
     }
   }
 
+  async function handleApproval(approvalId: string, action: "approved" | "rejected") {
+    setActingApproval(approvalId);
+    try {
+      const res = await fetch("/api/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalId, action }),
+      });
+      const data = await res.json();
+
+      // Refresh messages and threads
+      if (activeThread) {
+        const threadRes = await fetch(`/api/threads/${activeThread}`);
+        const threadData = await threadRes.json();
+        setMessages(threadData.messages || []);
+      }
+      fetch("/api/threads").then((r) => r.json()).then(setThreads).catch(console.error);
+
+      // Notify other components
+      if (action === "approved" && data.agentResponse) {
+        window.dispatchEvent(new CustomEvent("approval-resolved", { detail: data }));
+      }
+    } catch (err) {
+      console.error("Approval action failed:", err);
+    } finally {
+      setActingApproval(null);
+    }
+  }
+
   async function sendMessage() {
     if ((!input.trim() && pendingFiles.length === 0 && !screenSharing) || !activeThread) return;
 
@@ -474,10 +522,25 @@ export function ChatPanel() {
           <>
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-4 max-w-3xl mx-auto">
-                {messages.map((msg) => {
+                {messages.filter((msg) => {
+                  // Hide tool messages entirely
+                  if (msg.role === "tool") return false;
+                  // Hide assistant messages that have no real content (only tool calls)
+                  if (msg.role === "assistant") {
+                    const content = sanitizeAssistantContent(msg.content, !!(msg.attachments && JSON.parse(msg.attachments).length > 0));
+                    const hasAttachments = msg.attachments && JSON.parse(msg.attachments).length > 0;
+                    if (!content || content === "(no content)") {
+                      // Keep if it has attachments
+                      return !!hasAttachments;
+                    }
+                  }
+                  return true;
+                }).map((msg) => {
                   const attachments: AttachmentMeta[] = msg.attachments
                     ? JSON.parse(msg.attachments)
                     : [];
+                  const approvalMeta = msg.role === "system" ? extractApprovalMeta(msg.content) : null;
+                  const displayContent = approvalMeta ? stripApprovalMeta(msg.content) : msg.content;
 
                   return (
                     <div
@@ -517,17 +580,43 @@ export function ChatPanel() {
                             ? sanitizeToolContent(msg.content, attachments.length > 0)
                             : msg.role === "assistant"
                             ? sanitizeAssistantContent(msg.content, attachments.length > 0)
+                            : msg.role === "system" && approvalMeta
+                            ? displayContent || ""
                             : msg.content || (attachments.length > 0 ? "" : "(no content)")}
                         </div>
-                        {msg.tool_calls && (
-                          <details className="mt-2">
-                            <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
-                              Tool calls
-                            </summary>
-                            <div className="text-[10px] mt-1 text-muted-foreground font-mono">
-                              {msg.tool_calls}
+
+                        {/* Inline approval buttons */}
+                        {approvalMeta && (
+                          <div className="mt-3 space-y-2">
+                            <div className="text-[11px] text-muted-foreground/60 space-y-1">
+                              <div><span className="font-medium uppercase tracking-wider">Tool:</span> {approvalMeta.tool_name}</div>
+                              {approvalMeta.reasoning && (
+                                <div><span className="font-medium uppercase tracking-wider">Reason:</span> {approvalMeta.reasoning}</div>
+                              )}
+                              <details className="mt-1">
+                                <summary className="cursor-pointer hover:text-foreground transition-colors text-[10px]">Arguments</summary>
+                                <pre className="text-[10px] bg-white/[0.03] p-2 rounded-lg mt-1 overflow-auto border border-white/[0.06]">
+                                  {JSON.stringify(approvalMeta.args, null, 2)}
+                                </pre>
+                              </details>
                             </div>
-                          </details>
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                onClick={() => handleApproval(approvalMeta.approvalId, "approved")}
+                                disabled={actingApproval === approvalMeta.approvalId}
+                                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/25 transition-all duration-200 disabled:opacity-50"
+                              >
+                                {actingApproval === approvalMeta.approvalId ? "Processing..." : "✓ Approve"}
+                              </button>
+                              <button
+                                onClick={() => handleApproval(approvalMeta.approvalId, "rejected")}
+                                disabled={actingApproval === approvalMeta.approvalId}
+                                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 transition-all duration-200 disabled:opacity-50"
+                              >
+                                ✕ Deny
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>

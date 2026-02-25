@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
-import { listPendingApprovals, updateApprovalStatus, getThreadMessages, addMessage } from "@/lib/db";
+import { requireUser } from "@/lib/auth/guard";
+import { listPendingApprovals, updateApprovalStatus, getThreadMessages, addMessage, getThread } from "@/lib/db";
 import { executeApprovedTool, continueAgentLoop } from "@/lib/agent";
 import type { ToolCall } from "@/lib/llm";
 
 export async function GET() {
-  const auth = await requireAdmin();
+  const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  const pending = listPendingApprovals();
+  // Admins see all pending approvals; regular users see only their own threads
+  const all = listPendingApprovals();
+  const pending = auth.user.role === "admin"
+    ? all
+    : all.filter((a) => {
+        if (!a.thread_id) return false;
+        const thread = getThread(a.thread_id);
+        return thread?.user_id === auth.user.id;
+      });
+
   return NextResponse.json(pending);
 }
 
@@ -32,7 +41,7 @@ function findToolCallId(threadId: string, toolName: string): string | undefined 
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
@@ -51,6 +60,14 @@ export async function POST(req: NextRequest) {
 
   if (!approval) {
     return NextResponse.json({ error: "Approval not found or already resolved." }, { status: 404 });
+  }
+
+  // Ensure user is admin or owns the thread
+  if (auth.user.role !== "admin" && approval.thread_id) {
+    const thread = getThread(approval.thread_id);
+    if (!thread || thread.user_id !== auth.user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   updateApprovalStatus(approvalId, action);

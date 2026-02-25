@@ -12,15 +12,28 @@ import { LlmConfig } from "@/components/llm-config";
 import { ChannelsConfig } from "@/components/channels-config";
 import { ProfileConfig } from "@/components/profile-config";
 import { AgentDashboard } from "@/components/agent-dashboard";
+import { UserManagement } from "@/components/user-management";
 
 export default function HomePage() {
   const { data: session, status } = useSession();
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string>("user");
+  const [perms, setPerms] = useState<Record<string, number>>({
+    chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
+    mcp_servers: 1, channels: 0, llm_config: 0, screen_sharing: 1,
+  });
 
   useEffect(() => {
     fetch("/api/config/profile")
       .then((r) => r.json())
       .then((p) => { if (p?.display_name) setDisplayName(p.display_name); })
+      .catch(() => {});
+    fetch("/api/admin/users/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.role) setUserRole(d.role);
+        if (d?.permissions) setPerms(d.permissions);
+      })
       .catch(() => {});
   }, []);
 
@@ -93,21 +106,29 @@ export default function HomePage() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
-        <Tabs defaultValue="chat" className="flex flex-col h-full">
+        <Tabs defaultValue={perms.chat ? "chat" : "config"} className="flex flex-col h-full">
           <div className="glass px-6 py-2 flex items-center justify-center">
             <TabsList>
-              <TabsTrigger value="chat">
-                <span className="mr-1.5">💬</span> Chat
-              </TabsTrigger>
-              <TabsTrigger value="dashboard">
-                <span className="mr-1.5">📊</span> Dashboard
-              </TabsTrigger>
-              <TabsTrigger value="approvals">
-                <span className="mr-1.5">✅</span> Approvals
-              </TabsTrigger>
-              <TabsTrigger value="knowledge">
-                <span className="mr-1.5">🧠</span> Knowledge
-              </TabsTrigger>
+              {!!perms.chat && (
+                <TabsTrigger value="chat">
+                  <span className="mr-1.5">💬</span> Chat
+                </TabsTrigger>
+              )}
+              {!!perms.dashboard && (
+                <TabsTrigger value="dashboard">
+                  <span className="mr-1.5">📊</span> Dashboard
+                </TabsTrigger>
+              )}
+              {!!perms.approvals && (
+                <TabsTrigger value="approvals">
+                  <span className="mr-1.5">✅</span> Approvals
+                </TabsTrigger>
+              )}
+              {!!perms.knowledge && (
+                <TabsTrigger value="knowledge">
+                  <span className="mr-1.5">🧠</span> Knowledge
+                </TabsTrigger>
+              )}
               <TabsTrigger value="config">
                 <span className="mr-1.5">⚙️</span> Settings
               </TabsTrigger>
@@ -138,12 +159,13 @@ export default function HomePage() {
 
           <TabsContent value="config" className="flex-1 overflow-auto m-0 p-6">
             <div className="max-w-4xl mx-auto">
-              <Tabs defaultValue="llm" className="space-y-6">
+              <Tabs defaultValue="profile" className="space-y-6">
                 <TabsList>
-                  <TabsTrigger value="llm">🤖 LLM Providers</TabsTrigger>
-                  <TabsTrigger value="mcp">🔌 MCP Servers</TabsTrigger>
-                  <TabsTrigger value="channels">📡 Channels</TabsTrigger>
+                  {!!perms.llm_config && <TabsTrigger value="llm">🤖 LLM Providers</TabsTrigger>}
+                  {!!perms.mcp_servers && <TabsTrigger value="mcp">🔌 MCP Servers</TabsTrigger>}
+                  {!!perms.channels && <TabsTrigger value="channels">📡 Channels</TabsTrigger>}
                   <TabsTrigger value="profile">👤 Profile</TabsTrigger>
+                  {userRole === "admin" && <TabsTrigger value="users">👥 Users</TabsTrigger>}
                 </TabsList>
 
                 <TabsContent value="llm" className="mt-4 space-y-4">
@@ -185,6 +207,18 @@ export default function HomePage() {
                   </div>
                   <ProfileConfig />
                 </TabsContent>
+
+                {userRole === "admin" && (
+                  <TabsContent value="users" className="mt-4 space-y-4">
+                    <div>
+                      <h2 className="text-2xl font-display font-bold gradient-text">User Management</h2>
+                      <p className="text-sm text-muted-foreground mt-1 font-light">
+                        Manage user access, roles, and feature permissions.
+                      </p>
+                    </div>
+                    <UserManagement />
+                  </TabsContent>
+                )}
               </Tabs>
             </div>
           </TabsContent>

@@ -26,7 +26,7 @@ import {
 import { runAgentLoop, type AgentResponse } from "@/lib/agent";
 import {
   getDb,
-  getChannelUserMapping,
+  getChannelOwnerId,
   addLog,
   type AttachmentMeta,
 } from "@/lib/db";
@@ -76,13 +76,9 @@ export async function startDiscordBot(
   await stopDiscordBot(channelId);
 
   const botToken = String(config.botToken || "").trim();
-  const applicationId = String(config.applicationId || "").trim();
 
   if (!botToken) {
     throw new Error("Discord bot token is required");
-  }
-  if (!applicationId) {
-    throw new Error("Discord application ID is required");
   }
 
   const client = new Client({
@@ -95,29 +91,8 @@ export async function startDiscordBot(
     partials: [Partials.Channel], // needed to receive DMs
   });
 
-  // Register slash commands
-  try {
-    const rest = new REST({ version: "10" }).setToken(botToken);
-    await rest.put(Routes.applicationCommands(applicationId), {
-      body: SLASH_COMMANDS,
-    });
-    addLog({
-      level: "info",
-      source: "discord",
-      message: `Registered slash commands for channel ${channelId}`,
-      metadata: null,
-    });
-  } catch (err) {
-    addLog({
-      level: "error",
-      source: "discord",
-      message: `Failed to register slash commands: ${err}`,
-      metadata: JSON.stringify({ channelId }),
-    });
-  }
-
   // ── Event: Ready ──────────────────────────────────────────
-  client.once(Events.ClientReady, (readyClient) => {
+  client.once(Events.ClientReady, async (readyClient) => {
     addLog({
       level: "info",
       source: "discord",
@@ -128,6 +103,28 @@ export async function startDiscordBot(
         guildCount: readyClient.guilds.cache.size,
       }),
     });
+
+    // Register slash commands using the application ID from the connected client
+    const applicationId = readyClient.application?.id || readyClient.user.id;
+    try {
+      const rest = new REST({ version: "10" }).setToken(botToken);
+      await rest.put(Routes.applicationCommands(applicationId), {
+        body: SLASH_COMMANDS,
+      });
+      addLog({
+        level: "info",
+        source: "discord",
+        message: `Registered slash commands for channel ${channelId}`,
+        metadata: null,
+      });
+    } catch (err) {
+      addLog({
+        level: "error",
+        source: "discord",
+        message: `Failed to register slash commands: ${err}`,
+        metadata: JSON.stringify({ channelId }),
+      });
+    }
   });
 
   // ── Event: Message Create ─────────────────────────────────
@@ -159,8 +156,7 @@ export async function startDiscordBot(
       }
 
       const senderId = message.author.id;
-      const mapping = getChannelUserMapping(channelId, senderId);
-      const userId = mapping?.user_id ?? null;
+      const userId = getChannelOwnerId(channelId);
       const threadId = resolveThread(channelId, senderId, userId);
 
       const result = await runAgentLoop(
@@ -226,8 +222,7 @@ export async function startDiscordBot(
 
       try {
         const senderId = interaction.user.id;
-        const mapping = getChannelUserMapping(channelId, senderId);
-        const userId = mapping?.user_id ?? null;
+        const userId = getChannelOwnerId(channelId);
         const threadId = resolveThread(channelId, senderId, userId);
 
         const result = await runAgentLoop(

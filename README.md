@@ -71,8 +71,10 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 
 | Role | Capabilities |
 |------|-------------|
-| **Admin** | Full access. Manage LLM providers, communication channels, global MCP servers, tool policies, logs. First user to sign up. |
-| **User** | Own knowledge vault, own threads, own profile. Access global MCP servers + user-scoped servers. |
+| **Admin** | Full access. Manage LLM providers, global MCP servers, tool policies, logs, **user management** (enable/disable users, change roles, manage permissions). First user to sign up. |
+| **User** | Own knowledge vault, own threads, own channels, own profile. Access global MCP servers + user-scoped servers. Approve/reject tool calls on own threads. |
+
+Admins can manage users from the **User Management** tab — enable/disable accounts, change roles, and control granular permissions (knowledge, chat, MCP, channels, approvals, settings).
 
 ### User Isolation
 
@@ -81,15 +83,14 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 - **MCP Servers** — Each server has a `scope` field (`global` or `user`). Global servers are visible to all; user-scoped servers are visible only to their owner.
 - **Profiles** — Per-user profile (display name, bio, skills, links) stored in `user_profiles`.
 
-### Channel User Mapping
+### User-Specific Channels
 
-Communication channels (WhatsApp, Discord, etc.) map external sender identities to internal users via `channel_user_mappings`:
+Communication channels are **owned by the user who creates them**. Each channel has a `user_id` foreign key:
 
-```
-channel_id + external_id (e.g., phone number)  →  user_id
-```
-
-When a message arrives on a channel webhook, the system resolves the sender to the correct user and routes knowledge/threads accordingly.
+- Channel listing is filtered by the authenticated user (admins see all)
+- Only the channel owner can edit or delete their channels
+- When a message arrives on a channel webhook, the system resolves the **channel owner** as the user and routes knowledge/threads accordingly
+- Legacy `channel_user_mappings` table is preserved for backward compatibility but the primary resolution uses `getChannelOwnerId()`
 
 ---
 
@@ -106,7 +107,18 @@ CREATE TABLE users (
     external_sub_id TEXT,
     password_hash TEXT,
     role TEXT NOT NULL DEFAULT 'user',  -- 'admin' | 'user'
+    enabled BOOLEAN DEFAULT 1,           -- disabled users cannot sign in
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_permissions (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    can_knowledge BOOLEAN DEFAULT 1,
+    can_chat BOOLEAN DEFAULT 1,
+    can_mcp BOOLEAN DEFAULT 1,
+    can_channels BOOLEAN DEFAULT 1,
+    can_approvals BOOLEAN DEFAULT 1,
+    can_settings BOOLEAN DEFAULT 1
 );
 
 CREATE TABLE user_profiles (
@@ -218,7 +230,8 @@ CREATE TABLE channels (
     label TEXT NOT NULL,
     enabled BOOLEAN DEFAULT 1,
     config_json TEXT NOT NULL,
-    webhook_secret TEXT
+    webhook_secret TEXT,
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE  -- channel owner
 );
 
 CREATE TABLE channel_user_mappings (
@@ -320,13 +333,14 @@ Premium dark theme inspired by OpenClaw.ai, with coral accent colors, glass morp
 | Tab | Description |
 |-----|-------------|
 | **Dashboard** | Real-time agent activity logs with level-based filtering (info, warning, error) |
-| **Chat** | Threaded conversations with file attachments, inline screenshots, streaming responses, and **live screen sharing** (sends captured frames to the agent as vision input) |
-| **Approvals** | Pending tool execution requests with approve/reject controls |
+| **Chat** | Threaded conversations with file attachments, inline screenshots, streaming responses, **inline approval buttons** (approve/deny tool calls directly in chat), and **live screen sharing** (sends captured frames to the agent as vision input). Tool-call and tool-result messages are hidden for a clean UX. |
+| **Approvals** | Pending tool execution requests with approve/reject controls (user-scoped — users see only their own thread approvals) |
 | **Knowledge** | Searchable CRUD interface for the user's knowledge vault |
 | **MCP Servers** | Add/remove/connect MCP servers with transport auto-detection, scope control, and OAuth flow |
 | **Channels** | Configure communication channels (WhatsApp, Discord, webhooks) with sender-to-user mapping |
 | **LLM Config** | Add/switch between chat and embedding providers at runtime |
 | **Profile** | Per-user profile editor (name, bio, skills, social links) with feature toggles (e.g., screen sharing) |
+| **User Management** | (Admin only) Enable/disable users, change roles, manage granular per-user permissions |
 
 ---
 
@@ -345,12 +359,15 @@ Premium dark theme inspired by OpenClaw.ai, with coral accent colors, glass morp
 | `GET/POST` | `/api/policies` | Auth | List/update tool policies |
 | `GET` | `/api/logs` | Auth | Fetch agent activity logs |
 | `GET/POST` | `/api/config/llm` | Auth | Manage LLM provider configs |
-| `GET/POST` | `/api/config/channels` | Auth | Manage communication channels |
+| `GET/POST/PATCH/DELETE` | `/api/config/channels` | User | Manage communication channels (user-scoped, ownership enforced) |
 | `GET/PUT` | `/api/config/profile` | User | Get/update user profile (user-scoped) |
 | `POST` | `/api/channels/[channelId]/webhook` | Webhook | Receive inbound messages from channels |
 | `POST` | `/api/attachments` | User | Upload file attachments |
 | `GET` | `/api/attachments/[...path]` | Auth | Serve uploaded files |
 | `GET/POST` | `/api/mcp/[serverId]/oauth/*` | Auth | OAuth authorize/callback for MCP servers |
+| `GET` | `/api/admin/users` | Admin | List all users with permissions |
+| `PUT/DELETE` | `/api/admin/users` | Admin | Update user role/status or delete user |
+| `GET` | `/api/admin/users/me` | User | Get current user's role and permissions |
 
 ---
 
@@ -375,8 +392,8 @@ npm start
 # Build locally
 npm run build
 
-# Package
-tar -cf deploy.tar .next src package.json next.config.mjs postcss.config.mjs tailwind.config.ts tsconfig.json next-env.d.ts
+# Package (IMPORTANT: exclude database files to avoid overwriting remote data)
+tar -cf deploy.tar --exclude=node_modules --exclude=.git --exclude=data --exclude=.next/cache --exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm' .
 
 # Transfer
 scp deploy.tar user@host:/path/to/app/
@@ -386,6 +403,8 @@ cd /path/to/app && tar -xf deploy.tar
 npm install --production
 NODE_OPTIONS='--max-old-space-size=256' npx next start -p 3000
 ```
+
+> **Important:** The deploy tar **must exclude `*.db` files** to prevent overwriting the remote database with the local development copy. The remote host maintains its own `nexus.db` with user-configured LLMs, MCP servers, channels, and knowledge data.
 
 ### Environment Variables
 
@@ -426,7 +445,8 @@ No manual steps required — the migration is idempotent and safe to run multipl
 src/
 ├── app/                        # Next.js App Router
 │   ├── api/                    # API route handlers
-│   │   ├── approvals/          # HITL approval inbox
+│   │   ├── admin/              # User management (admin-only)
+│   │   ├── approvals/          # HITL approval inbox (user-scoped)
 │   │   ├── attachments/        # File upload/download
 │   │   ├── channels/           # Inbound webhook handlers
 │   │   ├── config/             # LLM, channels, profile config
@@ -443,12 +463,13 @@ src/
 │   ├── ui/                     # Primitives (button, card, input, etc.)
 │   ├── agent-dashboard.tsx     # Activity log viewer
 │   ├── approval-inbox.tsx      # HITL approval UI
-│   ├── channels-config.tsx     # Channel management
-│   ├── chat-panel.tsx          # Thread/chat interface
+│   ├── channels-config.tsx     # Channel management (user-scoped)
+│   ├── chat-panel.tsx          # Thread/chat with inline approvals
+│   ├── user-management.tsx     # Admin user management
 │   ├── knowledge-vault.tsx     # Knowledge CRUD
 │   ├── llm-config.tsx          # LLM provider management
 │   ├── mcp-config.tsx          # MCP server management
-│   └── profile-config.tsx      # User profile editor
+│   └── profile-config.tsx      # User profile editor with feature toggles
 ├── lib/
 │   ├── agent/                  # Core agent logic
 │   │   ├── loop.ts             # Sense-Think-Act agent loop
@@ -474,7 +495,7 @@ src/
 │   │   ├── embeddings.ts       # Embedding generation
 │   │   └── types.ts            # ChatProvider interface
 │   ├── channels/               # Channel integrations
-│   │   └── discord.ts          # Discord Gateway bot (mentions, DMs, slash commands)
+│   │   └── discord.ts          # Discord Gateway bot (uses channel owner resolution)
 │   ├── mcp/                    # MCP client management
 │   │   └── manager.ts          # Connect, discover, invoke
 │   ├── scheduler/              # Proactive cron scheduler

@@ -64,6 +64,88 @@ export function getUserCount(): number {
   return (getDb().prepare("SELECT COUNT(*) as c FROM users").get() as { c: number }).c;
 }
 
+// ─── User Access Management ─────────────────────────────────
+
+export interface UserPermissions {
+  user_id: string;
+  chat: number;
+  knowledge: number;
+  dashboard: number;
+  approvals: number;
+  mcp_servers: number;
+  channels: number;
+  llm_config: number;
+  screen_sharing: number;
+}
+
+export interface UserWithPermissions extends UserRecord {
+  enabled: number;
+  permissions: UserPermissions;
+}
+
+export function listUsersWithPermissions(): UserWithPermissions[] {
+  const db = getDb();
+  const users = db.prepare("SELECT * FROM users ORDER BY created_at ASC").all() as (UserRecord & { enabled?: number })[];
+  const permsStmt = db.prepare("SELECT * FROM user_permissions WHERE user_id = ?");
+
+  return users.map((u) => {
+    const perms = permsStmt.get(u.id) as UserPermissions | undefined;
+    const isAdmin = u.role === "admin";
+    return {
+      ...u,
+      enabled: u.enabled ?? 1,
+      permissions: perms || {
+        user_id: u.id,
+        chat: 1,
+        knowledge: 1,
+        dashboard: 1,
+        approvals: 1,
+        mcp_servers: 1,
+        channels: isAdmin ? 1 : 0,
+        llm_config: isAdmin ? 1 : 0,
+        screen_sharing: 1,
+      },
+    };
+  });
+}
+
+export function getUserPermissions(userId: string): UserPermissions | undefined {
+  return getDb().prepare("SELECT * FROM user_permissions WHERE user_id = ?").get(userId) as UserPermissions | undefined;
+}
+
+export function updateUserRole(userId: string, role: string): void {
+  if (!["admin", "user"].includes(role)) throw new Error("Invalid role");
+  getDb().prepare("UPDATE users SET role = ? WHERE id = ?").run(role, userId);
+}
+
+export function updateUserEnabled(userId: string, enabled: boolean): void {
+  getDb().prepare("UPDATE users SET enabled = ? WHERE id = ?").run(enabled ? 1 : 0, userId);
+}
+
+export function updateUserPermissions(userId: string, perms: Partial<Omit<UserPermissions, "user_id">>): void {
+  const db = getDb();
+  // Ensure row exists
+  db.prepare(
+    `INSERT OR IGNORE INTO user_permissions (user_id) VALUES (?)`
+  ).run(userId);
+
+  const VALID_FIELDS = ["chat", "knowledge", "dashboard", "approvals", "mcp_servers", "channels", "llm_config", "screen_sharing"];
+  for (const [key, value] of Object.entries(perms)) {
+    if (VALID_FIELDS.includes(key) && (value === 0 || value === 1)) {
+      db.prepare(`UPDATE user_permissions SET ${key} = ? WHERE user_id = ?`).run(value, userId);
+    }
+  }
+}
+
+export function deleteUser(userId: string): void {
+  getDb().prepare("DELETE FROM users WHERE id = ?").run(userId);
+}
+
+export function isUserEnabled(userId: string): boolean {
+  const row = getDb().prepare("SELECT enabled FROM users WHERE id = ?").get(userId) as { enabled?: number } | undefined;
+  return (row?.enabled ?? 1) === 1;
+}
+
 // ─── Identity (legacy — kept for backward compat) ────────────
 
 export interface IdentityConfig {
@@ -768,10 +850,14 @@ export interface ChannelRecord {
   enabled: number;
   config_json: string;
   webhook_secret: string | null;
+  user_id: string | null;
   created_at: string;
 }
 
-export function listChannels(): ChannelRecord[] {
+export function listChannels(userId?: string): ChannelRecord[] {
+  if (userId) {
+    return getDb().prepare("SELECT * FROM channels WHERE user_id = ? ORDER BY created_at ASC").all(userId) as ChannelRecord[];
+  }
   return getDb().prepare("SELECT * FROM channels ORDER BY created_at ASC").all() as ChannelRecord[];
 }
 
@@ -783,16 +869,17 @@ export function createChannel(args: {
   label: string;
   channelType: ChannelType;
   configJson: string;
+  userId: string;
 }): ChannelRecord {
   const id = uuid();
   const crypto = require("crypto");
   const webhookSecret = crypto.randomBytes(24).toString("hex");
   getDb()
     .prepare(
-      `INSERT INTO channels (id, channel_type, label, enabled, config_json, webhook_secret)
-       VALUES (?, ?, ?, 1, ?, ?)`
+      `INSERT INTO channels (id, channel_type, label, enabled, config_json, webhook_secret, user_id)
+       VALUES (?, ?, ?, 1, ?, ?, ?)`
     )
-    .run(id, args.channelType, args.label, args.configJson, webhookSecret);
+    .run(id, args.channelType, args.label, args.configJson, webhookSecret, args.userId);
   return getDb().prepare("SELECT * FROM channels WHERE id = ?").get(id) as ChannelRecord;
 }
 
@@ -819,6 +906,15 @@ export function updateChannel(args: {
 
 export function deleteChannel(id: string): void {
   getDb().prepare("DELETE FROM channels WHERE id = ?").run(id);
+}
+
+/**
+ * Get the owner user_id for a channel.
+ * Used by webhook/Discord handlers — the channel owner is assumed to be the user.
+ */
+export function getChannelOwnerId(channelId: string): string | null {
+  const row = getDb().prepare("SELECT user_id FROM channels WHERE id = ?").get(channelId) as { user_id: string | null } | undefined;
+  return row?.user_id ?? null;
 }
 
 // ─── Channel User Mappings ───────────────────────────────────

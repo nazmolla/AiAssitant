@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/guard";
 import {
   listChannels,
   createChannel,
@@ -43,10 +43,10 @@ function maskSecrets(configJson: string): string {
 }
 
 export async function GET() {
-  const auth = await requireAdmin();
+  const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  const channels = listChannels().map((ch) => ({
+  const channels = listChannels(auth.user.id).map((ch) => ({
     ...ch,
     config_json: maskSecrets(ch.config_json),
     discord_bot_active: ch.channel_type === "discord" ? isDiscordBotActive(ch.id) : undefined,
@@ -56,7 +56,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
     label,
     channelType,
     configJson: JSON.stringify(config),
+    userId: auth.user.id,
   });
 
   // Auto-start Discord bot when channel is created
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
@@ -106,6 +107,12 @@ export async function PATCH(req: NextRequest) {
 
   if (!id) {
     return NextResponse.json({ error: "id is required." }, { status: 400 });
+  }
+
+  // Ensure user owns this channel
+  const existing = getChannel(id);
+  if (!existing || existing.user_id !== auth.user.id) {
+    return NextResponse.json({ error: "Channel not found." }, { status: 404 });
   }
   if (channelType && !VALID_CHANNEL_TYPES.includes(channelType)) {
     return NextResponse.json(
@@ -145,7 +152,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
   const { searchParams } = new URL(req.url);
@@ -155,9 +162,14 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "id query param is required." }, { status: 400 });
   }
 
-  // Stop Discord bot before deleting channel
+  // Ensure user owns this channel
   const channel = getChannel(id);
-  if (channel?.channel_type === "discord") {
+  if (!channel || channel.user_id !== auth.user.id) {
+    return NextResponse.json({ error: "Channel not found." }, { status: 404 });
+  }
+
+  // Stop Discord bot before deleting channel
+  if (channel.channel_type === "discord") {
     await stopDiscordBot(id);
   }
 

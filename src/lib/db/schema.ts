@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     external_sub_id TEXT,               -- OIDC Subject ID (unique per provider)
     password_hash TEXT,                 -- bcrypt hash for local auth
     role TEXT NOT NULL DEFAULT 'user',  -- 'admin' | 'user'
+    enabled INTEGER NOT NULL DEFAULT 1, -- 0 = disabled, 1 = active
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -181,6 +182,7 @@ CREATE TABLE IF NOT EXISTS channels (
     enabled BOOLEAN DEFAULT 1,
     config_json TEXT NOT NULL,
     webhook_secret TEXT,
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -193,5 +195,19 @@ CREATE TABLE IF NOT EXISTS channel_user_mappings (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(channel_id, external_id)
+);
+
+-- ═══ User Permissions (admin-managed feature access) ═══
+
+CREATE TABLE IF NOT EXISTS user_permissions (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    chat INTEGER DEFAULT 1,
+    knowledge INTEGER DEFAULT 1,
+    dashboard INTEGER DEFAULT 1,
+    approvals INTEGER DEFAULT 1,
+    mcp_servers INTEGER DEFAULT 1,
+    channels INTEGER DEFAULT 0,
+    llm_config INTEGER DEFAULT 0,
+    screen_sharing INTEGER DEFAULT 1
 );
 `;

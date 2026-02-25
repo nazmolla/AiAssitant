@@ -219,6 +219,53 @@ function ensureScreenSharingColumn(): void {
   }
 }
 
+/**
+ * Add `enabled` column to users table and ensure user_permissions table.
+ */
+/**
+ * Add user_id column to channels table for user-specific channels.
+ */
+function ensureChannelUserId(): void {
+  const db = getDb();
+  if (tableExists("channels") && !getColumns("channels").has("user_id")) {
+    db.prepare("ALTER TABLE channels ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE").run();
+  }
+  // Back-fill: assign orphan channels to the first admin user
+  if (tableExists("channels") && tableExists("users")) {
+    const orphans = db.prepare("SELECT id FROM channels WHERE user_id IS NULL").all() as { id: string }[];
+    if (orphans.length > 0) {
+      const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1").get() as { id: string } | undefined;
+      if (admin) {
+        db.prepare("UPDATE channels SET user_id = ? WHERE user_id IS NULL").run(admin.id);
+        console.log(`[Nexus DB] Assigned ${orphans.length} orphan channel(s) to admin ${admin.id}`);
+      }
+    }
+  }
+}
+
+function ensureUserAccessManagement(): void {
+  const db = getDb();
+  // Add enabled column to users table
+  if (tableExists("users") && !getColumns("users").has("enabled")) {
+    db.prepare("ALTER TABLE users ADD COLUMN enabled INTEGER DEFAULT 1").run();
+  }
+  // Auto-create permissions rows for users that don't have one yet
+  if (tableExists("users") && tableExists("user_permissions")) {
+    const usersWithout = db.prepare(
+      `SELECT u.id, u.role FROM users u LEFT JOIN user_permissions p ON u.id = p.user_id WHERE p.user_id IS NULL`
+    ).all() as { id: string; role: string }[];
+    const stmt = db.prepare(
+      `INSERT OR IGNORE INTO user_permissions (user_id, chat, knowledge, dashboard, approvals, mcp_servers, channels, llm_config, screen_sharing)
+       VALUES (?, 1, 1, 1, 1, 1, ?, ?, 1)`
+    );
+    for (const u of usersWithout) {
+      // Admins get full access, users get restricted defaults
+      const isAdmin = u.role === "admin";
+      stmt.run(u.id, isAdmin ? 1 : 0, isAdmin ? 1 : 0);
+    }
+  }
+}
+
 export function initializeDatabase(): void {
   const db = getDb();
   db.exec(SCHEMA_SQL);
@@ -229,6 +276,8 @@ export function initializeDatabase(): void {
   ensureMcpServerNewColumns();
   ensureScreenSharingColumn();
   migrateToMultiUser();
+  ensureChannelUserId();
+  ensureUserAccessManagement();
   seedFsToolPolicies();
   console.log("[Nexus DB] Schema initialized successfully.");
 }

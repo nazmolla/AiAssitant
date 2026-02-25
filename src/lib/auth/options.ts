@@ -158,10 +158,15 @@ export const authOptions: NextAuthOptions = {
 
       // Fetch role from DB on every token refresh
       if (token.userId) {
-        const { getUserById } = await import("@/lib/db");
+        const { getUserById, isUserEnabled } = await import("@/lib/db");
         const dbUser = getUserById(token.userId as string);
         if (dbUser) {
           token.role = dbUser.role ?? "user";
+          // Block disabled users
+          if (!isUserEnabled(token.userId as string)) {
+            delete token.userId;
+            delete token.role;
+          }
         } else {
           // User was deleted (e.g. DB reinitialized) — clear stale session
           delete token.userId;

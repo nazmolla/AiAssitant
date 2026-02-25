@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAgentLoop, type AgentResponse } from "@/lib/agent";
-import { getChannel, getDb, getChannelUserMapping, type AttachmentMeta } from "@/lib/db";
+import { getChannel, getDb, getChannelOwnerId, type AttachmentMeta } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 import { timingSafeEqual } from "crypto";
 import fs from "fs";
@@ -62,9 +62,8 @@ export async function POST(
       return NextResponse.json({ ok: true }); // ACK without processing
     }
 
-    // Resolve sender → user mapping
-    const mapping = getChannelUserMapping(channel.id, message.senderId);
-    const userId = mapping?.user_id ?? null;
+    // Resolve sender → channel owner (the user who created this channel)
+    const userId = getChannelOwnerId(channel.id);
 
     // Create a thread for this channel conversation (or reuse one)
     const threadId = resolveThread(channel.id, message.senderId, userId);

@@ -57,11 +57,19 @@ export async function executeWithGatekeeper(
     // Freeze the thread
     updateThreadStatus(threadId, "awaiting_approval");
 
-    // Add a system message to the thread
+    // Build structured approval metadata for inline chat approve/reject
+    const approvalMeta = JSON.stringify({
+      approvalId: approval.id,
+      tool_name: toolCall.name,
+      args: toolCall.arguments,
+      reasoning: reasoning || null,
+    });
+
+    // Add a system message to the thread with embedded approval data
     addMessage({
       thread_id: threadId,
       role: "system",
-      content: `⏸️ Action paused: "${toolCall.name}" requires your approval. Check the Approval Inbox.`,
+      content: `⏸️ Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
       tool_calls: null,
       tool_results: null,
       attachments: null,

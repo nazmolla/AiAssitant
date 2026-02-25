@@ -51,7 +51,6 @@ const CONFIG_FIELDS: Record<ChannelType, { key: string; label: string; type: "te
   ],
   discord: [
     { key: "botToken", label: "Bot Token", type: "password" },
-    { key: "applicationId", label: "Application ID", type: "text" },
   ],
   teams: [
     { key: "appId", label: "App ID", type: "text" },
@@ -67,6 +66,7 @@ export function ChannelsConfig() {
   const [label, setLabel] = useState("");
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const fetchChannels = () => {
@@ -83,10 +83,22 @@ export function ChannelsConfig() {
     setSelectedType(null);
     setLabel("");
     setConfigValues({});
+    setError(null);
   }
 
   async function handleCreate() {
     if (!selectedType || !label.trim()) return;
+
+    // Validate required config fields
+    const requiredFields = CONFIG_FIELDS[selectedType] || [];
+    for (const field of requiredFields) {
+      if (!configValues[field.key]?.trim()) {
+        setError(`${field.label} is required.`);
+        return;
+      }
+    }
+
+    setError(null);
     setSaving(true);
     try {
       const res = await fetch("/api/config/channels", {
@@ -101,7 +113,12 @@ export function ChannelsConfig() {
       if (res.ok) {
         resetForm();
         fetchChannels();
+      } else {
+        const data = await res.json().catch(() => null);
+        setError(data?.error || `Failed to connect (${res.status})`);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
     } finally {
       setSaving(false);
     }
@@ -261,6 +278,12 @@ export function ChannelsConfig() {
                     </div>
                   ))}
                 </div>
+
+                {error && (
+                  <div className="text-sm text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
+                    {error}
+                  </div>
+                )}
 
                 <div className="flex gap-2 pt-2">
                   <Button onClick={handleCreate} disabled={saving || !label.trim()}>
