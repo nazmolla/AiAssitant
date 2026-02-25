@@ -91,7 +91,7 @@ export function ApprovalInbox() {
                     <Badge variant="warning">Pending</Badge>
                   </div>
                   <CardDescription className="text-muted-foreground/50">
-                    {new Date(approval.created_at).toLocaleString()}
+                    {new Date(approval.created_at.endsWith("Z") ? approval.created_at : approval.created_at + "Z").toLocaleString()}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">

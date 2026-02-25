@@ -51,6 +51,210 @@
     --sidebar: 0 0% 5%;
     --glow: 0 85% 60%;
   }
+
+  /* ── Themes ─────────────────────────────────────────────── */
+
+  /* Midnight — deep blue/indigo, premium cinema feel */
+  [data-theme="midnight"] {
+    --background: 230 25% 5%;
+    --foreground: 220 20% 95%;
+    --card: 230 25% 8%;
+    --card-foreground: 220 20% 95%;
+    --popover: 230 25% 8%;
+    --popover-foreground: 220 20% 95%;
+    --primary: 230 80% 62%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 230 20% 14%;
+    --secondary-foreground: 220 20% 95%;
+    --muted: 230 15% 14%;
+    --muted-foreground: 220 10% 55%;
+    --accent: 230 20% 14%;
+    --accent-foreground: 220 20% 95%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 230 15% 16%;
+    --input: 230 15% 16%;
+    --ring: 230 80% 62%;
+    --sidebar: 230 25% 6%;
+    --glow: 230 80% 62%;
+  }
+
+  /* Frost — cool silver/teal, minimal and clean */
+  [data-theme="frost"] {
+    --background: 210 20% 96%;
+    --foreground: 210 20% 10%;
+    --card: 210 20% 99%;
+    --card-foreground: 210 20% 10%;
+    --popover: 210 20% 99%;
+    --popover-foreground: 210 20% 10%;
+    --primary: 198 70% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 15% 91%;
+    --secondary-foreground: 210 20% 10%;
+    --muted: 210 15% 93%;
+    --muted-foreground: 210 10% 45%;
+    --accent: 210 15% 93%;
+    --accent-foreground: 210 20% 10%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 15% 88%;
+    --input: 210 15% 88%;
+    --ring: 198 70% 50%;
+    --radius: 1rem;
+    --sidebar: 210 20% 94%;
+    --glow: 198 70% 50%;
+  }
+
+  /* Frost Dark */
+  [data-theme="frost"].dark {
+    --background: 210 25% 5%;
+    --foreground: 210 20% 95%;
+    --card: 210 25% 8%;
+    --card-foreground: 210 20% 95%;
+    --popover: 210 25% 8%;
+    --popover-foreground: 210 20% 95%;
+    --primary: 198 70% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 20% 14%;
+    --secondary-foreground: 210 20% 95%;
+    --muted: 210 15% 14%;
+    --muted-foreground: 210 10% 55%;
+    --accent: 210 20% 14%;
+    --accent-foreground: 210 20% 95%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 15% 16%;
+    --input: 210 15% 16%;
+    --ring: 198 70% 50%;
+    --sidebar: 210 25% 6%;
+    --glow: 198 70% 50%;
+  }
+
+  /* Sunrise — warm amber/orange, material-inspired */
+  [data-theme="sunrise"] {
+    --background: 30 30% 96%;
+    --foreground: 30 10% 10%;
+    --card: 30 30% 99%;
+    --card-foreground: 30 10% 10%;
+    --popover: 30 30% 99%;
+    --popover-foreground: 30 10% 10%;
+    --primary: 25 95% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 30 20% 91%;
+    --secondary-foreground: 30 10% 10%;
+    --muted: 30 15% 93%;
+    --muted-foreground: 30 10% 45%;
+    --accent: 30 15% 93%;
+    --accent-foreground: 30 10% 10%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 30 15% 88%;
+    --input: 30 15% 88%;
+    --ring: 25 95% 55%;
+    --radius: 1rem;
+    --sidebar: 30 30% 94%;
+    --glow: 25 95% 55%;
+  }
+
+  /* Sunrise Dark */
+  [data-theme="sunrise"].dark {
+    --background: 25 20% 5%;
+    --foreground: 30 20% 95%;
+    --card: 25 20% 8%;
+    --card-foreground: 30 20% 95%;
+    --popover: 25 20% 8%;
+    --popover-foreground: 30 20% 95%;
+    --primary: 25 95% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 25 15% 14%;
+    --secondary-foreground: 30 20% 95%;
+    --muted: 25 10% 14%;
+    --muted-foreground: 30 10% 50%;
+    --accent: 25 15% 14%;
+    --accent-foreground: 30 20% 95%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 25 10% 16%;
+    --input: 25 10% 16%;
+    --ring: 25 95% 55%;
+    --sidebar: 25 20% 6%;
+    --glow: 25 95% 55%;
+  }
+
+  /* Forest — rich green, nature-inspired */
+  [data-theme="forest"] {
+    --background: 150 15% 5%;
+    --foreground: 150 10% 95%;
+    --card: 150 15% 8%;
+    --card-foreground: 150 10% 95%;
+    --popover: 150 15% 8%;
+    --popover-foreground: 150 10% 95%;
+    --primary: 152 70% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 150 12% 14%;
+    --secondary-foreground: 150 10% 95%;
+    --muted: 150 10% 14%;
+    --muted-foreground: 150 8% 50%;
+    --accent: 150 12% 14%;
+    --accent-foreground: 150 10% 95%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 150 10% 16%;
+    --input: 150 10% 16%;
+    --ring: 152 70% 45%;
+    --sidebar: 150 15% 6%;
+    --glow: 152 70% 45%;
+  }
+
+  /* Amethyst — elegant violet/purple */
+  [data-theme="amethyst"] {
+    --background: 270 20% 5%;
+    --foreground: 270 10% 95%;
+    --card: 270 20% 8%;
+    --card-foreground: 270 10% 95%;
+    --popover: 270 20% 8%;
+    --popover-foreground: 270 10% 95%;
+    --primary: 270 70% 62%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 270 15% 14%;
+    --secondary-foreground: 270 10% 95%;
+    --muted: 270 10% 14%;
+    --muted-foreground: 270 8% 50%;
+    --accent: 270 15% 14%;
+    --accent-foreground: 270 10% 95%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 270 10% 16%;
+    --input: 270 10% 16%;
+    --ring: 270 70% 62%;
+    --sidebar: 270 20% 6%;
+    --glow: 270 70% 62%;
+  }
+
+  /* Obsidian — pure dark with warm rose accents */
+  [data-theme="obsidian"] {
+    --background: 0 0% 2%;
+    --foreground: 0 0% 92%;
+    --card: 0 0% 5%;
+    --card-foreground: 0 0% 92%;
+    --popover: 0 0% 5%;
+    --popover-foreground: 0 0% 92%;
+    --primary: 340 75% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 92%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 10%;
+    --accent-foreground: 0 0% 92%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 12%;
+    --input: 0 0% 12%;
+    --ring: 340 75% 58%;
+    --sidebar: 0 0% 3%;
+    --glow: 340 75% 58%;
+  }
 }
 
 @layer base {
@@ -130,7 +334,7 @@
   }
 
   .gradient-text {
-    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(20 90% 65%) 50%, hsl(40 95% 60%) 100%);
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.7) 50%, hsl(var(--ring) / 0.9) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;

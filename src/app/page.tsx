@@ -16,6 +16,7 @@ import { AgentDashboard } from "@/components/agent-dashboard";
 import { UserManagement } from "@/components/user-management";
 import { AuthConfig } from "@/components/auth-config";
 import { ToolPolicies } from "@/components/tool-policies";
+import { useTheme, THEMES, type ThemeId } from "@/components/theme-provider";
 
 export default function HomePage() {
   const router = useRouter();
@@ -94,6 +95,7 @@ export default function HomePage() {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          <ThemeSwitcher />
           <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" title="Online" />
           <span className="text-[13px] text-muted-foreground font-medium">
             {displayName || session.user?.email}
@@ -254,6 +256,58 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
           {active === "users" && userRole === "admin" && <UserManagement />}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Theme Switcher — compact dropdown in the header                            */
+/* -------------------------------------------------------------------------- */
+
+function ThemeSwitcher() {
+  const { theme, setTheme } = useTheme();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-foreground px-2 py-1.5 rounded-lg hover:bg-white/[0.05] transition-all duration-200"
+        title="Change theme"
+      >
+        <span
+          className="h-3 w-3 rounded-full border border-white/20"
+          style={{ background: THEMES.find((t) => t.id === theme)?.swatch }}
+        />
+        <span className="hidden sm:inline">{THEMES.find((t) => t.id === theme)?.label}</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-2 z-50 w-52 rounded-xl border border-white/[0.08] bg-card/95 backdrop-blur-xl shadow-2xl p-1.5 space-y-0.5">
+            {THEMES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => { setTheme(t.id); setOpen(false); }}
+                className={`w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all duration-200 ${
+                  theme === t.id
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
+                }`}
+              >
+                <span
+                  className="h-3.5 w-3.5 rounded-full border border-white/20 shrink-0"
+                  style={{ background: t.swatch }}
+                />
+                <div className="min-w-0">
+                  <div className="text-[13px] font-medium">{t.label}</div>
+                  <div className="text-[10px] text-muted-foreground/60">{t.description}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

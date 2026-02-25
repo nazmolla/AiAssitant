@@ -126,7 +126,7 @@ export function AgentDashboard() {
                   className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-white/[0.03] text-sm font-mono transition-colors duration-200"
                 >
                   <span className="text-[11px] text-muted-foreground/50 whitespace-nowrap font-light">
-                    {new Date(log.created_at).toLocaleTimeString()}
+                    {new Date(log.created_at.endsWith("Z") ? log.created_at : log.created_at + "Z").toLocaleTimeString()}
                   </span>
                   <Badge variant={levelColor(log.level) as "default"}>
                     {log.level}

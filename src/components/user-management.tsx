@@ -158,7 +158,7 @@ export function UserManagement() {
                     )}
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {user.email} · {user.provider_id} · joined {new Date(user.created_at).toLocaleDateString()}
+                    {user.email} · {user.provider_id} · joined {new Date(user.created_at.endsWith("Z") ? user.created_at : user.created_at + "Z").toLocaleDateString()}
                   </p>
                 </div>
               </div>

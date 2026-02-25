@@ -50,7 +50,7 @@ class McpManager {
     const args = server.args ? JSON.parse(server.args) : [];
     const envVars = server.env_vars ? JSON.parse(server.env_vars) : {};
 
-    const client = new Client(
+    let client = new Client(
       { name: "nexus-agent", version: "1.0.0" },
       { capabilities: {} }
     );
@@ -89,12 +89,33 @@ class McpManager {
       if (!endpoint) {
         throw new Error("Streamable HTTP transport requires a URL.");
       }
-      const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
-        requestInit: {
-          headers: { ...authHeaders } as Record<string, string>,
-        },
-      });
-      await client.connect(transport);
+      try {
+        const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
+          requestInit: {
+            headers: { ...authHeaders } as Record<string, string>,
+          },
+        });
+        await client.connect(transport);
+      } catch (streamErr) {
+        // Fallback to SSE if StreamableHTTP fails (e.g. 404 — server uses legacy SSE)
+        addLog({
+          level: "info",
+          source: "mcp",
+          message: `StreamableHTTP failed for "${server.name}", falling back to SSE: ${streamErr}`,
+          metadata: JSON.stringify({ serverId: server.id }),
+        });
+        client = new Client(
+          { name: "nexus-agent", version: "1.0.0" },
+          { capabilities: {} }
+        );
+        const sseUrl = endpoint.replace(/\/$/, "") + "/sse";
+        const sseTransport = new SSEClientTransport(new URL(sseUrl), {
+          requestInit: {
+            headers: { ...envVars, ...authHeaders } as Record<string, string>,
+          },
+        } as any);
+        await client.connect(sseTransport);
+      }
     } else {
       throw new Error(`Transport type "${transportType}" not supported.`);
     }
