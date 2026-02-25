@@ -39,7 +39,7 @@ npm run build
 npm start                         # local production
 ```
 
-For remote hosts (e.g., Jetson Nano):
+For remote hosts:
 
 ```bash
 tar -cf deploy.tar --exclude=node_modules --exclude=.git --exclude='*.db' .
@@ -47,7 +47,7 @@ scp deploy.tar user@host:/path/to/app/
 # On remote: tar -xf deploy.tar && npm install --production && npx next start -p 3000
 ```
 
-> **Important:** Exclude `*.db` files to avoid overwriting the remote database. See [Installation Guide](docs/INSTALLATION.md#remote-deployment-eg-jetson-nano) for details.
+> **Important:** Exclude `*.db` files to avoid overwriting the remote database. See [Installation Guide](docs/INSTALLATION.md#remote-deployment) for details.
 
 ---
 

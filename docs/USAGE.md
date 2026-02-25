@@ -8,9 +8,11 @@
 
 The Command Center is a single-page dashboard with a premium dark theme (coral accent, glass morphism effects). All tabs are accessible from the left sidebar.
 
+![Command Center overview](images/command-center.png)
+
 | Tab | Description |
 |-----|-------------|
-| **Dashboard** | Real-time agent activity logs with level-based filtering (info, warning, error) |
+| **Dashboard** | Real-time agent activity logs with level-based filtering |
 | **Chat** | Threaded conversations with file attachments, inline screenshots, streaming responses, inline approval buttons, and live screen sharing |
 | **Approvals** | Pending tool execution requests with approve/reject controls (user-scoped) |
 | **Knowledge** | Searchable CRUD interface for the user's knowledge vault |
@@ -23,6 +25,8 @@ The Command Center is a single-page dashboard with a premium dark theme (coral a
 ---
 
 ## Chat
+
+![Chat panel with threaded conversations](images/chat.png)
 
 ### Starting a Conversation
 
@@ -52,6 +56,8 @@ When a tool call requires approval, an approve/deny button pair appears directly
 
 LLM providers are configured entirely through the admin UI — no environment variables required.
 
+![LLM Providers list](images/llm-providers.png)
+
 ### Adding a Provider
 
 1. Open **Settings → LLM Providers**
@@ -76,6 +82,8 @@ If an embedding provider is configured, knowledge entries are stored with vector
 ## Authentication Providers
 
 OAuth login providers and Discord bot credentials are managed through the admin UI — no environment variables required.
+
+![Authentication providers configuration](images/auth-providers.png)
 
 ### Configuring a Provider
 
@@ -105,6 +113,8 @@ Use the toggle on each provider card to enable or disable it without removing th
 
 ## MCP Servers
 
+![MCP Servers management](images/mcp-servers.png)
+
 ### Adding an MCP Server
 
 1. Open the **MCP Servers** tab
@@ -128,15 +138,19 @@ After adding, click **Connect** to establish the connection. Available tools are
 
 ### Tool Policies
 
+![Tool Policies table with toggles](images/tool-policies.png)
+
 Each discovered tool gets a policy entry controlling:
 - **Requires Approval** — whether the tool call needs HITL approval before execution
 - **Proactive Enabled** — whether the scheduler can invoke this tool autonomously
 
-Configure policies from the **Approvals** tab or via the API.
+Configure policies from the **Tool Policies** settings page or via the API.
 
 ---
 
 ## Communication Channels
+
+![Channels configuration](images/channels.png)
 
 ### Supported Channel Types
 
@@ -168,6 +182,8 @@ Channels are **user-scoped** — messages arriving on your channel are routed to
 
 ## Knowledge Vault
 
+![Knowledge Vault with search](images/knowledge-vault.png)
+
 ### Automatic Knowledge Capture
 
 After every agent response, the LLM extracts durable facts from the conversation and stores them in your personal knowledge vault. No manual input needed.
@@ -192,6 +208,8 @@ If an embedding model is configured, knowledge retrieval uses cosine similarity 
 ---
 
 ## Human-in-the-Loop (HITL)
+
+![Approval inbox with pending requests](images/approvals.png)
 
 ### How It Works
 
@@ -240,6 +258,8 @@ A background cron job that monitors proactive-enabled MCP tools on a configurabl
 
 ## User Management (Admin)
 
+![User management panel](images/user-management.png)
+
 ### Managing Users
 
 From the **User Management** tab, admins can:
@@ -266,6 +286,8 @@ From the **User Management** tab, admins can:
 ---
 
 ## Profile Settings
+
+![Profile settings editor](images/profile.png)
 
 Each user can customize their profile from the **Profile** tab:
 

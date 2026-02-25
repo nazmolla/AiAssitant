@@ -8,7 +8,7 @@
 
 | Layer | Component | Details |
 |-------|-----------|---------|
-| Runtime | Node.js | v20+ (LTS). Tested on x86 and ARM64 (Jetson Nano). |
+| Runtime | Node.js | v20+ (LTS). Tested on x86-64 and ARM64. |
 | Language | TypeScript | v5.x, Strict Mode |
 | Database | SQLite | `better-sqlite3` — zero-config, single-file persistence |
 | Frontend | Next.js 14 | App Router, TailwindCSS, Radix UI primitives, screen sharing via getDisplayMedia |

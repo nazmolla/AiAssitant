@@ -8,7 +8,7 @@
 
 | Requirement | Details |
 |-------------|---------|
-| **Node.js** | v20+ (LTS). Tested on x86-64 and ARM64 (Jetson Nano). |
+| **Node.js** | v20+ (LTS). Tested on x86-64 and ARM64. |
 | **npm** | Bundled with Node.js |
 | **LLM API key** | Configure at runtime via Settings → LLM Providers |
 | **OS** | Linux, macOS, or Windows. ARM64 support for edge devices. |
@@ -73,7 +73,7 @@ npx next start -p 8080
 
 ---
 
-## Remote Deployment (e.g., Jetson Nano)
+## Remote Deployment
 
 For deploying to a remote host (ARM64 or x86):
 
@@ -107,7 +107,7 @@ NODE_OPTIONS='--max-old-space-size=256' npx next start -p 3000
 
 ### Memory-Constrained Devices
 
-On devices with limited RAM (e.g., Jetson Nano with 4 GB), set the Node.js heap limit:
+On devices with limited RAM (4 GB or less), set the Node.js heap limit:
 
 ```bash
 NODE_OPTIONS='--max-old-space-size=256' npx next start -p 3000
@@ -124,10 +124,10 @@ Description=Nexus Agent
 After=network.target
 
 [Service]
-WorkingDirectory=/home/<user>/nexus-agent
+WorkingDirectory=/home/user/nexus-agent
 ExecStart=/usr/bin/node node_modules/.bin/next start -p 3000
 Environment=NODE_OPTIONS=--max-old-space-size=256
-User=<user>
+User=user
 Restart=always
 RestartSec=5
 
