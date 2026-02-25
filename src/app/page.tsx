@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession, signIn, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/chat-panel";
@@ -16,6 +17,7 @@ import { UserManagement } from "@/components/user-management";
 import { AuthConfig } from "@/components/auth-config";
 
 export default function HomePage() {
+  const router = useRouter();
   const { data: session, status } = useSession();
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>("user");
@@ -71,7 +73,7 @@ export default function HomePage() {
           <Button
             size="lg"
             className="rounded-2xl px-10 h-12 text-base font-medium glow-md hover:glow-sm"
-            onClick={() => signIn()}
+            onClick={() => router.push("/auth/signin")}
           >
             Sign In
           </Button>
@@ -96,7 +98,7 @@ export default function HomePage() {
             {displayName || session.user?.email}
           </span>
           <button
-            onClick={() => signOut({ redirect: true })}
+            onClick={() => signOut({ callbackUrl: `${window.location.origin}/auth/signin` })}
             className="text-xs text-muted-foreground/60 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10"
             title="Sign out"
           >
