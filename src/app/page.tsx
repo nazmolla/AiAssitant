@@ -87,14 +87,14 @@ export default function HomePage() {
   return (
     <div className="flex h-screen flex-col bg-background noise">
       {/* Header — Glass morphism toolbar */}
-      <header className="glass px-6 py-3 flex items-center justify-between relative z-20">
-        <div className="flex items-center gap-4">
+      <header className="glass px-3 sm:px-6 py-3 flex items-center justify-between relative z-20">
+        <div className="flex items-center gap-2 sm:gap-4">
           <h1 className="text-lg font-display font-bold gradient-text">Nexus</h1>
-          <span className="text-[10px] text-muted-foreground/70 bg-primary/5 border border-primary/10 px-2.5 py-1 rounded-full font-medium uppercase tracking-widest">
+          <span className="hidden sm:inline text-[10px] text-muted-foreground/70 bg-primary/5 border border-primary/10 px-2.5 py-1 rounded-full font-medium uppercase tracking-widest">
             Command Center
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <ThemeSwitcher />
           <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" title="Online" />
           <span className="text-[13px] text-muted-foreground font-medium">
@@ -113,8 +113,8 @@ export default function HomePage() {
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
         <Tabs defaultValue={perms.chat ? "chat" : "config"} className="flex flex-col h-full">
-          <div className="glass px-6 py-2 flex items-center justify-center">
-            <TabsList>
+          <div className="glass px-2 sm:px-6 py-2 flex items-center justify-center overflow-x-auto">
+            <TabsList className="flex-wrap sm:flex-nowrap">
               {!!perms.chat && (
                 <TabsTrigger value="chat">
                   <span className="mr-1.5">💬</span> Chat
@@ -216,15 +216,15 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
   const header = SETTINGS_HEADERS[active];
 
   return (
-    <div className="flex h-full">
-      {/* Left sidebar */}
-      <nav className="w-52 shrink-0 border-r border-white/[0.06] bg-white/[0.01] overflow-y-auto py-4 px-2">
-        <div className="space-y-0.5">
+    <div className="flex flex-col sm:flex-row h-full">
+      {/* Left sidebar — horizontal scroll on mobile, vertical on desktop */}
+      <nav className="sm:w-52 shrink-0 border-b sm:border-b-0 sm:border-r border-white/[0.06] bg-white/[0.01] overflow-x-auto sm:overflow-y-auto py-2 sm:py-4 px-2">
+        <div className="flex sm:flex-col gap-1 sm:gap-0.5">
           {visiblePages.map((page) => (
             <button
               key={page.key}
               onClick={() => setActive(page.key)}
-              className={`w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200 text-left ${
+              className={`shrink-0 sm:w-full flex items-center gap-2 sm:gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200 text-left whitespace-nowrap ${
                 active === page.key
                   ? "bg-primary/10 text-primary border border-primary/15"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
@@ -238,7 +238,7 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
       </nav>
 
       {/* Content area */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6">
         <div className="max-w-4xl mx-auto space-y-6">
           {header && (
             <div>

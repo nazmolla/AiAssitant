@@ -15,9 +15,12 @@ interface LogEntry {
   created_at: string;
 }
 
+type LogFilter = "all" | "error" | "thought" | "hitl";
+
 export function AgentDashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [filter, setFilter] = useState<LogFilter>("all");
   const { formatDate } = useTheme();
 
   const fetchLogs = () => {
@@ -34,6 +37,14 @@ export function AgentDashboard() {
       return () => clearInterval(interval);
     }
   }, [autoRefresh]);
+
+  const filteredLogs = logs.filter((l) => {
+    if (filter === "all") return true;
+    if (filter === "error") return l.level === "error";
+    if (filter === "thought") return l.level === "thought";
+    if (filter === "hitl") return l.source === "hitl";
+    return true;
+  });
 
   const levelColor = (level: string) => {
     switch (level) {
@@ -56,12 +67,12 @@ export function AgentDashboard() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-display font-bold gradient-text">Agent Dashboard</h2>
           <p className="text-sm text-muted-foreground/60 font-light mt-1">Real-time activity and diagnostics</p>
         </div>
-        <label className="flex items-center gap-2.5 text-[13px] text-muted-foreground cursor-pointer bg-white/[0.03] border border-white/[0.06] rounded-xl px-3.5 py-2 hover:bg-white/[0.05] transition-all duration-300">
+        <label className="flex items-center gap-2.5 text-[13px] text-muted-foreground cursor-pointer bg-white/[0.03] border border-white/[0.06] rounded-xl px-3.5 py-2 hover:bg-white/[0.05] transition-all duration-300 self-start sm:self-auto">
           <input
             type="checkbox"
             checked={autoRefresh}
@@ -72,47 +83,72 @@ export function AgentDashboard() {
         </label>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <Card className="group hover:border-primary/20 transition-all duration-300">
+      {/* Stats Cards — clickable to filter logs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <Card
+          className={`group cursor-pointer transition-all duration-300 ${filter === "all" ? "border-primary/30 bg-primary/5" : "hover:border-primary/20"}`}
+          onClick={() => setFilter(filter === "all" ? "all" : "all")}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Total Logs</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-display font-bold">{logs.length}</div>
+            <div className="text-2xl sm:text-3xl font-display font-bold">{logs.length}</div>
           </CardContent>
         </Card>
-        <Card className="group hover:border-red-500/20 transition-all duration-300">
+        <Card
+          className={`group cursor-pointer transition-all duration-300 ${filter === "error" ? "border-red-500/30 bg-red-500/5" : "hover:border-red-500/20"}`}
+          onClick={() => setFilter(filter === "error" ? "all" : "error")}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Errors</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-display font-bold text-red-400">
+            <div className="text-2xl sm:text-3xl font-display font-bold text-red-400">
               {logs.filter((l) => l.level === "error").length}
             </div>
           </CardContent>
         </Card>
-        <Card className="group hover:border-blue-500/20 transition-all duration-300">
+        <Card
+          className={`group cursor-pointer transition-all duration-300 ${filter === "thought" ? "border-blue-500/30 bg-blue-500/5" : "hover:border-blue-500/20"}`}
+          onClick={() => setFilter(filter === "thought" ? "all" : "thought")}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Thoughts</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-display font-bold text-blue-400">
+            <div className="text-2xl sm:text-3xl font-display font-bold text-blue-400">
               {logs.filter((l) => l.level === "thought").length}
             </div>
           </CardContent>
         </Card>
-        <Card className="group hover:border-yellow-500/20 transition-all duration-300">
+        <Card
+          className={`group cursor-pointer transition-all duration-300 ${filter === "hitl" ? "border-yellow-500/30 bg-yellow-500/5" : "hover:border-yellow-500/20"}`}
+          onClick={() => setFilter(filter === "hitl" ? "all" : "hitl")}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">HITL Events</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-display font-bold text-yellow-400">
+            <div className="text-2xl sm:text-3xl font-display font-bold text-yellow-400">
               {logs.filter((l) => l.source === "hitl").length}
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Active filter indicator */}
+      {filter !== "all" && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground/60">Filtering:</span>
+          <Badge variant="outline" className="text-xs">
+            {filter === "error" ? "Errors only" : filter === "thought" ? "Thoughts only" : "HITL events only"}
+          </Badge>
+          <button onClick={() => setFilter("all")} className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors">
+            Clear
+          </button>
+        </div>
+      )}
 
       {/* Log Stream */}
       <Card>
@@ -122,7 +158,7 @@ export function AgentDashboard() {
         <CardContent>
           <ScrollArea className="h-[500px]">
             <div className="space-y-1">
-              {logs.map((log) => (
+              {filteredLogs.map((log) => (
                 <div
                   key={log.id}
                   className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-white/[0.03] text-sm font-mono transition-colors duration-200"
@@ -139,9 +175,9 @@ export function AgentDashboard() {
                   <span className="flex-1 text-foreground/80">{log.message}</span>
                 </div>
               ))}
-              {logs.length === 0 && (
+              {filteredLogs.length === 0 && (
                 <div className="text-center text-muted-foreground/60 py-12 text-sm font-light">
-                  No agent logs yet. Start a conversation or enable proactive scanning.
+                  {filter !== "all" ? `No ${filter} logs found.` : "No agent logs yet. Start a conversation or enable proactive scanning."}
                 </div>
               )}
             </div>

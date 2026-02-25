@@ -187,7 +187,16 @@ export function McpConfig() {
   }
 
   async function deleteServer(serverId: string) {
-    await fetch(`/api/mcp?id=${serverId}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/mcp?id=${serverId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Failed to remove server");
+        return;
+      }
+    } catch (err) {
+      console.error("Delete failed:", err);
+    }
     fetchAll();
   }
 

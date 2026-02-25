@@ -21,6 +21,7 @@ import { executeWithGatekeeper } from "./gatekeeper";
 import { BUILTIN_WEB_TOOLS, isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
 import { BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool } from "./browser-tools";
 import { BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool } from "./fs-tools";
+import { BUILTIN_NETWORK_TOOLS, isNetworkTool, executeBuiltinNetworkTool } from "./network-tools";
 import {
   addMessage,
   getThreadMessages,
@@ -47,6 +48,8 @@ Your capabilities:
 - File system access: read files and directories, create new files, search for files by pattern, get file metadata
 - File system mutation (requires approval): update/overwrite existing files, delete files and directories
 - Script execution (requires approval): run shell commands and scripts on the local system
+- Network scanning: discover devices on the local network, port-scan hosts, ping hosts
+- Network connections (requires approval): SSH into devices and execute commands, make HTTP requests to local/internal devices, send Wake-on-LAN packets
 - A persistent knowledge vault of user preferences and facts
 - Ability to generate reminders and proactive suggestions
 - Transparent reasoning: always explain WHY you want to take an action
@@ -70,6 +73,8 @@ Rules:
 - For complex web interactions (filling forms, applying to jobs, creating profiles), use the browser tools
 - For file system operations, use fs_read_file, fs_read_directory, fs_file_info, fs_search_files for reading; fs_create_file for creating new files
 - Modifying (fs_update_file), deleting (fs_delete_file, fs_delete_directory), and script execution (fs_execute_script) require owner approval — explain WHY you need to perform the action
+- For network operations, use net_ping to check if a device is online (no approval needed), net_scan_network to discover all devices on the local network, net_scan_ports to discover services running on a host, net_connect_ssh to execute commands on remote devices, net_http_request to interact with local device APIs (e.g. routers, IoT, Home Assistant), net_wake_on_lan to power on devices remotely
+- Network scanning, SSH, HTTP requests to local devices, and Wake-on-LAN require owner approval — explain WHY you need to perform the action
 - Be concise but thorough
 
 CRITICAL SECURITY — Prompt Injection Defense:
@@ -125,7 +130,7 @@ export async function runAgentLoop(
   const provider = createChatProvider();
   const mcpManager = getMcpManager();
   const mcpTools = mcpManager.getAllTools();
-  const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...mcpTools];
+  const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...mcpTools];
 
   if (!continuation) {
     // Build attachment metadata JSON
@@ -248,7 +253,9 @@ export async function runAgentLoop(
             ? await executeBuiltinBrowserTool(toolCall, threadId, response.content || undefined)
             : isFsTool(toolCall.name)
               ? await executeBuiltinFsToolWithGatekeeper(toolCall, threadId, response.content || undefined)
-              : await executeWithGatekeeper(toolCall, threadId, response.content || undefined);
+              : isNetworkTool(toolCall.name)
+                ? await executeBuiltinNetworkToolWithGatekeeper(toolCall, threadId, response.content || undefined)
+                : await executeWithGatekeeper(toolCall, threadId, response.content || undefined);
 
         if (result.status === "pending_approval") {
           pendingApprovals.push(toolCall.name);
@@ -749,6 +756,67 @@ async function executeBuiltinFsToolWithGatekeeper(
       level: "error",
       source: "agent",
       message: `FS tool "${toolCall.name}" failed: ${err.message}`,
+      metadata: JSON.stringify({ threadId }),
+    });
+    return { status: "error", error: err.message };
+  }
+}
+
+/**
+ * Execute a built-in network tool.
+ * Goes through gatekeeper policy check first.
+ */
+async function executeBuiltinNetworkToolWithGatekeeper(
+  toolCall: ToolCall,
+  threadId: string,
+  reasoning?: string
+): Promise<import("./gatekeeper").GatekeeperResult> {
+  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg } = await import("@/lib/db");
+  const policy = getToolPolicy(toolCall.name);
+
+  // Default-deny for network tools: if no policy exists OR policy requires approval
+  if (!policy || policy.requires_approval) {
+    addLog({
+      level: "info",
+      source: "hitl",
+      message: `Network tool "${toolCall.name}" requires approval.`,
+      metadata: JSON.stringify({ threadId, args: toolCall.arguments }),
+    });
+
+    const approval = createApprovalRequest({
+      thread_id: threadId,
+      tool_name: toolCall.name,
+      args: JSON.stringify(toolCall.arguments),
+      reasoning: reasoning || null,
+    });
+
+    updateThreadStatus(threadId, "awaiting_approval");
+    addMsg({
+      thread_id: threadId,
+      role: "system",
+      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.`,
+      tool_calls: null,
+      tool_results: null,
+      attachments: null,
+    });
+
+    return { status: "pending_approval", approvalId: approval.id };
+  }
+
+  try {
+    const result = await executeBuiltinNetworkTool(toolCall.name, toolCall.arguments);
+    addLog({
+      level: "info",
+      source: "agent",
+      message: `Network tool "${toolCall.name}" executed successfully.`,
+      metadata: JSON.stringify({ threadId }),
+    });
+    return { status: "executed", result };
+  } catch (err: any) {
+    addLog({
+      level: "error",
+      source: "agent",
+      message: `Network tool "${toolCall.name}" failed: ${err.message}`,
       metadata: JSON.stringify({ threadId }),
     });
     return { status: "error", error: err.message };

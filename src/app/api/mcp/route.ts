@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     access_token: access_token || null,
     client_id: client_id || null,
     client_secret: client_secret || null,
-    user_id: serverScope === "user" ? auth.user.id : null,
+    user_id: auth.user.id,
     scope: serverScope,
   });
 
@@ -93,16 +93,15 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "id is required." }, { status: 400 });
   }
 
-  // Verify ownership: only admin can delete global servers, users can only delete their own
+  // Verify ownership: admins can delete any server, users can delete servers they created or user-scoped servers
   const server = getMcpServer(id);
   if (!server) {
     return NextResponse.json({ error: "Server not found." }, { status: 404 });
   }
-  if (server.scope === "global" && auth.user.role !== "admin") {
-    return NextResponse.json({ error: "Only admins can delete global servers." }, { status: 403 });
-  }
-  if (server.scope === "user" && server.user_id !== auth.user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const isOwner = server.user_id === auth.user.id;
+  const isAdmin = auth.user.role === "admin";
+  if (!isAdmin && !isOwner) {
+    return NextResponse.json({ error: "You can only remove servers you created. Contact an admin for global servers." }, { status: 403 });
   }
 
   const mcpManager = getMcpManager();

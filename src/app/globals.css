@@ -397,8 +397,10 @@
   font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif !important;
 }
 
-/* Smooth transitions everywhere */
-*, *::before, *::after {
+/* Smooth transitions on interactive elements only — avoids global paint thrashing */
+button, a, input, select, textarea,
+[role="tab"], [role="tabpanel"],
+.transition-all, .transition-colors {
   transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;

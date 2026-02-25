@@ -10,6 +10,7 @@ import { getMcpManager } from "@/lib/mcp";
 import { isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
 import { isBrowserTool, executeBrowserTool } from "./browser-tools";
 import { isFsTool, executeBuiltinFsTool } from "./fs-tools";
+import { isNetworkTool, executeBuiltinNetworkTool } from "./network-tools";
 import {
   getToolPolicy,
   createApprovalRequest,
@@ -128,6 +129,8 @@ export async function executeApprovedTool(
       result = await executeBrowserTool(toolName, args);
     } else if (isFsTool(toolName)) {
       result = await executeBuiltinFsTool(toolName, args);
+    } else if (isNetworkTool(toolName)) {
+      result = await executeBuiltinNetworkTool(toolName, args);
     } else {
       result = await getMcpManager().callTool(toolName, args);
     }
