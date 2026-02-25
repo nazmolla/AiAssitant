@@ -74,15 +74,17 @@ echo ""
 echo "[5/7] Stopping remote server..."
 ssh "${REMOTE}" "
   cd ${REMOTE_DIR} 2>/dev/null || true
-  PID=\$(lsof -ti:3000 2>/dev/null || true)
-  if [ -n \"\${PID}\" ]; then
-    kill \${PID} 2>/dev/null || true
-    sleep 2
-    # Force kill if still running
-    kill -9 \${PID} 2>/dev/null || true
-    echo '  Server stopped'
+  # Kill anything on port 3000
+  fuser -k 3000/tcp 2>/dev/null || true
+  sleep 2
+  # Force kill if still running
+  fuser -k -9 3000/tcp 2>/dev/null || true
+  sleep 1
+  if fuser 3000/tcp 2>/dev/null; then
+    echo '  ✗ Failed to stop server'
+    exit 1
   else
-    echo '  No server running'
+    echo '  Server stopped'
   fi
 "
 echo ""
@@ -120,15 +122,17 @@ ssh "${REMOTE}" "
   fi
   
   # Verify DB has data
-  DATA_CHECK=\$(node -e "
-    try {
-      var db = require('better-sqlite3')('./nexus.db');
-      var users = db.prepare('SELECT count(*) as c FROM users').get().c;
-      var tables = db.prepare(\"SELECT count(*) as c FROM sqlite_master WHERE type='table'\").get().c;
-      console.log('tables=' + tables + ' users=' + users);
-      db.close();
-    } catch(e) { console.log('error: ' + e.message); }
-  " 2>/dev/null)
+  cat > /tmp/dbcheck.js << 'JSEOF'
+try {
+  var db = require("better-sqlite3")("./nexus.db");
+  var users = db.prepare("SELECT count(*) as c FROM users").get().c;
+  var tables = db.prepare("SELECT count(*) as c FROM sqlite_master WHERE type='table'").get().c;
+  console.log("tables=" + tables + " users=" + users);
+  db.close();
+} catch(e) { console.log("error: " + e.message); }
+JSEOF
+  DATA_CHECK=\$(node /tmp/dbcheck.js 2>/dev/null)
+  rm -f /tmp/dbcheck.js
   echo \"  DB: \${DATA_CHECK}\"
 "
 echo ""
