@@ -75,6 +75,19 @@ CREATE TABLE llm_providers (
     config_json TEXT NOT NULL,
     is_default BOOLEAN DEFAULT 0
 );
+
+CREATE TABLE auth_providers (
+    id TEXT PRIMARY KEY,
+    provider_type TEXT NOT NULL,         -- 'azure-ad' | 'google' | 'discord'
+    label TEXT NOT NULL,
+    client_id TEXT,
+    client_secret TEXT,
+    tenant_id TEXT,
+    bot_token TEXT,
+    application_id TEXT,
+    enabled INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ### B. Knowledge & Memory (Per-User)
@@ -187,6 +200,7 @@ CREATE TABLE channel_user_mappings (
 | `GET/POST` | `/api/policies` | Auth | List/update tool policies |
 | `GET` | `/api/logs` | Auth | Fetch agent activity logs |
 | `GET/POST` | `/api/config/llm` | Auth | Manage LLM provider configs |
+| `GET/POST/PATCH/DELETE` | `/api/config/auth` | Admin | Manage OAuth and Discord auth providers |
 | `GET/POST/PATCH/DELETE` | `/api/config/channels` | User | Manage communication channels (user-scoped, ownership enforced) |
 | `GET/PUT` | `/api/config/profile` | User | Get/update user profile (user-scoped) |
 | `POST` | `/api/channels/[channelId]/webhook` | Webhook | Receive inbound messages from channels |

@@ -13,14 +13,14 @@ export class AnthropicChatProvider implements ChatProvider {
   private client: Anthropic;
   private model: string;
 
-  constructor(options?: AnthropicProviderOptions) {
-    const apiKey = options?.apiKey || process.env.ANTHROPIC_API_KEY;
+  constructor(options: AnthropicProviderOptions) {
+    const apiKey = options.apiKey;
     if (!apiKey) {
       throw new Error("[Nexus] Missing Anthropic API key.");
     }
 
     this.client = new Anthropic({ apiKey });
-    this.model = options?.model || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+    this.model = options.model || "claude-sonnet-4-20250514";
   }
 
   async chat(

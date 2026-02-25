@@ -13,6 +13,7 @@ import { ChannelsConfig } from "@/components/channels-config";
 import { ProfileConfig } from "@/components/profile-config";
 import { AgentDashboard } from "@/components/agent-dashboard";
 import { UserManagement } from "@/components/user-management";
+import { AuthConfig } from "@/components/auth-config";
 
 export default function HomePage() {
   const { data: session, status } = useSession();
@@ -165,6 +166,7 @@ export default function HomePage() {
                   {!!perms.mcp_servers && <TabsTrigger value="mcp">🔌 MCP Servers</TabsTrigger>}
                   {!!perms.channels && <TabsTrigger value="channels">📡 Channels</TabsTrigger>}
                   <TabsTrigger value="profile">👤 Profile</TabsTrigger>
+                  {userRole === "admin" && <TabsTrigger value="auth">🔐 Authentication</TabsTrigger>}
                   {userRole === "admin" && <TabsTrigger value="users">👥 Users</TabsTrigger>}
                 </TabsList>
 
@@ -207,6 +209,18 @@ export default function HomePage() {
                   </div>
                   <ProfileConfig />
                 </TabsContent>
+
+                {userRole === "admin" && (
+                  <TabsContent value="auth" className="mt-4 space-y-4">
+                    <div>
+                      <h2 className="text-2xl font-display font-bold gradient-text">Authentication Providers</h2>
+                      <p className="text-sm text-muted-foreground mt-1 font-light">
+                        Configure OAuth login providers and external integrations.
+                      </p>
+                    </div>
+                    <AuthConfig />
+                  </TabsContent>
+                )}
 
                 {userRole === "admin" && (
                   <TabsContent value="users" className="mt-4 space-y-4">

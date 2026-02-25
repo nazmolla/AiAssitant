@@ -1,11 +1,16 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { signIn, getProviders } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+
+const PROVIDER_LABELS: Record<string, string> = {
+  "azure-ad": "Azure AD",
+  google: "Google",
+};
 
 export default function SignInPage() {
   const router = useRouter();
@@ -13,6 +18,15 @@ export default function SignInPage() {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<{ type: "idle" | "error" | "success"; message?: string }>({ type: "idle" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [oauthProviders, setOauthProviders] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    getProviders().then((providers) => {
+      if (!providers) return;
+      const oauth = Object.values(providers).filter((p) => p.id !== "credentials");
+      setOauthProviders(oauth.map((p) => ({ id: p.id, name: PROVIDER_LABELS[p.id] || p.name })));
+    });
+  }, []);
 
   async function handleLocalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,25 +66,25 @@ export default function SignInPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-3">
-          <Button
-            className="w-full"
-            variant="outline"
-            onClick={() => signIn("azure-ad", { callbackUrl: "/" })}
-          >
-            Sign in with Azure AD
-          </Button>
-          <Button
-            className="w-full"
-            variant="outline"
-            onClick={() => signIn("google", { callbackUrl: "/" })}
-          >
-            Sign in with Google
-          </Button>
-          </div>
-          <div className="text-center text-[10px] uppercase tracking-widest text-muted-foreground/40 font-medium">
-            or use local credentials
-          </div>
+          {oauthProviders.length > 0 && (
+            <div className="space-y-3">
+              {oauthProviders.map((provider) => (
+                <Button
+                  key={provider.id}
+                  className="w-full"
+                  variant="outline"
+                  onClick={() => signIn(provider.id, { callbackUrl: "/" })}
+                >
+                  Sign in with {provider.name}
+                </Button>
+              ))}
+            </div>
+          )}
+          {oauthProviders.length > 0 && (
+            <div className="text-center text-[10px] uppercase tracking-widest text-muted-foreground/40 font-medium">
+              or use local credentials
+            </div>
+          )}
           <form className="space-y-3" onSubmit={handleLocalSubmit}>
             <Input
               type="email"

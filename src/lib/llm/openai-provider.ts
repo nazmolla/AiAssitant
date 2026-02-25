@@ -23,33 +23,10 @@ export class OpenAIChatProvider implements ChatProvider {
   private client: OpenAI;
   private model: string;
 
-  constructor(options?: OpenAIProviderOptions) {
-    if (options) {
-      const configured = this.fromOptions(options);
-      this.client = configured.client;
-      this.model = configured.model;
-      return;
-    }
-
-    if (process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_API_KEY) {
-      const endpoint = process.env.AZURE_OPENAI_ENDPOINT.replace(/\/$/, "");
-      const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o";
-      this.client = new OpenAI({
-        apiKey: process.env.AZURE_OPENAI_API_KEY,
-        baseURL: `${endpoint}/openai/deployments/${deployment}`,
-        defaultQuery: { "api-version": process.env.AZURE_OPENAI_API_VERSION || "2024-08-01-preview" },
-        defaultHeaders: { "api-key": process.env.AZURE_OPENAI_API_KEY },
-      });
-      this.model = deployment;
-      return;
-    }
-
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error("[Nexus] Missing OpenAI credentials.");
-    }
-
-    this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    this.model = process.env.OPENAI_MODEL || "gpt-4o";
+  constructor(options: OpenAIProviderOptions) {
+    const configured = this.fromOptions(options);
+    this.client = configured.client;
+    this.model = configured.model;
   }
 
   private fromOptions(options: OpenAIProviderOptions): { client: OpenAI; model: string } {

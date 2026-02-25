@@ -15,14 +15,8 @@ export function createChatProvider(): ChatProvider {
     return buildProviderFromRecord(defaultProvider);
   }
 
-  if (process.env.AZURE_OPENAI_API_KEY || process.env.OPENAI_API_KEY) {
-    return new OpenAIChatProvider();
-  }
-  if (process.env.ANTHROPIC_API_KEY) {
-    return new AnthropicChatProvider();
-  }
   throw new Error(
-    "[Nexus] No LLM provider configured. Use the Command Center configuration tab or set AZURE_OPENAI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY."
+    "[Nexus] No LLM provider configured. Add one in Settings → LLM Providers."
   );
 }
 

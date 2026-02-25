@@ -9,13 +9,46 @@ import {
   createUser,
   updateUserPassword,
   getUserCount,
+  getEnabledAuthProviders,
 } from "@/lib/db";
 
 const LOCAL_SALT_ROUNDS = 12;
 
-export const authOptions: NextAuthOptions = {
-  providers: [
-    CredentialsProvider({
+/**
+ * Build NextAuth options dynamically — OAuth providers are read from the DB
+ * each time this function is called so admin changes take effect immediately.
+ */
+export function getAuthOptions(): NextAuthOptions {
+  const oauthProviders: NextAuthOptions["providers"] = [];
+
+  try {
+    const dbProviders = getEnabledAuthProviders();
+    for (const p of dbProviders) {
+      if (p.provider_type === "azure-ad" && p.client_id && p.client_secret && p.tenant_id) {
+        oauthProviders.push(
+          AzureADProvider({
+            clientId: p.client_id,
+            clientSecret: p.client_secret,
+            tenantId: p.tenant_id,
+          })
+        );
+      } else if (p.provider_type === "google" && p.client_id && p.client_secret) {
+        oauthProviders.push(
+          GoogleProvider({
+            clientId: p.client_id,
+            clientSecret: p.client_secret,
+          })
+        );
+      }
+      // 'discord' type is not an OAuth login provider — it's for the bot gateway
+    }
+  } catch {
+    // DB may not be initialized yet during first import — skip
+  }
+
+  return {
+    providers: [
+      CredentialsProvider({
       name: "Credentials",
       credentials: {
         email: { label: "Email", type: "email" },
@@ -59,23 +92,7 @@ export const authOptions: NextAuthOptions = {
         return { id: existing.id, email: existing.email, name: existing.display_name };
       },
     }),
-    ...(process.env.AZURE_AD_CLIENT_ID
-      ? [
-          AzureADProvider({
-            clientId: process.env.AZURE_AD_CLIENT_ID!,
-            clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-            tenantId: process.env.AZURE_AD_TENANT_ID!,
-          }),
-        ]
-      : []),
-    ...(process.env.GOOGLE_CLIENT_ID
-      ? [
-          GoogleProvider({
-            clientId: process.env.GOOGLE_CLIENT_ID!,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-          }),
-        ]
-      : []),
+    ...oauthProviders,
   ],
   callbacks: {
     async signIn({ user, account }) {
@@ -184,4 +201,8 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
   },
-};
+  };
+}
+
+/** Cached snapshot for use in guards (avoids re-reading DB on every call within the same request) */
+export const authOptions: NextAuthOptions = getAuthOptions();

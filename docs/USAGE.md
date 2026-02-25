@@ -50,9 +50,11 @@ When a tool call requires approval, an approve/deny button pair appears directly
 
 ## LLM Configuration
 
+LLM providers are configured entirely through the admin UI — no environment variables required.
+
 ### Adding a Provider
 
-1. Open the **LLM Config** tab
+1. Open **Settings → LLM Providers**
 2. Click **Add Provider**
 3. Select a provider type:
    - **Azure OpenAI** — requires API key + endpoint URL + deployment name
@@ -63,11 +65,41 @@ When a tool call requires approval, an approve/deny button pair appears directly
 
 ### Switching Providers
 
-Toggle the default provider at any time from the LLM Config panel. Changes take effect immediately — no restart required.
+Toggle the default provider at any time from the LLM Providers panel. Changes take effect immediately — no restart required.
 
 ### Embedding Models
 
 If an embedding provider is configured, knowledge entries are stored with vector embeddings for semantic search. Without one, the system falls back to SQLite keyword (`LIKE`) search.
+
+---
+
+## Authentication Providers
+
+OAuth login providers and Discord bot credentials are managed through the admin UI — no environment variables required.
+
+### Configuring a Provider
+
+1. Open **Settings → Authentication** (admin only)
+2. Click **Configure** on the provider card you want to enable:
+
+| Provider | Required Fields |
+|----------|----------------|
+| **Azure AD** | Client ID, Client Secret, Tenant ID |
+| **Google** | Client ID, Client Secret |
+| **Discord** | Bot Token, Application ID |
+
+3. Fill in the credentials and click **Save**
+4. The provider is immediately available on the sign-in page
+
+### Enable / Disable
+
+Use the toggle on each provider card to enable or disable it without removing the stored credentials.
+
+### Sign-In Flow
+
+- If **no OAuth providers** are configured, users sign in with email + password only
+- Configured providers appear as buttons on the sign-in page alongside the credential form
+- The first user to sign in automatically becomes the **admin**
 
 ---
 
@@ -111,7 +143,7 @@ Configure policies from the **Approvals** tab or via the API.
 | Type | Configuration | How It Works |
 |------|--------------|--------------|
 | **WhatsApp** | Webhook URL + secret | Receives messages via WhatsApp Business API webhook |
-| **Discord** | Bot token + application ID (env vars) | Gateway bot responds to mentions, DMs, and `/ask` slash commands |
+| **Discord** | Bot token + application ID (admin UI or channel config) | Gateway bot responds to mentions, DMs, and `/ask` slash commands |
 | **Custom Webhook** | Auto-generated webhook URL + optional secret | Any service can POST messages to the channel endpoint |
 
 ### Setting Up a Channel
@@ -125,7 +157,7 @@ Channels are **user-scoped** — messages arriving on your channel are routed to
 
 ### Discord Bot Setup
 
-1. Set `DISCORD_BOT_TOKEN` and `DISCORD_APPLICATION_ID` in your `.env` file
+1. Open **Settings → Authentication → Discord** and enter your Bot Token and Application ID, or provide them in the Discord channel configuration
 2. Invite the bot to your Discord server with message read/send permissions
 3. The bot responds to:
    - **Mentions** (`@NexusAgent what's the weather?`)

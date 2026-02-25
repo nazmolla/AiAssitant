@@ -10,7 +10,7 @@
 |-------------|---------|
 | **Node.js** | v20+ (LTS). Tested on x86-64 and ARM64 (Jetson Nano). |
 | **npm** | Bundled with Node.js |
-| **At least one LLM API key** | OpenAI, Azure OpenAI, or Anthropic |
+| **LLM API key** | Configure at runtime via Settings → LLM Providers |
 | **OS** | Linux, macOS, or Windows. ARM64 support for edge devices. |
 
 ---
@@ -30,7 +30,7 @@ npx playwright install chromium
 
 # 4. Copy and configure environment variables
 cp .env.example .env
-# Edit .env with your API keys, NEXTAUTH_SECRET, and optional OAuth credentials
+# Edit .env with NEXTAUTH_SECRET (LLM keys and OAuth are configured via the admin UI)
 
 # 5. Start the development server
 npm run dev
@@ -48,19 +48,10 @@ Open [http://localhost:3000](http://localhost:3000) to access the Command Center
 |----------|----------|-------------|
 | `NEXTAUTH_SECRET` | Yes | Random secret for JWT signing. Generate with `openssl rand -base64 32`. |
 | `NEXTAUTH_URL` | Yes | Base URL (e.g., `http://localhost:3000`) |
-| `OPENAI_API_KEY` | One LLM required | OpenAI API key |
-| `AZURE_OPENAI_API_KEY` | One LLM required | Azure OpenAI key |
-| `AZURE_OPENAI_ENDPOINT` | With Azure key | Azure OpenAI endpoint URL |
-| `ANTHROPIC_API_KEY` | One LLM required | Anthropic API key |
-| `AZURE_AD_CLIENT_ID` | Optional | Azure AD OAuth app client ID |
-| `AZURE_AD_CLIENT_SECRET` | Optional | Azure AD OAuth app client secret |
-| `AZURE_AD_TENANT_ID` | Optional | Azure AD tenant ID |
-| `GOOGLE_CLIENT_ID` | Optional | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Optional | Google OAuth client secret |
-| `DISCORD_BOT_TOKEN` | Optional | Discord bot token for Gateway integration |
-| `DISCORD_APPLICATION_ID` | Optional | Discord application ID for slash commands |
+| `DATABASE_PATH` | No | SQLite database file path (default: `nexus.db`) |
+| `PROACTIVE_CRON_SCHEDULE` | No | Cron expression for the proactive scheduler (default: every 15 min) |
 
-> You need **at least one** LLM API key (OpenAI, Azure OpenAI, or Anthropic). Additional providers can be added at runtime through the LLM Config panel.
+> **LLM keys, OAuth providers, and Discord credentials** are no longer set in `.env`. Configure them at runtime through the admin UI — see [Usage → LLM Configuration](USAGE.md#llm-configuration) and [Usage → Authentication Providers](USAGE.md#authentication-providers).
 
 ---
 

@@ -210,4 +210,19 @@ CREATE TABLE IF NOT EXISTS user_permissions (
     llm_config INTEGER DEFAULT 0,
     screen_sharing INTEGER DEFAULT 1
 );
+
+-- ═══ Authentication Providers (admin-managed OAuth + Discord) ═══
+
+CREATE TABLE IF NOT EXISTS auth_providers (
+    id TEXT PRIMARY KEY,                -- 'azure-ad' | 'google' | 'discord'
+    provider_type TEXT NOT NULL,         -- 'azure-ad' | 'google' | 'discord'
+    label TEXT NOT NULL,
+    client_id TEXT,
+    client_secret TEXT,
+    tenant_id TEXT,                      -- Azure AD only
+    bot_token TEXT,                      -- Discord only
+    application_id TEXT,                 -- Discord only
+    enabled INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 `;

@@ -9,37 +9,12 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   const trimmed = text.trim();
   if (!trimmed) return [];
 
-  // 1. Try DB-configured embedding provider
   const dbProvider = getDefaultLlmProvider("embedding");
   if (dbProvider) {
     return generateFromRecord(dbProvider, trimmed);
   }
 
-  // 2. Fallback to env vars
-  if (process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_API_KEY) {
-    const endpoint = process.env.AZURE_OPENAI_ENDPOINT.replace(/\/$/, "");
-    const deployment = process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT || process.env.AZURE_OPENAI_DEPLOYMENT;
-    if (!deployment) {
-      throw new Error("[Nexus] Missing AZURE_OPENAI_EMBEDDING_DEPLOYMENT for embedding generation.");
-    }
-    const client = new OpenAI({
-      apiKey: process.env.AZURE_OPENAI_API_KEY,
-      baseURL: `${endpoint}/openai/deployments/${deployment}`,
-      defaultQuery: { "api-version": process.env.AZURE_OPENAI_API_VERSION || "2024-08-01-preview" },
-      defaultHeaders: { "api-key": process.env.AZURE_OPENAI_API_KEY },
-    });
-    const response = await client.embeddings.create({ model: deployment, input: trimmed });
-    return response.data[0]?.embedding || [];
-  }
-
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("[Nexus] No embedding provider configured. Add one in the Configurations tab or set env vars.");
-  }
-
-  const model = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-large";
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const response = await client.embeddings.create({ model, input: trimmed });
-  return response.data[0]?.embedding || [];
+  throw new Error("[Nexus] No embedding provider configured. Add one in Settings → LLM Providers.");
 }
 
 function generateFromRecord(
