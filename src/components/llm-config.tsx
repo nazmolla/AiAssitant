@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-type LlmProviderType = "azure-openai" | "openai" | "anthropic";
+type LlmProviderType = "azure-openai" | "openai" | "anthropic" | "litellm";
 type LlmProviderPurpose = "chat" | "embedding";
 
 const PROVIDER_LABELS: Record<LlmProviderType, string> = {
   "azure-openai": "Azure OpenAI",
   openai: "OpenAI",
   anthropic: "Anthropic",
+  litellm: "LiteLLM (Local)",
 };
 
 const PROVIDER_FIELDS: Record<
@@ -35,6 +36,11 @@ const PROVIDER_FIELDS: Record<
     { key: "apiKey", label: "API Key", required: true, type: "password" },
     { key: "model", label: "Model", placeholder: "claude-3-5-sonnet" },
   ],
+  litellm: [
+    { key: "baseURL", label: "Base URL", required: true, placeholder: "http://localhost:4000" },
+    { key: "model", label: "Model", required: true, placeholder: "ollama/llama3" },
+    { key: "apiKey", label: "API Key (optional)", type: "password", placeholder: "Leave empty if not required" },
+  ],
 };
 
 const PROVIDER_SELECT: Array<{ label: string; value: LlmProviderType }> = (
@@ -47,7 +53,7 @@ const PURPOSE_OPTIONS: Array<{ label: string; value: LlmProviderPurpose }> = [
 ];
 
 // Anthropic doesn't offer an embeddings API
-const EMBEDDING_CAPABLE_PROVIDERS: Set<LlmProviderType> = new Set<LlmProviderType>(["azure-openai", "openai"]);
+const EMBEDDING_CAPABLE_PROVIDERS: Set<LlmProviderType> = new Set<LlmProviderType>(["azure-openai", "openai", "litellm"]);
 
 interface LlmProvider {
   id: string;
@@ -186,7 +192,7 @@ export function LlmConfig() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-display">Add LLM Provider</CardTitle>
-          <CardDescription className="text-muted-foreground/60">Configure Azure OpenAI, OpenAI, or Anthropic credentials.</CardDescription>
+          <CardDescription className="text-muted-foreground/60">Configure Azure OpenAI, OpenAI, Anthropic, or LiteLLM credentials.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleCreate}>

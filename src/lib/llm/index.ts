@@ -56,6 +56,19 @@ function buildProviderFromRecord(record: LlmProviderRecord): ChatProvider {
       assertConfig(apiKey, `Anthropic config for ${record.label} is missing an API key.`);
       return new AnthropicChatProvider({ apiKey, model });
     }
+    case "litellm": {
+      const apiKey = (config.apiKey as string | undefined) || "no-key-required";
+      const model = config.model as string | undefined;
+      const baseURL = config.baseURL as string | undefined;
+      assertConfig(baseURL, `LiteLLM config for ${record.label} is missing a Base URL.`);
+      assertConfig(model, `LiteLLM config for ${record.label} is missing a Model name.`);
+      return new OpenAIChatProvider({
+        variant: "openai",
+        apiKey,
+        model,
+        baseURL,
+      });
+    }
     default:
       throw new Error(`[Nexus] Unknown LLM provider type: ${record.provider_type}`);
   }

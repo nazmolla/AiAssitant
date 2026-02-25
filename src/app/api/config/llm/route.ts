@@ -163,7 +163,7 @@ function parseConfig(record: LlmProviderRecord): Record<string, any> {
 }
 
 function isProviderType(value: unknown): value is LlmProviderType {
-  return value === "azure-openai" || value === "openai" || value === "anthropic";
+  return value === "azure-openai" || value === "openai" || value === "anthropic" || value === "litellm";
 }
 
 function isPurpose(value: unknown): value is LlmProviderPurpose {
@@ -208,6 +208,16 @@ function buildConfig(provider: LlmProviderType, input: Record<string, unknown>):
         apiKey,
         ...(model ? { model } : {}),
         ...(baseURL ? { baseURL } : {}),
+      };
+    }
+    if (provider === "litellm") {
+      const baseURL = read("baseURL", true)!;
+      const model = read("model", true)!;
+      const apiKey = read("apiKey");
+      return {
+        baseURL,
+        model,
+        ...(apiKey ? { apiKey } : {}),
       };
     }
     const apiKey = read("apiKey", true)!;
