@@ -23,7 +23,7 @@ interface Channel {
 const CHANNEL_OPTIONS: { value: ChannelType; label: string; icon: string; description: string }[] = [
   { value: "whatsapp", label: "WhatsApp", icon: "💬", description: "WhatsApp Business Cloud API" },
   { value: "slack", label: "Slack", icon: "💼", description: "Slack Events API" },
-  { value: "email", label: "Email", icon: "📧", description: "Inbound email (SendGrid / Mailgun)" },
+  { value: "email", label: "Email", icon: "📧", description: "Shared SMTP/IMAP inbox" },
   { value: "telegram", label: "Telegram", icon: "✈️", description: "Telegram Bot API" },
   { value: "discord", label: "Discord", icon: "🎮", description: "Discord Bot interaction" },
   { value: "teams", label: "Teams", icon: "👥", description: "Microsoft Teams Bot Framework" },
@@ -41,9 +41,15 @@ const CONFIG_FIELDS: Record<ChannelType, { key: string; label: string; type: "te
     { key: "appId", label: "App ID", type: "text" },
   ],
   email: [
-    { key: "provider", label: "Provider (sendgrid / mailgun)", type: "text" },
-    { key: "apiKey", label: "API Key", type: "password" },
+    { key: "smtpHost", label: "SMTP Host", type: "text" },
+    { key: "smtpPort", label: "SMTP Port", type: "text" },
+    { key: "smtpUser", label: "SMTP Username", type: "text" },
+    { key: "smtpPass", label: "SMTP Password", type: "password" },
     { key: "fromAddress", label: "From Address", type: "text" },
+    { key: "imapHost", label: "IMAP Host", type: "text" },
+    { key: "imapPort", label: "IMAP Port", type: "text" },
+    { key: "imapUser", label: "IMAP Username", type: "text" },
+    { key: "imapPass", label: "IMAP Password", type: "password" },
   ],
   telegram: [
     { key: "botToken", label: "Bot Token", type: "password" },

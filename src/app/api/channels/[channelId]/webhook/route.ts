@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAgentLoop, type AgentResponse } from "@/lib/agent";
-import { getChannel, getDb, getChannelOwnerId, type AttachmentMeta } from "@/lib/db";
+import {
+  addMessage,
+  getChannel,
+  getDb,
+  getChannelOwnerId,
+  getUserByEmail,
+  isUserEnabled,
+  type AttachmentMeta,
+} from "@/lib/db";
 import { v4 as uuid } from "uuid";
 import { timingSafeEqual } from "crypto";
 import fs from "fs";
 import path from "path";
+import nodemailer from "nodemailer";
 
 /**
  * Inbound webhook handler for channel messages.
@@ -62,11 +71,43 @@ export async function POST(
       return NextResponse.json({ ok: true }); // ACK without processing
     }
 
-    // Resolve sender → channel owner (the user who created this channel)
-    const userId = getChannelOwnerId(channel.id);
+    // Resolve sender identity for shared channels
+    const channelOwnerId = getChannelOwnerId(channel.id);
+    let actorUserId: string | null = channelOwnerId;
+
+    if (channel.channel_type === "email") {
+      const senderEmail = normalizeEmail(message.senderId);
+      const mappedUser = senderEmail ? getUserByEmail(senderEmail) : undefined;
+      const isKnownUser = !!mappedUser && isUserEnabled(mappedUser.id);
+
+      // Unknown email senders are notify-only: do not run tools/actions
+      if (!isKnownUser) {
+        const notifyThreadId = resolveThread(channel.id, senderEmail || message.senderId, channelOwnerId);
+        addMessage({
+          thread_id: notifyThreadId,
+          role: "system",
+          content:
+            `[Email Notification] Message received from unregistered sender: ${senderEmail || message.senderId}` +
+            `\nSubject/Body:\n${message.text}`,
+          tool_calls: null,
+          tool_results: null,
+          attachments: null,
+        });
+
+        return NextResponse.json({
+          ok: true,
+          notifyOnly: true,
+          reason: "Unregistered sender; no actions executed.",
+          threadId: notifyThreadId,
+        });
+      }
+
+      actorUserId = mappedUser!.id;
+      message.senderId = senderEmail;
+    }
 
     // Create a thread for this channel conversation (or reuse one)
-    const threadId = resolveThread(channel.id, message.senderId, userId);
+    const threadId = resolveThread(channel.id, message.senderId, actorUserId);
 
     // Tag external webhook messages with origin to enable prompt injection defense
     const taggedText = `[External Channel Message from ${channel.channel_type} user "${message.senderId}"]\n${message.text}`;
@@ -76,7 +117,7 @@ export async function POST(
       undefined,
       undefined,
       undefined,
-      userId ?? undefined
+      actorUserId ?? undefined
     );
     const channelConfig = parseConfig(channel.config_json);
     await dispatchOutboundResponse(channel.channel_type, channelConfig, message.senderId, result);
@@ -110,6 +151,10 @@ async function dispatchOutboundResponse(
   response: AgentResponse
 ): Promise<void> {
   switch (channelType) {
+    case "email": {
+      await sendEmailResponse(config, recipientId, response);
+      break;
+    }
     case "whatsapp": {
       await sendWhatsAppResponse(config, recipientId, response);
       break;
@@ -117,6 +162,43 @@ async function dispatchOutboundResponse(
     default:
       break;
   }
+}
+
+async function sendEmailResponse(
+  config: Record<string, unknown>,
+  to: string,
+  response: AgentResponse
+): Promise<void> {
+  const smtpHost = String(config.smtpHost ?? "").trim();
+  const smtpPort = Number(config.smtpPort ?? 587);
+  const smtpUser = String(config.smtpUser ?? "").trim();
+  const smtpPass = String(config.smtpPass ?? "").trim();
+  const fromAddress = String(config.fromAddress ?? smtpUser).trim();
+  const secure = smtpPort === 465;
+  const toEmail = normalizeEmail(to);
+
+  if (!smtpHost || !smtpPort || !smtpUser || !smtpPass || !fromAddress || !toEmail) {
+    console.warn("Email channel missing smtpHost/smtpPort/smtpUser/smtpPass/fromAddress or recipient.");
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure,
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+  });
+
+  const text = (response.content || "").trim() || "No response content.";
+  await transporter.sendMail({
+    from: fromAddress,
+    to: toEmail,
+    subject: "Nexus Reply",
+    text,
+  });
 }
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -260,6 +342,12 @@ function resolveAttachmentPath(storagePath: string): string {
 interface NormalizedMessage {
   text: string;
   senderId: string;
+}
+
+function normalizeEmail(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  const match = trimmed.match(/<?([^<>\s]+@[^<>\s]+)>?$/);
+  return (match?.[1] || trimmed).trim();
 }
 
 function extractMessage(
