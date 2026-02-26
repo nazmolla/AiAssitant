@@ -33,6 +33,13 @@ Your job:
 Always respond with valid JSON only.`;
 
 let _cronJob: CronJob | null = null;
+const _proactiveSkipWarned = new Set<string>();
+
+function getToolServerId(qualifiedToolName: string): string | null {
+  const dotIndex = qualifiedToolName.indexOf(".");
+  if (dotIndex === -1) return null;
+  return qualifiedToolName.substring(0, dotIndex);
+}
 
 /**
  * Run a single proactive scan cycle.
@@ -60,6 +67,24 @@ export async function runProactiveScan(): Promise<void> {
 
   for (const policy of policies) {
     try {
+      const serverId = getToolServerId(policy.tool_name);
+      if (!serverId || !mcpManager.isConnected(serverId)) {
+        const warnKey = policy.tool_name;
+        if (!_proactiveSkipWarned.has(warnKey)) {
+          addLog({
+            level: "warn",
+            source: "scheduler",
+            message: `Skipping proactive tool \"${policy.tool_name}\": MCP server \"${serverId || "unknown"}\" is not connected.`,
+            metadata: null,
+          });
+          _proactiveSkipWarned.add(warnKey);
+        }
+        continue;
+      }
+
+      // Connected now: allow future disconnected warning if it drops again
+      _proactiveSkipWarned.delete(policy.tool_name);
+
       // Poll the tool for data (assuming list/read-type tools)
       const result = await mcpManager.callTool(policy.tool_name, {});
       const polledData = JSON.stringify(result);
