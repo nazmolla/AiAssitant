@@ -8,13 +8,37 @@ export async function GET() {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  // Admins see all pending approvals; regular users see only their own threads
   const all = listPendingApprovals();
+
+  // Clean up stale approvals: auto-reject entries whose thread no longer exists
+  // or whose thread is no longer awaiting_approval (i.e. the action is no longer
+  // blocking anything — these are not actionable).
+  const actionable: typeof all = [];
+  for (const a of all) {
+    if (!a.thread_id) {
+      // Orphaned (no thread) — silently reject
+      updateApprovalStatus(a.id, "rejected");
+      continue;
+    }
+    const thread = getThread(a.thread_id);
+    if (!thread) {
+      // Thread was deleted — reject the orphaned approval
+      updateApprovalStatus(a.id, "rejected");
+      continue;
+    }
+    if (thread.status !== "awaiting_approval") {
+      // Thread is active/completed — this approval is stale, auto-reject
+      updateApprovalStatus(a.id, "rejected");
+      continue;
+    }
+    actionable.push(a);
+  }
+
+  // Scope visibility: admins see all, regular users see only their threads
   const pending = auth.user.role === "admin"
-    ? all
-    : all.filter((a) => {
-        if (!a.thread_id) return false;
-        const thread = getThread(a.thread_id);
+    ? actionable
+    : actionable.filter((a) => {
+        const thread = getThread(a.thread_id!);
         return thread?.user_id === auth.user.id;
       });
 

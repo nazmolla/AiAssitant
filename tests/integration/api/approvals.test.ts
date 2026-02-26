@@ -71,6 +71,9 @@ describe("GET /api/approvals", () => {
       args: JSON.stringify({ filePath: "/tmp/test.txt" }),
       reasoning: "User asked to read a file",
     });
+
+    // Thread must be in awaiting_approval for the approval to be actionable
+    updateThreadStatus(threadId, "awaiting_approval");
   });
 
   test("returns 401 when unauthenticated", async () => {
