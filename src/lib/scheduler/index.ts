@@ -12,6 +12,18 @@ import { CronJob } from "cron";
 import { getMcpManager } from "@/lib/mcp";
 import { createChatProvider } from "@/lib/llm";
 import {
+  isBuiltinWebTool,
+  executeBuiltinWebTool,
+  isBrowserTool,
+  executeBrowserTool,
+  isFsTool,
+  executeBuiltinFsTool,
+  isNetworkTool,
+  executeBuiltinNetworkTool,
+  isCustomTool,
+  executeCustomTool,
+} from "@/lib/agent";
+import {
   listToolPolicies,
   getToolPolicy,
   addLog,
@@ -41,6 +53,50 @@ function getToolServerId(qualifiedToolName: string): string | null {
   return qualifiedToolName.substring(0, dotIndex);
 }
 
+type SchedulerToolExecution =
+  | { skipped: true }
+  | { skipped: false; result: unknown };
+
+async function executeSchedulerTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  mcpManager: ReturnType<typeof getMcpManager>
+): Promise<SchedulerToolExecution> {
+  if (isBuiltinWebTool(toolName)) {
+    return { skipped: false, result: await executeBuiltinWebTool(toolName, args) };
+  }
+  if (isBrowserTool(toolName)) {
+    return { skipped: false, result: await executeBrowserTool(toolName, args) };
+  }
+  if (isFsTool(toolName)) {
+    return { skipped: false, result: await executeBuiltinFsTool(toolName, args) };
+  }
+  if (isNetworkTool(toolName)) {
+    return { skipped: false, result: await executeBuiltinNetworkTool(toolName, args) };
+  }
+  if (isCustomTool(toolName)) {
+    return { skipped: false, result: await executeCustomTool(toolName, args) };
+  }
+
+  const serverId = getToolServerId(toolName);
+  if (!serverId || !mcpManager.isConnected(serverId)) {
+    if (!_proactiveSkipWarned.has(toolName)) {
+      addLog({
+        level: "warn",
+        source: "scheduler",
+        message: `Skipping proactive tool \"${toolName}\": MCP server \"${serverId || "unknown"}\" is not connected.`,
+        metadata: null,
+      });
+      _proactiveSkipWarned.add(toolName);
+    }
+    return { skipped: true };
+  }
+
+  // Connected now: allow future disconnected warning if it drops again
+  _proactiveSkipWarned.delete(toolName);
+  return { skipped: false, result: await mcpManager.callTool(toolName, args) };
+}
+
 /**
  * Run a single proactive scan cycle.
  */
@@ -67,26 +123,10 @@ export async function runProactiveScan(): Promise<void> {
 
   for (const policy of policies) {
     try {
-      const serverId = getToolServerId(policy.tool_name);
-      if (!serverId || !mcpManager.isConnected(serverId)) {
-        const warnKey = policy.tool_name;
-        if (!_proactiveSkipWarned.has(warnKey)) {
-          addLog({
-            level: "warn",
-            source: "scheduler",
-            message: `Skipping proactive tool \"${policy.tool_name}\": MCP server \"${serverId || "unknown"}\" is not connected.`,
-            metadata: null,
-          });
-          _proactiveSkipWarned.add(warnKey);
-        }
-        continue;
-      }
-
-      // Connected now: allow future disconnected warning if it drops again
-      _proactiveSkipWarned.delete(policy.tool_name);
-
       // Poll the tool for data (assuming list/read-type tools)
-      const result = await mcpManager.callTool(policy.tool_name, {});
+      const poll = await executeSchedulerTool(policy.tool_name, {}, mcpManager);
+      if (poll.skipped) continue;
+      const result = poll.result;
       const polledData = JSON.stringify(result);
 
       await ingestKnowledgeFromText({
@@ -170,10 +210,11 @@ export async function runProactiveScan(): Promise<void> {
             });
           } else {
             try {
-              const executionResult = await mcpManager.callTool(
-                actionTool,
-                actionArgs
-              );
+              const execution = await executeSchedulerTool(actionTool, actionArgs, mcpManager);
+              if (execution.skipped) {
+                continue;
+              }
+              const executionResult = execution.result;
 
               addLog({
                 level: "info",
