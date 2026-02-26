@@ -591,12 +591,10 @@ export interface KnowledgeEntry {
 }
 
 export function listKnowledge(userId?: string): KnowledgeEntry[] {
-  if (userId) {
-    return getDb()
-      .prepare("SELECT * FROM user_knowledge WHERE user_id = ? ORDER BY last_updated DESC")
-      .all(userId) as KnowledgeEntry[];
-  }
-  return getDb().prepare("SELECT * FROM user_knowledge ORDER BY last_updated DESC").all() as KnowledgeEntry[];
+  if (!userId) return [];
+  return getDb()
+    .prepare("SELECT * FROM user_knowledge WHERE user_id = ? ORDER BY last_updated DESC")
+    .all(userId) as KnowledgeEntry[];
 }
 
 export function getKnowledgeEntry(id: number): KnowledgeEntry | undefined {
@@ -606,22 +604,14 @@ export function getKnowledgeEntry(id: number): KnowledgeEntry | undefined {
 }
 
 export function searchKnowledge(query: string, userId?: string): KnowledgeEntry[] {
-  if (userId) {
-    return getDb()
-      .prepare(
-        `SELECT * FROM user_knowledge
-         WHERE user_id = ? AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
-         ORDER BY last_updated DESC`
-      )
-      .all(userId, `%${query}%`, `%${query}%`, `%${query}%`) as KnowledgeEntry[];
-  }
+  if (!userId) return [];
   return getDb()
     .prepare(
       `SELECT * FROM user_knowledge
-       WHERE entity LIKE ? OR attribute LIKE ? OR value LIKE ?
+       WHERE user_id = ? AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
        ORDER BY last_updated DESC`
     )
-    .all(`%${query}%`, `%${query}%`, `%${query}%`) as KnowledgeEntry[];
+    .all(userId, `%${query}%`, `%${query}%`, `%${query}%`) as KnowledgeEntry[];
 }
 
 export function upsertKnowledge(entry: Omit<KnowledgeEntry, "id" | "last_updated">, userId?: string): number {
@@ -679,19 +669,15 @@ export function upsertKnowledgeEmbedding(knowledgeId: number, embedding: number[
 
 /** List embeddings scoped to a user (via JOIN on user_knowledge) */
 export function listKnowledgeEmbeddings(userId?: string): KnowledgeEmbeddingRow[] {
-  if (userId) {
-    return getDb()
-      .prepare(
-        `SELECT ke.knowledge_id, ke.embedding
-         FROM knowledge_embeddings ke
-         JOIN user_knowledge uk ON ke.knowledge_id = uk.id
-         WHERE uk.user_id = ?`
-      )
-      .all(userId) as KnowledgeEmbeddingRow[];
-  }
+  if (!userId) return [];
   return getDb()
-    .prepare("SELECT knowledge_id, embedding FROM knowledge_embeddings")
-    .all() as KnowledgeEmbeddingRow[];
+    .prepare(
+      `SELECT ke.knowledge_id, ke.embedding
+       FROM knowledge_embeddings ke
+       JOIN user_knowledge uk ON ke.knowledge_id = uk.id
+       WHERE uk.user_id = ?`
+    )
+    .all(userId) as KnowledgeEmbeddingRow[];
 }
 
 export function getKnowledgeEntriesByIds(ids: number[]): KnowledgeEntry[] {

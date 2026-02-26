@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,10 +15,23 @@ interface KnowledgeEntry {
   last_updated: string;
 }
 
+type SourceFilter = "all" | "proactive" | "manual";
+
+function getSourceLabel(sourceContext: string | null): string {
+  if (!sourceContext) return "Manual";
+  if (sourceContext.startsWith("mcp:")) {
+    if (sourceContext.endsWith(":poll")) return "Proactive Poll";
+    if (sourceContext.endsWith(":assessment")) return "Proactive Assessment";
+    return "Proactive";
+  }
+  return "Manual";
+}
+
 export function KnowledgeVault() {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const { formatDate } = useTheme();
 
   const fetchKnowledge = () => {
@@ -47,6 +60,14 @@ export function KnowledgeVault() {
     fetchKnowledge();
   }
 
+  const filteredEntries = useMemo(() => {
+    if (sourceFilter === "all") return entries;
+    if (sourceFilter === "proactive") {
+      return entries.filter((entry) => (entry.source_context || "").startsWith("mcp:"));
+    }
+    return entries.filter((entry) => !(entry.source_context || "").startsWith("mcp:"));
+  }, [entries, sourceFilter]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -54,6 +75,30 @@ export function KnowledgeVault() {
         <p className="text-sm text-muted-foreground/60 mt-1 font-light">
           Nexus continuously captures durable facts from every chat turn. Review and curate them here.
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant={sourceFilter === "all" ? "default" : "outline"}
+          onClick={() => setSourceFilter("all")}
+        >
+          All
+        </Button>
+        <Button
+          size="sm"
+          variant={sourceFilter === "proactive" ? "default" : "outline"}
+          onClick={() => setSourceFilter("proactive")}
+        >
+          Proactive
+        </Button>
+        <Button
+          size="sm"
+          variant={sourceFilter === "manual" ? "default" : "outline"}
+          onClick={() => setSourceFilter("manual")}
+        >
+          Manual
+        </Button>
       </div>
 
       {/* Knowledge Table */}
@@ -65,12 +110,13 @@ export function KnowledgeVault() {
                 <th className="p-4 font-medium">Entity</th>
                 <th className="p-4 font-medium">Attribute</th>
                 <th className="p-4 font-medium">Value</th>
+                <th className="p-4 font-medium">Source</th>
                 <th className="p-4 font-medium">Updated</th>
                 <th className="p-4 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => (
+              {filteredEntries.map((entry) => (
                 <tr key={entry.id} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors duration-200">
                   <td className="p-4 text-sm font-medium">{entry.entity}</td>
                   <td className="p-4 text-sm text-foreground/80">{entry.attribute}</td>
@@ -96,6 +142,9 @@ export function KnowledgeVault() {
                     ) : (
                       entry.value
                     )}
+                  </td>
+                  <td className="p-4 text-xs text-muted-foreground/70">
+                    {getSourceLabel(entry.source_context)}
                   </td>
                   <td className="p-4 text-xs text-muted-foreground/50">
                     {formatDate(entry.last_updated, { year: "numeric", month: "short", day: "numeric" })}
@@ -124,12 +173,16 @@ export function KnowledgeVault() {
                   </td>
                 </tr>
               ))}
-              {entries.length === 0 && (
+              {filteredEntries.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-12 text-center">
+                  <td colSpan={6} className="p-12 text-center">
                     <div className="text-3xl mb-3 opacity-30">🧠</div>
                     <p className="text-sm text-muted-foreground/60 font-light">
-                      No knowledge captured yet. Start chatting or connect proactive MCP sources.
+                      {sourceFilter === "all"
+                        ? "No knowledge captured yet. Start chatting or connect proactive MCP sources."
+                        : sourceFilter === "proactive"
+                          ? "No proactive knowledge facts found yet."
+                          : "No manual/chat knowledge facts found yet."}
                     </p>
                   </td>
                 </tr>

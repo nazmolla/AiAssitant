@@ -52,6 +52,8 @@ export function invalidateEmbeddingCache(): void {
 }
 
 export async function retrieveKnowledge(query: string, limit = 6, userId?: string): Promise<KnowledgeEntry[]> {
+  if (!userId) return [];
+
   const semantic = await semanticSearch(query, limit, userId);
   const missing = limit - semantic.length;
 

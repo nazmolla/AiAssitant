@@ -65,6 +65,11 @@ describe("Knowledge CRUD", () => {
     expect(bEntries.every((e) => e.user_id === userB)).toBe(true);
   });
 
+  test("listKnowledge without user id returns empty", () => {
+    const entries = listKnowledge();
+    expect(entries).toEqual([]);
+  });
+
   test("searchKnowledge matches entity/attribute/value", () => {
     const results = searchKnowledge("Alice", userA);
     expect(results.length).toBeGreaterThan(0);
@@ -74,6 +79,11 @@ describe("Knowledge CRUD", () => {
   test("searchKnowledge returns empty for unrelated user", () => {
     const results = searchKnowledge("Alice", userB);
     expect(results.length).toBe(0);
+  });
+
+  test("searchKnowledge without user id returns empty", () => {
+    const results = searchKnowledge("Alice");
+    expect(results).toEqual([]);
   });
 
   test("updateKnowledge modifies fields", () => {
@@ -102,6 +112,11 @@ describe("Knowledge Embeddings", () => {
     const found = embeddings.find((e) => e.knowledge_id === knowledgeId);
     expect(found).toBeDefined();
     expect(JSON.parse(found!.embedding)).toEqual(fakeEmbedding);
+  });
+
+  test("listKnowledgeEmbeddings without user id returns empty", () => {
+    const embeddings = listKnowledgeEmbeddings();
+    expect(embeddings).toEqual([]);
   });
 
   test("getKnowledgeEntriesByIds returns correct entries", () => {
