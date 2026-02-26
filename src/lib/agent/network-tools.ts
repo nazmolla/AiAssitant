@@ -236,6 +236,30 @@ function sanitizeHost(host: string): string {
   return cleaned;
 }
 
+function sanitizeSubnetCidr(subnet: string): string {
+  const cleaned = subnet.trim();
+
+  // Allow plain IPv4 or IPv4 CIDR notation for network scans.
+  const cidrMatch = cleaned.match(/^(\d{1,3}(?:\.\d{1,3}){3})(?:\/(\d{1,2}))?$/);
+  if (!cidrMatch) {
+    throw new Error(
+      `Invalid subnet: "${subnet}". Expected IPv4 CIDR notation like "192.168.0.0/24".`
+    );
+  }
+
+  const ip = cidrMatch[1];
+  const prefix = cidrMatch[2] ? Number(cidrMatch[2]) : 24;
+  const octets = ip.split(".").map((part) => Number(part));
+  if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    throw new Error(`Invalid subnet IP: "${subnet}".`);
+  }
+  if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) {
+    throw new Error(`Invalid subnet prefix in "${subnet}". CIDR prefix must be between 0 and 32.`);
+  }
+
+  return `${octets.join(".")}/${prefix}`;
+}
+
 /**
  * Sanitize a username for SSH.
  */
@@ -299,7 +323,7 @@ interface DeviceEntry {
 }
 
 async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
-  const subnet = args.subnet ? sanitizeHost(args.subnet as string) : null;
+  const subnet = args.subnet ? sanitizeSubnetCidr(args.subnet as string) : null;
   const method = (args.method as string) || "auto";
 
   const devices: DeviceEntry[] = [];
