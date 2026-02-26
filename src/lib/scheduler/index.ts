@@ -15,16 +15,23 @@ import { runAgentLoop } from "@/lib/agent";
 import {
   isBuiltinWebTool,
   executeBuiltinWebTool,
+  BUILTIN_WEB_TOOLS,
   isBrowserTool,
   executeBrowserTool,
+  BUILTIN_BROWSER_TOOLS,
   isFsTool,
   executeBuiltinFsTool,
+  BUILTIN_FS_TOOLS,
   isNetworkTool,
   executeBuiltinNetworkTool,
+  BUILTIN_NETWORK_TOOLS,
   isEmailTool,
   executeBuiltinEmailTool,
+  BUILTIN_EMAIL_TOOLS,
   isCustomTool,
   executeCustomTool,
+  getCustomToolDefinitions,
+  BUILTIN_TOOLMAKER_TOOLS,
 } from "@/lib/agent";
 import {
   listToolPolicies,
@@ -40,10 +47,16 @@ import {
 } from "@/lib/db";
 import { ingestKnowledgeFromText } from "@/lib/knowledge";
 import { retrieveKnowledge } from "@/lib/knowledge/retriever";
-import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
-import nodemailer from "nodemailer";
 import { notifyAdmin } from "@/lib/channels/notify";
+import {
+  createImapClient,
+  formatEmailConnectError,
+  getEmailChannelConfig,
+  getImapSecureCandidates,
+  sendSmtpMail,
+} from "@/lib/channels/email-transport";
+import type { ToolDefinition } from "@/lib/llm";
 
 const PROACTIVE_SYSTEM_PROMPT = `You are the Nexus proactive observer. You have been given data polled from external services.
 
@@ -59,6 +72,29 @@ Always respond with valid JSON only.`;
 let _cronJob: CronJob | null = null;
 const _proactiveSkipWarned = new Set<string>();
 const _emailConfigWarned = new Set<string>();
+const _proactivePollArgWarned = new Set<string>();
+
+const MAX_POLLED_DATA_CHARS = 6000;
+const MAX_KNOWLEDGE_CONTEXT_CHARS = 2000;
+
+interface ProactiveAssessment {
+  action_needed?: boolean;
+  tool?: string;
+  args?: Record<string, unknown>;
+  reasoning?: string;
+  summary?: string;
+}
+
+interface ProactiveWebContext {
+  query: string;
+  results: Array<{ url: string; title: string; snippet?: string }>;
+  nextResultIndex: number;
+}
+
+interface ProactiveWebState {
+  context: ProactiveWebContext | null;
+  initAttempted: boolean;
+}
 
 function getToolServerId(qualifiedToolName: string): string | null {
   const dotIndex = qualifiedToolName.indexOf(".");
@@ -90,35 +126,153 @@ function resolveChannelThread(channelId: string, senderId: string, userId: strin
   return thread.id;
 }
 
-async function sendSmtpReply(
-  config: Record<string, unknown>,
-  toEmail: string,
-  subject: string,
-  body: string
+function truncateText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n...[truncated ${value.length - maxChars} chars]`;
+}
+
+function parseAssessmentJson(raw: string): Record<string, unknown> | null {
+  const trimmed = raw.trim();
+  try {
+    return JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (fenced?.[1]) {
+      try {
+        return JSON.parse(fenced[1]) as Record<string, unknown>;
+      } catch {
+        // continue to object extraction
+      }
+    }
+    const first = trimmed.indexOf("{");
+    const last = trimmed.lastIndexOf("}");
+    if (first >= 0 && last > first) {
+      try {
+        return JSON.parse(trimmed.slice(first, last + 1)) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+function toProactiveAssessment(value: Record<string, unknown>): ProactiveAssessment {
+  const args =
+    value.args && typeof value.args === "object" && !Array.isArray(value.args)
+      ? (value.args as Record<string, unknown>)
+      : undefined;
+
+  return {
+    action_needed: value.action_needed === true,
+    tool: typeof value.tool === "string" ? value.tool : undefined,
+    args,
+    reasoning: typeof value.reasoning === "string" ? value.reasoning : undefined,
+    summary: typeof value.summary === "string" ? value.summary : undefined,
+  };
+}
+
+async function buildProactiveWebQuery(): Promise<string> {
+  const facts = await retrieveKnowledge("owner priorities projects interests watchlist alerts", 8);
+  const tokens = facts
+    .map((f) => `${f.entity} ${f.attribute} ${f.value}`)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!tokens) {
+    return "important updates and alerts relevant to user projects and priorities";
+  }
+  return truncateText(`important updates and alerts for: ${tokens}`, 240);
+}
+
+function toWebResultList(result: unknown): Array<{ url: string; title: string; snippet?: string }> {
+  if (!result || typeof result !== "object") return [];
+  const raw = (result as { results?: unknown }).results;
+  if (!Array.isArray(raw)) return [];
+  const cleaned: Array<{ url: string; title: string; snippet?: string }> = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    if (typeof rec.url !== "string" || !rec.url.startsWith("http")) continue;
+    cleaned.push({
+      url: rec.url,
+      title: typeof rec.title === "string" ? rec.title : rec.url,
+      snippet: typeof rec.snippet === "string" ? rec.snippet : undefined,
+    });
+  }
+  return cleaned;
+}
+
+async function ensureProactiveWebContext(
+  state: ProactiveWebState,
+  mcpManager: ReturnType<typeof getMcpManager>
 ): Promise<void> {
-  const smtpHost = String(config.smtpHost ?? "").trim();
-  const smtpPort = Number(config.smtpPort ?? 587);
-  const smtpUser = String(config.smtpUser ?? "").trim();
-  const smtpPass = String(config.smtpPass ?? "").trim();
-  const fromAddress = String(config.fromAddress ?? smtpUser).trim();
-  const secure = smtpPort === 465;
+  if (state.context || state.initAttempted) return;
+  state.initAttempted = true;
 
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass,
-    },
-  });
+  const query = await buildProactiveWebQuery();
+  const search = await executeSchedulerTool("builtin.web_search", { query, maxResults: 6 }, mcpManager);
+  if (search.skipped) return;
 
-  await transporter.sendMail({
-    from: fromAddress,
-    to: toEmail,
-    subject,
-    text: body,
-  });
+  const results = toWebResultList(search.result);
+  if (results.length === 0) return;
+
+  state.context = {
+    query,
+    results,
+    nextResultIndex: 0,
+  };
+}
+
+async function getProactivePollArgs(
+  toolName: string,
+  mcpManager: ReturnType<typeof getMcpManager>,
+  webState: ProactiveWebState
+): Promise<Record<string, unknown> | null> {
+  if (!toolRequiresArguments(toolName, mcpManager)) return {};
+
+  if (toolName === "builtin.web_search") {
+    const query = await buildProactiveWebQuery();
+    return { query, maxResults: 6 };
+  }
+
+  if (toolName === "builtin.web_fetch" || toolName === "builtin.web_extract") {
+    await ensureProactiveWebContext(webState, mcpManager);
+    const context = webState.context;
+    if (!context || context.results.length === 0) return null;
+
+    const result = context.results[context.nextResultIndex % context.results.length];
+    context.nextResultIndex += 1;
+
+    if (toolName === "builtin.web_fetch") {
+      return { url: result.url };
+    }
+
+    return {
+      url: result.url,
+      query: context.query,
+    };
+  }
+
+  return null;
+}
+
+function toolRequiresArguments(toolName: string, mcpManager: ReturnType<typeof getMcpManager>): boolean {
+  const builtinDefs: ToolDefinition[] = [
+    ...BUILTIN_WEB_TOOLS,
+    ...BUILTIN_BROWSER_TOOLS,
+    ...BUILTIN_FS_TOOLS,
+    ...BUILTIN_NETWORK_TOOLS,
+    ...BUILTIN_EMAIL_TOOLS,
+    ...BUILTIN_TOOLMAKER_TOOLS,
+    ...getCustomToolDefinitions(),
+  ];
+
+  const allDefs = [...builtinDefs, ...mcpManager.getAllTools()];
+  const def = allDefs.find((tool) => tool.name === toolName);
+  const schema = (def?.inputSchema || {}) as Record<string, unknown>;
+  const required = Array.isArray(schema.required) ? schema.required : [];
+  return required.length > 0;
 }
 
 async function pollEmailChannels(): Promise<void> {
@@ -126,20 +280,16 @@ async function pollEmailChannels(): Promise<void> {
   if (emailChannels.length === 0) return;
 
   for (const channel of emailChannels) {
-    let config: Record<string, unknown>;
+    let rawConfig: Record<string, unknown>;
     try {
-      config = JSON.parse(channel.config_json || "{}");
+      rawConfig = JSON.parse(channel.config_json || "{}");
     } catch {
-      config = {};
+      rawConfig = {};
     }
 
-    const imapHost = String(config.imapHost ?? "").trim();
-    const imapPort = Number(config.imapPort ?? 993);
-    const imapUser = String(config.imapUser ?? "").trim();
-    const imapPass = String(config.imapPass ?? "").trim();
-    const imapTls = imapPort === 993;
+    const config = getEmailChannelConfig(rawConfig);
 
-    if (!imapHost || !imapPort || !imapUser || !imapPass) {
+    if (!config.imapHost || !config.imapPort || !config.imapUser || !config.imapPass) {
       if (!_emailConfigWarned.has(channel.id)) {
         addLog({
           level: "warn",
@@ -153,143 +303,148 @@ async function pollEmailChannels(): Promise<void> {
     }
     _emailConfigWarned.delete(channel.id);
 
-    const client = new ImapFlow({
-      host: imapHost,
-      port: imapPort,
-      secure: imapTls,
-      auth: {
-        user: imapUser,
-        pass: imapPass,
-      },
-      logger: false,
-    });
+    let connected = false;
+    let lastConnectErr: unknown = null;
 
-    try {
-      await client.connect();
-      const lock = await client.getMailboxLock("INBOX");
+    for (const secure of getImapSecureCandidates(config.imapPort)) {
+      const client = createImapClient(config, secure);
       try {
-        const unseenRaw = await client.search({ seen: false });
-        const unseen = Array.isArray(unseenRaw) ? unseenRaw : [];
-        if (unseen.length === 0) continue;
+        await client.connect();
+        connected = true;
 
-        for await (const msg of client.fetch(unseen, { uid: true, envelope: true, source: true })) {
-          try {
-            const parsed = await simpleParser(msg.source as Buffer);
-            const fromAddress = parsed.from?.value?.[0]?.address
-              ? normalizeEmail(parsed.from.value[0].address)
-              : "";
-            const subject = (parsed.subject || "New Email").trim();
-            const textBody = (parsed.text || parsed.html || "").toString().trim();
+        const lock = await client.getMailboxLock("INBOX");
+        try {
+          const unseenRaw = await client.search({ seen: false });
+          const unseen = Array.isArray(unseenRaw) ? unseenRaw : [];
+          if (unseen.length === 0) continue;
 
-            if (!fromAddress) {
-              await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
-              continue;
-            }
-
-            const mappedUser = getUserByEmail(fromAddress);
-            const isKnownUser = !!mappedUser && isUserEnabled(mappedUser.id);
-
-            if (!isKnownUser) {
-              const notifyThreadId = resolveChannelThread(channel.id, fromAddress, channel.user_id ?? null);
-              addMessage({
-                thread_id: notifyThreadId,
-                role: "system",
-                content:
-                  `[Email Notification] Message received from unregistered sender: ${fromAddress}` +
-                  `\nSubject: ${subject}` +
-                  `\nBody:\n${textBody || "(empty)"}`,
-                tool_calls: null,
-                tool_results: null,
-                attachments: null,
-              });
-              try {
-                await notifyAdmin(
-                  `Inbound email from unregistered sender.\nFrom: ${fromAddress}\nSubject: ${subject}\nThread: ${notifyThreadId}`,
-                  "Nexus Email Notification"
-                );
-              } catch {
-                // non-blocking notification path
-              }
-              await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
-              continue;
-            }
-
-            const threadId = resolveChannelThread(channel.id, fromAddress, mappedUser!.id);
-            const taggedText = `[External Channel Message from email user \"${fromAddress}\"]\nSubject: ${subject}\n\n${textBody || "(empty)"}`;
-            const result = await runAgentLoop(
-              threadId,
-              taggedText,
-              undefined,
-              undefined,
-              undefined,
-              mappedUser!.id
-            );
-
+          for await (const msg of client.fetch(unseen, { uid: true, envelope: true, source: true })) {
             try {
-              await sendSmtpReply(
-                config,
-                fromAddress,
-                `Re: ${subject}`,
-                (result.content || "").trim() || "No response content."
+              const parsed = await simpleParser(msg.source as Buffer);
+              const fromAddress = parsed.from?.value?.[0]?.address
+                ? normalizeEmail(parsed.from.value[0].address)
+                : "";
+              const subject = (parsed.subject || "New Email").trim();
+              const textBody = (parsed.text || parsed.html || "").toString().trim();
+
+              if (!fromAddress) {
+                await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
+                continue;
+              }
+
+              const mappedUser = getUserByEmail(fromAddress);
+              const isKnownUser = !!mappedUser && isUserEnabled(mappedUser.id);
+
+              if (!isKnownUser) {
+                const notifyThreadId = resolveChannelThread(channel.id, fromAddress, channel.user_id ?? null);
+                addMessage({
+                  thread_id: notifyThreadId,
+                  role: "system",
+                  content:
+                    `[Email Notification] Message received from unregistered sender: ${fromAddress}` +
+                    `\nSubject: ${subject}` +
+                    `\nBody:\n${textBody || "(empty)"}`,
+                  tool_calls: null,
+                  tool_results: null,
+                  attachments: null,
+                });
+                try {
+                  await notifyAdmin(
+                    `Inbound email from unregistered sender.\nFrom: ${fromAddress}\nSubject: ${subject}\nThread: ${notifyThreadId}`,
+                    "Nexus Email Notification"
+                  );
+                } catch {
+                  // non-blocking notification path
+                }
+                await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
+                continue;
+              }
+
+              const threadId = resolveChannelThread(channel.id, fromAddress, mappedUser!.id);
+              const taggedText = `[External Channel Message from email user "${fromAddress}"]\nSubject: ${subject}\n\n${textBody || "(empty)"}`;
+              const result = await runAgentLoop(
+                threadId,
+                taggedText,
+                undefined,
+                undefined,
+                undefined,
+                mappedUser!.id
               );
-            } catch (smtpErr) {
+
+              try {
+                await sendSmtpMail(config, {
+                  from: config.fromAddress,
+                  to: fromAddress,
+                  subject: `Re: ${subject}`,
+                  text: (result.content || "").trim() || "No response content.",
+                });
+              } catch (smtpErr) {
+                const smtpMsg = formatEmailConnectError(smtpErr);
+                addLog({
+                  level: "error",
+                  source: "email",
+                  message: `Failed sending SMTP reply for channel "${channel.label}": ${smtpMsg}`,
+                  metadata: JSON.stringify({ channelId: channel.id, from: fromAddress }),
+                });
+                try {
+                  await notifyAdmin(
+                    `Failed SMTP reply on email channel ${channel.label}.\nTo: ${fromAddress}\nError: ${smtpMsg}`,
+                    "Nexus Email Delivery Failure"
+                  );
+                } catch {
+                  // non-blocking notification path
+                }
+              }
+
+              await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
+            } catch (messageErr) {
               addLog({
                 level: "error",
                 source: "email",
-                message: `Failed sending SMTP reply for channel \"${channel.label}\": ${smtpErr}`,
-                metadata: JSON.stringify({ channelId: channel.id, from: fromAddress }),
+                message: `Failed processing inbound email on channel "${channel.label}": ${messageErr}`,
+                metadata: JSON.stringify({ channelId: channel.id }),
               });
               try {
                 await notifyAdmin(
-                  `Failed SMTP reply on email channel ${channel.label}.\nTo: ${fromAddress}\nError: ${smtpErr}`,
-                  "Nexus Email Delivery Failure"
+                  `Failed processing inbound email on channel ${channel.label}.\nError: ${messageErr}`,
+                  "Nexus Email Processing Failure"
                 );
               } catch {
                 // non-blocking notification path
               }
             }
-
-            await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
-          } catch (messageErr) {
-            addLog({
-              level: "error",
-              source: "email",
-              message: `Failed processing inbound email on channel \"${channel.label}\": ${messageErr}`,
-              metadata: JSON.stringify({ channelId: channel.id }),
-            });
-            try {
-              await notifyAdmin(
-                `Failed processing inbound email on channel ${channel.label}.\nError: ${messageErr}`,
-                "Nexus Email Processing Failure"
-              );
-            } catch {
-              // non-blocking notification path
-            }
           }
+        } finally {
+          lock.release();
         }
+      } catch (err) {
+        lastConnectErr = err;
       } finally {
-        lock.release();
+        try {
+          await client.logout();
+        } catch {
+          // ignore
+        }
       }
-    } catch (err) {
+
+      if (connected) break;
+    }
+
+    if (!connected) {
+      const errMsg = formatEmailConnectError(lastConnectErr);
       addLog({
         level: "error",
         source: "email",
-        message: `IMAP poll failed for email channel \"${channel.label}\": ${err}`,
+        message: `IMAP poll failed for email channel "${channel.label}": ${errMsg}`,
         metadata: JSON.stringify({ channelId: channel.id }),
       });
       try {
         await notifyAdmin(
-          `IMAP poll failed for email channel ${channel.label}.\nError: ${err}`,
+          `IMAP poll failed for email channel ${channel.label}.\nError: ${errMsg}`,
           "Nexus Email Poll Failure"
         );
       } catch {
         // non-blocking notification path
-      }
-    } finally {
-      try {
-        await client.logout();
-      } catch {
-        // ignore
       }
     }
   }
@@ -362,6 +517,10 @@ export async function runProactiveScan(): Promise<void> {
 
   const mcpManager = getMcpManager();
   const policies = listToolPolicies().filter((p) => p.is_proactive_enabled);
+  const proactiveWebState: ProactiveWebState = {
+    context: null,
+    initAttempted: false,
+  };
 
   if (policies.length === 0) {
     addLog({
@@ -375,11 +534,38 @@ export async function runProactiveScan(): Promise<void> {
 
   for (const policy of policies) {
     try {
+      const pollArgs = await getProactivePollArgs(policy.tool_name, mcpManager, proactiveWebState);
+      if (pollArgs === null) {
+        if (!_proactivePollArgWarned.has(policy.tool_name)) {
+          addLog({
+            level: "warn",
+            source: "scheduler",
+            message: `Skipping proactive poll for "${policy.tool_name}": required input arguments are unavailable in current proactive context.`,
+            metadata: null,
+          });
+          _proactivePollArgWarned.add(policy.tool_name);
+        }
+        continue;
+      }
+      _proactivePollArgWarned.delete(policy.tool_name);
+
       // Poll the tool for data (assuming list/read-type tools)
-      const poll = await executeSchedulerTool(policy.tool_name, {}, mcpManager);
+      const poll = await executeSchedulerTool(policy.tool_name, pollArgs, mcpManager);
       if (poll.skipped) continue;
       const result = poll.result;
-      const polledData = JSON.stringify(result);
+      if (policy.tool_name === "builtin.web_search") {
+        const query = typeof pollArgs.query === "string" ? pollArgs.query : "web updates";
+        const results = toWebResultList(result);
+        if (results.length > 0) {
+          proactiveWebState.context = {
+            query,
+            results,
+            nextResultIndex: 0,
+          };
+        }
+      }
+      const polledDataRaw = JSON.stringify(result);
+      const polledData = truncateText(polledDataRaw, MAX_POLLED_DATA_CHARS);
 
       await ingestKnowledgeFromText({
         source: `mcp:${policy.tool_name}:poll`,
@@ -397,9 +583,10 @@ export async function runProactiveScan(): Promise<void> {
       // Ask the LLM to assess
       const provider = createChatProvider();
       const knowledgeFacts = await retrieveKnowledge(polledData, 6);
-      const knowledgeContext = knowledgeFacts
+      const knowledgeContextRaw = knowledgeFacts
         .map((k) => `- ${k.entity} / ${k.attribute}: ${k.value}`)
         .join("\n");
+      const knowledgeContext = truncateText(knowledgeContextRaw, MAX_KNOWLEDGE_CONTEXT_CHARS);
 
       const response = await provider.chat(
         [
@@ -414,8 +601,20 @@ export async function runProactiveScan(): Promise<void> {
 
       if (!response.content) continue;
 
+      const assessmentRaw = parseAssessmentJson(response.content);
+      if (!assessmentRaw) {
+        addLog({
+          level: "warn",
+          source: "scheduler",
+          message: `Failed to parse LLM assessment for "${policy.tool_name}".`,
+          metadata: JSON.stringify({ rawResponse: truncateText(response.content, 1000) }),
+        });
+        continue;
+      }
+
+      const assessment = toProactiveAssessment(assessmentRaw);
+
       try {
-        const assessment = JSON.parse(response.content);
 
         await ingestKnowledgeFromText({
           source: `mcp:${policy.tool_name}:assessment`,
@@ -423,21 +622,19 @@ export async function runProactiveScan(): Promise<void> {
         });
 
         if (assessment.action_needed) {
-          const actionTool = assessment.tool || policy.tool_name;
+          const actionTool = assessment.tool && assessment.tool.trim() ? assessment.tool : policy.tool_name;
           const actionPolicy =
             actionTool === policy.tool_name ? policy : getToolPolicy(actionTool);
           const requiresApproval = actionPolicy
             ? actionPolicy.requires_approval !== 0
             : true;
-          const actionArgs =
-            assessment.args && typeof assessment.args === "object" && !Array.isArray(assessment.args)
-              ? (assessment.args as Record<string, unknown>)
-              : {};
+          const actionArgs = assessment.args || {};
+          const reasoning = assessment.reasoning || "Proactive observer requested an action.";
 
           addLog({
             level: "info",
             source: "scheduler",
-            message: `Proactive action triggered: ${assessment.reasoning}`,
+            message: `Proactive action triggered: ${reasoning}`,
             metadata: JSON.stringify(assessment),
           });
 
@@ -447,7 +644,7 @@ export async function runProactiveScan(): Promise<void> {
           addMessage({
             thread_id: thread.id,
             role: "system",
-            content: `Proactive scan detected an action from "${policy.tool_name}": ${assessment.reasoning}`,
+            content: `Proactive scan detected an action from "${policy.tool_name}": ${reasoning}`,
             tool_calls: null,
             tool_results: null,
             attachments: null,
@@ -458,12 +655,12 @@ export async function runProactiveScan(): Promise<void> {
               thread_id: thread.id,
               tool_name: actionTool,
               args: JSON.stringify(actionArgs),
-              reasoning: assessment.reasoning,
+              reasoning,
             });
 
             try {
               await notifyAdmin(
-                `Proactive approval required for tool ${actionTool}.\nThread: ${thread.id}\nApproval: ${approval.id}\nReason: ${assessment.reasoning}`,
+                `Proactive approval required for tool ${actionTool}.\nThread: ${thread.id}\nApproval: ${approval.id}\nReason: ${reasoning}`,
                 "Nexus Proactive Approval Required"
               );
             } catch {
@@ -498,7 +695,7 @@ export async function runProactiveScan(): Promise<void> {
               addMessage({
                 thread_id: thread.id,
                 role: "assistant",
-                content: `✅ Proactive action "${actionTool}" completed: ${assessment.reasoning}`,
+                content: `✅ Proactive action "${actionTool}" completed: ${reasoning}`,
                 tool_calls: null,
                 tool_results: null,
                 attachments: null,
@@ -534,7 +731,7 @@ export async function runProactiveScan(): Promise<void> {
           addLog({
             level: "info",
             source: "scheduler",
-            message: `No action needed for "${policy.tool_name}": ${assessment.summary}`,
+            message: `No action needed for "${policy.tool_name}": ${assessment.summary || "(no summary provided)"}`,
             metadata: null,
           });
         }
@@ -543,7 +740,7 @@ export async function runProactiveScan(): Promise<void> {
           level: "warn",
           source: "scheduler",
           message: `Failed to parse LLM assessment for "${policy.tool_name}".`,
-          metadata: JSON.stringify({ rawResponse: response.content }),
+          metadata: JSON.stringify({ rawResponse: truncateText(response.content, 1000) }),
         });
       }
     } catch (err) {

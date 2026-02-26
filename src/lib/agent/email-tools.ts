@@ -1,6 +1,10 @@
 import type { ToolDefinition } from "@/lib/llm";
 import { listChannels } from "@/lib/db/queries";
-import nodemailer from "nodemailer";
+import {
+  formatEmailConnectError,
+  getEmailChannelConfig,
+  sendSmtpMail,
+} from "@/lib/channels/email-transport";
 
 export const EMAIL_TOOL_NAMES = {
   SEND: "builtin.email_send",
@@ -102,32 +106,24 @@ export async function executeBuiltinEmailTool(
     config = {};
   }
 
-  const smtpHost = getStringArg(config, "smtpHost");
-  const smtpPort = Number(getStringArg(config, "smtpPort") || "587");
-  const smtpUser = getStringArg(config, "smtpUser");
-  const smtpPass = getStringArg(config, "smtpPass");
-  const fromAddress = getStringArg(config, "fromAddress") || smtpUser;
+  const emailCfg = getEmailChannelConfig(config);
 
-  if (!smtpHost || !Number.isFinite(smtpPort) || !smtpUser || !smtpPass || !fromAddress) {
+  if (!emailCfg.smtpHost || !Number.isFinite(emailCfg.smtpPort) || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress) {
     throw new Error("Email channel is missing SMTP config (smtpHost/smtpPort/smtpUser/smtpPass/fromAddress).");
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpPort === 465,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass,
-    },
-  });
-
-  const sent = await transporter.sendMail({
-    from: fromAddress,
-    to,
-    subject,
-    text: body,
-  });
+  let messageId: string | undefined;
+  try {
+    const sent = await sendSmtpMail(emailCfg, {
+      from: emailCfg.fromAddress,
+      to,
+      subject,
+      text: body,
+    });
+    messageId = sent.messageId;
+  } catch (err) {
+    throw new Error(formatEmailConnectError(err));
+  }
 
   return {
     status: "sent",
@@ -135,6 +131,6 @@ export async function executeBuiltinEmailTool(
     channelLabel: channel.label,
     to,
     subject,
-    messageId: sent.messageId,
+    messageId,
   };
 }

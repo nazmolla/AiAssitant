@@ -167,7 +167,7 @@ describe("POST /api/config/channels", () => {
 
   test("returns 400 when email SMTP self-test fails", async () => {
     setMockUser({ id: userId, email: "ch-user@test.com", role: "user" });
-    mockSendMail.mockRejectedValueOnce(new Error("SMTP refused"));
+    mockSendMail.mockRejectedValue(new Error("SMTP refused"));
 
     const req = new NextRequest("http://localhost/api/config/channels", {
       method: "POST",
@@ -193,5 +193,7 @@ describe("POST /api/config/channels", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toContain("Email connection test failed");
+
+    mockSendMail.mockResolvedValue({ messageId: "test-msg-id" });
   });
 });

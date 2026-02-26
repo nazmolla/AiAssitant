@@ -115,10 +115,26 @@ export async function executeWithGatekeeper(
 
   // No approval needed — execute directly
   try {
-    const result = await getMcpManager().callTool(
-      toolCall.name,
-      toolCall.arguments
-    );
+    let result: unknown;
+    if (isBuiltinWebTool(toolCall.name)) {
+      result = await executeBuiltinWebTool(toolCall.name, toolCall.arguments);
+    } else if (isBrowserTool(toolCall.name)) {
+      result = await executeBrowserTool(toolCall.name, toolCall.arguments);
+    } else if (isFsTool(toolCall.name)) {
+      result = await executeBuiltinFsTool(toolCall.name, toolCall.arguments);
+    } else if (isNetworkTool(toolCall.name)) {
+      result = await executeBuiltinNetworkTool(toolCall.name, toolCall.arguments);
+    } else if (isEmailTool(toolCall.name)) {
+      const thread = getThread(threadId);
+      result = await executeBuiltinEmailTool(toolCall.name, toolCall.arguments, thread?.user_id ?? undefined);
+    } else if (isCustomTool(toolCall.name)) {
+      result = await executeCustomTool(toolCall.name, toolCall.arguments);
+    } else {
+      result = await getMcpManager().callTool(
+        toolCall.name,
+        toolCall.arguments
+      );
+    }
 
     addLog({
       level: "info",

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import nodemailer from "nodemailer";
 import {
   listChannels,
   createChannel,
@@ -10,6 +9,12 @@ import {
   type ChannelType,
 } from "@/lib/db";
 import { startDiscordBot, stopDiscordBot, isDiscordBotActive } from "@/lib/channels/discord";
+import {
+  formatEmailConnectError,
+  getEmailChannelConfig,
+  sendSmtpMail,
+  verifySmtpConfig,
+} from "@/lib/channels/email-transport";
 
 const VALID_CHANNEL_TYPES: ChannelType[] = [
   "whatsapp",
@@ -20,38 +25,17 @@ const VALID_CHANNEL_TYPES: ChannelType[] = [
   "teams",
 ];
 
-function getStringConfig(config: Record<string, unknown>, key: string): string {
-  const value = config[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
 async function sendEmailChannelSelfTest(config: Record<string, unknown>): Promise<void> {
-  const smtpHost = getStringConfig(config, "smtpHost");
-  const smtpUser = getStringConfig(config, "smtpUser");
-  const smtpPass = getStringConfig(config, "smtpPass");
-  const fromAddress = getStringConfig(config, "fromAddress") || smtpUser;
-  const smtpPortRaw = getStringConfig(config, "smtpPort");
-  const smtpPort = Number(smtpPortRaw || "587");
-  const secure = smtpPort === 465;
+  const emailCfg = getEmailChannelConfig(config);
 
-  if (!smtpHost || !smtpUser || !smtpPass || !fromAddress || !Number.isFinite(smtpPort)) {
+  if (!emailCfg.smtpHost || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress || !Number.isFinite(emailCfg.smtpPort)) {
     throw new Error("Missing/invalid SMTP config. Required: smtpHost, smtpPort, smtpUser, smtpPass, fromAddress.");
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure,
-    auth: { user: smtpUser, pass: smtpPass },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-  });
-
-  await transporter.verify();
-  await transporter.sendMail({
-    from: fromAddress,
-    to: fromAddress,
+  await verifySmtpConfig(emailCfg);
+  await sendSmtpMail(emailCfg, {
+    from: emailCfg.fromAddress,
+    to: emailCfg.fromAddress,
     subject: "Nexus Email Channel Test",
     text: "This is a test email sent during channel connection to validate SMTP configuration.",
   });
@@ -130,7 +114,7 @@ export async function POST(req: NextRequest) {
     try {
       await sendEmailChannelSelfTest(config as Record<string, unknown>);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorMsg = formatEmailConnectError(err);
       return NextResponse.json(
         { error: `Email connection test failed: ${errorMsg}` },
         { status: 400 }
