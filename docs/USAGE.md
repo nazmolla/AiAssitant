@@ -252,6 +252,18 @@ Behavior:
 - Inbound email is polled via IMAP and processed into threads.
 - Outbound replies are sent via SMTP.
 - Messages from unregistered senders are treated as notify-only (no action execution).
+- Inbound email content is treated as untrusted input and wrapped with explicit injection guards before being passed to the agent.
+
+### Notification Thresholds (Per User)
+
+In the **Profile** tab, each user can choose a notification threshold:
+
+- `Disaster only`
+- `High + disaster`
+- `Medium + high + disaster`
+- `All notifications`
+
+Every notify-able event (proactive approvals/failures, inbound unknown-email summaries, channel delivery failures) is assigned a severity level. The system sends channel notifications only when the event severity matches the selected threshold.
 
 Channels are **user-scoped** — messages arriving on your channel are routed to your threads and knowledge vault.
 

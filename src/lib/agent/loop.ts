@@ -24,6 +24,7 @@ import { BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool } from "./brow
 import { BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool } from "./fs-tools";
 import { BUILTIN_NETWORK_TOOLS, isNetworkTool, executeBuiltinNetworkTool } from "./network-tools";
 import { BUILTIN_EMAIL_TOOLS, isEmailTool, executeBuiltinEmailTool } from "./email-tools";
+import { BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool } from "./file-tools";
 import { isCustomTool } from "./custom-tools";
 import {
   addMessage,
@@ -56,6 +57,7 @@ Your capabilities:
 - Network scanning: discover devices on the local network, port-scan hosts, ping hosts
 - Network connections: SSH into devices and execute commands, make HTTP requests to local/internal devices, send Wake-on-LAN packets
 - Email sending: send emails via your configured Email channel SMTP account
+- File generation: create files in common formats (Word, Excel, PDF, images, text/json/csv) as thread attachments
 - Self-extending tools: you can create your own tools at runtime using nexus_create_tool when you need a capability that doesn't exist yet. Custom tools run sandboxed (no filesystem/process access) and their creation requires owner approval. Use nexus_list_custom_tools to see what you've already built, and nexus_delete_custom_tool to remove obsolete ones.
 - A persistent knowledge vault of user preferences and facts
 - Ability to generate reminders and proactive suggestions
@@ -84,6 +86,8 @@ Rules:
 - For network operations, use net_ping to check if a device is online (no approval needed), net_scan_network to discover all devices on the local network, net_scan_ports to discover services running on a host, net_connect_ssh to execute commands on remote devices, net_http_request to interact with local device APIs (e.g. routers, IoT, Home Assistant), net_wake_on_lan to power on devices remotely
 - For network operations, proceed according to tool policy and provide concise rationale when needed
 - Use email_send to send emails when the user asks to notify, follow up, or deliver information by email
+- Use file_generate when the user asks for deliverables like DOCX, XLSX, PDF, images, or downloadable text files
+- Use email_send attachmentIds to include existing thread attachments in outgoing email when requested
 - For email sending, proceed according to tool policy and include concise send details (recipient, purpose)
 - When you need a tool that doesn't exist (e.g., data transformation, custom API parsing, specialized calculation), use nexus_create_tool to build it. Write clean JavaScript; the code runs inside a sandbox with access to JSON, Math, Date, fetch, Buffer, URL, and basic utilities — but NO file system or process access. Always list existing custom tools first to avoid duplicates.
 - Be concise but thorough
@@ -147,7 +151,7 @@ export async function runAgentLoop(
   // Load custom (agent-created) tools
   const { getCustomToolDefinitions } = await import("./custom-tools");
   const customTools = getCustomToolDefinitions();
-  const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...customTools, ...mcpTools];
+  const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...BUILTIN_FILE_TOOLS, ...customTools, ...mcpTools];
 
   if (!continuation) {
     // Build attachment metadata JSON
@@ -315,11 +319,12 @@ export async function runAgentLoop(
             ? toolResultRaw.slice(0, 15000) + "\n... [truncated]"
             : toolResultRaw;
 
-          // Detect screenshots in tool results (browser_screenshot)
+          // Detect screenshot/file attachments in tool results
           let toolAttachments: string | null = null;
           let llmToolResult = toolResult; // version sent to LLM (may have paths stripped)
           const isScreenshotTool = toolCall.name === "builtin.browser_screenshot";
           const resultObj = result.result as Record<string, unknown> | undefined;
+          const collectedAttachments: AttachmentMeta[] = [];
           if (isScreenshotTool) {
             const rawScreenshotPath =
               typeof resultObj?.screenshotPath === "string" ? (resultObj.screenshotPath as string) : "";
@@ -363,7 +368,7 @@ export async function runAgentLoop(
                 sizeBytes,
                 storagePath,
               };
-              toolAttachments = JSON.stringify([attMeta]);
+              collectedAttachments.push(attMeta);
               screenshotAttachments.push(attMeta);
             } else {
               addLog({
@@ -378,6 +383,28 @@ export async function runAgentLoop(
               status: "screenshot_taken",
               note: "Screenshot attached inline. Do NOT output any file path, URL, or markdown image. If you reference it, just say 'Here is the screenshot.'",
             });
+          }
+
+          const rawToolAttachments = resultObj?.attachments;
+          if (Array.isArray(rawToolAttachments)) {
+            for (const rawAtt of rawToolAttachments) {
+              if (!rawAtt || typeof rawAtt !== "object") continue;
+              const att = rawAtt as AttachmentMeta;
+              if (
+                typeof att.id === "string" &&
+                typeof att.filename === "string" &&
+                typeof att.mimeType === "string" &&
+                typeof att.sizeBytes === "number" &&
+                typeof att.storagePath === "string"
+              ) {
+                collectedAttachments.push(att);
+                screenshotAttachments.push(att);
+              }
+            }
+          }
+
+          if (collectedAttachments.length > 0) {
+            toolAttachments = JSON.stringify(collectedAttachments);
           }
 
           // Store the sanitized version in DB so history never leaks paths to the LLM
@@ -674,7 +701,8 @@ async function executeToolWithPolicy(
     try {
       await notifyAdmin(
         `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nReason: ${reasoning || "(not provided)"}`,
-        "Nexus Approval Required"
+        "Nexus Approval Required",
+        { level: "medium" }
       );
     } catch {
       // non-blocking notification path
@@ -700,8 +728,11 @@ async function executeToolWithPolicy(
       result = await executeBuiltinEmailTool(
         toolCall.name,
         toolCall.arguments,
-        thread?.user_id ?? undefined
+        thread?.user_id ?? undefined,
+        threadId
       );
+    } else if (isFileTool(toolCall.name)) {
+      result = await executeBuiltinFileTool(toolCall.name, toolCall.arguments, { threadId });
     } else if (isCustomTool(toolCall.name)) {
       result = await execCustom(toolCall.name, toolCall.arguments);
     } else {

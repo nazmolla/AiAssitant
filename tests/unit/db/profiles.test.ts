@@ -70,6 +70,7 @@ describe("User Profiles", () => {
     expect(profile.phone).toBe("");
     expect(profile.theme).toBe("ember");
     expect(profile.timezone).toBe("");
+    expect(profile.notification_level).toBe("disaster");
   });
 
   test("upsertUserProfile handles theme and timezone preferences", () => {
@@ -80,5 +81,12 @@ describe("User Profiles", () => {
     profile = upsertUserProfile(userId, { timezone: "Europe/London" });
     expect(profile.theme).toBe("midnight");
     expect(profile.timezone).toBe("Europe/London");
+  });
+
+  test("upsertUserProfile handles notification_level preference", () => {
+    let profile = upsertUserProfile(userId, { notification_level: "low" });
+    expect(profile.notification_level).toBe("low");
+    profile = upsertUserProfile(userId, { notification_level: "high" });
+    expect(profile.notification_level).toBe("high");
   });
 });

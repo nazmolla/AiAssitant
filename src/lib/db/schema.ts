@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS owner_profile (
     languages TEXT DEFAULT '[]',
     company TEXT DEFAULT '',
     screen_sharing_enabled INTEGER DEFAULT 1,
+    notification_level TEXT DEFAULT 'disaster',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -61,6 +62,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     languages TEXT DEFAULT '[]',
     company TEXT DEFAULT '',
     screen_sharing_enabled INTEGER DEFAULT 1,
+    notification_level TEXT DEFAULT 'disaster',
     theme TEXT DEFAULT 'ember',
     font TEXT DEFAULT 'inter',
     timezone TEXT DEFAULT '',

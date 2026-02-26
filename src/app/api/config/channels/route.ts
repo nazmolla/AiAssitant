@@ -32,6 +32,17 @@ async function sendEmailChannelSelfTest(config: Record<string, unknown>): Promis
     throw new Error("Missing/invalid SMTP config. Required: smtpHost, smtpPort, smtpUser, smtpPass, fromAddress.");
   }
 
+  const smtpHost = emailCfg.smtpHost.toLowerCase();
+  if (smtpHost.includes("gmail.com")) {
+    const normalized = emailCfg.smtpPass.replace(/\s+/g, "");
+    const looksLikeAppPassword = /^[a-zA-Z0-9]{16}$/.test(normalized);
+    if (!looksLikeAppPassword) {
+      throw new Error(
+        "Gmail requires an App Password for SMTP/IMAP. Use a 16-character App Password from Google Account security settings."
+      );
+    }
+  }
+
   await verifySmtpConfig(emailCfg);
   await sendSmtpMail(emailCfg, {
     from: emailCfg.fromAddress,

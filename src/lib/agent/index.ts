@@ -5,4 +5,5 @@ export { BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool, BROWSER_TOOLS
 export { BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool, FS_TOOLS_REQUIRING_APPROVAL } from "./fs-tools";
 export { BUILTIN_NETWORK_TOOLS, isNetworkTool, executeBuiltinNetworkTool, NETWORK_TOOLS_REQUIRING_APPROVAL } from "./network-tools";
 export { BUILTIN_EMAIL_TOOLS, isEmailTool, executeBuiltinEmailTool, EMAIL_TOOLS_REQUIRING_APPROVAL } from "./email-tools";
+export { BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool, FILE_TOOLS_REQUIRING_APPROVAL } from "./file-tools";
 export { isCustomTool, executeCustomTool, getCustomToolDefinitions, loadCustomToolsFromDb, BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL } from "./custom-tools";

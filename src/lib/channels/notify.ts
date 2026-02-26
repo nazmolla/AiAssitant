@@ -1,8 +1,44 @@
-import { listUsersWithPermissions, listChannels, listChannelUserMappings, addLog } from "@/lib/db";
-import nodemailer from "nodemailer";
+import {
+  listUsersWithPermissions,
+  listChannels,
+  listChannelUserMappings,
+  addLog,
+  getUserProfile,
+  getUserById,
+} from "@/lib/db";
 import { sendDiscordDirectMessage } from "@/lib/channels/discord";
+import { buildThemedEmailBody, getEmailChannelConfig, sendSmtpMail } from "@/lib/channels/email-transport";
 
 type ChannelConfig = Record<string, unknown>;
+export type NotificationLevel = "low" | "medium" | "high" | "disaster";
+
+const NOTIFICATION_LEVEL_ORDER: NotificationLevel[] = ["disaster", "high", "medium", "low"];
+
+function normalizeNotificationLevel(value: unknown): NotificationLevel {
+  if (typeof value !== "string") return "disaster";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "low" || normalized === "medium" || normalized === "high" || normalized === "disaster") {
+    return normalized;
+  }
+  return "disaster";
+}
+
+function shouldNotifyForLevel(userThreshold: NotificationLevel, eventLevel: NotificationLevel): boolean {
+  const thresholdIndex = NOTIFICATION_LEVEL_ORDER.indexOf(userThreshold);
+  const eventIndex = NOTIFICATION_LEVEL_ORDER.indexOf(eventLevel);
+  if (thresholdIndex < 0 || eventIndex < 0) return eventLevel === "disaster";
+  return eventIndex <= thresholdIndex;
+}
+
+export function getUserNotificationLevel(userId: string): NotificationLevel {
+  const profile = getUserProfile(userId);
+  return normalizeNotificationLevel(profile?.notification_level);
+}
+
+export interface NotifyOptions {
+  level?: NotificationLevel;
+  userId?: string;
+}
 
 function parseConfig(configJson: string): ChannelConfig {
   try {
@@ -52,85 +88,110 @@ async function sendWhatsAppText(config: ChannelConfig, to: string, text: string)
 }
 
 async function sendEmailText(config: ChannelConfig, to: string, subject: string, text: string): Promise<void> {
-  const smtpHost = String(config.smtpHost ?? "").trim();
-  const smtpPort = Number(config.smtpPort ?? 587);
-  const smtpUser = String(config.smtpUser ?? "").trim();
-  const smtpPass = String(config.smtpPass ?? "").trim();
-  const fromAddress = String(config.fromAddress ?? smtpUser).trim();
-  const secure = smtpPort === 465;
+  const emailCfg = getEmailChannelConfig(config);
 
-  if (!smtpHost || !Number.isFinite(smtpPort) || !smtpUser || !smtpPass || !fromAddress) {
+  if (!emailCfg.smtpHost || !Number.isFinite(emailCfg.smtpPort) || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress) {
     throw new Error("Email channel missing SMTP config.");
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass,
-    },
-  });
+  const themed = buildThemedEmailBody(subject, text);
 
-  await transporter.sendMail({
-    from: fromAddress,
+  await sendSmtpMail(emailCfg, {
+    from: emailCfg.fromAddress,
     to,
     subject,
-    text,
+    text: themed.text,
+    html: themed.html,
   });
 }
 
-export async function notifyAdmin(message: string, subject = "Nexus Notification"): Promise<void> {
-  const admins = listUsersWithPermissions().filter((u) => u.role === "admin" && u.enabled === 1);
-  if (admins.length === 0) return;
-  const admin = admins[0];
+export async function notifyAdmin(
+  message: string,
+  subject = "Nexus Notification",
+  options: NotifyOptions = {}
+): Promise<boolean> {
+  const level = options.level ?? "disaster";
 
-  const channels = listChannels(admin.id).filter((c) => !!c.enabled);
+  let targetUser:
+    | {
+        id: string;
+        email: string;
+      }
+    | undefined;
+
+  if (options.userId) {
+    const specific = getUserById(options.userId);
+    if (specific) {
+      targetUser = { id: specific.id, email: specific.email };
+    }
+  }
+
+  if (!targetUser) {
+    const admins = listUsersWithPermissions().filter((u) => u.role === "admin" && u.enabled === 1);
+    if (admins.length === 0) return false;
+    const admin = admins[0];
+    targetUser = { id: admin.id, email: admin.email };
+  }
+
+  const threshold = getUserNotificationLevel(targetUser.id);
+  if (!shouldNotifyForLevel(threshold, level)) {
+    addLog({
+      level: "info",
+      source: "channels",
+      message: `Notification suppressed by user threshold (event=${level}, threshold=${threshold}).`,
+      metadata: JSON.stringify({ userId: targetUser.id, subject }),
+    });
+    return false;
+  }
+
+  const channels = listChannels(targetUser.id).filter((c) => !!c.enabled);
 
   // Prefer IM channels first
   const imChannels = channels.filter((c) => ["whatsapp", "discord", "telegram", "slack", "teams"].includes(c.channel_type));
   for (const channel of imChannels) {
     const mappings = listChannelUserMappings(channel.id);
-    const adminMapping = mappings.find((m) => m.user_id === admin.id);
+    const adminMapping = mappings.find((m) => m.user_id === targetUser!.id);
     if (!adminMapping) continue;
 
     try {
       const cfg = parseConfig(channel.config_json);
       if (channel.channel_type === "whatsapp") {
         await sendWhatsAppText(cfg, adminMapping.external_id, message);
-        return;
+        return true;
       }
       if (channel.channel_type === "discord") {
         await sendDiscordDirectMessage(channel.id, adminMapping.external_id, message);
-        return;
+        return true;
       }
     } catch (err) {
       addLog({
         level: "warn",
         source: "channels",
         message: `Failed admin IM notification via ${channel.channel_type}: ${err}`,
-        metadata: JSON.stringify({ channelId: channel.id, adminId: admin.id }),
+        metadata: JSON.stringify({ channelId: channel.id, adminId: targetUser.id }),
       });
     }
   }
 
   // Fallback to email
-  const email = normalizeEmail(admin.email || "");
-  if (!email) return;
+  const email = normalizeEmail(targetUser.email || "");
+  if (!email) return false;
 
   const emailChannel = channels.find((c) => c.channel_type === "email");
-  if (!emailChannel) return;
+  if (!emailChannel) return false;
 
   try {
     const cfg = parseConfig(emailChannel.config_json);
     await sendEmailText(cfg, email, subject, message);
+    return true;
   } catch (err) {
     addLog({
       level: "warn",
       source: "channels",
       message: `Failed admin email notification fallback: ${err}`,
-      metadata: JSON.stringify({ channelId: emailChannel.id, adminId: admin.id }),
+      metadata: JSON.stringify({ channelId: emailChannel.id, adminId: targetUser.id }),
     });
   }
+
+  return false;
 }

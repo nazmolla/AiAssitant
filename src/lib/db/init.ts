@@ -6,6 +6,7 @@ import { BUILTIN_BROWSER_TOOLS } from "@/lib/agent/browser-tools";
 import { BUILTIN_FS_TOOLS, FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
 import { BUILTIN_NETWORK_TOOLS, NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/network-tools";
 import { BUILTIN_EMAIL_TOOLS, EMAIL_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/email-tools";
+import { BUILTIN_FILE_TOOLS, FILE_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/file-tools";
 import { BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/custom-tools";
 import { BROWSER_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/browser-tools";
 import { v4 as uuid } from "uuid";
@@ -208,6 +209,7 @@ const TOOLS_REQUIRING_APPROVAL = new Set([
   ...FS_TOOLS_REQUIRING_APPROVAL,
   ...NETWORK_TOOLS_REQUIRING_APPROVAL,
   ...EMAIL_TOOLS_REQUIRING_APPROVAL,
+  ...FILE_TOOLS_REQUIRING_APPROVAL,
   ...CUSTOM_TOOLS_REQUIRING_APPROVAL,
   ...BROWSER_TOOLS_REQUIRING_APPROVAL,
 ]);
@@ -231,6 +233,7 @@ function seedAllBuiltinToolPolicies(): void {
     ...BUILTIN_FS_TOOLS,
     ...BUILTIN_NETWORK_TOOLS,
     ...BUILTIN_EMAIL_TOOLS,
+    ...BUILTIN_FILE_TOOLS,
     ...BUILTIN_TOOLMAKER_TOOLS,
   ];
 
@@ -241,6 +244,11 @@ function seedAllBuiltinToolPolicies(): void {
       stmt.run(tool.name, needsApproval);
     }
   })();
+}
+
+function ensureEmailToolPolicyDefaults(): void {
+  const db = getDb();
+  db.prepare("UPDATE tool_policies SET requires_approval = 0 WHERE tool_name = ?").run("builtin.email_send");
 }
 
 function ensureScreenSharingColumn(): void {
@@ -314,6 +322,9 @@ function ensureProfilePreferencesColumns(): void {
     }
     if (!cols.has("timezone")) {
       db.prepare(`ALTER TABLE ${table} ADD COLUMN timezone TEXT DEFAULT ''`).run();
+    }
+    if (!cols.has("notification_level")) {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN notification_level TEXT DEFAULT 'disaster'`).run();
     }
   }
 }
@@ -416,6 +427,7 @@ export function initializeDatabase(): void {
   ensureUserAccessManagement();
   ensureProfilePreferencesColumns();
   seedAllBuiltinToolPolicies();
+  ensureEmailToolPolicyDefaults();
   encryptExistingSecrets();
   console.log("[Nexus DB] Schema initialized successfully.");
 }

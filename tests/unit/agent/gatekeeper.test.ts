@@ -169,7 +169,7 @@ describe("Tool policy seeding", () => {
     expect(createTool?.requires_approval).toBe(1);
 
     const emailSend = getToolPolicy("builtin.email_send");
-    expect(emailSend?.requires_approval).toBe(1);
+    expect(emailSend?.requires_approval).toBe(0);
 
     // Safe: no approval required
     const webSearch = getToolPolicy("builtin.web_search");
@@ -182,7 +182,7 @@ describe("Tool policy seeding", () => {
     expect(browserNav?.requires_approval).toBe(0);
   });
 
-  test("Email send tool is in approval-required defaults", () => {
-    expect(EMAIL_TOOLS_REQUIRING_APPROVAL).toContain("builtin.email_send");
+  test("Email send tool is not in approval-required defaults", () => {
+    expect(EMAIL_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.email_send");
   });
 });

@@ -133,4 +133,28 @@ describe("PUT /api/config/profile", () => {
     const data = await res.json();
     expect(data.timezone).toBe("Asia/Dubai");
   });
+
+  test("saves and returns notification_level preference", async () => {
+    setMockUser({ id: userId, email: "profile-api@example.com", role: "user" });
+    const req = new NextRequest("http://localhost/api/config/profile", {
+      method: "PUT",
+      body: JSON.stringify({ notification_level: "medium" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await PUT(req);
+    const data = await res.json();
+    expect(data.notification_level).toBe("medium");
+  });
+
+  test("invalid notification_level falls back to disaster", async () => {
+    setMockUser({ id: userId, email: "profile-api@example.com", role: "user" });
+    const req = new NextRequest("http://localhost/api/config/profile", {
+      method: "PUT",
+      body: JSON.stringify({ notification_level: "everything" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await PUT(req);
+    const data = await res.json();
+    expect(data.notification_level).toBe("disaster");
+  });
 });

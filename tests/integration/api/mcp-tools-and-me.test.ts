@@ -63,11 +63,20 @@ describe("GET /api/mcp/tools", () => {
     // Built-in tools are present with source: "builtin"
     const builtinTools = data.filter((t: any) => t.source === "builtin");
     expect(builtinTools.length).toBeGreaterThan(0);
+    const builtinNames = builtinTools.map((t: any) => t.name);
+    expect(builtinNames).toContain("builtin.email_send");
+    expect(builtinNames).toContain("builtin.file_generate");
 
     // Check grouping metadata
     const webTools = data.filter((t: any) => t.group === "Web Tools");
     expect(webTools.length).toBeGreaterThan(0);
     expect(webTools[0].source).toBe("builtin");
+
+    const emailTools = data.filter((t: any) => t.group === "Email Tools");
+    expect(emailTools.length).toBeGreaterThan(0);
+
+    const fileTools = data.filter((t: any) => t.group === "File Generation");
+    expect(fileTools.length).toBeGreaterThan(0);
 
     const toolMgmt = data.filter((t: any) => t.group === "Tool Management");
     expect(toolMgmt.length).toBeGreaterThan(0);

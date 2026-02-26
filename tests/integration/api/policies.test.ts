@@ -31,12 +31,16 @@ describe("GET /api/policies", () => {
     expect(res.status).toBe(403);
   });
 
-  test("returns empty list for admin", async () => {
+  test("returns discovered tool policies for admin", async () => {
     setMockUser({ id: adminId, email: "admin-pol@example.com", role: "admin" });
     const res = await GET();
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data).toEqual([]);
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThan(0);
+    const names = data.map((p: any) => p.tool_name);
+    expect(names).toContain("builtin.web_search");
+    expect(names).toContain("builtin.email_send");
   });
 });
 
@@ -82,9 +86,9 @@ describe("POST /api/policies", () => {
     setMockUser({ id: adminId, email: "admin-pol@example.com", role: "admin" });
     const res = await GET();
     const data = await res.json();
-    expect(data.length).toBe(1);
-    expect(data[0].tool_name).toBe("file_write");
-    expect(data[0].requires_approval).toBe(1);
+    const created = data.find((p: any) => p.tool_name === "file_write");
+    expect(created).toBeDefined();
+    expect(created.requires_approval).toBe(1);
   });
 
   test("upsert updates existing policy", async () => {
@@ -103,8 +107,9 @@ describe("POST /api/policies", () => {
 
     const list = await GET();
     const data = await list.json();
-    expect(data.length).toBe(1);
-    expect(data[0].requires_approval).toBe(0);
-    expect(data[0].is_proactive_enabled).toBe(1);
+    const updated = data.find((p: any) => p.tool_name === "file_write");
+    expect(updated).toBeDefined();
+    expect(updated.requires_approval).toBe(0);
+    expect(updated.is_proactive_enabled).toBe(1);
   });
 });

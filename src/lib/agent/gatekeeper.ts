@@ -12,6 +12,7 @@ import { isBrowserTool, executeBrowserTool } from "./browser-tools";
 import { isFsTool, executeBuiltinFsTool } from "./fs-tools";
 import { isNetworkTool, executeBuiltinNetworkTool } from "./network-tools";
 import { isEmailTool, executeBuiltinEmailTool } from "./email-tools";
+import { isFileTool, executeBuiltinFileTool } from "./file-tools";
 import { isCustomTool, executeCustomTool } from "./custom-tools";
 import {
   getToolPolicy,
@@ -101,7 +102,8 @@ export async function executeWithGatekeeper(
     try {
       await notifyAdmin(
         `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nReason: ${reasoning || "(not provided)"}`,
-        "Nexus Approval Required"
+        "Nexus Approval Required",
+        { level: "medium" }
       );
     } catch {
       // non-blocking notification path
@@ -126,7 +128,9 @@ export async function executeWithGatekeeper(
       result = await executeBuiltinNetworkTool(toolCall.name, toolCall.arguments);
     } else if (isEmailTool(toolCall.name)) {
       const thread = getThread(threadId);
-      result = await executeBuiltinEmailTool(toolCall.name, toolCall.arguments, thread?.user_id ?? undefined);
+      result = await executeBuiltinEmailTool(toolCall.name, toolCall.arguments, thread?.user_id ?? undefined, threadId);
+    } else if (isFileTool(toolCall.name)) {
+      result = await executeBuiltinFileTool(toolCall.name, toolCall.arguments, { threadId });
     } else if (isCustomTool(toolCall.name)) {
       result = await executeCustomTool(toolCall.name, toolCall.arguments);
     } else {
@@ -180,7 +184,9 @@ export async function executeApprovedTool(
       result = await executeBuiltinNetworkTool(toolName, args);
     } else if (isEmailTool(toolName)) {
       const thread = getThread(threadId);
-      result = await executeBuiltinEmailTool(toolName, args, thread?.user_id ?? undefined);
+      result = await executeBuiltinEmailTool(toolName, args, thread?.user_id ?? undefined, threadId);
+    } else if (isFileTool(toolName)) {
+      result = await executeBuiltinFileTool(toolName, args, { threadId });
     } else if (isCustomTool(toolName)) {
       result = await executeCustomTool(toolName, args);
     } else {

@@ -28,6 +28,8 @@ const GROUP_ICONS: Record<string, string> = {
   "Browser Tools": "🖥️",
   "File System": "📁",
   "Network Tools": "🔌",
+  "Email Tools": "📧",
+  "File Generation": "📝",
   "Tool Management": "🛠️",
   "Custom Tools": "🔧",
 };
@@ -130,7 +132,7 @@ export function ToolPolicies() {
 
   const groupKeys = Object.keys(grouped);
   // Sort: built-in groups first, then MCP
-  const builtinOrder = ["Web Tools", "Browser Tools", "File System", "Network Tools", "Tool Management", "Custom Tools"];
+  const builtinOrder = ["Web Tools", "Browser Tools", "File System", "File Generation", "Network Tools", "Email Tools", "Tool Management", "Custom Tools"];
   groupKeys.sort((a, b) => {
     const aIdx = builtinOrder.indexOf(a);
     const bIdx = builtinOrder.indexOf(b);

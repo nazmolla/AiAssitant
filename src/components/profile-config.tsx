@@ -24,6 +24,7 @@ interface ProfileData {
   languages: string;
   company: string;
   screen_sharing_enabled: number;
+  notification_level: string;
   theme: string;
   font: string;
   timezone: string;
@@ -44,6 +45,7 @@ const EMPTY: ProfileData = {
   languages: "[]",
   company: "",
   screen_sharing_enabled: 1,
+  notification_level: "disaster",
   theme: "ember",
   font: "inter",
   timezone: "",
@@ -344,6 +346,24 @@ export function ProfileConfig() {
               {timezone ? ` Current: ${timezone}` : " Using your browser's timezone."}
             </p>
           </div>
+
+          <div>
+            <label className={labelClass}>Notification Level</label>
+            <select
+              value={profile.notification_level}
+              onChange={(e) => update("notification_level", e.target.value)}
+              className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            >
+              <option value="disaster">Disaster only</option>
+              <option value="high">High + disaster</option>
+              <option value="medium">Medium + high + disaster</option>
+              <option value="low">All notifications</option>
+            </select>
+            <p className="text-[10px] text-muted-foreground/50 mt-1">
+              Controls which severity levels trigger channel notifications for proactive and inbound-email events.
+            </p>
+          </div>
+
           {/* Screen Sharing toggle */}
           <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
             <div>
