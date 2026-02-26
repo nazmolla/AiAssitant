@@ -17,7 +17,7 @@ The Command Center is a single-page dashboard with a premium dark theme (coral a
 | **Approvals** | Pending tool execution requests with approve/reject controls (user-scoped) |
 | **Knowledge** | Searchable CRUD interface for the user's knowledge vault |
 | **MCP Servers** | Add/remove/connect MCP servers with transport auto-detection and scope control |
-| **Channels** | Configure communication channels (WhatsApp, Discord, webhooks) |
+| **Channels** | Configure communication channels (WhatsApp, Discord, Email, webhooks) |
 | **LLM Config** | Add/switch between chat and embedding providers at runtime |
 | **Profile** | Per-user profile editor (name, bio, skills, social links) with feature toggles |
 | **User Management** | *(Admin only)* Enable/disable users, change roles, manage per-user permissions |
@@ -230,6 +230,7 @@ From the **Custom Tools** settings page (admin only), you can:
 |------|--------------|--------------|
 | **WhatsApp** | Webhook URL + secret | Receives messages via WhatsApp Business API webhook |
 | **Discord** | Bot token + application ID (admin UI or channel config) | Gateway bot responds to mentions, DMs, and `/ask` slash commands |
+| **Email** | SMTP + IMAP credentials | Two-way shared inbox: IMAP receives inbound mail, SMTP sends replies/notifications |
 | **Custom Webhook** | Auto-generated webhook URL + optional secret | Any service can POST messages to the channel endpoint |
 
 ### Setting Up a Channel
@@ -238,6 +239,19 @@ From the **Custom Tools** settings page (admin only), you can:
 2. Click **Add Channel**
 3. Select the channel type and fill in the configuration
 4. Copy the generated webhook URL and configure it in the external service
+
+### Email Channel (Two-Way)
+
+When connecting an **Email** channel, Nexus validates SMTP by sending a self-test email from the configured sender address to itself. Channel creation fails if this test fails.
+
+Required fields:
+- `smtpHost`, `smtpPort`, `smtpUser`, `smtpPass`, `fromAddress`
+- `imapHost`, `imapPort`, `imapUser`, `imapPass`
+
+Behavior:
+- Inbound email is polled via IMAP and processed into threads.
+- Outbound replies are sent via SMTP.
+- Messages from unregistered senders are treated as notify-only (no action execution).
 
 Channels are **user-scoped** — messages arriving on your channel are routed to your threads and knowledge vault.
 
@@ -296,7 +310,8 @@ If an embedding model is configured, knowledge retrieval uses cosine similarity 
 
 - **File write/delete operations** — approval required by default
 - **MCP server tools** — approval required by default (configurable per tool)
-- **Custom tool creation/deletion** — approval always required
+- **Custom tool creation/deletion** — policy-driven (configured in tool policies)
+- **Email sending (`builtin.email_send`)** — approval required by default
 - **Web search/fetch** — no approval required
 - **Browser automation** — no approval required
 
@@ -306,6 +321,14 @@ The Approvals tab shows all pending requests for your threads. Each entry displa
 - The tool name and arguments
 - The agent's reasoning for wanting to call the tool
 - Approve / Reject buttons
+
+### Admin Notifications for Approvals
+
+When a tool or proactive action requires approval, Nexus notifies **admin users only** via configured channels:
+1. Prefer IM channels (currently WhatsApp/Discord when configured and mapped)
+2. Fallback to Email channel
+
+To receive IM notifications, map the admin user in the channel user mapping for that channel.
 
 ---
 
@@ -318,7 +341,7 @@ A background cron job that monitors proactive-enabled MCP tools on a configurabl
 1. Polls proactive-enabled tools for new data
 2. Retrieves relevant user knowledge for context
 3. Calls the LLM to assess whether any data needs attention
-4. Creates approval requests or notifications as needed
+4. Executes actions automatically when policy allows; otherwise creates approval requests and sends admin notifications
 
 ### Enabling Proactive Tools
 

@@ -12,9 +12,11 @@
 - **Human-in-the-Loop (HITL)** — sensitive tool calls require explicit approval
 - **Browser Automation** — Playwright-powered web navigation, form filling, and screenshots
 - **Multi-Channel** — Web chat, WhatsApp, Discord, and custom webhooks
+- **Two-Way Email Channel** — SMTP send + IMAP receive with shared inbox routing
 - **Screen Sharing** — share your screen with the agent for visual reasoning
 - **Model Orchestrator** — intelligent task routing picks the best LLM (local for background, cloud for complex)
 - **Self-Extending Tools** — the agent can create its own tools at runtime, compiled and sandboxed
+- **Admin Notifications via Channels** — approval/proactive notices prefer IM channels, fallback to email
 - **Security Hardened** — prompt injection defense, CSP headers, rate limiting, input validation
 
 ---

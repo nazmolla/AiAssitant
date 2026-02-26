@@ -13,6 +13,18 @@ jest.mock("@/lib/channels/discord", () => ({
   isDiscordBotActive: jest.fn(() => false),
 }));
 
+const mockVerify = jest.fn(async () => true);
+const mockSendMail = jest.fn(async () => ({ messageId: "test-msg-id" }));
+jest.mock("nodemailer", () => ({
+  __esModule: true,
+  default: {
+    createTransport: jest.fn(() => ({
+      verify: mockVerify,
+      sendMail: mockSendMail,
+    })),
+  },
+}));
+
 import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db";
 import { NextRequest } from "next/server";
 import { GET, POST } from "@/app/api/config/channels/route";
@@ -122,5 +134,64 @@ describe("POST /api/config/channels", () => {
     const res = await GET();
     const data = await res.json();
     expect(data).toEqual([]);
+  });
+
+  test("creates an email channel only after SMTP self-test succeeds", async () => {
+    setMockUser({ id: userId, email: "ch-user@test.com", role: "user" });
+
+    const req = new NextRequest("http://localhost/api/config/channels", {
+      method: "POST",
+      body: JSON.stringify({
+        label: "My Email",
+        channelType: "email",
+        config: {
+          smtpHost: "smtp.example.com",
+          smtpPort: "587",
+          smtpUser: "nexus@example.com",
+          smtpPass: "pass123",
+          fromAddress: "nexus@example.com",
+          imapHost: "imap.example.com",
+          imapPort: "993",
+          imapUser: "nexus@example.com",
+          imapPass: "pass123",
+        },
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+    expect(mockVerify).toHaveBeenCalled();
+    expect(mockSendMail).toHaveBeenCalled();
+  });
+
+  test("returns 400 when email SMTP self-test fails", async () => {
+    setMockUser({ id: userId, email: "ch-user@test.com", role: "user" });
+    mockSendMail.mockRejectedValueOnce(new Error("SMTP refused"));
+
+    const req = new NextRequest("http://localhost/api/config/channels", {
+      method: "POST",
+      body: JSON.stringify({
+        label: "Broken Email",
+        channelType: "email",
+        config: {
+          smtpHost: "smtp.example.com",
+          smtpPort: "587",
+          smtpUser: "nexus@example.com",
+          smtpPass: "pass123",
+          fromAddress: "nexus@example.com",
+          imapHost: "imap.example.com",
+          imapPort: "993",
+          imapUser: "nexus@example.com",
+          imapPass: "pass123",
+        },
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("Email connection test failed");
   });
 });

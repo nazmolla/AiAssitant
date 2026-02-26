@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
+import nodemailer from "nodemailer";
 import {
   listChannels,
   createChannel,
@@ -18,6 +19,43 @@ const VALID_CHANNEL_TYPES: ChannelType[] = [
   "discord",
   "teams",
 ];
+
+function getStringConfig(config: Record<string, unknown>, key: string): string {
+  const value = config[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+async function sendEmailChannelSelfTest(config: Record<string, unknown>): Promise<void> {
+  const smtpHost = getStringConfig(config, "smtpHost");
+  const smtpUser = getStringConfig(config, "smtpUser");
+  const smtpPass = getStringConfig(config, "smtpPass");
+  const fromAddress = getStringConfig(config, "fromAddress") || smtpUser;
+  const smtpPortRaw = getStringConfig(config, "smtpPort");
+  const smtpPort = Number(smtpPortRaw || "587");
+  const secure = smtpPort === 465;
+
+  if (!smtpHost || !smtpUser || !smtpPass || !fromAddress || !Number.isFinite(smtpPort)) {
+    throw new Error("Missing/invalid SMTP config. Required: smtpHost, smtpPort, smtpUser, smtpPass, fromAddress.");
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure,
+    auth: { user: smtpUser, pass: smtpPass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  });
+
+  await transporter.verify();
+  await transporter.sendMail({
+    from: fromAddress,
+    to: fromAddress,
+    subject: "Nexus Email Channel Test",
+    text: "This is a test email sent during channel connection to validate SMTP configuration.",
+  });
+}
 
 function maskSecrets(configJson: string): string {
   try {
@@ -86,6 +124,18 @@ export async function POST(req: NextRequest) {
       { error: `Invalid channelType. Must be one of: ${VALID_CHANNEL_TYPES.join(", ")}` },
       { status: 400 }
     );
+  }
+
+  if (channelType === "email") {
+    try {
+      await sendEmailChannelSelfTest(config as Record<string, unknown>);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      return NextResponse.json(
+        { error: `Email connection test failed: ${errorMsg}` },
+        { status: 400 }
+      );
+    }
   }
 
   const record = createChannel({

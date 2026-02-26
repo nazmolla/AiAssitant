@@ -21,6 +21,8 @@ import {
   executeBuiltinFsTool,
   isNetworkTool,
   executeBuiltinNetworkTool,
+  isEmailTool,
+  executeBuiltinEmailTool,
   isCustomTool,
   executeCustomTool,
 } from "@/lib/agent";
@@ -41,13 +43,15 @@ import { retrieveKnowledge } from "@/lib/knowledge/retriever";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import nodemailer from "nodemailer";
+import { notifyAdmin } from "@/lib/channels/notify";
 
 const PROACTIVE_SYSTEM_PROMPT = `You are the Nexus proactive observer. You have been given data polled from external services.
 
 Your job:
 1. Analyze the data for anything noteworthy, urgent, or requiring the owner's attention.
-2. If an action is needed, respond with a JSON object: { "action_needed": true, "tool": "tool_name", "args": {}, "reasoning": "why" }
-3. If no action is needed, respond with: { "action_needed": false, "summary": "brief note" }
+2. If a concrete action can be taken now, you MUST respond with a JSON object: { "action_needed": true, "tool": "tool_name", "args": {}, "reasoning": "why" }
+3. Do NOT return "action needed" as narrative text without tool+args. Prefer executable actions over summaries.
+4. Only respond with { "action_needed": false, "summary": "brief note" } when there is truly no concrete action to execute.
 4. Consider the user's known preferences and context.
 
 Always respond with valid JSON only.`;
@@ -198,6 +202,14 @@ async function pollEmailChannels(): Promise<void> {
                 tool_results: null,
                 attachments: null,
               });
+              try {
+                await notifyAdmin(
+                  `Inbound email from unregistered sender.\nFrom: ${fromAddress}\nSubject: ${subject}\nThread: ${notifyThreadId}`,
+                  "Nexus Email Notification"
+                );
+              } catch {
+                // non-blocking notification path
+              }
               await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
               continue;
             }
@@ -227,6 +239,14 @@ async function pollEmailChannels(): Promise<void> {
                 message: `Failed sending SMTP reply for channel \"${channel.label}\": ${smtpErr}`,
                 metadata: JSON.stringify({ channelId: channel.id, from: fromAddress }),
               });
+              try {
+                await notifyAdmin(
+                  `Failed SMTP reply on email channel ${channel.label}.\nTo: ${fromAddress}\nError: ${smtpErr}`,
+                  "Nexus Email Delivery Failure"
+                );
+              } catch {
+                // non-blocking notification path
+              }
             }
 
             await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
@@ -237,6 +257,14 @@ async function pollEmailChannels(): Promise<void> {
               message: `Failed processing inbound email on channel \"${channel.label}\": ${messageErr}`,
               metadata: JSON.stringify({ channelId: channel.id }),
             });
+            try {
+              await notifyAdmin(
+                `Failed processing inbound email on channel ${channel.label}.\nError: ${messageErr}`,
+                "Nexus Email Processing Failure"
+              );
+            } catch {
+              // non-blocking notification path
+            }
           }
         }
       } finally {
@@ -249,6 +277,14 @@ async function pollEmailChannels(): Promise<void> {
         message: `IMAP poll failed for email channel \"${channel.label}\": ${err}`,
         metadata: JSON.stringify({ channelId: channel.id }),
       });
+      try {
+        await notifyAdmin(
+          `IMAP poll failed for email channel ${channel.label}.\nError: ${err}`,
+          "Nexus Email Poll Failure"
+        );
+      } catch {
+        // non-blocking notification path
+      }
     } finally {
       try {
         await client.logout();
@@ -275,6 +311,9 @@ async function executeSchedulerTool(
   }
   if (isNetworkTool(toolName)) {
     return { skipped: false, result: await executeBuiltinNetworkTool(toolName, args) };
+  }
+  if (isEmailTool(toolName)) {
+    return { skipped: false, result: await executeBuiltinEmailTool(toolName, args) };
   }
   if (isCustomTool(toolName)) {
     return { skipped: false, result: await executeCustomTool(toolName, args) };
@@ -415,12 +454,21 @@ export async function runProactiveScan(): Promise<void> {
           });
 
           if (requiresApproval) {
-            createApprovalRequest({
+            const approval = createApprovalRequest({
               thread_id: thread.id,
               tool_name: actionTool,
               args: JSON.stringify(actionArgs),
               reasoning: assessment.reasoning,
             });
+
+            try {
+              await notifyAdmin(
+                `Proactive approval required for tool ${actionTool}.\nThread: ${thread.id}\nApproval: ${approval.id}\nReason: ${assessment.reasoning}`,
+                "Nexus Proactive Approval Required"
+              );
+            } catch {
+              // non-blocking notification path
+            }
           } else {
             try {
               const execution = await executeSchedulerTool(actionTool, actionArgs, mcpManager);
@@ -462,6 +510,15 @@ export async function runProactiveScan(): Promise<void> {
                 message: `Auto-executed tool "${actionTool}" failed: ${executionError}`,
                 metadata: null,
               });
+
+              try {
+                await notifyAdmin(
+                  `Auto-executed proactive action failed.\nTool: ${actionTool}\nThread: ${thread.id}\nError: ${executionError}`,
+                  "Nexus Proactive Action Failure"
+                );
+              } catch {
+                // non-blocking notification path
+              }
 
               addMessage({
                 thread_id: thread.id,

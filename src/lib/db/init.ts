@@ -5,6 +5,7 @@ import { BUILTIN_WEB_TOOLS } from "@/lib/agent/web-tools";
 import { BUILTIN_BROWSER_TOOLS } from "@/lib/agent/browser-tools";
 import { BUILTIN_FS_TOOLS, FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
 import { BUILTIN_NETWORK_TOOLS, NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/network-tools";
+import { BUILTIN_EMAIL_TOOLS, EMAIL_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/email-tools";
 import { BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/custom-tools";
 import { BROWSER_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/browser-tools";
 import { v4 as uuid } from "uuid";
@@ -206,12 +207,13 @@ function ensureUserIdColumns(): void {
 const TOOLS_REQUIRING_APPROVAL = new Set([
   ...FS_TOOLS_REQUIRING_APPROVAL,
   ...NETWORK_TOOLS_REQUIRING_APPROVAL,
+  ...EMAIL_TOOLS_REQUIRING_APPROVAL,
   ...CUSTOM_TOOLS_REQUIRING_APPROVAL,
   ...BROWSER_TOOLS_REQUIRING_APPROVAL,
 ]);
 
 /**
- * Seed policies for ALL built-in tools (web, browser, fs, network, toolmaker).
+ * Seed policies for ALL built-in tools (web, browser, fs, network, email, toolmaker).
  * Tools in the "requiring approval" sets get requires_approval=1;
  * all others default to requires_approval=0.  Uses INSERT OR IGNORE so
  * existing policies (e.g. customised by admin) are never overwritten.
@@ -228,6 +230,7 @@ function seedAllBuiltinToolPolicies(): void {
     ...BUILTIN_BROWSER_TOOLS,
     ...BUILTIN_FS_TOOLS,
     ...BUILTIN_NETWORK_TOOLS,
+    ...BUILTIN_EMAIL_TOOLS,
     ...BUILTIN_TOOLMAKER_TOOLS,
   ];
 

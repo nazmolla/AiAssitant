@@ -17,6 +17,7 @@ import {
 } from "@/lib/db/queries";
 import { FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
 import { NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/network-tools";
+import { EMAIL_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/email-tools";
 
 // Mock MCP manager so executeWithGatekeeper can call tools
 jest.mock("@/lib/mcp", () => ({
@@ -144,6 +145,9 @@ describe("Tool policy seeding", () => {
     expect(policyNames).toContain("builtin.net_ping");
     expect(policyNames).toContain("builtin.net_scan_network");
 
+    // Email tools should have policies
+    expect(policyNames).toContain("builtin.email_send");
+
     // Custom toolmaker tools should have policies
     expect(policyNames).toContain("builtin.nexus_create_tool");
     expect(policyNames).toContain("builtin.nexus_delete_custom_tool");
@@ -164,6 +168,9 @@ describe("Tool policy seeding", () => {
     const createTool = getToolPolicy("builtin.nexus_create_tool");
     expect(createTool?.requires_approval).toBe(1);
 
+    const emailSend = getToolPolicy("builtin.email_send");
+    expect(emailSend?.requires_approval).toBe(1);
+
     // Safe: no approval required
     const webSearch = getToolPolicy("builtin.web_search");
     expect(webSearch?.requires_approval).toBe(0);
@@ -173,5 +180,9 @@ describe("Tool policy seeding", () => {
 
     const browserNav = getToolPolicy("builtin.browser_navigate");
     expect(browserNav?.requires_approval).toBe(0);
+  });
+
+  test("Email send tool is in approval-required defaults", () => {
+    expect(EMAIL_TOOLS_REQUIRING_APPROVAL).toContain("builtin.email_send");
   });
 });

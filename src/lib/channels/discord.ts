@@ -323,6 +323,23 @@ export async function stopAllDiscordBots(): Promise<void> {
   }
 }
 
+/**
+ * Send a direct message to a Discord user via a running channel bot.
+ */
+export async function sendDiscordDirectMessage(
+  channelId: string,
+  recipientUserId: string,
+  content: string
+): Promise<void> {
+  const client = activeBots.get(channelId);
+  if (!client || !client.isReady()) {
+    throw new Error(`Discord bot is not active for channel ${channelId}`);
+  }
+
+  const user = await client.users.fetch(recipientUserId);
+  await user.send(content);
+}
+
 // ── Response Helpers ──────────────────────────────────────────
 
 /**

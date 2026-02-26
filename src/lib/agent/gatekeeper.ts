@@ -11,6 +11,7 @@ import { isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
 import { isBrowserTool, executeBrowserTool } from "./browser-tools";
 import { isFsTool, executeBuiltinFsTool } from "./fs-tools";
 import { isNetworkTool, executeBuiltinNetworkTool } from "./network-tools";
+import { isEmailTool, executeBuiltinEmailTool } from "./email-tools";
 import { isCustomTool, executeCustomTool } from "./custom-tools";
 import {
   getToolPolicy,
@@ -18,7 +19,9 @@ import {
   updateThreadStatus,
   addLog,
   addMessage,
+  getThread,
 } from "@/lib/db";
+import { notifyAdmin } from "@/lib/channels/notify";
 import type { ToolCall } from "@/lib/llm";
 
 export interface GatekeeperResult {
@@ -95,6 +98,15 @@ export async function executeWithGatekeeper(
       attachments: null,
     });
 
+    try {
+      await notifyAdmin(
+        `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nReason: ${reasoning || "(not provided)"}`,
+        "Nexus Approval Required"
+      );
+    } catch {
+      // non-blocking notification path
+    }
+
     return {
       status: "pending_approval",
       approvalId: approval.id,
@@ -150,6 +162,9 @@ export async function executeApprovedTool(
       result = await executeBuiltinFsTool(toolName, args);
     } else if (isNetworkTool(toolName)) {
       result = await executeBuiltinNetworkTool(toolName, args);
+    } else if (isEmailTool(toolName)) {
+      const thread = getThread(threadId);
+      result = await executeBuiltinEmailTool(toolName, args, thread?.user_id ?? undefined);
     } else if (isCustomTool(toolName)) {
       result = await executeCustomTool(toolName, args);
     } else {
