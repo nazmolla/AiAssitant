@@ -489,7 +489,7 @@ export function ChatPanel() {
             {threads.map((thread) => (
               <div
                 key={thread.id}
-                className={`relative group flex items-start rounded-xl transition-all duration-300 ${
+                className={`group flex items-start rounded-xl transition-all duration-300 ${
                   activeThread === thread.id
                     ? "bg-primary/10 border border-primary/15 shadow-sm shadow-primary/5"
                     : "hover:bg-white/[0.04] border border-transparent"
@@ -497,9 +497,9 @@ export function ChatPanel() {
               >
                 <button
                   onClick={() => { setActiveThread(thread.id); setShowSidebar(false); }}
-                  className="flex-1 text-left px-3 py-2.5"
+                  className="flex-1 min-w-0 text-left px-3 py-2.5"
                 >
-                  <div className="text-[13px] font-medium truncate pr-5">{thread.title}</div>
+                  <div className="text-[13px] font-medium truncate">{thread.title}</div>
                   <div className="flex items-center gap-1 mt-1.5">
                     <Badge
                       variant={
@@ -519,7 +519,7 @@ export function ChatPanel() {
                     e.stopPropagation();
                     handleDeleteThread(thread.id);
                   }}
-                  className="absolute right-2 top-2.5 opacity-0 group-hover:opacity-100 transition-all duration-200 p-1 rounded-lg hover:bg-red-500/10 text-muted-foreground/60 hover:text-red-400 text-xs"
+                  className="shrink-0 mr-2 mt-2.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-200 p-1 rounded-lg hover:bg-red-500/10 text-muted-foreground/60 hover:text-red-400 text-xs"
                   title="Delete thread"
                 >
                   ✕

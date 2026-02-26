@@ -593,7 +593,7 @@ export interface KnowledgeEntry {
 export function listKnowledge(userId?: string): KnowledgeEntry[] {
   if (!userId) return [];
   return getDb()
-    .prepare("SELECT * FROM user_knowledge WHERE user_id = ? ORDER BY last_updated DESC")
+    .prepare("SELECT * FROM user_knowledge WHERE user_id = ? OR user_id IS NULL ORDER BY last_updated DESC")
     .all(userId) as KnowledgeEntry[];
 }
 
@@ -608,7 +608,7 @@ export function searchKnowledge(query: string, userId?: string): KnowledgeEntry[
   return getDb()
     .prepare(
       `SELECT * FROM user_knowledge
-       WHERE user_id = ? AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
+       WHERE (user_id = ? OR user_id IS NULL) AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
        ORDER BY last_updated DESC`
     )
     .all(userId, `%${query}%`, `%${query}%`, `%${query}%`) as KnowledgeEntry[];
@@ -675,7 +675,7 @@ export function listKnowledgeEmbeddings(userId?: string): KnowledgeEmbeddingRow[
       `SELECT ke.knowledge_id, ke.embedding
        FROM knowledge_embeddings ke
        JOIN user_knowledge uk ON ke.knowledge_id = uk.id
-       WHERE uk.user_id = ?`
+       WHERE uk.user_id = ? OR uk.user_id IS NULL`
     )
     .all(userId) as KnowledgeEmbeddingRow[];
 }

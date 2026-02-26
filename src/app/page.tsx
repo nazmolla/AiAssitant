@@ -114,8 +114,8 @@ export default function HomePage() {
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
         <Tabs defaultValue={perms.chat ? "chat" : "config"} className="flex flex-col h-full">
-          <div className="glass px-2 sm:px-6 py-2 flex items-center justify-center overflow-x-auto">
-            <TabsList className="flex-wrap sm:flex-nowrap">
+          <div className="glass px-2 sm:px-6 py-2 flex items-center justify-start overflow-x-auto">
+            <TabsList className="flex-nowrap w-max min-w-max">
               {!!perms.chat && (
                 <TabsTrigger value="chat">
                   <span className="mr-1.5">💬</span> Chat
