@@ -94,6 +94,62 @@ describe("User CRUD", () => {
   });
 });
 
+describe("Inactive-by-default registration", () => {
+  test("createUser with role=admin defaults to enabled=1", () => {
+    const admin = createUser({
+      email: "new-admin@example.com",
+      providerId: "local",
+      externalSubId: null,
+      role: "admin",
+    });
+    expect(isUserEnabled(admin.id)).toBe(true);
+  });
+
+  test("createUser with role=user defaults to enabled=0", () => {
+    const user = createUser({
+      email: "new-regular@example.com",
+      providerId: "local",
+      externalSubId: null,
+      role: "user",
+    });
+    expect(isUserEnabled(user.id)).toBe(false);
+  });
+
+  test("createUser without role defaults to user (inactive)", () => {
+    const user = createUser({
+      email: "no-role@example.com",
+      providerId: "local",
+      externalSubId: null,
+    });
+    expect(user.role).toBe("user");
+    expect(isUserEnabled(user.id)).toBe(false);
+  });
+
+  test("createUser with explicit enabled=1 overrides default", () => {
+    const user = createUser({
+      email: "explicit-enabled@example.com",
+      providerId: "local",
+      externalSubId: null,
+      role: "user",
+      enabled: 1,
+    });
+    expect(isUserEnabled(user.id)).toBe(true);
+  });
+
+  test("admin can activate inactive user via updateUserEnabled", () => {
+    const user = createUser({
+      email: "to-activate@example.com",
+      providerId: "local",
+      externalSubId: null,
+      role: "user",
+    });
+    expect(isUserEnabled(user.id)).toBe(false);
+
+    updateUserEnabled(user.id, true);
+    expect(isUserEnabled(user.id)).toBe(true);
+  });
+});
+
 describe("User Permissions", () => {
   let userId: string;
 

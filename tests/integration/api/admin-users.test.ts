@@ -130,6 +130,33 @@ describe("PUT /api/admin/users", () => {
     const res = await PUT(req);
     expect(res.status).toBe(200);
   });
+
+  test("admin can activate a disabled user", async () => {
+    // Create an inactive user (simulating new user default)
+    const inactiveId = seedTestUser({ email: "inactive@test.com", role: "user", enabled: 0 });
+    setMockUser({ id: adminId, email: "admin-users@test.com", role: "admin" });
+
+    // Verify user is disabled
+    const listRes = await GET();
+    const allUsers = await listRes.json();
+    const inactiveUser = allUsers.find((u: any) => u.id === inactiveId);
+    expect(inactiveUser.enabled).toBe(0);
+
+    // Admin activates the user
+    const req = new NextRequest("http://localhost/api/admin/users", {
+      method: "PUT",
+      body: JSON.stringify({ userId: inactiveId, enabled: true }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await PUT(req);
+    expect(res.status).toBe(200);
+
+    // Verify user is now enabled
+    const listRes2 = await GET();
+    const allUsers2 = await listRes2.json();
+    const activatedUser = allUsers2.find((u: any) => u.id === inactiveId);
+    expect(activatedUser.enabled).toBe(1);
+  });
 });
 
 describe("DELETE /api/admin/users", () => {

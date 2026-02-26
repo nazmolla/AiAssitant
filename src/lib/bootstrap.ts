@@ -2,6 +2,7 @@ import { initializeDatabase, listMcpServers, addLog, listChannels } from "@/lib/
 import { startScheduler } from "@/lib/scheduler";
 import { getMcpManager } from "@/lib/mcp";
 import { startDiscordBot } from "@/lib/channels/discord";
+import { loadCustomToolsFromDb } from "@/lib/agent/custom-tools";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -56,6 +57,18 @@ export async function bootstrapRuntime(): Promise<void> {
           level: "error",
           source: "mcp",
           message: `Failed to auto-connect MCP servers: ${err}`,
+          metadata: null,
+        });
+      }
+
+      // Load agent-created custom tools from DB
+      try {
+        loadCustomToolsFromDb();
+      } catch (err) {
+        addLog({
+          level: "error",
+          source: "custom-tools",
+          message: `Failed to load custom tools: ${err}`,
           metadata: null,
         });
       }

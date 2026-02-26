@@ -11,6 +11,7 @@ import { isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
 import { isBrowserTool, executeBrowserTool } from "./browser-tools";
 import { isFsTool, executeBuiltinFsTool } from "./fs-tools";
 import { isNetworkTool, executeBuiltinNetworkTool } from "./network-tools";
+import { isCustomTool, executeCustomTool } from "./custom-tools";
 import {
   getToolPolicy,
   createApprovalRequest,
@@ -132,6 +133,8 @@ export async function executeApprovedTool(
       result = await executeBuiltinFsTool(toolName, args);
     } else if (isNetworkTool(toolName)) {
       result = await executeBuiltinNetworkTool(toolName, args);
+    } else if (isCustomTool(toolName)) {
+      result = await executeCustomTool(toolName, args);
     } else {
       result = await getMcpManager().callTool(toolName, args);
     }

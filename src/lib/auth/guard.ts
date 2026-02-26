@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "./options";
 import { bootstrapRuntime } from "@/lib/bootstrap";
+import { isUserEnabled } from "@/lib/db";
 
 const runtimeReady = bootstrapRuntime();
 
@@ -50,11 +51,16 @@ export async function requireOwner() {
 /**
  * Guard: returns 401 or 403, plus the authenticated user if authorized.
  * Use this in API routes that need the user's ID.
+ * Also rejects inactive/disabled users with 403.
  */
 export async function requireUser(): Promise<{ error: NextResponse } | { user: AuthenticatedUser }> {
   const user = await getAuthenticatedUser();
   if (!user) {
     return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  // Belt-and-suspenders: block inactive users even if JWT callback didn't catch it
+  if (!isUserEnabled(user.id)) {
+    return { error: NextResponse.json({ error: "Account inactive. Contact an admin to activate your account." }, { status: 403 }) };
   }
   return { user };
 }

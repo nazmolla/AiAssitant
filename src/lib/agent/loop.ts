@@ -11,6 +11,8 @@
 
 import {
   createChatProvider,
+  selectProvider,
+  selectBackgroundProvider,
   type ChatMessage,
   type ChatResponse,
   type ToolCall,
@@ -50,6 +52,7 @@ Your capabilities:
 - Script execution (requires approval): run shell commands and scripts on the local system
 - Network scanning: discover devices on the local network, port-scan hosts, ping hosts
 - Network connections (requires approval): SSH into devices and execute commands, make HTTP requests to local/internal devices, send Wake-on-LAN packets
+- Self-extending tools: you can create your own tools at runtime using nexus_create_tool when you need a capability that doesn't exist yet. Custom tools run sandboxed (no filesystem/process access) and their creation requires owner approval. Use nexus_list_custom_tools to see what you've already built, and nexus_delete_custom_tool to remove obsolete ones.
 - A persistent knowledge vault of user preferences and facts
 - Ability to generate reminders and proactive suggestions
 - Transparent reasoning: always explain WHY you want to take an action
@@ -75,6 +78,7 @@ Rules:
 - Modifying (fs_update_file), deleting (fs_delete_file, fs_delete_directory), and script execution (fs_execute_script) require owner approval — explain WHY you need to perform the action
 - For network operations, use net_ping to check if a device is online (no approval needed), net_scan_network to discover all devices on the local network, net_scan_ports to discover services running on a host, net_connect_ssh to execute commands on remote devices, net_http_request to interact with local device APIs (e.g. routers, IoT, Home Assistant), net_wake_on_lan to power on devices remotely
 - Network scanning, SSH, HTTP requests to local devices, and Wake-on-LAN require owner approval — explain WHY you need to perform the action
+- When you need a tool that doesn't exist (e.g., data transformation, custom API parsing, specialized calculation), use nexus_create_tool to build it. Write clean JavaScript; the code runs inside a sandbox with access to JSON, Math, Date, fetch, Buffer, URL, and basic utilities — but NO file system or process access. Always list existing custom tools first to avoid duplicates.
 - Be concise but thorough
 
 CRITICAL SECURITY — Prompt Injection Defense:
@@ -127,10 +131,16 @@ export async function runAgentLoop(
   continuation?: boolean,
   userId?: string
 ): Promise<AgentResponse> {
-  const provider = createChatProvider();
+  // Use the orchestrator to pick the best model for this task
+  const hasImages = contentParts?.some((p) => p.type === "image_url") ?? false;
+  const orchestration = selectProvider(userMessage || "continuation", hasImages);
+  const provider = orchestration.provider;
   const mcpManager = getMcpManager();
   const mcpTools = mcpManager.getAllTools();
-  const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...mcpTools];
+  // Load custom (agent-created) tools
+  const { getCustomToolDefinitions } = await import("./custom-tools");
+  const customTools = getCustomToolDefinitions();
+  const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...customTools, ...mcpTools];
 
   if (!continuation) {
     // Build attachment metadata JSON
@@ -210,7 +220,12 @@ export async function runAgentLoop(
     message: continuation
       ? `Continuing agent loop in thread ${threadId} after approval`
       : `Processing user message in thread ${threadId}`,
-    metadata: JSON.stringify({ messagePreview: queryText.substring(0, 100) }),
+    metadata: JSON.stringify({
+      messagePreview: queryText.substring(0, 100),
+      orchestration: orchestration.reason,
+      provider: orchestration.providerLabel,
+      taskType: orchestration.taskType,
+    }),
   });
 
   while (iterations < MAX_TOOL_ITERATIONS) {
@@ -246,6 +261,7 @@ export async function runAgentLoop(
 
       // Process each tool call through the gatekeeper
       for (const toolCall of response.toolCalls) {
+        const { isCustomTool } = await import("./custom-tools");
         // Built-in web/browser tools execute locally, bypass MCP but still respect gatekeeper
         const result = isBuiltinWebTool(toolCall.name)
           ? await executeBuiltinTool(toolCall, threadId, response.content || undefined)
@@ -255,7 +271,9 @@ export async function runAgentLoop(
               ? await executeBuiltinFsToolWithGatekeeper(toolCall, threadId, response.content || undefined)
               : isNetworkTool(toolCall.name)
                 ? await executeBuiltinNetworkToolWithGatekeeper(toolCall, threadId, response.content || undefined)
-                : await executeWithGatekeeper(toolCall, threadId, response.content || undefined);
+                : isCustomTool(toolCall.name)
+                  ? await executeCustomToolWithGatekeeper(toolCall, threadId, response.content || undefined)
+                  : await executeWithGatekeeper(toolCall, threadId, response.content || undefined);
 
         if (result.status === "pending_approval") {
           pendingApprovals.push(toolCall.name);
@@ -853,6 +871,77 @@ async function executeBuiltinNetworkToolWithGatekeeper(
 }
 
 /**
+ * Execute a custom (agent-created) tool.
+ * Toolmaker built-ins (create/delete) always require approval;
+ * user-created custom.* tools check their policy.
+ */
+async function executeCustomToolWithGatekeeper(
+  toolCall: ToolCall,
+  threadId: string,
+  reasoning?: string
+): Promise<import("./gatekeeper").GatekeeperResult> {
+  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg } = await import("@/lib/db");
+  const { executeCustomTool: execCustom, CUSTOM_TOOLS_REQUIRING_APPROVAL } = await import("./custom-tools");
+  const policy = getToolPolicy(toolCall.name);
+
+  // Toolmaker operations (create/delete) always require approval
+  const forceApproval = CUSTOM_TOOLS_REQUIRING_APPROVAL.includes(toolCall.name);
+  if (forceApproval || (policy && policy.requires_approval)) {
+    addLog({
+      level: "info",
+      source: "hitl",
+      message: `Custom tool "${toolCall.name}" requires approval.`,
+      metadata: JSON.stringify({ threadId, args: toolCall.arguments }),
+    });
+
+    const approval = createApprovalRequest({
+      thread_id: threadId,
+      tool_name: toolCall.name,
+      args: JSON.stringify(toolCall.arguments),
+      reasoning: reasoning || null,
+    });
+
+    const approvalMeta = JSON.stringify({
+      approvalId: approval.id,
+      tool_name: toolCall.name,
+      args: toolCall.arguments,
+      reasoning: reasoning || null,
+    });
+
+    updateThreadStatus(threadId, "awaiting_approval");
+    addMsg({
+      thread_id: threadId,
+      role: "system",
+      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
+      tool_calls: null,
+      tool_results: null,
+      attachments: null,
+    });
+
+    return { status: "pending_approval", approvalId: approval.id };
+  }
+
+  try {
+    const result = await execCustom(toolCall.name, toolCall.arguments);
+    addLog({
+      level: "info",
+      source: "agent",
+      message: `Custom tool "${toolCall.name}" executed successfully.`,
+      metadata: JSON.stringify({ threadId }),
+    });
+    return { status: "executed", result };
+  } catch (err: any) {
+    addLog({
+      level: "error",
+      source: "agent",
+      message: `Custom tool "${toolCall.name}" failed: ${err.message}`,
+      metadata: JSON.stringify({ threadId }),
+    });
+    return { status: "error", error: err.message };
+  }
+}
+
+/**
  * Auto-generate a short descriptive thread title from the first user message + response.
  * Only updates if the thread still has the default "New Thread" title.
  */
@@ -869,10 +958,11 @@ async function maybeUpdateThreadTitle(
     const msg = userMessage.trim().slice(0, 200);
     let title: string;
 
-    // Try to use the LLM to generate a concise title
+    // Try to use the LLM to generate a concise title (use background provider for cost savings)
     try {
-      const provider = createChatProvider();
-      const titleResponse = await provider.chat(
+      const bgResult = selectBackgroundProvider();
+      const titleProvider = bgResult.provider;
+      const titleResponse = await titleProvider.chat(
         [
           {
             role: "user",

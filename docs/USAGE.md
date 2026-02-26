@@ -148,6 +148,78 @@ Configure policies from the **Tool Policies** settings page or via the API.
 
 ---
 
+## Model Orchestrator
+
+The model orchestrator automatically selects the best LLM provider for each task based on the message content.
+
+### Task Classification
+
+Each incoming message is classified into one of four categories:
+
+| Task Type | Signals | Preferred Provider |
+|-----------|---------|--------------------|
+| **Complex** | Debug, refactor, implement, code fences, multi-step reasoning | Primary tier (most capable model) |
+| **Simple** | Short questions, definitions, calculations (<60 chars) | Secondary tier (fast, low-cost) |
+| **Background** | Summarize, digest, TLDR, title generation | Local tier (free, on-device) |
+| **Vision** | Screenshot, image, photo analysis, or attached images | Provider with vision capability |
+
+### Routing Tiers
+
+Each LLM provider can be assigned a routing tier from the **LLM Config** settings:
+
+| Tier | Use Case | Example |
+|------|----------|--------|
+| **Primary** | Complex reasoning, code generation | GPT-4o, Claude Sonnet |
+| **Secondary** | Quick answers, simple tasks | GPT-4o-mini, Claude Haiku |
+| **Local** | Background tasks, summaries, title gen | LiteLLM proxy to local models |
+
+If no tier is explicitly set, the orchestrator infers it from the model name (e.g., models containing "mini" are treated as secondary).
+
+### Provider Scoring
+
+The orchestrator scores each provider based on:
+- **Tier match** — primary providers score highest for complex tasks
+- **Capability match** — vision tasks require vision-capable models
+- **Speed & cost** — simple/background tasks prefer fast, cheap providers
+- **Availability** — only enabled providers with the "chat" purpose are considered
+
+---
+
+## Self-Extending Tools (Custom Tools)
+
+Nexus can **create its own tools** at runtime. When the agent encounters a task that would benefit from a reusable tool, it can define, compile, and register a new tool — then immediately use it.
+
+### How It Works
+
+1. The agent calls `nexus_create_tool` with a name, description, input schema, and JavaScript implementation
+2. The tool is syntax-checked, validated, and stored in the database
+3. The tool becomes immediately available for use in the current and future conversations
+4. Custom tools run in a **VM sandbox** with no access to the file system or process — only safe globals like `JSON`, `Math`, `Date`, `fetch`, `URL`, `Buffer`, and `console`
+
+### Built-in Toolmaker Tools
+
+| Tool | Description | Approval |
+|------|-------------|----------|
+| `nexus_create_tool` | Create a new custom tool | Always required |
+| `nexus_list_custom_tools` | List all custom tools | Not required |
+| `nexus_delete_custom_tool` | Delete a custom tool | Always required |
+
+### Admin Management
+
+From the **Custom Tools** settings page (admin only), you can:
+- View all agent-created tools with their parameters and implementation code
+- Enable or disable individual tools
+- Delete tools that are no longer needed
+
+### Safety
+
+- Tool creation and deletion always require HITL approval
+- Custom tool execution respects tool policies (configurable per tool)
+- Sandboxed execution prevents access to `fs`, `process`, `require`, `child_process`
+- 30-second execution timeout prevents runaway code
+
+---
+
 ## Communication Channels
 
 ![Channels configuration](images/channels.png)
@@ -224,6 +296,7 @@ If an embedding model is configured, knowledge retrieval uses cosine similarity 
 
 - **File write/delete operations** — approval required by default
 - **MCP server tools** — approval required by default (configurable per tool)
+- **Custom tool creation/deletion** — approval always required
 - **Web search/fetch** — no approval required
 - **Browser automation** — no approval required
 

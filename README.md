@@ -13,6 +13,8 @@
 - **Browser Automation** — Playwright-powered web navigation, form filling, and screenshots
 - **Multi-Channel** — Web chat, WhatsApp, Discord, and custom webhooks
 - **Screen Sharing** — share your screen with the agent for visual reasoning
+- **Model Orchestrator** — intelligent task routing picks the best LLM (local for background, cloud for complex)
+- **Self-Extending Tools** — the agent can create its own tools at runtime, compiled and sandboxed
 - **Security Hardened** — prompt injection defense, CSP headers, rate limiting, input validation
 
 ---
@@ -69,7 +71,7 @@ scp deploy.tar user@host:/path/to/app/
 | Runtime | Node.js v20+, TypeScript 5.x |
 | Frontend | Next.js 14, TailwindCSS, Radix UI |
 | Database | SQLite (`better-sqlite3`) |
-| LLM | Azure OpenAI, OpenAI, Anthropic (native SDKs) |
+| LLM | Azure OpenAI, OpenAI, Anthropic, LiteLLM (native SDKs + orchestrator) |
 | Browser | Playwright (Chromium) |
 | Auth | NextAuth v4 (credentials + OAuth) |
 | Extensibility | MCP v1.26+ (Stdio, SSE, Streamable HTTP) |

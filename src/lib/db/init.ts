@@ -2,6 +2,7 @@ import { getDb } from "./connection";
 import { SCHEMA_SQL } from "./schema";
 import { FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
 import { NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/network-tools";
+import { CUSTOM_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/custom-tools";
 import { v4 as uuid } from "uuid";
 
 // ─── Helper: check if a table exists ─────────────────────────
@@ -223,6 +224,20 @@ function seedNetworkToolPolicies(): void {
   }
 }
 
+/**
+ * Seed approval-required policies for toolmaker tools (create/delete).
+ */
+function seedCustomToolPolicies(): void {
+  const db = getDb();
+  const stmt = db.prepare(
+    `INSERT OR IGNORE INTO tool_policies (tool_name, mcp_id, requires_approval, is_proactive_enabled)
+     VALUES (?, NULL, 1, 0)`
+  );
+  for (const toolName of CUSTOM_TOOLS_REQUIRING_APPROVAL) {
+    stmt.run(toolName);
+  }
+}
+
 function ensureScreenSharingColumn(): void {
   const db = getDb();
   for (const table of ["owner_profile", "user_profiles"] as const) {
@@ -313,6 +328,7 @@ export function initializeDatabase(): void {
   ensureProfilePreferencesColumns();
   seedFsToolPolicies();
   seedNetworkToolPolicies();
+  seedCustomToolPolicies();
   console.log("[Nexus DB] Schema initialized successfully.");
 }
 

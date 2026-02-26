@@ -170,7 +170,7 @@ function isPurpose(value: unknown): value is LlmProviderPurpose {
   return value === "chat" || value === "embedding";
 }
 
-function buildConfig(provider: LlmProviderType, input: Record<string, unknown>): Record<string, string> {
+function buildConfig(provider: LlmProviderType, input: Record<string, unknown>): Record<string, any> {
   const read = (key: string, required = false) => {
     const raw = input[key];
     if (raw === undefined || raw === null) {
@@ -187,45 +187,63 @@ function buildConfig(provider: LlmProviderType, input: Record<string, unknown>):
     return value;
   };
 
+  // Read orchestrator metadata (optional for all providers)
+  const routingTier = read("routingTier");
+  const VALID_TIERS = ["primary", "secondary", "local"];
+  if (routingTier && !VALID_TIERS.includes(routingTier)) {
+    throw new Error("routingTier must be 'primary', 'secondary', or 'local'");
+  }
+  const rawCaps = input.capabilities;
+  let capabilities: Record<string, unknown> | undefined;
+  if (rawCaps && typeof rawCaps === "object" && !Array.isArray(rawCaps)) {
+    capabilities = rawCaps as Record<string, unknown>;
+  }
+
+  const orchestratorFields: Record<string, unknown> = {};
+  if (routingTier) orchestratorFields.routingTier = routingTier;
+  if (capabilities) orchestratorFields.capabilities = capabilities;
+
   try {
+    let base: Record<string, string>;
     if (provider === "azure-openai") {
       const apiKey = read("apiKey", true)!;
       const endpoint = read("endpoint", true)!;
       const deployment = read("deployment", true)!;
       const apiVersion = read("apiVersion");
-      return {
+      base = {
         apiKey,
         endpoint,
         deployment,
         ...(apiVersion ? { apiVersion } : {}),
       };
-    }
-    if (provider === "openai") {
+    } else if (provider === "openai") {
       const apiKey = read("apiKey", true)!;
       const model = read("model");
       const baseURL = read("baseURL");
-      return {
+      base = {
         apiKey,
         ...(model ? { model } : {}),
         ...(baseURL ? { baseURL } : {}),
       };
-    }
-    if (provider === "litellm") {
+    } else if (provider === "litellm") {
       const baseURL = read("baseURL", true)!;
       const model = read("model", true)!;
       const apiKey = read("apiKey");
-      return {
+      base = {
         baseURL,
         model,
         ...(apiKey ? { apiKey } : {}),
       };
+    } else {
+      const apiKey = read("apiKey", true)!;
+      const model = read("model");
+      base = {
+        apiKey,
+        ...(model ? { model } : {}),
+      };
     }
-    const apiKey = read("apiKey", true)!;
-    const model = read("model");
-    return {
-      apiKey,
-      ...(model ? { model } : {}),
-    };
+
+    return { ...base, ...orchestratorFields };
   } catch (err) {
     throw new Error((err as Error).message);
   }

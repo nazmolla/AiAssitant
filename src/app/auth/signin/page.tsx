@@ -45,7 +45,9 @@ export default function SignInPage() {
       const message =
         result.error === "CredentialsSignin"
           ? "Invalid email or password."
-          : result.error;
+          : result.error.includes("ACCOUNT_PENDING")
+            ? "Your account has been created but is pending activation. An admin must activate your account before you can sign in."
+            : result.error;
       setStatus({ type: "error", message });
       return;
     }
@@ -117,7 +119,7 @@ export default function SignInPage() {
               </p>
             ) : null}
             <p className="text-center text-[11px] text-muted-foreground/50 font-light">
-              First-time owners can create their account by submitting an email + password here.
+              New users can register by submitting an email + password. Your account will be pending until an admin activates it.
             </p>
           </form>
         </CardContent>

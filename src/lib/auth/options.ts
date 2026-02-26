@@ -10,6 +10,7 @@ import {
   updateUserPassword,
   getUserCount,
   getEnabledAuthProviders,
+  isUserEnabled,
 } from "@/lib/db";
 
 const LOCAL_SALT_ROUNDS = 12;
@@ -76,6 +77,10 @@ export function getAuthOptions(): NextAuthOptions {
             passwordHash,
             role: isFirst ? "admin" : "user",
           });
+          // Non-admin users start inactive — they must be activated by an admin
+          if (!isFirst) {
+            throw new Error("ACCOUNT_PENDING");
+          }
           return { id: user.id, email: user.email, name: user.display_name };
         }
 
@@ -87,6 +92,11 @@ export function getAuthOptions(): NextAuthOptions {
         const valid = await compare(credentials.password, existing.password_hash);
         if (!valid) {
           return null;
+        }
+
+        // Block disabled/inactive users at sign-in
+        if (!isUserEnabled(existing.id)) {
+          throw new Error("ACCOUNT_PENDING");
         }
 
         return { id: existing.id, email: existing.email, name: existing.display_name };
@@ -112,14 +122,16 @@ export function getAuthOptions(): NextAuthOptions {
       // Check if user already exists by external sub
       const existingBySub = getUserByExternalSub(subId);
       if (existingBySub) {
-        // Returning user
+        // Block disabled/inactive users
+        if (!isUserEnabled(existingBySub.id)) return false;
         return true;
       }
 
       // Check if user exists by email (may have signed up with another method)
       const existingByEmail = getUserByEmail(user.email);
       if (existingByEmail) {
-        // Allow sign-in if same email, even if different provider
+        // Block disabled/inactive users
+        if (!isUserEnabled(existingByEmail.id)) return false;
         return true;
       }
 
@@ -135,6 +147,9 @@ export function getAuthOptions(): NextAuthOptions {
         externalSubId: subId,
         role: isFirst ? "admin" : "user",
       });
+
+      // Non-admin users start inactive — reject sign-in until admin activates
+      if (!isFirst) return false;
 
       return true;
     },

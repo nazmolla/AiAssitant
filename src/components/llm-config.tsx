@@ -9,12 +9,26 @@ import { cn } from "@/lib/utils";
 
 type LlmProviderType = "azure-openai" | "openai" | "anthropic" | "litellm";
 type LlmProviderPurpose = "chat" | "embedding";
+type RoutingTier = "primary" | "secondary" | "local";
 
 const PROVIDER_LABELS: Record<LlmProviderType, string> = {
   "azure-openai": "Azure OpenAI",
   openai: "OpenAI",
   anthropic: "Anthropic",
   litellm: "LiteLLM (Local)",
+};
+
+const ROUTING_TIER_OPTIONS: Array<{ label: string; value: RoutingTier | "" }> = [
+  { value: "", label: "Auto-detect" },
+  { value: "primary", label: "Primary (cloud)" },
+  { value: "secondary", label: "Secondary (fallback)" },
+  { value: "local", label: "Local (self-hosted)" },
+];
+
+const TIER_BADGE_COLORS: Record<string, string> = {
+  primary: "bg-blue-500/15 text-blue-400 border-blue-500/20",
+  secondary: "bg-amber-500/15 text-amber-400 border-amber-500/20",
+  local: "bg-green-500/15 text-green-400 border-green-500/20",
 };
 
 const PROVIDER_FIELDS: Record<
@@ -83,6 +97,7 @@ export function LlmConfig() {
   const [purpose, setPurpose] = useState<LlmProviderPurpose>("chat");
   const [label, setLabel] = useState("");
   const [configValues, setConfigValues] = useState<ConfigFormState>(initialConfigState("azure-openai"));
+  const [routingTier, setRoutingTier] = useState<RoutingTier | "">("");
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
@@ -119,6 +134,7 @@ export function LlmConfig() {
   const resetForm = () => {
     setLabel("");
     setConfigValues(initialConfigState(providerType));
+    setRoutingTier("");
     setFormError(null);
   };
 
@@ -133,7 +149,7 @@ export function LlmConfig() {
         label,
         provider_type: providerType,
         purpose,
-        config: configValues,
+        config: { ...configValues, ...(routingTier ? { routingTier } : {}) },
         is_default: providers.filter((p) => p.purpose === purpose).length === 0,
       };
       const res = await fetch("/api/config/llm", {
@@ -233,6 +249,27 @@ export function LlmConfig() {
               </div>
             </div>
 
+            {/* Routing tier — only for chat providers */}
+            {purpose === "chat" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Routing Tier</label>
+                <select
+                  className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-sm transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 appearance-none"
+                  value={routingTier}
+                  onChange={(e) => setRoutingTier(e.target.value as RoutingTier | "")}
+                >
+                  {ROUTING_TIER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} className="bg-card">
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground/50">
+                  Controls how the orchestrator routes tasks. Local = background/simple tasks. Primary = complex reasoning.
+                </p>
+              </div>
+            )}
+
             <div className="grid gap-4 md:grid-cols-2">
               {currentFields.map((field) => (
                 <div key={field.key} className="space-y-1.5">
@@ -309,10 +346,18 @@ export function LlmConfig() {
                     <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
                       {PROVIDER_LABELS[provider.provider_type]}
                     </Badge>
+                    {provider.config?.routingTier && (
+                      <span className={cn(
+                        "px-1.5 py-0.5 rounded-full text-[10px] font-medium border",
+                        TIER_BADGE_COLORS[provider.config.routingTier] || "bg-white/5 text-muted-foreground border-white/10"
+                      )}>
+                        {provider.config.routingTier}
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-muted-foreground/40 mt-1">
                     {Object.entries(provider.config)
-                      .filter(([, v]) => typeof v === "string" && v.length > 0)
+                      .filter(([k, v]) => typeof v === "string" && v.length > 0 && k !== "routingTier")
                       .map(([k, v]) => `${k}: ${v}`)
                       .join(" · ") || "No config details"}
                     {provider.has_api_key === false && (

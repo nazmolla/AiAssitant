@@ -12,7 +12,7 @@
 | Language | TypeScript | v5.x, Strict Mode |
 | Database | SQLite | `better-sqlite3` — zero-config, single-file persistence |
 | Frontend | Next.js 14 | App Router, TailwindCSS, Radix UI primitives, screen sharing via getDisplayMedia |
-| LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk` |
+| LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy |
 | MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports |
 | Discord | discord.js | Gateway bot with mentions, DMs, and slash commands |
 | Auth | NextAuth v4 | Credentials (email + password) and OAuth (Azure AD, Google) |
@@ -161,7 +161,20 @@ CREATE TABLE approval_queue (
 );
 ```
 
-### E. Communication Channels
+### E. Custom Tools (Self-Extending)
+
+```sql
+CREATE TABLE custom_tools (
+    name TEXT PRIMARY KEY,
+    description TEXT NOT NULL,
+    input_schema TEXT NOT NULL,          -- JSON schema (type: "object")
+    implementation TEXT NOT NULL,        -- JavaScript function body
+    enabled INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### F. Communication Channels
 
 ```sql
 CREATE TABLE channels (
@@ -203,6 +216,7 @@ CREATE TABLE channel_user_mappings (
 | `GET/POST/PATCH/DELETE` | `/api/config/auth` | Admin | Manage OAuth and Discord auth providers |
 | `GET/POST/PATCH/DELETE` | `/api/config/channels` | User | Manage communication channels (user-scoped, ownership enforced) |
 | `GET/PUT` | `/api/config/profile` | User | Get/update user profile (user-scoped) |
+| `GET/POST/PUT/DELETE` | `/api/config/custom-tools` | Admin | Manage agent-created custom tools |
 | `POST` | `/api/channels/[channelId]/webhook` | Webhook | Receive inbound messages from channels |
 | `POST` | `/api/attachments` | User | Upload file attachments |
 | `GET` | `/api/attachments/[...path]` | Auth | Serve uploaded files |

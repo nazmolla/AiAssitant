@@ -33,12 +33,17 @@ export function createUser(args: {
   externalSubId: string | null;
   passwordHash?: string | null;
   role?: string;
+  enabled?: number;
 }): UserRecord {
   const id = uuid();
+  const role = args.role || "user";
+  // First user (admin) is active immediately; subsequent users start inactive
+  // and must be activated by an admin.
+  const enabled = args.enabled !== undefined ? args.enabled : (role === "admin" ? 1 : 0);
   getDb()
     .prepare(
-      `INSERT INTO users (id, email, display_name, provider_id, external_sub_id, password_hash, role)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO users (id, email, display_name, provider_id, external_sub_id, password_hash, role, enabled)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
@@ -47,7 +52,8 @@ export function createUser(args: {
       args.providerId,
       args.externalSubId,
       args.passwordHash ?? null,
-      args.role || "user"
+      role,
+      enabled
     );
   return getUserById(id)!;
 }
@@ -1055,3 +1061,50 @@ export function deleteAuthProvider(id: string): void {
   getDb().prepare("DELETE FROM auth_providers WHERE id = ?").run(id);
 }
 
+// ─── Custom Tools (agent-created extensibility) ──────────────
+
+export interface CustomToolRecord {
+  name: string;
+  description: string;
+  input_schema: string;
+  implementation: string;
+  enabled: number;
+  created_at: string;
+}
+
+export function listCustomTools(): CustomToolRecord[] {
+  return getDb()
+    .prepare("SELECT * FROM custom_tools ORDER BY created_at DESC")
+    .all() as CustomToolRecord[];
+}
+
+export function getCustomTool(name: string): CustomToolRecord | undefined {
+  return getDb()
+    .prepare("SELECT * FROM custom_tools WHERE name = ?")
+    .get(name) as CustomToolRecord | undefined;
+}
+
+export function createCustomToolRecord(args: {
+  name: string;
+  description: string;
+  inputSchema: string;
+  implementation: string;
+}): CustomToolRecord {
+  getDb()
+    .prepare(
+      `INSERT INTO custom_tools (name, description, input_schema, implementation, enabled)
+       VALUES (?, ?, ?, ?, 1)`
+    )
+    .run(args.name, args.description, args.inputSchema, args.implementation);
+  return getCustomTool(args.name)!;
+}
+
+export function updateCustomToolEnabled(name: string, enabled: boolean): void {
+  getDb()
+    .prepare("UPDATE custom_tools SET enabled = ? WHERE name = ?")
+    .run(enabled ? 1 : 0, name);
+}
+
+export function deleteCustomToolRecord(name: string): void {
+  getDb().prepare("DELETE FROM custom_tools WHERE name = ?").run(name);
+}

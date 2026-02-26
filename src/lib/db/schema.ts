@@ -228,4 +228,15 @@ CREATE TABLE IF NOT EXISTS auth_providers (
     enabled INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ═══ Custom Tools (agent-created extensibility) ═══
+
+CREATE TABLE IF NOT EXISTS custom_tools (
+    name TEXT PRIMARY KEY,              -- 'custom.tool_name'
+    description TEXT NOT NULL,
+    input_schema TEXT NOT NULL,          -- JSON Schema
+    implementation TEXT NOT NULL,        -- TypeScript/JS code
+    enabled INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 `;

@@ -28,10 +28,16 @@ graph TB
         ANTHRO["Anthropic"]
     end
 
+    subgraph Orchestrator["Model Orchestrator"]
+        CLASSIFY["Task Classifier<br/>(Heuristic)"]
+        SCORE["Provider Scorer<br/>(Capability Match)"]
+    end
+
     subgraph Tools["Built-in Tools"]
         WEBT["Web Tools<br/>(Search, Fetch, Extract)"]
         BROWSER["Browser Automation<br/>(Playwright)"]
         FS["File System<br/>(HITL-Gated)"]
+        CUSTOM["Custom Tools<br/>(Agent-Created, Sandboxed)"]
     end
 
     subgraph MCP["MCP Servers"]
@@ -59,7 +65,8 @@ graph TB
     LOOP --> GATE
     GATE -->|approved| Tools
     GATE -->|approved| MCP
-    LOOP --> LLM
+    LOOP --> Orchestrator
+    Orchestrator --> LLM
     LOOP --> KNOW
     KNOW --> EMBED
     KNOW --> DB
@@ -73,6 +80,7 @@ graph TB
     style Tools fill:#1a1a2e,stroke:#e8604c,color:#fff
     style MCP fill:#1a1a2e,stroke:#e8604c,color:#fff
     style Data fill:#1a1a2e,stroke:#e8604c,color:#fff
+    style Orchestrator fill:#1a1a2e,stroke:#e8604c,color:#fff
     style Auth fill:#1a1a2e,stroke:#e8604c,color:#fff
 ```
 
@@ -97,7 +105,9 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 | **Autonomous Knowledge Capture** | Every chat turn is mined for durable facts, keeping the Knowledge Vault up to date without manual entry. |
 | **Vector-Aware Reasoning** | Semantic embedding search retrieves the most relevant knowledge before responding. |
 | **Human-in-the-Loop (HITL)** | Sensitive tool calls are held in an approval queue until explicitly approved. |
-| **Native SDKs** | Direct use of Azure OpenAI, OpenAI, Anthropic, and MCP SDKs — no LangChain. |
+| **Model Orchestrator** | Intelligent task routing classifies each message (complex/simple/background/vision) and selects the best LLM provider based on capabilities, speed, cost, and tier. |
+| **Self-Extending Tools** | The agent can create, compile, and register new tools at runtime. Custom tools run in a VM sandbox with no file system or process access. |
+| **Native SDKs** | Direct use of Azure OpenAI, OpenAI, Anthropic, LiteLLM, and MCP SDKs — no LangChain. |
 | **Browser Automation** | Playwright-powered tools let the agent navigate pages, fill forms, take screenshots, and manage sessions. |
 | **File System Access** | Built-in tools to read, write, list, and search files — with HITL gating on destructive operations. |
 | **Multi-Channel Comms** | WhatsApp, Discord, webhooks, and web chat — each channel resolves senders to internal users. |
@@ -150,6 +160,7 @@ src/
 │   │   ├── logs/               # Agent activity logs
 │   │   ├── mcp/                # MCP server management + OAuth
 │   │   ├── policies/           # Tool policy management
+│   │   ├── config/custom-tools/ # Custom tools management
 │   │   └── threads/            # Thread + chat management
 │   ├── auth/                   # Sign-in and error pages
 │   ├── globals.css             # Theme and design tokens
@@ -170,6 +181,7 @@ src/
 │   ├── agent/                  # Core agent logic
 │   │   ├── loop.ts             # Sense-Think-Act agent loop
 │   │   ├── gatekeeper.ts       # HITL policy enforcement
+│   │   ├── custom-tools.ts     # Self-extending tool system (VM sandbox)
 │   │   ├── web-tools.ts        # Web search/fetch tools
 │   │   ├── browser-tools.ts    # Playwright browser automation
 │   │   └── fs-tools.ts         # File system tools
@@ -186,6 +198,7 @@ src/
 │   │   ├── index.ts            # Ingestion pipeline
 │   │   └── retriever.ts        # Semantic + keyword search
 │   ├── llm/                    # LLM provider abstraction
+│   │   ├── orchestrator.ts     # Model routing & task classification
 │   │   ├── openai-provider.ts  # OpenAI / Azure OpenAI
 │   │   ├── anthropic-provider.ts
 │   │   ├── embeddings.ts       # Embedding generation

@@ -4,6 +4,7 @@ import { OpenAIChatProvider } from "./openai-provider";
 import { AnthropicChatProvider } from "./anthropic-provider";
 
 export type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ToolCall, ContentPart } from "./types";
+export { selectProvider, selectBackgroundProvider, classifyTask, type TaskType, type RoutingTier, type OrchestratorResult } from "./orchestrator";
 
 /**
  * Factory: returns the appropriate ChatProvider based on available env vars.

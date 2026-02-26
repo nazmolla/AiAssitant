@@ -18,7 +18,7 @@ function AuthErrorContent() {
           <CardTitle className="text-2xl font-display text-destructive">Access Denied</CardTitle>
           <CardDescription className="text-muted-foreground/60">
             {error === "AccessDenied"
-              ? "Only the owner of this Nexus instance can sign in. This agent is identity-locked."
+              ? "Your account is pending activation. An admin must activate your account before you can sign in."
               : `Authentication error: ${error}`}
           </CardDescription>
         </CardHeader>
