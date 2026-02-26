@@ -234,12 +234,20 @@ async function createCustomTool(args: Record<string, unknown>): Promise<unknown>
   }
 
   // Save to DB
-  const { createCustomToolRecord } = require("@/lib/db/queries");
+  const { createCustomToolRecord, upsertToolPolicy } = require("@/lib/db/queries");
   createCustomToolRecord({
     name: fullName,
     description,
     inputSchema: JSON.stringify(inputSchema),
     implementation,
+  });
+
+  // Auto-create a tool policy so it shows in the policies UI
+  upsertToolPolicy({
+    tool_name: fullName,
+    mcp_id: null,
+    requires_approval: 0,
+    is_proactive_enabled: 0,
   });
 
   // Update cache
@@ -285,6 +293,12 @@ async function deleteCustomTool(args: Record<string, unknown>): Promise<unknown>
   // Remove from DB
   const { deleteCustomToolRecord } = require("@/lib/db/queries");
   deleteCustomToolRecord(fullName);
+
+  // Also remove the tool policy
+  try {
+    const db = require("@/lib/db/connection").getDb();
+    db.prepare("DELETE FROM tool_policies WHERE tool_name = ?").run(fullName);
+  } catch { /* policy may not exist */ }
 
   // Remove from cache
   customToolsCache.splice(idx, 1);

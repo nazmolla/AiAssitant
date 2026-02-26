@@ -7,6 +7,7 @@ installAuthMocks();
 import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db";
 import { NextRequest } from "next/server";
 import { GET, POST, PUT, DELETE } from "@/app/api/config/custom-tools/route";
+import { getToolPolicy } from "@/lib/db/queries";
 
 let adminId: string;
 let userId: string;
@@ -119,6 +120,14 @@ describe("POST /api/config/custom-tools", () => {
     expect(data.description).toBe("An API test tool");
   });
 
+  test("creating a tool auto-creates a tool policy entry", async () => {
+    const policy = getToolPolicy("custom.api_test_tool");
+    expect(policy).toBeDefined();
+    expect(policy!.tool_name).toBe("custom.api_test_tool");
+    expect(policy!.requires_approval).toBe(0);
+    expect(policy!.is_proactive_enabled).toBe(0);
+  });
+
   test("returns 409 for duplicate", async () => {
     setMockUser({ id: adminId, email: "admin-ct@example.com", role: "admin" });
     const req = new NextRequest("http://localhost/api/config/custom-tools", {
@@ -201,6 +210,11 @@ describe("DELETE /api/config/custom-tools", () => {
     });
     const res = await DELETE(req);
     expect(res.status).toBe(200);
+  });
+
+  test("deleting a tool also removes its policy entry", () => {
+    const policy = getToolPolicy("custom.api_test_tool");
+    expect(policy).toBeUndefined();
   });
 
   test("GET returns empty after delete", async () => {

@@ -9,7 +9,7 @@ import {
   loadCustomToolsFromDb,
   BUILTIN_TOOLMAKER_TOOLS,
 } from "@/lib/agent/custom-tools";
-import { createCustomToolRecord } from "@/lib/db/queries";
+import { createCustomToolRecord, getToolPolicy } from "@/lib/db/queries";
 
 beforeAll(() => {
   setupTestDb();
@@ -109,6 +109,14 @@ describe("executeCustomTool", () => {
     expect(result.toolName).toBe("custom.my_adder");
   });
 
+  test("creating a custom tool auto-creates a policy entry", () => {
+    const policy = getToolPolicy("custom.my_adder");
+    expect(policy).toBeDefined();
+    expect(policy!.tool_name).toBe("custom.my_adder");
+    expect(policy!.requires_approval).toBe(0);
+    expect(policy!.is_proactive_enabled).toBe(0);
+  });
+
   test("create tool rejects duplicates", async () => {
     await expect(
       executeCustomTool("builtin.nexus_create_tool", {
@@ -141,6 +149,11 @@ describe("executeCustomTool", () => {
     await expect(
       executeCustomTool("custom.my_adder", { a: 1, b: 2 })
     ).rejects.toThrow(/not found or is disabled/);
+  });
+
+  test("deleting a custom tool also removes its policy entry", () => {
+    const policy = getToolPolicy("custom.my_adder");
+    expect(policy).toBeUndefined();
   });
 
   test("delete nonexistent tool throws", async () => {

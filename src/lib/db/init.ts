@@ -1,8 +1,10 @@
 import { getDb } from "./connection";
 import { SCHEMA_SQL } from "./schema";
-import { FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
-import { NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/network-tools";
-import { CUSTOM_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/custom-tools";
+import { BUILTIN_WEB_TOOLS } from "@/lib/agent/web-tools";
+import { BUILTIN_BROWSER_TOOLS } from "@/lib/agent/browser-tools";
+import { BUILTIN_FS_TOOLS, FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
+import { BUILTIN_NETWORK_TOOLS, NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/network-tools";
+import { BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/custom-tools";
 import { v4 as uuid } from "uuid";
 
 // ─── Helper: check if a table exists ─────────────────────────
@@ -197,44 +199,38 @@ function ensureUserIdColumns(): void {
 }
 
 /**
- * Seed approval-required policies for destructive filesystem tools.
+ * Collect the names of built-in tools that require approval by default.
  */
-function seedFsToolPolicies(): void {
-  const db = getDb();
-  const stmt = db.prepare(
-    `INSERT OR IGNORE INTO tool_policies (tool_name, mcp_id, requires_approval, is_proactive_enabled)
-     VALUES (?, NULL, 1, 0)`
-  );
-  for (const toolName of FS_TOOLS_REQUIRING_APPROVAL) {
-    stmt.run(toolName);
-  }
-}
+const TOOLS_REQUIRING_APPROVAL = new Set([
+  ...FS_TOOLS_REQUIRING_APPROVAL,
+  ...NETWORK_TOOLS_REQUIRING_APPROVAL,
+  ...CUSTOM_TOOLS_REQUIRING_APPROVAL,
+]);
 
 /**
- * Seed approval-required policies for sensitive network tools.
+ * Seed policies for ALL built-in tools (web, browser, fs, network, toolmaker).
+ * Tools in the "requiring approval" sets get requires_approval=1;
+ * all others default to requires_approval=0.  Uses INSERT OR IGNORE so
+ * existing policies (e.g. customised by admin) are never overwritten.
  */
-function seedNetworkToolPolicies(): void {
+function seedAllBuiltinToolPolicies(): void {
   const db = getDb();
   const stmt = db.prepare(
     `INSERT OR IGNORE INTO tool_policies (tool_name, mcp_id, requires_approval, is_proactive_enabled)
-     VALUES (?, NULL, 1, 0)`
+     VALUES (?, NULL, ?, 0)`
   );
-  for (const toolName of NETWORK_TOOLS_REQUIRING_APPROVAL) {
-    stmt.run(toolName);
-  }
-}
 
-/**
- * Seed approval-required policies for toolmaker tools (create/delete).
- */
-function seedCustomToolPolicies(): void {
-  const db = getDb();
-  const stmt = db.prepare(
-    `INSERT OR IGNORE INTO tool_policies (tool_name, mcp_id, requires_approval, is_proactive_enabled)
-     VALUES (?, NULL, 1, 0)`
-  );
-  for (const toolName of CUSTOM_TOOLS_REQUIRING_APPROVAL) {
-    stmt.run(toolName);
+  const allBuiltinTools = [
+    ...BUILTIN_WEB_TOOLS,
+    ...BUILTIN_BROWSER_TOOLS,
+    ...BUILTIN_FS_TOOLS,
+    ...BUILTIN_NETWORK_TOOLS,
+    ...BUILTIN_TOOLMAKER_TOOLS,
+  ];
+
+  for (const tool of allBuiltinTools) {
+    const needsApproval = TOOLS_REQUIRING_APPROVAL.has(tool.name) ? 1 : 0;
+    stmt.run(tool.name, needsApproval);
   }
 }
 
@@ -326,9 +322,7 @@ export function initializeDatabase(): void {
   ensureChannelUserId();
   ensureUserAccessManagement();
   ensureProfilePreferencesColumns();
-  seedFsToolPolicies();
-  seedNetworkToolPolicies();
-  seedCustomToolPolicies();
+  seedAllBuiltinToolPolicies();
   console.log("[Nexus DB] Schema initialized successfully.");
 }
 

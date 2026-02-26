@@ -12,6 +12,7 @@ import {
   updateCustomToolEnabled,
   deleteCustomToolRecord,
   getCustomTool,
+  upsertToolPolicy,
 } from "@/lib/db/queries";
 import { loadCustomToolsFromDb } from "@/lib/agent/custom-tools";
 
@@ -63,6 +64,14 @@ export async function POST(req: NextRequest) {
     implementation,
   });
 
+  // Seed a tool policy for the new custom tool
+  upsertToolPolicy({
+    tool_name: fullName,
+    mcp_id: null,
+    requires_approval: 0,
+    is_proactive_enabled: 0,
+  });
+
   // Reload cache
   loadCustomToolsFromDb();
 
@@ -111,6 +120,13 @@ export async function DELETE(req: NextRequest) {
   }
 
   deleteCustomToolRecord(name);
+
+  // Remove the tool policy
+  try {
+    const { getDb } = require("@/lib/db/connection");
+    getDb().prepare("DELETE FROM tool_policies WHERE tool_name = ?").run(name);
+  } catch { /* policy may not exist */ }
+
   loadCustomToolsFromDb();
 
   return NextResponse.json({ ok: true });

@@ -14,12 +14,23 @@ interface ToolPolicy {
 interface ToolDef {
   name: string;
   description: string;
+  source?: "builtin" | "custom" | "mcp";
+  group?: string;
 }
 
 interface McpServer {
   id: string;
   name: string;
 }
+
+const GROUP_ICONS: Record<string, string> = {
+  "Web Tools": "🌐",
+  "Browser Tools": "🖥️",
+  "File System": "📁",
+  "Network Tools": "🔌",
+  "Tool Management": "🛠️",
+  "Custom Tools": "🔧",
+};
 
 export function ToolPolicies() {
   const [tools, setTools] = useState<ToolDef[]>([]);
@@ -55,25 +66,6 @@ export function ToolPolicies() {
     fetchAll();
   }
 
-  async function toggleAllPolicies(field: "requires_approval" | "is_proactive_enabled", value: boolean) {
-    await Promise.all(
-      tools.map((tool) => {
-        const existing = policies.find((p) => p.tool_name === tool.name);
-        return fetch("/api/policies", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tool_name: tool.name,
-            mcp_id: existing?.mcp_id || null,
-            requires_approval: field === "requires_approval" ? value : existing?.requires_approval ?? true,
-            is_proactive_enabled: field === "is_proactive_enabled" ? value : existing?.is_proactive_enabled ?? false,
-          }),
-        });
-      })
-    );
-    fetchAll();
-  }
-
   async function toggleGroupPolicies(groupTools: ToolDef[], field: "requires_approval" | "is_proactive_enabled", value: boolean) {
     await Promise.all(
       groupTools.map((tool) => {
@@ -99,53 +91,84 @@ export function ToolPolicies() {
         <CardContent className="py-12 text-center">
           <div className="text-3xl mb-3 opacity-30">🛡️</div>
           <p className="text-sm text-muted-foreground/60 font-light">
-            No tools discovered yet. Connect an MCP server first.
+            No tools discovered yet. Connect an MCP server or wait for built-in tools to load.
           </p>
         </CardContent>
       </Card>
     );
   }
 
-  // Group tools by MCP server
-  const grouped = tools.reduce<Record<string, ToolDef[]>>((acc, tool) => {
-    const dotIdx = tool.name.indexOf(".");
-    const serverId = dotIdx !== -1 ? tool.name.substring(0, dotIdx) : "_unknown";
-    if (!acc[serverId]) acc[serverId] = [];
-    acc[serverId].push(tool);
-    return acc;
-  }, {});
+  // Group tools: built-in by group, MCP by server prefix, custom by "Custom Tools"
+  const grouped: Record<string, { tools: ToolDef[]; label: string; icon: string }> = {};
 
-  const serverIds = Object.keys(grouped);
+  for (const tool of tools) {
+    if (tool.source === "builtin" || tool.source === "custom") {
+      const groupKey = tool.group || "Other";
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = {
+          tools: [],
+          label: groupKey,
+          icon: GROUP_ICONS[groupKey] || "📦",
+        };
+      }
+      grouped[groupKey].tools.push(tool);
+    } else {
+      // MCP tool — group by server ID prefix
+      const dotIdx = tool.name.indexOf(".");
+      const serverId = dotIdx !== -1 ? tool.name.substring(0, dotIdx) : "_unknown";
+      const groupKey = `mcp_${serverId}`;
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = {
+          tools: [],
+          label: serverNames[serverId] || serverId,
+          icon: "🔗",
+        };
+      }
+      grouped[groupKey].tools.push(tool);
+    }
+  }
+
+  const groupKeys = Object.keys(grouped);
+  // Sort: built-in groups first, then MCP
+  const builtinOrder = ["Web Tools", "Browser Tools", "File System", "Network Tools", "Tool Management", "Custom Tools"];
+  groupKeys.sort((a, b) => {
+    const aIdx = builtinOrder.indexOf(a);
+    const bIdx = builtinOrder.indexOf(b);
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+    if (aIdx !== -1) return -1;
+    if (bIdx !== -1) return 1;
+    return a.localeCompare(b);
+  });
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <span>{tools.length} tool{tools.length !== 1 ? "s" : ""} discovered</span>
         <span className="text-muted-foreground/30">•</span>
-        <span>{serverIds.length} server{serverIds.length !== 1 ? "s" : ""}</span>
+        <span>{groupKeys.length} group{groupKeys.length !== 1 ? "s" : ""}</span>
         <span className="text-muted-foreground/30">•</span>
         <span>{policies.filter((p) => p.requires_approval).length} requiring approval</span>
         <span className="text-muted-foreground/30">•</span>
         <span>{policies.filter((p) => p.is_proactive_enabled).length} proactive</span>
       </div>
 
-      {serverIds.map((serverId) => {
-        const serverLabel = serverNames[serverId] || serverId;
-        const serverTools = grouped[serverId];
-        const isCollapsed = collapsed[serverId] ?? false;
+      {groupKeys.map((groupKey) => {
+        const group = grouped[groupKey];
+        const isCollapsed = collapsed[groupKey] ?? false;
         return (
-          <Card key={serverId}>
+          <Card key={groupKey}>
             <CardHeader className="pb-0 pt-4 px-4">
               <div className="flex items-center justify-between">
                 <button
-                  onClick={() => setCollapsed((prev) => ({ ...prev, [serverId]: !isCollapsed }))}
+                  onClick={() => setCollapsed((prev) => ({ ...prev, [groupKey]: !isCollapsed }))}
                   className="flex items-center gap-2 text-left group"
                 >
                   <span className={`text-[10px] text-muted-foreground/40 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`}>▶</span>
+                  <span className="text-sm mr-1">{group.icon}</span>
                   <CardTitle className="text-sm font-display font-semibold text-primary/90 group-hover:text-primary transition-colors">
-                    {serverLabel}
+                    {group.label}
                     <span className="ml-2 text-[11px] font-normal text-muted-foreground/50">
-                      {serverTools.length} tool{serverTools.length !== 1 ? "s" : ""}
+                      {group.tools.length} tool{group.tools.length !== 1 ? "s" : ""}
                     </span>
                   </CardTitle>
                 </button>
@@ -153,15 +176,15 @@ export function ToolPolicies() {
                   <div className="flex items-center gap-3 text-[10px]">
                     <div className="flex items-center gap-1">
                       <span className="text-muted-foreground/40 uppercase tracking-wider">Approval:</span>
-                      <button onClick={() => toggleGroupPolicies(serverTools, "requires_approval", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
+                      <button onClick={() => toggleGroupPolicies(group.tools, "requires_approval", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
                       <span className="text-muted-foreground/30">|</span>
-                      <button onClick={() => toggleGroupPolicies(serverTools, "requires_approval", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
+                      <button onClick={() => toggleGroupPolicies(group.tools, "requires_approval", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="text-muted-foreground/40 uppercase tracking-wider">Proactive:</span>
-                      <button onClick={() => toggleGroupPolicies(serverTools, "is_proactive_enabled", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
+                      <button onClick={() => toggleGroupPolicies(group.tools, "is_proactive_enabled", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
                       <span className="text-muted-foreground/30">|</span>
-                      <button onClick={() => toggleGroupPolicies(serverTools, "is_proactive_enabled", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
+                      <button onClick={() => toggleGroupPolicies(group.tools, "is_proactive_enabled", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
                     </div>
                   </div>
                 )}
@@ -179,7 +202,7 @@ export function ToolPolicies() {
                   </tr>
                 </thead>
                 <tbody>
-                  {serverTools.map((tool) => {
+                  {group.tools.map((tool) => {
                     const policy = policies.find((p) => p.tool_name === tool.name);
                     const dotIdx = tool.name.indexOf(".");
                     const toolName = dotIdx !== -1 ? tool.name.substring(dotIdx + 1) : tool.name;

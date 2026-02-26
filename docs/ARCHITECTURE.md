@@ -104,7 +104,7 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 | **Proactive Intelligence** | A background scheduler polls MCP tools and uses the LLM to generate reminders or actions. |
 | **Autonomous Knowledge Capture** | Every chat turn is mined for durable facts, keeping the Knowledge Vault up to date without manual entry. |
 | **Vector-Aware Reasoning** | Semantic embedding search retrieves the most relevant knowledge before responding. |
-| **Human-in-the-Loop (HITL)** | Sensitive tool calls are held in an approval queue until explicitly approved. |
+| **Human-in-the-Loop (HITL)** | Unified tool policy system governs ALL tools (built-in, custom, and MCP). Per-tool approval and proactive toggles. Sensitive calls are held in an approval queue. |
 | **Model Orchestrator** | Intelligent task routing classifies each message (complex/simple/background/vision) and selects the best LLM provider based on capabilities, speed, cost, and tier. |
 | **Self-Extending Tools** | The agent can create, compile, and register new tools at runtime. Custom tools run in a VM sandbox with no file system or process access. |
 | **Native SDKs** | Direct use of Azure OpenAI, OpenAI, Anthropic, LiteLLM, and MCP SDKs — no LangChain. |

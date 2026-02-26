@@ -19,11 +19,11 @@ import {
   type ContentPart,
 } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
-import { executeWithGatekeeper } from "./gatekeeper";
 import { BUILTIN_WEB_TOOLS, isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
 import { BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool } from "./browser-tools";
 import { BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool } from "./fs-tools";
 import { BUILTIN_NETWORK_TOOLS, isNetworkTool, executeBuiltinNetworkTool } from "./network-tools";
+import { isCustomTool } from "./custom-tools";
 import {
   addMessage,
   getThreadMessages,
@@ -259,21 +259,9 @@ export async function runAgentLoop(
         tool_calls: response.toolCalls,
       });
 
-      // Process each tool call through the gatekeeper
+      // Process each tool call through the unified policy gatekeeper
       for (const toolCall of response.toolCalls) {
-        const { isCustomTool } = await import("./custom-tools");
-        // Built-in web/browser tools execute locally, bypass MCP but still respect gatekeeper
-        const result = isBuiltinWebTool(toolCall.name)
-          ? await executeBuiltinTool(toolCall, threadId, response.content || undefined)
-          : isBrowserTool(toolCall.name)
-            ? await executeBuiltinBrowserTool(toolCall, threadId, response.content || undefined)
-            : isFsTool(toolCall.name)
-              ? await executeBuiltinFsToolWithGatekeeper(toolCall, threadId, response.content || undefined)
-              : isNetworkTool(toolCall.name)
-                ? await executeBuiltinNetworkToolWithGatekeeper(toolCall, threadId, response.content || undefined)
-                : isCustomTool(toolCall.name)
-                  ? await executeCustomToolWithGatekeeper(toolCall, threadId, response.content || undefined)
-                  : await executeWithGatekeeper(toolCall, threadId, response.content || undefined);
+        const result = await executeToolWithPolicy(toolCall, threadId, response.content || undefined);
 
         if (result.status === "pending_approval") {
           pendingApprovals.push(toolCall.name);
@@ -599,90 +587,29 @@ function dbMessagesToChat(
 }
 
 /**
- * Execute a built-in browser tool.
- * Goes through gatekeeper policy check first.
+ * Unified tool executor — checks policy, gates approval, and dispatches
+ * to the correct executor (web, browser, fs, network, custom, or MCP).
+ *
+ * All tools (built-in + custom + MCP) now have policy entries in the DB,
+ * so the same flow applies everywhere.
  */
-async function executeBuiltinBrowserTool(
+async function executeToolWithPolicy(
   toolCall: ToolCall,
   threadId: string,
   reasoning?: string
 ): Promise<import("./gatekeeper").GatekeeperResult> {
   const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg } = await import("@/lib/db");
+  const { executeCustomTool: execCustom, CUSTOM_TOOLS_REQUIRING_APPROVAL } = await import("./custom-tools");
   const policy = getToolPolicy(toolCall.name);
 
-  if (policy && policy.requires_approval) {
+  // Toolmaker create/delete always require approval regardless of policy
+  const forceApproval = CUSTOM_TOOLS_REQUIRING_APPROVAL.includes(toolCall.name);
+
+  if (forceApproval || (policy && policy.requires_approval)) {
     addLog({
       level: "info",
       source: "hitl",
-      message: `Browser tool "${toolCall.name}" requires approval.`,
-      metadata: JSON.stringify({ threadId, args: toolCall.arguments }),
-    });
-
-    const approval = createApprovalRequest({
-      thread_id: threadId,
-      tool_name: toolCall.name,
-      args: JSON.stringify(toolCall.arguments),
-      reasoning: reasoning || null,
-    });
-
-    const approvalMeta = JSON.stringify({
-      approvalId: approval.id,
-      tool_name: toolCall.name,
-      args: toolCall.arguments,
-      reasoning: reasoning || null,
-    });
-
-    updateThreadStatus(threadId, "awaiting_approval");
-    addMsg({
-      thread_id: threadId,
-      role: "system",
-      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
-      tool_calls: null,
-      tool_results: null,
-      attachments: null,
-    });
-
-    return { status: "pending_approval", approvalId: approval.id };
-  }
-
-  try {
-    const result = await executeBrowserTool(toolCall.name, toolCall.arguments);
-    addLog({
-      level: "info",
-      source: "agent",
-      message: `Browser tool "${toolCall.name}" executed successfully.`,
-      metadata: JSON.stringify({ threadId }),
-    });
-    return { status: "executed", result };
-  } catch (err: any) {
-    addLog({
-      level: "error",
-      source: "agent",
-      message: `Browser tool "${toolCall.name}" failed: ${err.message}`,
-      metadata: JSON.stringify({ threadId }),
-    });
-    return { status: "error", error: err.message };
-  }
-}
-
-/**
- * Execute a built-in tool (web_search, web_fetch, web_extract).
- * Goes through gatekeeper policy check first.
- */
-async function executeBuiltinTool(
-  toolCall: ToolCall,
-  threadId: string,
-  reasoning?: string
-): Promise<import("./gatekeeper").GatekeeperResult> {
-  // Check policy first (same as gatekeeper)
-  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg } = await import("@/lib/db");
-  const policy = getToolPolicy(toolCall.name);
-
-  if (policy && policy.requires_approval) {
-    addLog({
-      level: "info",
-      source: "hitl",
-      message: `Built-in tool "${toolCall.name}" requires approval.`,
+      message: `Tool "${toolCall.name}" requires approval.`,
       metadata: JSON.stringify({ threadId, args: toolCall.arguments }),
     });
 
@@ -713,13 +640,29 @@ async function executeBuiltinTool(
     return { status: "pending_approval", approvalId: approval.id };
   }
 
-  // Execute directly
+  // No approval needed — route to the correct executor
   try {
-    const result = await executeBuiltinWebTool(toolCall.name, toolCall.arguments);
+    let result: unknown;
+
+    if (isBuiltinWebTool(toolCall.name)) {
+      result = await executeBuiltinWebTool(toolCall.name, toolCall.arguments);
+    } else if (isBrowserTool(toolCall.name)) {
+      result = await executeBrowserTool(toolCall.name, toolCall.arguments);
+    } else if (isFsTool(toolCall.name)) {
+      result = await executeBuiltinFsTool(toolCall.name, toolCall.arguments);
+    } else if (isNetworkTool(toolCall.name)) {
+      result = await executeBuiltinNetworkTool(toolCall.name, toolCall.arguments);
+    } else if (isCustomTool(toolCall.name)) {
+      result = await execCustom(toolCall.name, toolCall.arguments);
+    } else {
+      // MCP tool
+      result = await getMcpManager().callTool(toolCall.name, toolCall.arguments);
+    }
+
     addLog({
       level: "info",
       source: "agent",
-      message: `Built-in tool "${toolCall.name}" executed successfully.`,
+      message: `Tool "${toolCall.name}" executed successfully.`,
       metadata: JSON.stringify({ threadId }),
     });
     return { status: "executed", result };
@@ -727,214 +670,7 @@ async function executeBuiltinTool(
     addLog({
       level: "error",
       source: "agent",
-      message: `Built-in tool "${toolCall.name}" failed: ${err.message}`,
-      metadata: JSON.stringify({ threadId }),
-    });
-    return { status: "error", error: err.message };
-  }
-}
-
-/**
- * Execute a built-in filesystem tool.
- * Goes through gatekeeper policy check first.
- */
-async function executeBuiltinFsToolWithGatekeeper(
-  toolCall: ToolCall,
-  threadId: string,
-  reasoning?: string
-): Promise<import("./gatekeeper").GatekeeperResult> {
-  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg } = await import("@/lib/db");
-  const policy = getToolPolicy(toolCall.name);
-
-  if (policy && policy.requires_approval) {
-    addLog({
-      level: "info",
-      source: "hitl",
-      message: `FS tool "${toolCall.name}" requires approval.`,
-      metadata: JSON.stringify({ threadId, args: toolCall.arguments }),
-    });
-
-    const approval = createApprovalRequest({
-      thread_id: threadId,
-      tool_name: toolCall.name,
-      args: JSON.stringify(toolCall.arguments),
-      reasoning: reasoning || null,
-    });
-
-    const approvalMeta = JSON.stringify({
-      approvalId: approval.id,
-      tool_name: toolCall.name,
-      args: toolCall.arguments,
-      reasoning: reasoning || null,
-    });
-
-    updateThreadStatus(threadId, "awaiting_approval");
-    addMsg({
-      thread_id: threadId,
-      role: "system",
-      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
-      tool_calls: null,
-      tool_results: null,
-      attachments: null,
-    });
-
-    return { status: "pending_approval", approvalId: approval.id };
-  }
-
-  try {
-    const result = await executeBuiltinFsTool(toolCall.name, toolCall.arguments);
-    addLog({
-      level: "info",
-      source: "agent",
-      message: `FS tool "${toolCall.name}" executed successfully.`,
-      metadata: JSON.stringify({ threadId }),
-    });
-    return { status: "executed", result };
-  } catch (err: any) {
-    addLog({
-      level: "error",
-      source: "agent",
-      message: `FS tool "${toolCall.name}" failed: ${err.message}`,
-      metadata: JSON.stringify({ threadId }),
-    });
-    return { status: "error", error: err.message };
-  }
-}
-
-/**
- * Execute a built-in network tool.
- * Goes through gatekeeper policy check first.
- */
-async function executeBuiltinNetworkToolWithGatekeeper(
-  toolCall: ToolCall,
-  threadId: string,
-  reasoning?: string
-): Promise<import("./gatekeeper").GatekeeperResult> {
-  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg } = await import("@/lib/db");
-  const policy = getToolPolicy(toolCall.name);
-
-  // Consistent default-allow: only require approval if explicit policy says so.
-  // Sensitive network tools are seeded with requires_approval=1 in DB init.
-  if (policy && policy.requires_approval) {
-    addLog({
-      level: "info",
-      source: "hitl",
-      message: `Network tool "${toolCall.name}" requires approval.`,
-      metadata: JSON.stringify({ threadId, args: toolCall.arguments }),
-    });
-
-    const approval = createApprovalRequest({
-      thread_id: threadId,
-      tool_name: toolCall.name,
-      args: JSON.stringify(toolCall.arguments),
-      reasoning: reasoning || null,
-    });
-
-    const approvalMeta = JSON.stringify({
-      approvalId: approval.id,
-      tool_name: toolCall.name,
-      args: toolCall.arguments,
-      reasoning: reasoning || null,
-    });
-
-    updateThreadStatus(threadId, "awaiting_approval");
-    addMsg({
-      thread_id: threadId,
-      role: "system",
-      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
-      tool_calls: null,
-      tool_results: null,
-      attachments: null,
-    });
-
-    return { status: "pending_approval", approvalId: approval.id };
-  }
-
-  try {
-    const result = await executeBuiltinNetworkTool(toolCall.name, toolCall.arguments);
-    addLog({
-      level: "info",
-      source: "agent",
-      message: `Network tool "${toolCall.name}" executed successfully.`,
-      metadata: JSON.stringify({ threadId }),
-    });
-    return { status: "executed", result };
-  } catch (err: any) {
-    addLog({
-      level: "error",
-      source: "agent",
-      message: `Network tool "${toolCall.name}" failed: ${err.message}`,
-      metadata: JSON.stringify({ threadId }),
-    });
-    return { status: "error", error: err.message };
-  }
-}
-
-/**
- * Execute a custom (agent-created) tool.
- * Toolmaker built-ins (create/delete) always require approval;
- * user-created custom.* tools check their policy.
- */
-async function executeCustomToolWithGatekeeper(
-  toolCall: ToolCall,
-  threadId: string,
-  reasoning?: string
-): Promise<import("./gatekeeper").GatekeeperResult> {
-  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg } = await import("@/lib/db");
-  const { executeCustomTool: execCustom, CUSTOM_TOOLS_REQUIRING_APPROVAL } = await import("./custom-tools");
-  const policy = getToolPolicy(toolCall.name);
-
-  // Toolmaker operations (create/delete) always require approval
-  const forceApproval = CUSTOM_TOOLS_REQUIRING_APPROVAL.includes(toolCall.name);
-  if (forceApproval || (policy && policy.requires_approval)) {
-    addLog({
-      level: "info",
-      source: "hitl",
-      message: `Custom tool "${toolCall.name}" requires approval.`,
-      metadata: JSON.stringify({ threadId, args: toolCall.arguments }),
-    });
-
-    const approval = createApprovalRequest({
-      thread_id: threadId,
-      tool_name: toolCall.name,
-      args: JSON.stringify(toolCall.arguments),
-      reasoning: reasoning || null,
-    });
-
-    const approvalMeta = JSON.stringify({
-      approvalId: approval.id,
-      tool_name: toolCall.name,
-      args: toolCall.arguments,
-      reasoning: reasoning || null,
-    });
-
-    updateThreadStatus(threadId, "awaiting_approval");
-    addMsg({
-      thread_id: threadId,
-      role: "system",
-      content: `\u23f8\ufe0f Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
-      tool_calls: null,
-      tool_results: null,
-      attachments: null,
-    });
-
-    return { status: "pending_approval", approvalId: approval.id };
-  }
-
-  try {
-    const result = await execCustom(toolCall.name, toolCall.arguments);
-    addLog({
-      level: "info",
-      source: "agent",
-      message: `Custom tool "${toolCall.name}" executed successfully.`,
-      metadata: JSON.stringify({ threadId }),
-    });
-    return { status: "executed", result };
-  } catch (err: any) {
-    addLog({
-      level: "error",
-      source: "agent",
-      message: `Custom tool "${toolCall.name}" failed: ${err.message}`,
+      message: `Tool "${toolCall.name}" failed: ${err.message}`,
       metadata: JSON.stringify({ threadId }),
     });
     return { status: "error", error: err.message };

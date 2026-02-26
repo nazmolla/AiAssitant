@@ -12,6 +12,7 @@ import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db
 import {
   upsertToolPolicy,
   getToolPolicy,
+  listToolPolicies,
   createThread,
 } from "@/lib/db/queries";
 import { FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
@@ -115,5 +116,61 @@ describe("Tool policy seeding", () => {
     expect(NETWORK_TOOLS_REQUIRING_APPROVAL).toContain("builtin.net_wake_on_lan");
     // Ping should NOT require approval
     expect(NETWORK_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.net_ping");
+  });
+
+  test("initializeDatabase seeds policies for ALL built-in tools", () => {
+    // Re-run init to trigger the unified seeding
+    const { initializeDatabase } = require("@/lib/db/init");
+    initializeDatabase();
+
+    const policies = listToolPolicies();
+    const policyNames = policies.map((p: any) => p.tool_name);
+
+    // Web tools should have policies
+    expect(policyNames).toContain("builtin.web_search");
+    expect(policyNames).toContain("builtin.web_fetch");
+    expect(policyNames).toContain("builtin.web_extract");
+
+    // Browser tools should have policies
+    expect(policyNames).toContain("builtin.browser_navigate");
+    expect(policyNames).toContain("builtin.browser_click");
+
+    // FS tools should have policies
+    expect(policyNames).toContain("builtin.fs_read_file");
+    expect(policyNames).toContain("builtin.fs_update_file");
+
+    // Network tools should have policies
+    expect(policyNames).toContain("builtin.net_ping");
+    expect(policyNames).toContain("builtin.net_scan_network");
+
+    // Custom toolmaker tools should have policies
+    expect(policyNames).toContain("builtin.nexus_create_tool");
+    expect(policyNames).toContain("builtin.nexus_delete_custom_tool");
+    expect(policyNames).toContain("builtin.nexus_list_custom_tools");
+  });
+
+  test("dangerous tools have requires_approval=1, safe tools have requires_approval=0", () => {
+    const { initializeDatabase } = require("@/lib/db/init");
+    initializeDatabase();
+
+    // Dangerous: must require approval
+    const fsUpdate = getToolPolicy("builtin.fs_update_file");
+    expect(fsUpdate?.requires_approval).toBe(1);
+
+    const netScan = getToolPolicy("builtin.net_scan_network");
+    expect(netScan?.requires_approval).toBe(1);
+
+    const createTool = getToolPolicy("builtin.nexus_create_tool");
+    expect(createTool?.requires_approval).toBe(1);
+
+    // Safe: no approval required
+    const webSearch = getToolPolicy("builtin.web_search");
+    expect(webSearch?.requires_approval).toBe(0);
+
+    const ping = getToolPolicy("builtin.net_ping");
+    expect(ping?.requires_approval).toBe(0);
+
+    const browserNav = getToolPolicy("builtin.browser_navigate");
+    expect(browserNav?.requires_approval).toBe(0);
   });
 });

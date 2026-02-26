@@ -45,13 +45,32 @@ describe("GET /api/mcp/tools", () => {
     expect(res.status).toBe(403);
   });
 
-  test("admin sees all tools", async () => {
+  test("admin sees all tools (built-in + custom + MCP)", async () => {
     setMockUser({ id: adminId, email: "tools-admin@test.com", role: "admin" });
     const res = await GET_TOOLS();
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data).toHaveLength(2);
-    expect(data[0].name).toBe("mcp_tool_1");
+
+    // Should include built-in tools + toolmaker + MCP tools
+    expect(data.length).toBeGreaterThan(2); // at least built-ins + 2 MCP
+
+    // MCP tools are present with source: "mcp"
+    const mcpTools = data.filter((t: any) => t.source === "mcp");
+    expect(mcpTools).toHaveLength(2);
+    expect(mcpTools[0].name).toBe("mcp_tool_1");
+    expect(mcpTools[1].name).toBe("mcp_tool_2");
+
+    // Built-in tools are present with source: "builtin"
+    const builtinTools = data.filter((t: any) => t.source === "builtin");
+    expect(builtinTools.length).toBeGreaterThan(0);
+
+    // Check grouping metadata
+    const webTools = data.filter((t: any) => t.group === "Web Tools");
+    expect(webTools.length).toBeGreaterThan(0);
+    expect(webTools[0].source).toBe("builtin");
+
+    const toolMgmt = data.filter((t: any) => t.group === "Tool Management");
+    expect(toolMgmt.length).toBeGreaterThan(0);
   });
 });
 
