@@ -164,7 +164,8 @@ async function pollEmailChannels(): Promise<void> {
       await client.connect();
       const lock = await client.getMailboxLock("INBOX");
       try {
-        const unseen = await client.search({ seen: false });
+        const unseenRaw = await client.search({ seen: false });
+        const unseen = Array.isArray(unseenRaw) ? unseenRaw : [];
         if (unseen.length === 0) continue;
 
         for await (const msg of client.fetch(unseen, { uid: true, envelope: true, source: true })) {
