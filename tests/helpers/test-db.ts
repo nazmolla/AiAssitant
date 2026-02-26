@@ -34,8 +34,11 @@ export function setupTestDb(): Database.Database {
   // Monkey-patch the connection module so all queries hit this DB
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const conn = require("@/lib/db/connection");
+  // Clear cached prepared statements from any previous DB instance
+  conn.clearStmtCache();
   conn.getDb = () => testDb;
   conn.closeDb = () => {
+    conn.clearStmtCache();
     if (testDb) {
       testDb.close();
       testDb = null;

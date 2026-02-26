@@ -1,6 +1,7 @@
 import { createChatProvider } from "@/lib/llm";
 import { generateEmbedding } from "@/lib/llm/embeddings";
 import { upsertKnowledge, upsertKnowledgeEmbedding, addLog } from "@/lib/db";
+import { invalidateEmbeddingCache } from "./retriever";
 
 export interface KnowledgeIngestionPayload {
   text: string;
@@ -87,6 +88,8 @@ export async function ingestKnowledgeFromText(payload: KnowledgeIngestionPayload
     }
 
     if (saved > 0) {
+      // Invalidate embedding cache so new facts are immediately searchable
+      invalidateEmbeddingCache();
       addLog({
         level: "info",
         source: "knowledge",

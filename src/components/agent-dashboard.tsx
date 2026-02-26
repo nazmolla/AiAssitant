@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,28 +23,36 @@ export function AgentDashboard() {
   const [filter, setFilter] = useState<LogFilter>("all");
   const { formatDate } = useTheme();
 
-  const fetchLogs = () => {
+  const fetchLogs = useCallback(() => {
     fetch("/api/logs?limit=200")
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setLogs(d); })
       .catch(console.error);
-  };
+  }, []);
 
   useEffect(() => {
     fetchLogs();
     if (autoRefresh) {
-      const interval = setInterval(fetchLogs, 5000);
+      const interval = setInterval(fetchLogs, 15000);
       return () => clearInterval(interval);
     }
-  }, [autoRefresh]);
+  }, [autoRefresh, fetchLogs]);
 
-  const filteredLogs = logs.filter((l) => {
+  const filteredLogs = useMemo(() => logs.filter((l) => {
     if (filter === "all") return true;
     if (filter === "error") return l.level === "error";
     if (filter === "thought") return l.level === "thought";
     if (filter === "hitl") return l.source === "hitl";
     return true;
-  });
+  }), [logs, filter]);
+
+  // Memoize stat counts to avoid re-computing on every render
+  const stats = useMemo(() => ({
+    total: logs.length,
+    errors: logs.filter((l) => l.level === "error").length,
+    thoughts: logs.filter((l) => l.level === "thought").length,
+    hitl: logs.filter((l) => l.source === "hitl").length,
+  }), [logs]);
 
   const levelColor = (level: string) => {
     switch (level) {
@@ -93,7 +101,7 @@ export function AgentDashboard() {
             <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Total Logs</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl sm:text-3xl font-display font-bold">{logs.length}</div>
+            <div className="text-2xl sm:text-3xl font-display font-bold">{stats.total}</div>
           </CardContent>
         </Card>
         <Card
@@ -105,7 +113,7 @@ export function AgentDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl sm:text-3xl font-display font-bold text-red-400">
-              {logs.filter((l) => l.level === "error").length}
+              {stats.errors}
             </div>
           </CardContent>
         </Card>
@@ -118,7 +126,7 @@ export function AgentDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl sm:text-3xl font-display font-bold text-blue-400">
-              {logs.filter((l) => l.level === "thought").length}
+              {stats.thoughts}
             </div>
           </CardContent>
         </Card>
@@ -131,7 +139,7 @@ export function AgentDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl sm:text-3xl font-display font-bold text-yellow-400">
-              {logs.filter((l) => l.source === "hitl").length}
+              {stats.hitl}
             </div>
           </CardContent>
         </Card>

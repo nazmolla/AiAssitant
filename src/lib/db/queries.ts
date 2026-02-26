@@ -1,8 +1,12 @@
-import { getDb } from "./connection";
+﻿import { getDb, cachedStmt as _cachedStmt } from "./connection";
 import { v4 as uuid } from "uuid";
+import crypto from "crypto";
 import { encryptField, decryptField } from "./crypto";
 
-// ─── Users ───────────────────────────────────────────────────
+/** Thin wrapper that passes the (patchable) `getDb` import to the cache */
+function stmt(sql: string) { return _cachedStmt(sql, getDb); }
+
+// â”€â”€â”€ Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface UserRecord {
   id: string;
@@ -16,15 +20,15 @@ export interface UserRecord {
 }
 
 export function getUserById(id: string): UserRecord | undefined {
-  return getDb().prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRecord | undefined;
+  return stmt("SELECT * FROM users WHERE id = ?").get(id) as UserRecord | undefined;
 }
 
 export function getUserByEmail(email: string): UserRecord | undefined {
-  return getDb().prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(email) as UserRecord | undefined;
+  return stmt("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(email) as UserRecord | undefined;
 }
 
 export function getUserByExternalSub(subId: string): UserRecord | undefined {
-  return getDb().prepare("SELECT * FROM users WHERE external_sub_id = ?").get(subId) as UserRecord | undefined;
+  return stmt("SELECT * FROM users WHERE external_sub_id = ?").get(subId) as UserRecord | undefined;
 }
 
 export function createUser(args: {
@@ -64,14 +68,14 @@ export function updateUserPassword(userId: string, passwordHash: string): void {
 }
 
 export function listUsers(): UserRecord[] {
-  return getDb().prepare("SELECT * FROM users ORDER BY created_at ASC").all() as UserRecord[];
+  return stmt("SELECT * FROM users ORDER BY created_at ASC").all() as UserRecord[];
 }
 
 export function getUserCount(): number {
-  return (getDb().prepare("SELECT COUNT(*) as c FROM users").get() as { c: number }).c;
+  return (stmt("SELECT COUNT(*) as c FROM users").get() as { c: number }).c;
 }
 
-// ─── User Access Management ─────────────────────────────────
+// â”€â”€â”€ User Access Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface UserPermissions {
   user_id: string;
@@ -92,16 +96,32 @@ export interface UserWithPermissions extends UserRecord {
 
 export function listUsersWithPermissions(): UserWithPermissions[] {
   const db = getDb();
-  const users = db.prepare("SELECT * FROM users ORDER BY created_at ASC").all() as (UserRecord & { enabled?: number })[];
-  const permsStmt = db.prepare("SELECT * FROM user_permissions WHERE user_id = ?");
+  // Single JOIN query instead of N+1 (one query per user)
+  const rows = db.prepare(
+    `SELECT u.*, p.chat, p.knowledge, p.dashboard, p.approvals,
+            p.mcp_servers, p.channels, p.llm_config, p.screen_sharing
+     FROM users u
+     LEFT JOIN user_permissions p ON u.id = p.user_id
+     ORDER BY u.created_at ASC`
+  ).all() as (UserRecord & { enabled?: number; chat?: number; knowledge?: number; dashboard?: number; approvals?: number; mcp_servers?: number; channels?: number; llm_config?: number; screen_sharing?: number })[];
 
-  return users.map((u) => {
-    const perms = permsStmt.get(u.id) as UserPermissions | undefined;
+  return rows.map((u) => {
     const isAdmin = u.role === "admin";
+    const hasPerms = u.chat !== null && u.chat !== undefined;
     return {
       ...u,
       enabled: u.enabled ?? 1,
-      permissions: perms || {
+      permissions: hasPerms ? {
+        user_id: u.id,
+        chat: u.chat!,
+        knowledge: u.knowledge!,
+        dashboard: u.dashboard!,
+        approvals: u.approvals!,
+        mcp_servers: u.mcp_servers!,
+        channels: u.channels!,
+        llm_config: u.llm_config!,
+        screen_sharing: u.screen_sharing!,
+      } : {
         user_id: u.id,
         chat: 1,
         knowledge: 1,
@@ -117,7 +137,7 @@ export function listUsersWithPermissions(): UserWithPermissions[] {
 }
 
 export function getUserPermissions(userId: string): UserPermissions | undefined {
-  return getDb().prepare("SELECT * FROM user_permissions WHERE user_id = ?").get(userId) as UserPermissions | undefined;
+  return stmt("SELECT * FROM user_permissions WHERE user_id = ?").get(userId) as UserPermissions | undefined;
 }
 
 export function updateUserRole(userId: string, role: string): void {
@@ -138,7 +158,7 @@ export function updateUserPermissions(userId: string, perms: Partial<Omit<UserPe
 
   const VALID_FIELDS = new Set(["chat", "knowledge", "dashboard", "approvals", "mcp_servers", "channels", "llm_config", "screen_sharing"]);
   for (const [key, value] of Object.entries(perms)) {
-    // Strict whitelist check — key must be an exact match in VALID_FIELDS (prevents SQL injection via key)
+    // Strict whitelist check â€” key must be an exact match in VALID_FIELDS (prevents SQL injection via key)
     if (VALID_FIELDS.has(key) && (value === 0 || value === 1)) {
       // key is guaranteed to be one of the hardcoded VALID_FIELDS strings (Set.has passed)
       db.prepare(`UPDATE user_permissions SET ${key} = ? WHERE user_id = ?`).run(value, userId);
@@ -151,11 +171,11 @@ export function deleteUser(userId: string): void {
 }
 
 export function isUserEnabled(userId: string): boolean {
-  const row = getDb().prepare("SELECT enabled FROM users WHERE id = ?").get(userId) as { enabled?: number } | undefined;
+  const row = stmt("SELECT enabled FROM users WHERE id = ?").get(userId) as { enabled?: number } | undefined;
   return (row?.enabled ?? 1) === 1;
 }
 
-// ─── Identity (legacy — kept for backward compat) ────────────
+// â”€â”€â”€ Identity (legacy â€” kept for backward compat) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface IdentityConfig {
   id: number;
@@ -167,10 +187,10 @@ export interface IdentityConfig {
 }
 
 export function getIdentity(): IdentityConfig | undefined {
-  return getDb().prepare("SELECT * FROM identity_config WHERE id = 1").get() as IdentityConfig | undefined;
+  return stmt("SELECT * FROM identity_config WHERE id = 1").get() as IdentityConfig | undefined;
 }
 
-// ─── User Profiles (per-user) ────────────────────────────────
+// â”€â”€â”€ User Profiles (per-user) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface UserProfile {
   user_id: string;
@@ -195,7 +215,7 @@ export interface UserProfile {
 }
 
 export function getUserProfile(userId: string): UserProfile | undefined {
-  return getDb().prepare("SELECT * FROM user_profiles WHERE user_id = ?").get(userId) as UserProfile | undefined;
+  return stmt("SELECT * FROM user_profiles WHERE user_id = ?").get(userId) as UserProfile | undefined;
 }
 
 export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProfile, "user_id" | "updated_at">>): UserProfile {
@@ -273,7 +293,7 @@ export interface OwnerProfile {
 }
 
 export function getOwnerProfile(): OwnerProfile | undefined {
-  return getDb().prepare("SELECT * FROM owner_profile WHERE id = 1").get() as OwnerProfile | undefined;
+  return stmt("SELECT * FROM owner_profile WHERE id = 1").get() as OwnerProfile | undefined;
 }
 
 export function upsertOwnerProfile(profile: Partial<Omit<OwnerProfile, "id" | "updated_at">>): OwnerProfile {
@@ -344,7 +364,7 @@ export function upsertIdentity({ email, providerId, subId, passwordHash = null }
     .run(email, providerId, subId, passwordHash);
 }
 
-// ─── LLM Providers ──────────────────────────────────────────
+// â”€â”€â”€ LLM Providers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type LlmProviderType = "azure-openai" | "openai" | "anthropic" | "litellm";
 export type LlmProviderPurpose = "chat" | "embedding";
@@ -478,7 +498,7 @@ export function deleteLlmProvider(id: string): void {
   }
 }
 
-// ─── MCP Servers (user-scoped + global) ──────────────────────
+// â”€â”€â”€ MCP Servers (user-scoped + global) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface McpServerRecord {
   id: string;
@@ -517,7 +537,7 @@ export function listMcpServers(userId?: string): McpServerRecord[] {
 }
 
 export function getMcpServer(id: string): McpServerRecord | undefined {
-  const row = getDb().prepare("SELECT * FROM mcp_servers WHERE id = ?").get(id) as McpServerRecord | undefined;
+  const row = stmt("SELECT * FROM mcp_servers WHERE id = ?").get(id) as McpServerRecord | undefined;
   return decryptMcpServer(row);
 }
 
@@ -555,7 +575,7 @@ export function deleteMcpServer(id: string): void {
   db.prepare("DELETE FROM mcp_servers WHERE id = ?").run(id);
 }
 
-// ─── User Knowledge (per-user) ───────────────────────────────
+// â”€â”€â”€ User Knowledge (per-user) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface KnowledgeEntry {
   id: number;
@@ -577,9 +597,9 @@ export function listKnowledge(userId?: string): KnowledgeEntry[] {
 }
 
 export function getKnowledgeEntry(id: number): KnowledgeEntry | undefined {
-  return getDb()
-    .prepare("SELECT * FROM user_knowledge WHERE id = ?")
-    .get(id) as KnowledgeEntry | undefined;
+  return stmt(
+    "SELECT * FROM user_knowledge WHERE id = ?"
+  ).get(id) as KnowledgeEntry | undefined;
 }
 
 export function searchKnowledge(query: string, userId?: string): KnowledgeEntry[] {
@@ -637,7 +657,7 @@ export function deleteKnowledge(id: number): void {
   getDb().prepare("DELETE FROM user_knowledge WHERE id = ?").run(id);
 }
 
-// ─── Knowledge Embeddings (per-user via FK) ─────────────────
+// â”€â”€â”€ Knowledge Embeddings (per-user via FK) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface KnowledgeEmbeddingRow {
   knowledge_id: number;
@@ -679,7 +699,7 @@ export function getKnowledgeEntriesByIds(ids: number[]): KnowledgeEntry[] {
     .all(...ids) as KnowledgeEntry[];
 }
 
-// ─── Threads (per-user) ──────────────────────────────────────
+// â”€â”€â”€ Threads (per-user) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface Thread {
   id: string;
@@ -691,10 +711,9 @@ export interface Thread {
 
 export function createThread(title?: string, userId?: string): Thread {
   const id = uuid();
-  getDb()
-    .prepare("INSERT INTO threads (id, user_id, title) VALUES (?, ?, ?)")
-    .run(id, userId ?? null, title || "New Thread");
-  return getDb().prepare("SELECT * FROM threads WHERE id = ?").get(id) as Thread;
+  return getDb()
+    .prepare("INSERT INTO threads (id, user_id, title) VALUES (?, ?, ?) RETURNING *")
+    .get(id, userId ?? null, title || "New Thread") as Thread;
 }
 
 export function listThreads(userId?: string): Thread[] {
@@ -707,7 +726,7 @@ export function listThreads(userId?: string): Thread[] {
 }
 
 export function getThread(id: string): Thread | undefined {
-  return getDb().prepare("SELECT * FROM threads WHERE id = ?").get(id) as Thread | undefined;
+  return stmt("SELECT * FROM threads WHERE id = ?").get(id) as Thread | undefined;
 }
 
 export function updateThreadStatus(id: string, status: string): void {
@@ -720,13 +739,15 @@ export function updateThreadTitle(id: string, title: string): void {
 
 export function deleteThread(id: string): void {
   const db = getDb();
-  db.prepare("DELETE FROM attachments WHERE thread_id = ?").run(id);
-  db.prepare("DELETE FROM approval_queue WHERE thread_id = ?").run(id);
-  db.prepare("DELETE FROM messages WHERE thread_id = ?").run(id);
-  db.prepare("DELETE FROM threads WHERE id = ?").run(id);
+  db.transaction(() => {
+    db.prepare("DELETE FROM attachments WHERE thread_id = ?").run(id);
+    db.prepare("DELETE FROM approval_queue WHERE thread_id = ?").run(id);
+    db.prepare("DELETE FROM messages WHERE thread_id = ?").run(id);
+    db.prepare("DELETE FROM threads WHERE id = ?").run(id);
+  })();
 }
 
-// ─── Messages ────────────────────────────────────────────────
+// â”€â”€â”€ Messages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface Message {
   id: number;
@@ -747,18 +768,20 @@ export interface AttachmentMeta {
 }
 
 export function addMessage(msg: Omit<Message, "id">): Message {
-  const result = getDb()
+  const db = getDb();
+  const row = db
     .prepare(
       `INSERT INTO messages (thread_id, role, content, tool_calls, tool_results, attachments)
-       VALUES (?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?)
+       RETURNING *`
     )
-    .run(msg.thread_id, msg.role, msg.content, msg.tool_calls, msg.tool_results, msg.attachments ?? null);
+    .get(msg.thread_id, msg.role, msg.content, msg.tool_calls, msg.tool_results, msg.attachments ?? null) as Message;
 
-  getDb()
-    .prepare("UPDATE threads SET last_message_at = CURRENT_TIMESTAMP WHERE id = ?")
-    .run(msg.thread_id);
+  stmt(
+    "UPDATE threads SET last_message_at = CURRENT_TIMESTAMP WHERE id = ?"
+  ).run(msg.thread_id);
 
-  return getDb().prepare("SELECT * FROM messages WHERE id = ?").get(result.lastInsertRowid) as Message;
+  return row;
 }
 
 export interface AttachmentRecord {
@@ -782,20 +805,20 @@ export function addAttachment(att: Omit<AttachmentRecord, "created_at">): void {
 }
 
 export function getAttachment(id: string): AttachmentRecord | undefined {
-  return getDb().prepare("SELECT * FROM attachments WHERE id = ?").get(id) as AttachmentRecord | undefined;
+  return stmt("SELECT * FROM attachments WHERE id = ?").get(id) as AttachmentRecord | undefined;
 }
 
 export function getMessageAttachments(messageId: number): AttachmentRecord[] {
-  return getDb().prepare("SELECT * FROM attachments WHERE message_id = ? ORDER BY created_at ASC").all(messageId) as AttachmentRecord[];
+  return stmt("SELECT * FROM attachments WHERE message_id = ? ORDER BY created_at ASC").all(messageId) as AttachmentRecord[];
 }
 
 export function getThreadMessages(threadId: string): Message[] {
-  return getDb()
-    .prepare("SELECT * FROM messages WHERE thread_id = ? ORDER BY id ASC")
-    .all(threadId) as Message[];
+  return stmt(
+    "SELECT * FROM messages WHERE thread_id = ? ORDER BY id ASC"
+  ).all(threadId) as Message[];
 }
 
-// ─── Tool Policies ───────────────────────────────────────────
+// â”€â”€â”€ Tool Policies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface ToolPolicy {
   tool_name: string;
@@ -805,11 +828,11 @@ export interface ToolPolicy {
 }
 
 export function listToolPolicies(): ToolPolicy[] {
-  return getDb().prepare("SELECT * FROM tool_policies").all() as ToolPolicy[];
+  return stmt("SELECT * FROM tool_policies").all() as ToolPolicy[];
 }
 
 export function getToolPolicy(toolName: string): ToolPolicy | undefined {
-  return getDb().prepare("SELECT * FROM tool_policies WHERE tool_name = ?").get(toolName) as ToolPolicy | undefined;
+  return stmt("SELECT * FROM tool_policies WHERE tool_name = ?").get(toolName) as ToolPolicy | undefined;
 }
 
 export function upsertToolPolicy(policy: ToolPolicy): void {
@@ -825,7 +848,7 @@ export function upsertToolPolicy(policy: ToolPolicy): void {
     .run(policy.tool_name, policy.mcp_id, policy.requires_approval, policy.is_proactive_enabled);
 }
 
-// ─── Approval Queue ──────────────────────────────────────────
+// â”€â”€â”€ Approval Queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface ApprovalRequest {
   id: string;
@@ -839,30 +862,30 @@ export interface ApprovalRequest {
 
 export function createApprovalRequest(req: Omit<ApprovalRequest, "id" | "status" | "created_at">): ApprovalRequest {
   const id = uuid();
-  getDb()
+  return getDb()
     .prepare(
       `INSERT INTO approval_queue (id, thread_id, tool_name, args, reasoning)
-       VALUES (?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?)
+       RETURNING *`
     )
-    .run(id, req.thread_id, req.tool_name, req.args, req.reasoning);
-  return getDb().prepare("SELECT * FROM approval_queue WHERE id = ?").get(id) as ApprovalRequest;
+    .get(id, req.thread_id, req.tool_name, req.args, req.reasoning) as ApprovalRequest;
 }
 
 export function getApprovalById(id: string): ApprovalRequest | undefined {
-  return getDb().prepare("SELECT * FROM approval_queue WHERE id = ?").get(id) as ApprovalRequest | undefined;
+  return stmt("SELECT * FROM approval_queue WHERE id = ?").get(id) as ApprovalRequest | undefined;
 }
 
 export function listPendingApprovals(): ApprovalRequest[] {
-  return getDb()
-    .prepare("SELECT * FROM approval_queue WHERE status = 'pending' ORDER BY created_at DESC")
-    .all() as ApprovalRequest[];
+  return stmt(
+    "SELECT * FROM approval_queue WHERE status = 'pending' ORDER BY created_at DESC"
+  ).all() as ApprovalRequest[];
 }
 
 export function updateApprovalStatus(id: string, status: "approved" | "rejected"): void {
   getDb().prepare("UPDATE approval_queue SET status = ? WHERE id = ?").run(status, id);
 }
 
-// ─── Agent Logs ──────────────────────────────────────────────
+// â”€â”€â”€ Agent Logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface AgentLog {
   id: number;
@@ -874,20 +897,18 @@ export interface AgentLog {
 }
 
 export function addLog(log: Omit<AgentLog, "id" | "created_at">): void {
-  getDb()
-    .prepare(
-      `INSERT INTO agent_logs (level, source, message, metadata) VALUES (?, ?, ?, ?)`
-    )
-    .run(log.level, log.source, log.message, log.metadata);
+  stmt(
+    `INSERT INTO agent_logs (level, source, message, metadata) VALUES (?, ?, ?, ?)`
+  ).run(log.level, log.source, log.message, log.metadata);
 }
 
 export function getRecentLogs(limit = 100): AgentLog[] {
-  return getDb()
-    .prepare("SELECT * FROM agent_logs ORDER BY created_at DESC LIMIT ?")
-    .all(limit) as AgentLog[];
+  return stmt(
+    "SELECT * FROM agent_logs ORDER BY created_at DESC LIMIT ?"
+  ).all(limit) as AgentLog[];
 }
 
-// ─── Channels ────────────────────────────────────────────────
+// â”€â”€â”€ Channels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type ChannelType = "whatsapp" | "slack" | "email" | "telegram" | "discord" | "teams";
 
@@ -920,7 +941,7 @@ export function listChannels(userId?: string): ChannelRecord[] {
 }
 
 export function getChannel(id: string): ChannelRecord | undefined {
-  const row = getDb().prepare("SELECT * FROM channels WHERE id = ?").get(id) as ChannelRecord | undefined;
+  const row = stmt("SELECT * FROM channels WHERE id = ?").get(id) as ChannelRecord | undefined;
   return decryptChannel(row);
 }
 
@@ -931,7 +952,6 @@ export function createChannel(args: {
   userId: string;
 }): ChannelRecord {
   const id = uuid();
-  const crypto = require("crypto");
   const webhookSecret = crypto.randomBytes(24).toString("hex");
   getDb()
     .prepare(
@@ -969,14 +989,14 @@ export function deleteChannel(id: string): void {
 
 /**
  * Get the owner user_id for a channel.
- * Used by webhook/Discord handlers — the channel owner is assumed to be the user.
+ * Used by webhook/Discord handlers â€” the channel owner is assumed to be the user.
  */
 export function getChannelOwnerId(channelId: string): string | null {
-  const row = getDb().prepare("SELECT user_id FROM channels WHERE id = ?").get(channelId) as { user_id: string | null } | undefined;
+  const row = stmt("SELECT user_id FROM channels WHERE id = ?").get(channelId) as { user_id: string | null } | undefined;
   return row?.user_id ?? null;
 }
 
-// ─── Channel User Mappings ───────────────────────────────────
+// â”€â”€â”€ Channel User Mappings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface ChannelUserMapping {
   id: number;
@@ -987,9 +1007,9 @@ export interface ChannelUserMapping {
 }
 
 export function getChannelUserMapping(channelId: string, externalId: string): ChannelUserMapping | undefined {
-  return getDb()
-    .prepare("SELECT * FROM channel_user_mappings WHERE channel_id = ? AND external_id = ?")
-    .get(channelId, externalId) as ChannelUserMapping | undefined;
+  return stmt(
+    "SELECT * FROM channel_user_mappings WHERE channel_id = ? AND external_id = ?"
+  ).get(channelId, externalId) as ChannelUserMapping | undefined;
 }
 
 export function upsertChannelUserMapping(channelId: string, externalId: string, userId: string): void {
@@ -1014,7 +1034,7 @@ export function deleteChannelUserMapping(channelId: string, externalId: string):
     .run(channelId, externalId);
 }
 
-// ─── Authentication Providers ───────────────────────────────
+// â”€â”€â”€ Authentication Providers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type AuthProviderType = "azure-ad" | "google" | "discord";
 
@@ -1079,7 +1099,7 @@ export function upsertAuthProvider(args: {
   applicationId?: string | null;
   enabled?: boolean;
 }): AuthProviderRecord {
-  const id = args.providerType; // use type as id — only one per type
+  const id = args.providerType; // use type as id â€” only one per type
   const db = getDb();
   db.prepare(
     `INSERT INTO auth_providers (id, provider_type, label, client_id, client_secret, tenant_id, bot_token, application_id, enabled)
@@ -1110,7 +1130,7 @@ export function deleteAuthProvider(id: string): void {
   getDb().prepare("DELETE FROM auth_providers WHERE id = ?").run(id);
 }
 
-// ─── Custom Tools (agent-created extensibility) ──────────────
+// â”€â”€â”€ Custom Tools (agent-created extensibility) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface CustomToolRecord {
   name: string;
@@ -1128,9 +1148,9 @@ export function listCustomTools(): CustomToolRecord[] {
 }
 
 export function getCustomTool(name: string): CustomToolRecord | undefined {
-  return getDb()
-    .prepare("SELECT * FROM custom_tools WHERE name = ?")
-    .get(name) as CustomToolRecord | undefined;
+  return stmt(
+    "SELECT * FROM custom_tools WHERE name = ?"
+  ).get(name) as CustomToolRecord | undefined;
 }
 
 export function createCustomToolRecord(args: {

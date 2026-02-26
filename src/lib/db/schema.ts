@@ -239,4 +239,18 @@ CREATE TABLE IF NOT EXISTS custom_tools (
     enabled INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ═══ Performance Indexes ═══
+
+CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads(user_id);
+CREATE INDEX IF NOT EXISTS idx_threads_last_message ON threads(last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);
+CREATE INDEX IF NOT EXISTS idx_attachments_thread_id ON attachments(thread_id);
+CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id);
+CREATE INDEX IF NOT EXISTS idx_approval_queue_status ON approval_queue(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_approval_queue_thread ON approval_queue(thread_id);
+CREATE INDEX IF NOT EXISTS idx_agent_logs_created ON agent_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_channels_user_id ON channels(user_id);
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_user_id ON mcp_servers(user_id);
+CREATE INDEX IF NOT EXISTS idx_channel_user_mappings_channel ON channel_user_mappings(channel_id);
 `;

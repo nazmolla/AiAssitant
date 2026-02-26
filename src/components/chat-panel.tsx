@@ -178,11 +178,11 @@ export function ChatPanel() {
         if (frame) setLatestFrame(frame);
       }, 500);
 
-      // Update preview every 3 seconds
+      // Update preview every 5 seconds (reduced from 3s for performance)
       frameIntervalRef.current = setInterval(() => {
         const frame = captureFrame();
         if (frame) setLatestFrame(frame);
-      }, 3000);
+      }, 5000);
 
       // Handle user stopping share via browser UI
       stream.getVideoTracks()[0].addEventListener("ended", () => {

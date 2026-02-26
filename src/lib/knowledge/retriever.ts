@@ -11,6 +11,46 @@ interface SemanticMatch {
   score: number;
 }
 
+// ─── Parsed Embedding Cache ──────────────────────────────────
+// Avoids re-parsing JSON on every search call. Invalidated after a
+// configurable TTL (30 s) so newly ingested knowledge is picked up.
+interface EmbeddingCacheEntry {
+  vectors: Map<number, number[]>;   // knowledge_id → parsed vector
+  timestamp: number;
+  userId: string | undefined;
+}
+
+let _embeddingCache: EmbeddingCacheEntry | null = null;
+const EMBEDDING_CACHE_TTL_MS = 30_000; // 30 seconds
+
+function getCachedEmbeddings(userId?: string): Map<number, number[]> {
+  const now = Date.now();
+  if (
+    _embeddingCache &&
+    _embeddingCache.userId === userId &&
+    now - _embeddingCache.timestamp < EMBEDDING_CACHE_TTL_MS
+  ) {
+    return _embeddingCache.vectors;
+  }
+
+  const stored = listKnowledgeEmbeddings(userId);
+  const vectors = new Map<number, number[]>();
+  for (const row of stored) {
+    const vec = parseEmbedding(row.embedding);
+    if (vec && vec.length > 0) {
+      vectors.set(row.knowledge_id, vec);
+    }
+  }
+
+  _embeddingCache = { vectors, timestamp: now, userId };
+  return vectors;
+}
+
+/** Invalidate the embedding cache (call after ingestion) */
+export function invalidateEmbeddingCache(): void {
+  _embeddingCache = null;
+}
+
 export async function retrieveKnowledge(query: string, limit = 6, userId?: string): Promise<KnowledgeEntry[]> {
   const semantic = await semanticSearch(query, limit, userId);
   const missing = limit - semantic.length;
@@ -28,18 +68,16 @@ async function semanticSearch(query: string, limit: number, userId?: string): Pr
   const embedding = await generateEmbedding(query);
   if (embedding.length === 0) return [];
 
-  const stored = listKnowledgeEmbeddings(userId);
-  if (stored.length === 0) return [];
+  const vectors = getCachedEmbeddings(userId);
+  if (vectors.size === 0) return [];
 
   const matches: SemanticMatch[] = [];
-  for (const row of stored) {
-    const vector = parseEmbedding(row.embedding);
-    if (!vector || vector.length === 0) continue;
+  vectors.forEach((vector, knowledgeId) => {
     const score = cosineSimilarity(embedding, vector);
     if (Number.isFinite(score)) {
-      matches.push({ id: row.knowledge_id, score });
+      matches.push({ id: knowledgeId, score });
     }
-  }
+  });
 
   matches.sort((a, b) => b.score - a.score);
   const top = matches.slice(0, limit);

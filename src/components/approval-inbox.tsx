@@ -36,7 +36,7 @@ export function ApprovalInbox() {
 
   useEffect(() => {
     fetchApprovals();
-    const interval = setInterval(fetchApprovals, 5000);
+    const interval = setInterval(fetchApprovals, 15000);
     return () => clearInterval(interval);
   }, []);
 
