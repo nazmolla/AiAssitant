@@ -43,6 +43,8 @@ import {
   createApprovalRequest,
   createThread,
   listChannels,
+  listUsersWithPermissions,
+  getUserById,
   getUserByEmail,
   isUserEnabled,
   getDb,
@@ -50,7 +52,6 @@ import {
 import { ingestKnowledgeFromText } from "@/lib/knowledge";
 import { retrieveKnowledge } from "@/lib/knowledge/retriever";
 import { simpleParser } from "mailparser";
-import { notifyAdmin } from "@/lib/channels/notify";
 import {
   buildThemedEmailBody,
   createImapClient,
@@ -60,6 +61,7 @@ import {
   sendSmtpMail,
 } from "@/lib/channels/email-transport";
 import { summarizeInboundUnknownEmail } from "@/lib/channels/inbound-email";
+import { getUserNotificationLevel } from "@/lib/channels/notify";
 import type { NotificationLevel } from "@/lib/channels/notify";
 import type { ToolDefinition } from "@/lib/llm";
 
@@ -74,6 +76,8 @@ Your job:
 6. Do NOT return "action needed" as narrative text without tool+args. Prefer executable actions over summaries.
 7. Only respond with { "action_needed": false, "severity": "low|medium|high|disaster", "summary": "brief note" } when there is truly no concrete action to execute.
 8. Consider the user's known preferences and context.
+9. Do NOT propose notification-channel tools (Discord/WhatsApp/Email/etc.) as remediation for transient tool/service failures. For failure-only signals, prefer no action_needed and summarize.
+10. Do NOT mention assumed delivery channels/platform choices in reasoning unless explicitly provided by trusted context.
 
 Always respond with valid JSON only.`;
 
@@ -103,6 +107,134 @@ interface ProactiveWebContext {
 interface ProactiveWebState {
   context: ProactiveWebContext | null;
   initAttempted: boolean;
+}
+
+interface SchedulerDigestItem {
+  level: NotificationLevel;
+  issue: string;
+  requiredAction: string;
+  actionLocation: string;
+}
+
+const NOTIFICATION_LEVEL_ORDER: NotificationLevel[] = ["disaster", "high", "medium", "low"];
+
+function shouldIncludeForThreshold(userThreshold: NotificationLevel, eventLevel: NotificationLevel): boolean {
+  const thresholdIndex = NOTIFICATION_LEVEL_ORDER.indexOf(userThreshold);
+  const eventIndex = NOTIFICATION_LEVEL_ORDER.indexOf(eventLevel);
+  if (thresholdIndex < 0 || eventIndex < 0) return eventLevel === "disaster";
+  return eventIndex <= thresholdIndex;
+}
+
+function getDefaultAdminUserId(): string | undefined {
+  const admin = listUsersWithPermissions().find((u) => u.role === "admin" && u.enabled === 1);
+  return admin?.id;
+}
+
+function enqueueDigestItem(
+  digestByUser: Map<string, SchedulerDigestItem[]>,
+  userId: string | undefined,
+  item: SchedulerDigestItem
+): void {
+  if (!userId) return;
+  const items = digestByUser.get(userId) || [];
+  items.push(item);
+  digestByUser.set(userId, items);
+}
+
+function parseChannelConfig(configJson: string): Record<string, unknown> {
+  try {
+    return JSON.parse(configJson || "{}");
+  } catch {
+    return {};
+  }
+}
+
+async function flushSchedulerDigestEmails(digestByUser: Map<string, SchedulerDigestItem[]>): Promise<void> {
+  const entries = Array.from(digestByUser.entries());
+  for (const [userId, items] of entries) {
+    if (items.length === 0) continue;
+
+    const threshold = getUserNotificationLevel(userId);
+    const filtered = items.filter((item: SchedulerDigestItem) => shouldIncludeForThreshold(threshold, item.level));
+    if (filtered.length === 0) {
+      addLog({
+        level: "info",
+        source: "scheduler",
+        message: "Scheduler digest suppressed by user threshold.",
+        metadata: JSON.stringify({ userId, itemCount: items.length, threshold }),
+      });
+      continue;
+    }
+
+    const user = getUserById(userId);
+    if (!user?.email) continue;
+
+    const emailChannel = listChannels(userId).find((c) => c.enabled && c.channel_type === "email");
+    if (!emailChannel) {
+      addLog({
+        level: "warn",
+        source: "scheduler",
+        message: "No enabled email channel for scheduler digest.",
+        metadata: JSON.stringify({ userId }),
+      });
+      continue;
+    }
+
+    try {
+      const cfg = getEmailChannelConfig(parseChannelConfig(emailChannel.config_json));
+      if (!cfg.smtpHost || !Number.isFinite(cfg.smtpPort) || !cfg.smtpUser || !cfg.smtpPass || !cfg.fromAddress) {
+        addLog({
+          level: "warn",
+          source: "scheduler",
+          message: "Scheduler digest skipped due to incomplete SMTP configuration.",
+          metadata: JSON.stringify({ userId, channelId: emailChannel.id }),
+        });
+        continue;
+      }
+
+      const subject = `Nexus Proactive Digest (${filtered.length})`;
+      const intro = `Here is your proactive digest with ${filtered.length} item(s) that need your attention.`;
+      const rows = filtered.map((item: SchedulerDigestItem) => [item.issue, item.requiredAction, item.actionLocation]);
+      const themed = buildThemedEmailBody(subject, intro, {
+        table: {
+          headers: ["Issue", "Required action", "Where to do the action"],
+          rows,
+        },
+      });
+
+      await sendSmtpMail(cfg, {
+        from: cfg.fromAddress,
+        to: normalizeEmail(user.email),
+        subject,
+        text: themed.text,
+        html: themed.html,
+      });
+    } catch (err) {
+      addLog({
+        level: "warn",
+        source: "scheduler",
+        message: `Failed sending scheduler digest email: ${err}`,
+        metadata: JSON.stringify({ userId, channelId: emailChannel.id }),
+      });
+    }
+  }
+}
+
+function isFailureDrivenAssessment(assessment: ProactiveAssessment): boolean {
+  const text = `${assessment.reasoning || ""} ${assessment.summary || ""}`.toLowerCase();
+  const failureSignals = [
+    "failed",
+    "failure",
+    "internal error",
+    "timeout",
+    "timed out",
+    "not connected",
+    "unavailable",
+    "connection refused",
+    "error",
+    "exception",
+  ];
+  return failureSignals.some((signal) => text.includes(signal));
 }
 
 function getToolServerId(qualifiedToolName: string): string | null {
@@ -319,7 +451,10 @@ function toolRequiresArguments(toolName: string, mcpManager: ReturnType<typeof g
   return required.length > 0;
 }
 
-async function pollEmailChannels(): Promise<void> {
+async function pollEmailChannels(
+  digestByUser: Map<string, SchedulerDigestItem[]>,
+  defaultAdminUserId?: string
+): Promise<void> {
   const emailChannels = listChannels().filter((c) => c.channel_type === "email" && !!c.enabled);
   if (emailChannels.length === 0) return;
 
@@ -394,9 +529,11 @@ async function pollEmailChannels(): Promise<void> {
                   }),
                 });
                 try {
-                  await notifyAdmin(unknownEmailSummary.summary, "Nexus Inbound Email Summary", {
+                  enqueueDigestItem(digestByUser, channel.user_id ?? defaultAdminUserId, {
                     level: unknownEmailSummary.level,
-                    userId: channel.user_id ?? undefined,
+                    issue: `Inbound email from unknown sender (${fromAddress}).`,
+                    requiredAction: "Review summary and decide whether to onboard, ignore, or reply.",
+                    actionLocation: "Nexus Command Center → Channels / Logs",
                   });
                 } catch {
                   // non-blocking notification path
@@ -435,15 +572,6 @@ async function pollEmailChannels(): Promise<void> {
                   message: `Failed sending SMTP reply for channel "${channel.label}": ${smtpMsg}`,
                   metadata: JSON.stringify({ channelId: channel.id, from: fromAddress }),
                 });
-                try {
-                  await notifyAdmin(
-                    `Failed SMTP reply on email channel ${channel.label}.\nTo: ${fromAddress}\nError: ${smtpMsg}`,
-                    "Nexus Email Delivery Failure",
-                    { level: "high", userId: channel.user_id ?? undefined }
-                  );
-                } catch {
-                  // non-blocking notification path
-                }
               }
 
               await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
@@ -454,15 +582,6 @@ async function pollEmailChannels(): Promise<void> {
                 message: `Failed processing inbound email on channel "${channel.label}": ${messageErr}`,
                 metadata: JSON.stringify({ channelId: channel.id }),
               });
-              try {
-                await notifyAdmin(
-                  `Failed processing inbound email on channel ${channel.label}.\nError: ${messageErr}`,
-                  "Nexus Email Processing Failure",
-                  { level: "high", userId: channel.user_id ?? undefined }
-                );
-              } catch {
-                // non-blocking notification path
-              }
             }
           }
         } finally {
@@ -489,15 +608,6 @@ async function pollEmailChannels(): Promise<void> {
         message: `IMAP poll failed for email channel "${channel.label}": ${errMsg}`,
         metadata: JSON.stringify({ channelId: channel.id }),
       });
-      try {
-        await notifyAdmin(
-          `IMAP poll failed for email channel ${channel.label}.\nError: ${errMsg}`,
-          "Nexus Email Poll Failure",
-          { level: "high", userId: channel.user_id ?? undefined }
-        );
-      } catch {
-        // non-blocking notification path
-      }
     }
   }
 }
@@ -552,6 +662,9 @@ async function executeSchedulerTool(
  * Run a single proactive scan cycle.
  */
 export async function runProactiveScan(): Promise<void> {
+  const digestByUser = new Map<string, SchedulerDigestItem[]>();
+  const defaultAdminUserId = getDefaultAdminUserId();
+
   addLog({
     level: "info",
     source: "scheduler",
@@ -560,7 +673,7 @@ export async function runProactiveScan(): Promise<void> {
   });
 
   try {
-    await pollEmailChannels();
+    await pollEmailChannels(digestByUser, defaultAdminUserId);
   } catch (err) {
     addLog({
       level: "error",
@@ -687,6 +800,16 @@ export async function runProactiveScan(): Promise<void> {
           const reasoning = assessment.reasoning || "Proactive observer requested an action.";
           const eventLevel = normalizeAssessmentLevel(assessment);
 
+          if (isFailureDrivenAssessment(assessment)) {
+            addLog({
+              level: "info",
+              source: "scheduler",
+              message: `Suppressed failure-driven proactive notification for "${actionTool}"; recorded in logs only.`,
+              metadata: JSON.stringify({ tool: actionTool, reasoning }),
+            });
+            continue;
+          }
+
           addLog({
             level: "info",
             source: "scheduler",
@@ -702,16 +825,12 @@ export async function runProactiveScan(): Promise<void> {
               reasoning,
             });
 
-            try {
-              await notifyAdmin(
-                `Proactive approval required.\nTool: ${actionTool}` +
-                  `\nApproval: ${approval.id}\nSeverity: ${eventLevel}\nReason: ${reasoning}`,
-                "Nexus Proactive Approval Required",
-                { level: eventLevel }
-              );
-            } catch {
-              // non-blocking notification path
-            }
+            enqueueDigestItem(digestByUser, defaultAdminUserId, {
+              level: eventLevel,
+              issue: `${actionTool} requires proactive approval (${eventLevel}).`,
+              requiredAction: `Review approval ${approval.id} and approve or reject the action.`,
+              actionLocation: "Nexus Command Center → Approvals",
+            });
           } else {
             try {
               const execution = await executeSchedulerTool(actionTool, actionArgs, mcpManager);
@@ -735,18 +854,6 @@ export async function runProactiveScan(): Promise<void> {
                 message: `Auto-executed tool "${actionTool}" failed: ${executionError}`,
                 metadata: null,
               });
-
-              const failureLevel: NotificationLevel = eventLevel === "disaster" ? "disaster" : "high";
-              try {
-                await notifyAdmin(
-                  `Proactive auto-action failed.\nTool: ${actionTool}` +
-                    `\nSeverity: ${failureLevel}\nError: ${executionError}`,
-                  "Nexus Proactive Action Failure",
-                  { level: failureLevel }
-                );
-              } catch {
-                // non-blocking notification path
-              }
             }
           }
         } else {
@@ -773,6 +880,17 @@ export async function runProactiveScan(): Promise<void> {
         metadata: null,
       });
     }
+  }
+
+  try {
+    await flushSchedulerDigestEmails(digestByUser);
+  } catch (err) {
+    addLog({
+      level: "warn",
+      source: "scheduler",
+      message: `Failed flushing scheduler digest notifications: ${err}`,
+      metadata: null,
+    });
   }
 
   addLog({

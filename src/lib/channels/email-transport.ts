@@ -20,6 +20,15 @@ export interface EmailBodyContent {
   html: string;
 }
 
+export interface EmailBodyTable {
+  headers: string[];
+  rows: Array<Array<string | number>>;
+}
+
+export interface EmailBodyOptions {
+  table?: EmailBodyTable;
+}
+
 function asString(config: Record<string, unknown>, key: string, fallback = ""): string {
   const value = config[key];
   return typeof value === "string" ? value.trim() : fallback;
@@ -34,7 +43,51 @@ function escapeHtml(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
-export function buildThemedEmailBody(subject: string, body: string): EmailBodyContent {
+function renderTableHtml(table: EmailBodyTable): string {
+  if (!Array.isArray(table.headers) || table.headers.length === 0 || !Array.isArray(table.rows) || table.rows.length === 0) {
+    return "";
+  }
+
+  const headerCells = table.headers
+    .map((header) => `<th style="padding:10px 12px;text-align:left;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#8fb7dd;border-bottom:1px solid #2a4464;">${escapeHtml(String(header))}</th>`)
+    .join("");
+
+  const rowHtml = table.rows
+    .map((row) => {
+      const cells = row
+        .map((cell) => `<td style="padding:10px 12px;font-size:14px;line-height:1.5;color:#d9e8ff;border-bottom:1px solid #1b2f49;vertical-align:top;">${escapeHtml(String(cell ?? ""))}</td>`)
+        .join("");
+      return `<tr>${cells}</tr>`;
+    })
+    .join("");
+
+  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:14px 0 8px 0;border:1px solid #2a4464;border-radius:10px;overflow:hidden;background:#0a1728;">
+    <thead><tr>${headerCells}</tr></thead>
+    <tbody>${rowHtml}</tbody>
+  </table>`;
+}
+
+function parseKeyValueLines(lines: string[]): { pairs: Array<[string, string]>; rest: string[] } {
+  const pairs: Array<[string, string]> = [];
+  const rest: string[] = [];
+
+  for (const line of lines) {
+    const match = line.match(/^([A-Za-z][A-Za-z0-9_\-\s/]{1,48}):\s*(.+)$/);
+    if (match) {
+      pairs.push([match[1].trim(), match[2].trim()]);
+    } else {
+      rest.push(line);
+    }
+  }
+
+  if (pairs.length < 2) {
+    return { pairs: [], rest: lines };
+  }
+
+  return { pairs, rest };
+}
+
+export function buildThemedEmailBody(subject: string, body: string, options: EmailBodyOptions = {}): EmailBodyContent {
   const trimmedSubject = subject.trim() || "Nexus Update";
   const trimmedBody = body.trim() || "No additional details provided.";
   const escapedSubject = escapeHtml(trimmedSubject);
@@ -43,7 +96,16 @@ export function buildThemedEmailBody(subject: string, body: string): EmailBodyCo
     .map((line) => line.trim())
     .filter(Boolean);
 
-  const paragraphs = (lines.length > 0 ? lines : [trimmedBody]).map((line) => `<p>${escapeHtml(line)}</p>`).join("");
+  const parsed = parseKeyValueLines(lines.length > 0 ? lines : [trimmedBody]);
+  const paragraphs = (parsed.rest.length > 0 ? parsed.rest : [trimmedBody])
+    .map((line) => `<p style="margin:0 0 10px 0;">${escapeHtml(line)}</p>`)
+    .join("");
+
+  const keyValueTableHtml = parsed.pairs.length > 0
+    ? renderTableHtml({ headers: ["Field", "Value"], rows: parsed.pairs })
+    : "";
+
+  const customTableHtml = options.table ? renderTableHtml(options.table) : "";
 
   const html = `<!doctype html>
 <html>
@@ -65,9 +127,11 @@ export function buildThemedEmailBody(subject: string, body: string): EmailBodyCo
             </tr>
             <tr>
               <td style="padding:22px;font-size:15px;line-height:1.7;color:#d9e8ff;">
-                <p>Hey there,</p>
+                <p style="margin:0 0 12px 0;">Hello,</p>
                 ${paragraphs}
-                <p style="margin-top:20px;">Thanks,<br/>Nexus Assistant</p>
+                ${keyValueTableHtml}
+                ${customTableHtml}
+                <p style="margin:18px 0 0 0;color:#a9c7e8;">Nexus Assistant</p>
               </td>
             </tr>
           </table>
@@ -77,7 +141,13 @@ export function buildThemedEmailBody(subject: string, body: string): EmailBodyCo
   </body>
 </html>`;
 
-  const text = `Hey there,\n\n${trimmedBody}\n\nThanks,\nNexus Assistant`;
+  const kvText = parsed.pairs.length > 0
+    ? `\n\nDetails:\n${parsed.pairs.map(([k, v]) => `- ${k}: ${v}`).join("\n")}`
+    : "";
+  const tableText = options.table && options.table.rows.length > 0
+    ? `\n\n${options.table.headers.join(" | ")}\n${options.table.rows.map((row) => row.map((cell) => String(cell ?? "")).join(" | ")).join("\n")}`
+    : "";
+  const text = `Hello,\n\n${trimmedBody}${kvText}${tableText}\n\nNexus Assistant`;
   return { text, html };
 }
 
