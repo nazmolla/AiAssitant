@@ -1,5 +1,6 @@
 import { getDb } from "./connection";
 import { SCHEMA_SQL } from "./schema";
+import { encryptField, isEncrypted } from "./crypto";
 import { BUILTIN_WEB_TOOLS } from "@/lib/agent/web-tools";
 import { BUILTIN_BROWSER_TOOLS } from "@/lib/agent/browser-tools";
 import { BUILTIN_FS_TOOLS, FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
@@ -311,6 +312,88 @@ function ensureProfilePreferencesColumns(): void {
   }
 }
 
+/**
+ * Encrypt any existing plaintext secrets in the database.
+ * Runs on every startup to catch legacy unencrypted data.
+ * Already-encrypted values (with the "enc:v1:" prefix) are skipped.
+ */
+function encryptExistingSecrets(): void {
+  const db = getDb();
+
+  // MCP servers: access_token, client_secret
+  if (tableExists("mcp_servers")) {
+    const servers = db.prepare("SELECT id, access_token, client_secret FROM mcp_servers").all() as {
+      id: string; access_token: string | null; client_secret: string | null;
+    }[];
+    const stmt = db.prepare("UPDATE mcp_servers SET access_token = ?, client_secret = ? WHERE id = ?");
+    for (const s of servers) {
+      const needsUpdate =
+        (s.access_token && !isEncrypted(s.access_token)) ||
+        (s.client_secret && !isEncrypted(s.client_secret));
+      if (needsUpdate) {
+        stmt.run(
+          s.access_token ? encryptField(s.access_token) : null,
+          s.client_secret ? encryptField(s.client_secret) : null,
+          s.id
+        );
+      }
+    }
+  }
+
+  // Auth providers: client_secret, bot_token
+  if (tableExists("auth_providers")) {
+    const providers = db.prepare("SELECT id, client_secret, bot_token FROM auth_providers").all() as {
+      id: string; client_secret: string | null; bot_token: string | null;
+    }[];
+    const stmt = db.prepare("UPDATE auth_providers SET client_secret = ?, bot_token = ? WHERE id = ?");
+    for (const p of providers) {
+      const needsUpdate =
+        (p.client_secret && !isEncrypted(p.client_secret)) ||
+        (p.bot_token && !isEncrypted(p.bot_token));
+      if (needsUpdate) {
+        stmt.run(
+          p.client_secret ? encryptField(p.client_secret) : null,
+          p.bot_token ? encryptField(p.bot_token) : null,
+          p.id
+        );
+      }
+    }
+  }
+
+  // Channels: config_json, webhook_secret
+  if (tableExists("channels")) {
+    const channels = db.prepare("SELECT id, config_json, webhook_secret FROM channels").all() as {
+      id: string; config_json: string; webhook_secret: string | null;
+    }[];
+    const stmt = db.prepare("UPDATE channels SET config_json = ?, webhook_secret = ? WHERE id = ?");
+    for (const c of channels) {
+      const needsUpdate =
+        (c.config_json && !isEncrypted(c.config_json)) ||
+        (c.webhook_secret && !isEncrypted(c.webhook_secret));
+      if (needsUpdate) {
+        stmt.run(
+          encryptField(c.config_json),
+          c.webhook_secret ? encryptField(c.webhook_secret) : null,
+          c.id
+        );
+      }
+    }
+  }
+
+  // LLM providers: config_json
+  if (tableExists("llm_providers")) {
+    const providers = db.prepare("SELECT id, config_json FROM llm_providers").all() as {
+      id: string; config_json: string;
+    }[];
+    const stmt = db.prepare("UPDATE llm_providers SET config_json = ? WHERE id = ?");
+    for (const p of providers) {
+      if (p.config_json && !isEncrypted(p.config_json)) {
+        stmt.run(encryptField(p.config_json), p.id);
+      }
+    }
+  }
+}
+
 export function initializeDatabase(): void {
   const db = getDb();
   db.exec(SCHEMA_SQL);
@@ -325,6 +408,7 @@ export function initializeDatabase(): void {
   ensureUserAccessManagement();
   ensureProfilePreferencesColumns();
   seedAllBuiltinToolPolicies();
+  encryptExistingSecrets();
   console.log("[Nexus DB] Schema initialized successfully.");
 }
 

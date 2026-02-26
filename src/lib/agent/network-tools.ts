@@ -20,6 +20,8 @@ import * as net from "net";
 import * as dgram from "dgram";
 import * as http from "http";
 import * as https from "https";
+import * as fs from "fs";
+import { Client as SSHClient } from "ssh2";
 
 const execAsync = promisify(exec);
 
@@ -127,7 +129,7 @@ export const BUILTIN_NETWORK_TOOLS: ToolDefinition[] = [
   {
     name: NET_TOOL_NAMES.CONNECT_SSH,
     description:
-      "Connect to a device via SSH and execute a command. Uses the system's SSH client. Key-based authentication is preferred; password auth requires 'sshpass' to be installed. REQUIRES APPROVAL.",
+      "Connect to a device via SSH and execute a command. Supports both key-based and password authentication securely (password is never exposed in the process list). REQUIRES APPROVAL.",
     inputSchema: {
       type: "object",
       properties: {
@@ -154,7 +156,7 @@ export const BUILTIN_NETWORK_TOOLS: ToolDefinition[] = [
         password: {
           type: "string",
           description:
-            "SSH password (only used if key-based auth fails and 'sshpass' is installed). Prefer key-based auth.",
+            "SSH password for password-based auth, or passphrase for an encrypted key. Transmitted securely via the ssh2 library (never visible in process list).",
         },
       },
       required: ["host", "username", "command"],
@@ -609,7 +611,7 @@ function checkPort(host: string, port: number, timeout: number): Promise<boolean
   });
 }
 
-// ── 4. SSH Connect ───────────────────────────────────────────
+// ── 4. SSH Connect (via ssh2 library — no password in process list) ──
 
 async function netConnectSsh(args: Record<string, unknown>): Promise<unknown> {
   const host = sanitizeHost(args.host as string);
@@ -637,67 +639,105 @@ async function netConnectSsh(args: Record<string, unknown>): Promise<unknown> {
     }
   }
 
-  // Build SSH command
-  const sshOpts = [
-    "-o", "StrictHostKeyChecking=no",
-    "-o", "UserKnownHostsFile=/dev/null",
-    "-o", "ConnectTimeout=10",
-    "-o", "BatchMode=yes",
-    "-p", String(port),
-  ];
+  return new Promise((resolve) => {
+    const conn = new SSHClient();
+    let stdoutData = "";
+    let stderrData = "";
+    let exitCode = 0;
+    let timedOut = false;
 
-  if (keyPath) {
-    sshOpts.push("-i", keyPath);
-  }
+    const timer = setTimeout(() => {
+      timedOut = true;
+      conn.end();
+    }, SSH_TIMEOUT_MS);
 
-  let sshCmd: string;
-  const escapedCommand = command.replace(/'/g, "'\\''");
+    conn.on("ready", () => {
+      conn.exec(command, (err, stream) => {
+        if (err) {
+          clearTimeout(timer);
+          conn.end();
+          resolve({
+            host, username, port, command,
+            exitCode: 1,
+            stdout: "",
+            stderr: err.message,
+            error: err.message,
+          });
+          return;
+        }
 
-  if (password && !keyPath) {
-    // Use sshpass for password auth (requires sshpass to be installed)
-    const escapedPassword = password.replace(/'/g, "'\\''");
-    // Remove BatchMode for password auth
-    const passOpts = sshOpts.filter((o) => o !== "BatchMode=yes" && o !== "-o");
-    const filteredOpts: string[] = [];
-    for (let i = 0; i < sshOpts.length; i++) {
-      if (sshOpts[i] === "-o" && sshOpts[i + 1] === "BatchMode=yes") {
-        i++; // skip both -o and BatchMode=yes
-        continue;
-      }
-      filteredOpts.push(sshOpts[i]);
-    }
-    sshCmd = `sshpass -p '${escapedPassword}' ssh ${filteredOpts.join(" ")} ${username}@${host} '${escapedCommand}'`;
-  } else {
-    sshCmd = `ssh ${sshOpts.join(" ")} ${username}@${host} '${escapedCommand}'`;
-  }
+        stream.on("data", (data: Buffer) => {
+          stdoutData += data.toString();
+          if (stdoutData.length > MAX_OUTPUT) {
+            stdoutData = stdoutData.slice(0, MAX_OUTPUT);
+          }
+        });
 
-  try {
-    const { stdout, stderr } = await execAsync(sshCmd, {
-      timeout: SSH_TIMEOUT_MS,
-      maxBuffer: MAX_OUTPUT,
+        stream.stderr.on("data", (data: Buffer) => {
+          stderrData += data.toString();
+          if (stderrData.length > MAX_OUTPUT) {
+            stderrData = stderrData.slice(0, MAX_OUTPUT);
+          }
+        });
+
+        stream.on("close", (code: number) => {
+          exitCode = code ?? 0;
+          clearTimeout(timer);
+          conn.end();
+        });
+      });
     });
 
-    return {
+    conn.on("close", () => {
+      resolve({
+        host, username, port, command,
+        exitCode: timedOut ? 124 : exitCode,
+        stdout: stdoutData.slice(0, MAX_OUTPUT),
+        stderr: stderrData.slice(0, MAX_OUTPUT),
+        error: timedOut ? "Connection timed out" : undefined,
+      });
+    });
+
+    conn.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({
+        host, username, port, command,
+        exitCode: 1,
+        stdout: stdoutData.slice(0, MAX_OUTPUT),
+        stderr: err.message,
+        error: err.message,
+      });
+    });
+
+    // Build connection config — password never appears in any process list
+    const connConfig: Record<string, unknown> = {
       host,
-      username,
       port,
-      command,
-      exitCode: 0,
-      stdout: stdout.slice(0, MAX_OUTPUT),
-      stderr: stderr.slice(0, MAX_OUTPUT),
-    };
-  } catch (err: any) {
-    return {
-      host,
       username,
-      port,
-      command,
-      exitCode: err.code ?? 1,
-      stdout: (err.stdout || "").slice(0, MAX_OUTPUT),
-      stderr: (err.stderr || err.message || "").slice(0, MAX_OUTPUT),
-      error: err.killed ? "Connection timed out" : undefined,
+      readyTimeout: 10_000,
     };
-  }
+
+    if (keyPath) {
+      try {
+        connConfig.privateKey = fs.readFileSync(keyPath);
+      } catch (err: any) {
+        clearTimeout(timer);
+        resolve({
+          host, username, port, command,
+          exitCode: 1, stdout: "", stderr: `Failed to read key file: ${err.message}`,
+          error: `Failed to read key file: ${err.message}`,
+        });
+        return;
+      }
+      if (password) {
+        connConfig.passphrase = password; // key passphrase
+      }
+    } else if (password) {
+      connConfig.password = password;
+    }
+
+    conn.connect(connConfig as any);
+  });
 }
 
 // ── 5. HTTP Request ──────────────────────────────────────────

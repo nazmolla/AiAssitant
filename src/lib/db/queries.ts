@@ -1,5 +1,6 @@
 import { getDb } from "./connection";
 import { v4 as uuid } from "uuid";
+import { encryptField, decryptField } from "./crypto";
 
 // ─── Users ───────────────────────────────────────────────────
 
@@ -358,22 +359,34 @@ export interface LlmProviderRecord {
   created_at: string;
 }
 
+/** Decrypt sensitive LLM provider fields after reading from DB */
+function decryptLlmProvider(p: LlmProviderRecord | undefined): LlmProviderRecord | undefined {
+  if (!p) return undefined;
+  return {
+    ...p,
+    config_json: decryptField(p.config_json) ?? "{}",
+  };
+}
+
 export function listLlmProviders(): LlmProviderRecord[] {
-  return getDb()
+  const rows = getDb()
     .prepare("SELECT * FROM llm_providers ORDER BY created_at DESC")
     .all() as LlmProviderRecord[];
+  return rows.map((r) => decryptLlmProvider(r)!);
 }
 
 export function getLlmProvider(id: string): LlmProviderRecord | undefined {
-  return getDb()
+  const row = getDb()
     .prepare("SELECT * FROM llm_providers WHERE id = ?")
     .get(id) as LlmProviderRecord | undefined;
+  return decryptLlmProvider(row);
 }
 
 export function getDefaultLlmProvider(purpose: LlmProviderPurpose = "chat"): LlmProviderRecord | undefined {
-  return getDb()
+  const row = getDb()
     .prepare("SELECT * FROM llm_providers WHERE is_default = 1 AND purpose = ? LIMIT 1")
     .get(purpose) as LlmProviderRecord | undefined;
+  return decryptLlmProvider(row);
 }
 
 export function createLlmProvider(args: {
@@ -391,7 +404,7 @@ export function createLlmProvider(args: {
       `INSERT INTO llm_providers (id, label, provider_type, purpose, config_json, is_default)
        VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(id, args.label, args.providerType, purpose, JSON.stringify(args.config), args.isDefault ? 1 : 0);
+    .run(id, args.label, args.providerType, purpose, encryptField(JSON.stringify(args.config)), args.isDefault ? 1 : 0);
 
   if (args.isDefault || !getDefaultLlmProvider(purpose)) {
     setDefaultLlmProvider(id);
@@ -425,7 +438,7 @@ export function updateLlmProvider(args: {
   }
   if (args.config !== undefined) {
     sets.push("config_json = ?");
-    vals.push(JSON.stringify(args.config));
+    vals.push(encryptField(JSON.stringify(args.config)));
   }
 
   if (sets.length > 0) {
@@ -483,18 +496,29 @@ export interface McpServerRecord {
   scope: string;
 }
 
+/** Decrypt sensitive MCP server fields after reading from DB */
+function decryptMcpServer(srv: McpServerRecord | undefined): McpServerRecord | undefined {
+  if (!srv) return undefined;
+  return {
+    ...srv,
+    access_token: decryptField(srv.access_token) as string | null,
+    client_secret: decryptField(srv.client_secret) as string | null,
+  };
+}
+
 /** List servers visible to a user: their own + global ones */
 export function listMcpServers(userId?: string): McpServerRecord[] {
-  if (userId) {
-    return getDb()
-      .prepare("SELECT * FROM mcp_servers WHERE user_id IS NULL OR scope = 'global' OR user_id = ?")
-      .all(userId) as McpServerRecord[];
-  }
-  return getDb().prepare("SELECT * FROM mcp_servers").all() as McpServerRecord[];
+  const rows = userId
+    ? getDb()
+        .prepare("SELECT * FROM mcp_servers WHERE user_id IS NULL OR scope = 'global' OR user_id = ?")
+        .all(userId) as McpServerRecord[]
+    : getDb().prepare("SELECT * FROM mcp_servers").all() as McpServerRecord[];
+  return rows.map((r) => decryptMcpServer(r)!);
 }
 
 export function getMcpServer(id: string): McpServerRecord | undefined {
-  return getDb().prepare("SELECT * FROM mcp_servers WHERE id = ?").get(id) as McpServerRecord | undefined;
+  const row = getDb().prepare("SELECT * FROM mcp_servers WHERE id = ?").get(id) as McpServerRecord | undefined;
+  return decryptMcpServer(row);
 }
 
 export function upsertMcpServer(server: McpServerRecord): void {
@@ -518,8 +542,8 @@ export function upsertMcpServer(server: McpServerRecord): void {
     .run(
       server.id, server.name, server.transport_type, server.command,
       server.args, server.env_vars, server.url ?? null,
-      server.auth_type ?? "none", server.access_token ?? null,
-      server.client_id ?? null, server.client_secret ?? null,
+      server.auth_type ?? "none", encryptField(server.access_token ?? null),
+      server.client_id ?? null, encryptField(server.client_secret ?? null),
       server.user_id ?? null, server.scope ?? "global"
     );
 }
@@ -878,15 +902,26 @@ export interface ChannelRecord {
   created_at: string;
 }
 
+/** Decrypt sensitive channel fields after reading from DB */
+function decryptChannel(ch: ChannelRecord | undefined): ChannelRecord | undefined {
+  if (!ch) return undefined;
+  return {
+    ...ch,
+    config_json: decryptField(ch.config_json) ?? "{}",
+    webhook_secret: decryptField(ch.webhook_secret) as string | null,
+  };
+}
+
 export function listChannels(userId?: string): ChannelRecord[] {
-  if (userId) {
-    return getDb().prepare("SELECT * FROM channels WHERE user_id = ? ORDER BY created_at ASC").all(userId) as ChannelRecord[];
-  }
-  return getDb().prepare("SELECT * FROM channels ORDER BY created_at ASC").all() as ChannelRecord[];
+  const rows = userId
+    ? getDb().prepare("SELECT * FROM channels WHERE user_id = ? ORDER BY created_at ASC").all(userId) as ChannelRecord[]
+    : getDb().prepare("SELECT * FROM channels ORDER BY created_at ASC").all() as ChannelRecord[];
+  return rows.map((r) => decryptChannel(r)!);
 }
 
 export function getChannel(id: string): ChannelRecord | undefined {
-  return getDb().prepare("SELECT * FROM channels WHERE id = ?").get(id) as ChannelRecord | undefined;
+  const row = getDb().prepare("SELECT * FROM channels WHERE id = ?").get(id) as ChannelRecord | undefined;
+  return decryptChannel(row);
 }
 
 export function createChannel(args: {
@@ -903,7 +938,7 @@ export function createChannel(args: {
       `INSERT INTO channels (id, channel_type, label, enabled, config_json, webhook_secret, user_id)
        VALUES (?, ?, ?, 1, ?, ?, ?)`
     )
-    .run(id, args.channelType, args.label, args.configJson, webhookSecret, args.userId);
+    .run(id, args.channelType, args.label, encryptField(args.configJson), encryptField(webhookSecret), args.userId);
   return getDb().prepare("SELECT * FROM channels WHERE id = ?").get(id) as ChannelRecord;
 }
 
@@ -924,7 +959,7 @@ export function updateChannel(args: {
     .prepare(
       `UPDATE channels SET label = ?, channel_type = ?, config_json = ?, enabled = ? WHERE id = ?`
     )
-    .run(label, channelType, configJson, enabled, args.id);
+    .run(label, channelType, encryptField(configJson), enabled, args.id);
   return getDb().prepare("SELECT * FROM channels WHERE id = ?").get(args.id) as ChannelRecord;
 }
 
@@ -996,28 +1031,42 @@ export interface AuthProviderRecord {
   created_at: string;
 }
 
+/** Decrypt sensitive auth provider fields after reading from DB */
+function decryptAuthProvider(p: AuthProviderRecord | undefined): AuthProviderRecord | undefined {
+  if (!p) return undefined;
+  return {
+    ...p,
+    client_secret: decryptField(p.client_secret) as string | null,
+    bot_token: decryptField(p.bot_token) as string | null,
+  };
+}
+
 export function listAuthProviders(): AuthProviderRecord[] {
-  return getDb()
+  const rows = getDb()
     .prepare("SELECT * FROM auth_providers ORDER BY created_at ASC")
     .all() as AuthProviderRecord[];
+  return rows.map((r) => decryptAuthProvider(r)!);
 }
 
 export function getEnabledAuthProviders(): AuthProviderRecord[] {
-  return getDb()
+  const rows = getDb()
     .prepare("SELECT * FROM auth_providers WHERE enabled = 1 ORDER BY created_at ASC")
     .all() as AuthProviderRecord[];
+  return rows.map((r) => decryptAuthProvider(r)!);
 }
 
 export function getAuthProvider(id: string): AuthProviderRecord | undefined {
-  return getDb()
+  const row = getDb()
     .prepare("SELECT * FROM auth_providers WHERE id = ?")
     .get(id) as AuthProviderRecord | undefined;
+  return decryptAuthProvider(row);
 }
 
 export function getAuthProviderByType(providerType: AuthProviderType): AuthProviderRecord | undefined {
-  return getDb()
+  const row = getDb()
     .prepare("SELECT * FROM auth_providers WHERE provider_type = ? LIMIT 1")
     .get(providerType) as AuthProviderRecord | undefined;
+  return decryptAuthProvider(row);
 }
 
 export function upsertAuthProvider(args: {
@@ -1048,9 +1097,9 @@ export function upsertAuthProvider(args: {
     args.providerType,
     args.label,
     args.clientId ?? null,
-    args.clientSecret ?? null,
+    encryptField(args.clientSecret ?? null),
     args.tenantId ?? null,
-    args.botToken ?? null,
+    encryptField(args.botToken ?? null),
     args.applicationId ?? null,
     args.enabled !== false ? 1 : 0
   );
