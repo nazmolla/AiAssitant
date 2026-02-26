@@ -72,4 +72,22 @@ describe("GET /api/logs", () => {
     const res = await GET(req);
     expect(res.status).toBe(200);
   });
+
+  test("supports limit=all", async () => {
+    setMockUser({ id: adminId, email: "log-admin@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/logs?limit=all");
+    const res = await GET(req);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("falls back to default for invalid limit", async () => {
+    setMockUser({ id: adminId, email: "log-admin@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/logs?limit=not-a-number");
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+  });
 });

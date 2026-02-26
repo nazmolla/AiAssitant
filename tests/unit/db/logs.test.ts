@@ -46,6 +46,11 @@ describe("Agent Logs", () => {
     expect(logs).toHaveLength(2);
   });
 
+  test("getRecentLogs returns all entries for non-finite limit", () => {
+    const logs = getRecentLogs(Number.NaN);
+    expect(logs.length).toBeGreaterThanOrEqual(3);
+  });
+
   test("addLog supports error level", () => {
     addLog({ level: "error", source: "loop", message: "LLM timeout", metadata: '{"retry":true}' });
     const logs = getRecentLogs();

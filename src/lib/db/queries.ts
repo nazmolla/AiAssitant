@@ -906,6 +906,9 @@ export function addLog(log: Omit<AgentLog, "id" | "created_at">): void {
 }
 
 export function getRecentLogs(limit = 100): AgentLog[] {
+  if (!Number.isFinite(limit)) {
+    return stmt("SELECT * FROM agent_logs ORDER BY created_at DESC").all() as AgentLog[];
+  }
   return stmt(
     "SELECT * FROM agent_logs ORDER BY created_at DESC LIMIT ?"
   ).all(limit) as AgentLog[];

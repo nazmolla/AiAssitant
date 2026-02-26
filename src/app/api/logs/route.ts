@@ -7,7 +7,10 @@ export async function GET(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   const { searchParams } = new URL(req.url);
-  const limit = Math.min(Number(searchParams.get("limit") || "100"), 1000);
+  const limitParam = (searchParams.get("limit") || "100").trim().toLowerCase();
+  const limit = limitParam === "all"
+    ? Number.NaN
+    : Math.max(1, Math.min(Number.parseInt(limitParam, 10) || 100, 1000));
 
   const logs = getRecentLogs(limit);
   return NextResponse.json(logs);

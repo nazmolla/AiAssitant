@@ -20,15 +20,17 @@ type LogFilter = "all" | "error" | "thought" | "hitl";
 export function AgentDashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [showAllLogs, setShowAllLogs] = useState(false);
   const [filter, setFilter] = useState<LogFilter>("all");
   const { formatDate } = useTheme();
 
   const fetchLogs = useCallback(() => {
-    fetch("/api/logs?limit=200")
+    const limit = showAllLogs ? "all" : "200";
+    fetch(`/api/logs?limit=${limit}`)
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setLogs(d); })
       .catch(console.error);
-  }, []);
+  }, [showAllLogs]);
 
   useEffect(() => {
     fetchLogs();
@@ -80,15 +82,26 @@ export function AgentDashboard() {
           <h2 className="text-2xl font-display font-bold gradient-text">Agent Dashboard</h2>
           <p className="text-sm text-muted-foreground/60 font-light mt-1">Real-time activity and diagnostics</p>
         </div>
-        <label className="flex items-center gap-2.5 text-[13px] text-muted-foreground cursor-pointer bg-white/[0.03] border border-white/[0.06] rounded-xl px-3.5 py-2 hover:bg-white/[0.05] transition-all duration-300 self-start sm:self-auto">
-          <input
-            type="checkbox"
-            checked={autoRefresh}
-            onChange={() => setAutoRefresh(!autoRefresh)}
-            className="rounded accent-primary"
-          />
-          Auto-refresh
-        </label>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <label className="flex items-center gap-2.5 text-[13px] text-muted-foreground cursor-pointer bg-white/[0.03] border border-white/[0.06] rounded-xl px-3.5 py-2 hover:bg-white/[0.05] transition-all duration-300">
+            <input
+              type="checkbox"
+              checked={showAllLogs}
+              onChange={() => setShowAllLogs(!showAllLogs)}
+              className="rounded accent-primary"
+            />
+            Show all logs
+          </label>
+          <label className="flex items-center gap-2.5 text-[13px] text-muted-foreground cursor-pointer bg-white/[0.03] border border-white/[0.06] rounded-xl px-3.5 py-2 hover:bg-white/[0.05] transition-all duration-300">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={() => setAutoRefresh(!autoRefresh)}
+              className="rounded accent-primary"
+            />
+            Auto-refresh
+          </label>
+        </div>
       </div>
 
       {/* Stats Cards — clickable to filter logs */}
@@ -161,7 +174,9 @@ export function AgentDashboard() {
       {/* Log Stream */}
       <Card>
         <CardHeader>
-          <CardTitle className="gradient-text">Agent Log Stream</CardTitle>
+          <CardTitle className="gradient-text">
+            Agent Log Stream {showAllLogs ? "(All)" : "(Latest 200)"}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-[500px]">

@@ -13,6 +13,7 @@ graph TB
         DISCORD["Discord Bot<br/>(discord.js)"]
         WHATSAPP["WhatsApp<br/>(Webhook)"]
         WEBHOOK["Custom Webhooks"]
+        EMAIL["Email Channel<br/>(SMTP + IMAP)"]
     end
 
     subgraph Core["Agent Core (Sense-Think-Act)"]
@@ -20,6 +21,9 @@ graph TB
         GATE["HITL Gatekeeper<br/>(gatekeeper.ts)"]
         KNOW["Knowledge System<br/>(Auto-Capture + Retrieval)"]
         SCHED["Proactive Scheduler<br/>(Cron)"]
+        INBOUND["Inbound Email Classifier<br/>(summary + severity)"]
+        NOTIFY["Channel Notifier<br/>(per-user threshold filter)"]
+        TRUST["Untrusted Email Guard<br/>(prompt-injection boundary)"]
     end
 
     subgraph LLM["LLM Providers"]
@@ -60,6 +64,10 @@ graph TB
     DISCORD --> LOOP
     WHATSAPP --> MW
     WEBHOOK --> MW
+    EMAIL --> INBOUND
+    INBOUND --> NOTIFY
+    INBOUND --> TRUST
+    TRUST --> LOOP
     MW --> NEXTAUTH
     NEXTAUTH --> LOOP
     LOOP --> GATE
@@ -71,6 +79,12 @@ graph TB
     KNOW --> EMBED
     KNOW --> DB
     SCHED --> LOOP
+    SCHED --> NOTIFY
+    LOOP --> NOTIFY
+    NOTIFY --> DISCORD
+    NOTIFY --> WHATSAPP
+    NOTIFY --> WEBHOOK
+    NOTIFY --> EMAIL
     LOOP --> DB
     GATE --> DB
 
@@ -94,6 +108,13 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 2. **Think** — Retrieve relevant knowledge via semantic search, construct a context-rich prompt, and call the LLM
 3. **Act** — Execute tool calls (with HITL gating), capture new knowledge, and deliver the response
 
+### Notification & Inbound Email Safety Path
+
+- **Per-user thresholds** — Channel notifications are filtered by each user profile's `notification_level` (`low`, `medium`, `high`, `disaster`).
+- **Channel-first alerts** — Proactive/admin/unknown-sender notices are delivered through configured communication channels instead of posting into chat threads.
+- **Unknown sender summaries** — Inbound IMAP messages from unknown senders are summarized and severity-classified before notification routing.
+- **Injection boundary** — Inbound email bodies are treated as untrusted external content and wrapped/sanitized before any LLM prompt ingestion.
+
 ---
 
 ## Core Architectural Principles
@@ -111,6 +132,8 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 | **Browser Automation** | Playwright-powered tools let the agent navigate pages, fill forms, take screenshots, and manage sessions. |
 | **File System Access** | Built-in tools to read, write, list, and search files — with HITL gating on destructive operations. |
 | **Multi-Channel Comms** | WhatsApp, Discord, webhooks, and web chat — each channel resolves senders to internal users. |
+| **User-Scoped Alerting** | Per-user notification thresholds (`low` → `disaster`) suppress or deliver channel notifications based on event severity. |
+| **Safe Email Ingestion** | Inbound email is classified, summarized, and guarded as untrusted content before reaching the agent loop. |
 | **Screen Sharing** | Share your screen with the agent via browser `getDisplayMedia()` — the agent sees what you see and can reason about it. |
 | **Security Hardened** | Comprehensive prompt injection defense, security headers (CSP, X-Frame-Options, etc.), rate limiting, input validation, and path traversal protection. |
 
