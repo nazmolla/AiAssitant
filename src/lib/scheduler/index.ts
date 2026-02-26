@@ -11,6 +11,7 @@
 import { CronJob } from "cron";
 import { getMcpManager } from "@/lib/mcp";
 import { createChatProvider } from "@/lib/llm";
+import { runAgentLoop } from "@/lib/agent";
 import {
   isBuiltinWebTool,
   executeBuiltinWebTool,
@@ -30,9 +31,16 @@ import {
   createApprovalRequest,
   createThread,
   addMessage,
+  listChannels,
+  getUserByEmail,
+  isUserEnabled,
+  getDb,
 } from "@/lib/db";
 import { ingestKnowledgeFromText } from "@/lib/knowledge";
 import { retrieveKnowledge } from "@/lib/knowledge/retriever";
+import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
+import nodemailer from "nodemailer";
 
 const PROACTIVE_SYSTEM_PROMPT = `You are the Nexus proactive observer. You have been given data polled from external services.
 
@@ -46,6 +54,7 @@ Always respond with valid JSON only.`;
 
 let _cronJob: CronJob | null = null;
 const _proactiveSkipWarned = new Set<string>();
+const _emailConfigWarned = new Set<string>();
 
 function getToolServerId(qualifiedToolName: string): string | null {
   const dotIndex = qualifiedToolName.indexOf(".");
@@ -56,6 +65,198 @@ function getToolServerId(qualifiedToolName: string): string | null {
 type SchedulerToolExecution =
   | { skipped: true }
   | { skipped: false; result: unknown };
+
+function normalizeEmail(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  const match = trimmed.match(/<?([^<>\s]+@[^<>\s]+)>?$/);
+  return (match?.[1] || trimmed).trim();
+}
+
+function resolveChannelThread(channelId: string, senderId: string, userId: string | null): string {
+  const db = getDb();
+  const tag = `channel:${channelId}:${senderId}`;
+
+  const existing = db
+    .prepare("SELECT id FROM threads WHERE title = ? AND status = 'active' ORDER BY last_message_at DESC LIMIT 1")
+    .get(tag) as { id: string } | undefined;
+
+  if (existing) return existing.id;
+
+  const thread = createThread(tag, userId ?? undefined);
+  return thread.id;
+}
+
+async function sendSmtpReply(
+  config: Record<string, unknown>,
+  toEmail: string,
+  subject: string,
+  body: string
+): Promise<void> {
+  const smtpHost = String(config.smtpHost ?? "").trim();
+  const smtpPort = Number(config.smtpPort ?? 587);
+  const smtpUser = String(config.smtpUser ?? "").trim();
+  const smtpPass = String(config.smtpPass ?? "").trim();
+  const fromAddress = String(config.fromAddress ?? smtpUser).trim();
+  const secure = smtpPort === 465;
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure,
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+  });
+
+  await transporter.sendMail({
+    from: fromAddress,
+    to: toEmail,
+    subject,
+    text: body,
+  });
+}
+
+async function pollEmailChannels(): Promise<void> {
+  const emailChannels = listChannels().filter((c) => c.channel_type === "email" && !!c.enabled);
+  if (emailChannels.length === 0) return;
+
+  for (const channel of emailChannels) {
+    let config: Record<string, unknown>;
+    try {
+      config = JSON.parse(channel.config_json || "{}");
+    } catch {
+      config = {};
+    }
+
+    const imapHost = String(config.imapHost ?? "").trim();
+    const imapPort = Number(config.imapPort ?? 993);
+    const imapUser = String(config.imapUser ?? "").trim();
+    const imapPass = String(config.imapPass ?? "").trim();
+    const imapTls = imapPort === 993;
+
+    if (!imapHost || !imapPort || !imapUser || !imapPass) {
+      if (!_emailConfigWarned.has(channel.id)) {
+        addLog({
+          level: "warn",
+          source: "email",
+          message: `Email channel \"${channel.label}\" is missing IMAP configuration (imapHost/imapPort/imapUser/imapPass).`,
+          metadata: JSON.stringify({ channelId: channel.id }),
+        });
+        _emailConfigWarned.add(channel.id);
+      }
+      continue;
+    }
+    _emailConfigWarned.delete(channel.id);
+
+    const client = new ImapFlow({
+      host: imapHost,
+      port: imapPort,
+      secure: imapTls,
+      auth: {
+        user: imapUser,
+        pass: imapPass,
+      },
+      logger: false,
+    });
+
+    try {
+      await client.connect();
+      const lock = await client.getMailboxLock("INBOX");
+      try {
+        const unseen = await client.search({ seen: false });
+        if (unseen.length === 0) continue;
+
+        for await (const msg of client.fetch(unseen, { uid: true, envelope: true, source: true })) {
+          try {
+            const parsed = await simpleParser(msg.source as Buffer);
+            const fromAddress = parsed.from?.value?.[0]?.address
+              ? normalizeEmail(parsed.from.value[0].address)
+              : "";
+            const subject = (parsed.subject || "New Email").trim();
+            const textBody = (parsed.text || parsed.html || "").toString().trim();
+
+            if (!fromAddress) {
+              await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
+              continue;
+            }
+
+            const mappedUser = getUserByEmail(fromAddress);
+            const isKnownUser = !!mappedUser && isUserEnabled(mappedUser.id);
+
+            if (!isKnownUser) {
+              const notifyThreadId = resolveChannelThread(channel.id, fromAddress, channel.user_id ?? null);
+              addMessage({
+                thread_id: notifyThreadId,
+                role: "system",
+                content:
+                  `[Email Notification] Message received from unregistered sender: ${fromAddress}` +
+                  `\nSubject: ${subject}` +
+                  `\nBody:\n${textBody || "(empty)"}`,
+                tool_calls: null,
+                tool_results: null,
+                attachments: null,
+              });
+              await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
+              continue;
+            }
+
+            const threadId = resolveChannelThread(channel.id, fromAddress, mappedUser!.id);
+            const taggedText = `[External Channel Message from email user \"${fromAddress}\"]\nSubject: ${subject}\n\n${textBody || "(empty)"}`;
+            const result = await runAgentLoop(
+              threadId,
+              taggedText,
+              undefined,
+              undefined,
+              undefined,
+              mappedUser!.id
+            );
+
+            try {
+              await sendSmtpReply(
+                config,
+                fromAddress,
+                `Re: ${subject}`,
+                (result.content || "").trim() || "No response content."
+              );
+            } catch (smtpErr) {
+              addLog({
+                level: "error",
+                source: "email",
+                message: `Failed sending SMTP reply for channel \"${channel.label}\": ${smtpErr}`,
+                metadata: JSON.stringify({ channelId: channel.id, from: fromAddress }),
+              });
+            }
+
+            await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
+          } catch (messageErr) {
+            addLog({
+              level: "error",
+              source: "email",
+              message: `Failed processing inbound email on channel \"${channel.label}\": ${messageErr}`,
+              metadata: JSON.stringify({ channelId: channel.id }),
+            });
+          }
+        }
+      } finally {
+        lock.release();
+      }
+    } catch (err) {
+      addLog({
+        level: "error",
+        source: "email",
+        message: `IMAP poll failed for email channel \"${channel.label}\": ${err}`,
+        metadata: JSON.stringify({ channelId: channel.id }),
+      });
+    } finally {
+      try {
+        await client.logout();
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
 
 async function executeSchedulerTool(
   toolName: string,
@@ -107,6 +308,17 @@ export async function runProactiveScan(): Promise<void> {
     message: "Proactive scan started.",
     metadata: null,
   });
+
+  try {
+    await pollEmailChannels();
+  } catch (err) {
+    addLog({
+      level: "error",
+      source: "email",
+      message: `Email polling cycle failed: ${err}`,
+      metadata: null,
+    });
+  }
 
   const mcpManager = getMcpManager();
   const policies = listToolPolicies().filter((p) => p.is_proactive_enabled);
