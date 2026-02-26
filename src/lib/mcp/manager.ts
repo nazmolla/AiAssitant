@@ -48,7 +48,28 @@ class McpManager {
     }
 
     const args = server.args ? JSON.parse(server.args) : [];
-    const envVars = server.env_vars ? JSON.parse(server.env_vars) : {};
+    const rawEnvVars = server.env_vars ? JSON.parse(server.env_vars) : {};
+
+    // Filter out dangerous environment variable overrides that could enable
+    // code injection or library preloading attacks
+    const BLOCKED_ENV_VARS = new Set([
+      "PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES",
+      "DYLD_LIBRARY_PATH", "NODE_OPTIONS", "PYTHONSTARTUP", "RUBYOPT",
+      "PERL5OPT", "JAVA_TOOL_OPTIONS", "CLASSPATH",
+    ]);
+    const envVars: Record<string, string> = {};
+    for (const [key, value] of Object.entries(rawEnvVars)) {
+      if (!BLOCKED_ENV_VARS.has(key.toUpperCase())) {
+        envVars[key] = value as string;
+      } else {
+        addLog({
+          level: "warn",
+          source: "mcp",
+          message: `Blocked dangerous env var override "${key}" for MCP server "${server.name}".`,
+          metadata: JSON.stringify({ serverId: server.id }),
+        });
+      }
+    }
 
     let client = new Client(
       { name: "nexus-agent", version: "1.0.0" },

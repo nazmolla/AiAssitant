@@ -28,6 +28,22 @@ export interface GatekeeperResult {
   error?: string;
 }
 
+/** Redact sensitive fields from tool arguments before logging */
+const SENSITIVE_KEYS = new Set(["password", "token", "secret", "api_key", "apiKey", "access_token", "accessToken", "private_key", "privateKey", "credentials"]);
+function redactArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const redacted: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    redacted[key] = SENSITIVE_KEYS.has(key.toLowerCase()) ? "••••••" : value;
+  }
+  return redacted;
+}
+
+/** Truncate tool results to prevent logging huge payloads */
+function truncateResult(result: unknown, maxLen = 500): string {
+  const str = JSON.stringify(result);
+  return str.length > maxLen ? str.slice(0, maxLen) + "...[truncated]" : str;
+}
+
 /**
  * Execute a tool call with HITL policy enforcement.
  */
@@ -38,15 +54,16 @@ export async function executeWithGatekeeper(
 ): Promise<GatekeeperResult> {
   const policy = getToolPolicy(toolCall.name);
 
-  // Default-allow: only require approval if an explicit policy says so.
-  // This is consistent with built-in tools. Owners can configure specific
-  // MCP tools to require approval via the tool-policies UI.
-  if (policy && policy.requires_approval) {
+  // Default-deny for unknown tools: if no policy exists, require approval.
+  // Built-in tools always have a policy row seeded at startup.
+  // MCP tools get a policy when connected. Any tool without a policy is
+  // treated as unknown and gated for safety.
+  if (!policy || policy.requires_approval) {
     addLog({
       level: "info",
       source: "hitl",
       message: `Tool "${toolCall.name}" requires approval. Creating approval request.`,
-      metadata: JSON.stringify({ threadId, args: toolCall.arguments }),
+      metadata: JSON.stringify({ threadId, args: redactArgs(toolCall.arguments) }),
     });
 
     // Create an approval request
@@ -95,7 +112,7 @@ export async function executeWithGatekeeper(
       level: "info",
       source: "hitl",
       message: `Tool "${toolCall.name}" executed successfully.`,
-      metadata: JSON.stringify({ threadId, result }),
+      metadata: JSON.stringify({ threadId, result: truncateResult(result) }),
     });
 
     return { status: "executed", result };
@@ -146,7 +163,7 @@ export async function executeApprovedTool(
       level: "info",
       source: "hitl",
       message: `Approved tool "${toolName}" executed successfully.`,
-      metadata: JSON.stringify({ threadId, result }),
+      metadata: JSON.stringify({ threadId, result: truncateResult(result) }),
     });
 
     return { status: "executed", result };

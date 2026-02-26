@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
+import { getThread } from "@/lib/db";
 import fs from "fs";
 import path from "path";
 
@@ -31,6 +32,20 @@ export async function GET(
   // Prevent directory traversal
   if (!resolvedPath.startsWith(DATA_DIR)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Verify thread ownership — prevent IDOR (reading another user's attachments)
+  // The thread ID is the first path segment after the optional subdir prefix
+  const pathSegments = ALLOWED_SUBDIRS.includes(firstSegment) ? params.path.slice(1) : params.path;
+  const threadIdSegment = pathSegments[0];
+  if (threadIdSegment) {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (UUID_RE.test(threadIdSegment)) {
+      const thread = getThread(threadIdSegment);
+      if (thread && thread.user_id !== auth.user.id && auth.user.role !== "admin") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
   }
 
   if (!fs.existsSync(resolvedPath)) {

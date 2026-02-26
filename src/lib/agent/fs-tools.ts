@@ -47,6 +47,7 @@ export const FS_TOOL_NAMES = {
 
 /** Tools that require owner approval before execution. */
 export const FS_TOOLS_REQUIRING_APPROVAL = [
+  FS_TOOL_NAMES.CREATE_FILE,
   FS_TOOL_NAMES.UPDATE_FILE,
   FS_TOOL_NAMES.DELETE_FILE,
   FS_TOOL_NAMES.DELETE_DIR,

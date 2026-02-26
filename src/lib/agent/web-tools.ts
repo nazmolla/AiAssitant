@@ -35,7 +35,13 @@ function assertExternalUrl(urlStr: string): void {
   const hostname = parsed.hostname.replace(/^\[|\]$/g, ""); // strip IPv6 brackets
 
   // Block well-known internal hostnames
-  const blockedHostnames = ["localhost", "metadata.google.internal"];
+  const blockedHostnames = [
+    "localhost",
+    "metadata.google.internal",
+    "metadata.azure.com",
+    "metadata.digitalocean.com",
+    "instance-data",
+  ];
   if (blockedHostnames.includes(hostname.toLowerCase())) {
     throw new Error("Blocked: request to internal/private address is not allowed.");
   }
@@ -222,14 +228,37 @@ async function webFetch(
   const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-      signal: controller.signal,
-      redirect: "follow",
-    });
+    // Use manual redirect to re-validate each hop against SSRF blocklist
+    let currentUrl = url;
+    let response: Response;
+    const MAX_REDIRECTS = 5;
+
+    for (let i = 0; i <= MAX_REDIRECTS; i++) {
+      assertExternalUrl(currentUrl);
+
+      response = await fetch(currentUrl, {
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+        signal: controller.signal,
+        redirect: "manual",
+      });
+
+      // Follow redirects manually with SSRF re-validation
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get("location");
+        if (!location) break;
+        currentUrl = new URL(location, currentUrl).href;
+        if (i === MAX_REDIRECTS) {
+          throw new Error("Too many redirects");
+        }
+        continue;
+      }
+      break;
+    }
+
+    response = response!;
 
     if (!response.ok) {
       throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
@@ -247,7 +276,25 @@ async function webFetch(
       return `[Binary content: ${contentType}, size: ${response.headers.get("content-length") || "unknown"} bytes]`;
     }
 
-    const text = await response.text();
+    // Stream response with size limit to prevent memory exhaustion (max 2x maxLength)
+    const MAX_BYTES = maxLength * 2;
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return "[No response body]";
+    }
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      totalBytes += value.length;
+      if (totalBytes > MAX_BYTES) {
+        reader.cancel();
+        break;
+      }
+    }
+    const text = new TextDecoder().decode(Buffer.concat(chunks));
 
     // If JSON, return formatted
     if (contentType.includes("application/json")) {

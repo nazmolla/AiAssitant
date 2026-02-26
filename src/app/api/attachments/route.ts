@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { addAttachment } from "@/lib/db";
+import { addAttachment, getThread } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 import fs from "fs";
 import path from "path";
@@ -51,6 +51,15 @@ export async function POST(req: NextRequest) {
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!UUID_RE.test(threadId)) {
       return NextResponse.json({ error: "Invalid threadId format" }, { status: 400 });
+    }
+
+    // Verify thread ownership — prevent IDOR (uploading to another user's thread)
+    const thread = getThread(threadId);
+    if (!thread) {
+      return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    }
+    if (thread.user_id !== auth.user.id && auth.user.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     if (!ALLOWED_MIME_TYPES.has(file.type)) {
       return NextResponse.json(

@@ -31,7 +31,13 @@ function assertExternalUrl(urlStr: string): void {
     throw new Error(`Blocked: unsupported protocol "${parsed.protocol}". Only http/https allowed.`);
   }
   const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
-  const blockedHostnames = ["localhost", "metadata.google.internal"];
+  const blockedHostnames = [
+    "localhost",
+    "metadata.google.internal",
+    "metadata.azure.com",
+    "metadata.digitalocean.com",
+    "instance-data",
+  ];
   if (blockedHostnames.includes(hostname.toLowerCase())) {
     throw new Error("Blocked: request to internal/private address is not allowed.");
   }
@@ -54,6 +60,12 @@ function assertExternalUrl(urlStr: string): void {
 }
 
 // ── Tool Definitions ──────────────────────────────────────────
+
+/** Browser tools that require owner approval before execution. */
+export const BROWSER_TOOLS_REQUIRING_APPROVAL = [
+  "builtin.browser_evaluate",
+  "builtin.browser_upload",
+];
 
 export const BUILTIN_BROWSER_TOOLS: ToolDefinition[] = [
   {
@@ -864,11 +876,17 @@ export async function executeBrowserTool(
     case "builtin.browser_upload": {
       const page = await session.getPage();
       const filePath = args.filePath as string;
-      if (!fs.existsSync(filePath)) {
+      // Restrict file uploads to the FS_ALLOWED_ROOT to prevent exfiltration of sensitive files
+      const FS_ALLOWED_ROOT = path.resolve(process.env.FS_ALLOWED_ROOT || process.cwd());
+      const resolved = path.resolve(filePath);
+      if (!resolved.startsWith(FS_ALLOWED_ROOT + path.sep) && resolved !== FS_ALLOWED_ROOT) {
+        throw new Error(`Access denied: file path "${filePath}" is outside the allowed root directory.`);
+      }
+      if (!fs.existsSync(resolved)) {
         throw new Error(`File not found: ${filePath}`);
       }
-      await page.setInputFiles(args.selector as string, filePath);
-      return { status: "file_uploaded", filePath, selector: args.selector };
+      await page.setInputFiles(args.selector as string, resolved);
+      return { status: "file_uploaded", filePath: resolved, selector: args.selector };
     }
 
     // ── Evaluate JS ─────────────────────────────────────────

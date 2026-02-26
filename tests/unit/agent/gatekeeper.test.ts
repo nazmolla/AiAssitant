@@ -2,7 +2,7 @@
  * Unit tests — Gatekeeper tool policy enforcement
  *
  * Validates that:
- * - MCP tools with no policy auto-execute (default-allow)
+ * - MCP tools with no policy require approval (default-deny)
  * - MCP tools with requires_approval=1 request approval
  * - MCP tools with requires_approval=0 auto-execute
  * - Built-in FS destructive tools are seeded with requires_approval=1
@@ -37,7 +37,7 @@ beforeAll(() => {
 });
 afterAll(() => teardownTestDb());
 
-describe("executeWithGatekeeper — default-allow for MCP tools", () => {
+describe("executeWithGatekeeper — default-deny for MCP tools", () => {
   let threadId: string;
 
   beforeEach(() => {
@@ -45,8 +45,8 @@ describe("executeWithGatekeeper — default-allow for MCP tools", () => {
     threadId = thread.id;
   });
 
-  test("MCP tool with no policy auto-executes (default-allow)", async () => {
-    // No policy exists for this tool
+  test("MCP tool with no policy requires approval (default-deny)", async () => {
+    // No policy exists for this tool — should be gated
     expect(getToolPolicy("mcp_tool_no_policy")).toBeUndefined();
 
     const result = await executeWithGatekeeper(
@@ -55,8 +55,8 @@ describe("executeWithGatekeeper — default-allow for MCP tools", () => {
       "test reasoning"
     );
 
-    expect(result.status).toBe("executed");
-    expect(result.result).toBeDefined();
+    expect(result.status).toBe("pending_approval");
+    expect(result.approvalId).toBeDefined();
   });
 
   test("MCP tool with requires_approval=1 requests approval", async () => {
@@ -96,7 +96,8 @@ describe("executeWithGatekeeper — default-allow for MCP tools", () => {
 });
 
 describe("Tool policy seeding", () => {
-  test("FS destructive tools are defined in FS_TOOLS_REQUIRING_APPROVAL", () => {
+  test("FS destructive/write tools are defined in FS_TOOLS_REQUIRING_APPROVAL", () => {
+    expect(FS_TOOLS_REQUIRING_APPROVAL).toContain("builtin.fs_create_file");
     expect(FS_TOOLS_REQUIRING_APPROVAL).toContain("builtin.fs_update_file");
     expect(FS_TOOLS_REQUIRING_APPROVAL).toContain("builtin.fs_delete_file");
     expect(FS_TOOLS_REQUIRING_APPROVAL).toContain("builtin.fs_delete_directory");

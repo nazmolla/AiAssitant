@@ -49,6 +49,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Prevent IDOR: if a server with this ID already exists, only the owner (or admin) can overwrite
+  const existing = getMcpServer(id);
+  if (existing && existing.user_id !== null && existing.user_id !== auth.user.id && auth.user.role !== "admin") {
+    return NextResponse.json(
+      { error: "Cannot overwrite another user's MCP server configuration." },
+      { status: 403 }
+    );
+  }
+
   if (isStdio && !command) {
     return NextResponse.json(
       { error: "command is required for stdio transport." },
@@ -93,13 +102,13 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "id is required." }, { status: 400 });
   }
 
-  // Verify ownership: admins can delete any server, users can delete servers they created or user-scoped servers
+  // Verify ownership: admins can delete any server, users can only delete their own
   const server = getMcpServer(id);
   if (!server) {
     return NextResponse.json({ error: "Server not found." }, { status: 404 });
   }
-  // Legacy servers have user_id=null (created before multi-user). Allow those to be deleted by anyone.
-  const isOwner = server.user_id === null || server.user_id === auth.user.id;
+  // Legacy servers with user_id=null are treated as global — only admins can delete
+  const isOwner = server.user_id !== null && server.user_id === auth.user.id;
   const isAdmin = auth.user.role === "admin";
   if (!isAdmin && !isOwner) {
     return NextResponse.json({ error: "You can only remove servers you created. Contact an admin for global servers." }, { status: 403 });
