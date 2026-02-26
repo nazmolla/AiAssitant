@@ -53,7 +53,6 @@ export function ProfileConfig() {
   const [profile, setProfile] = useState<ProfileData>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [skillInput, setSkillInput] = useState("");
   const [langInput, setLangInput] = useState("");
   const { theme, setTheme, font, setFont, timezone, setTimezone } = useTheme();
 
@@ -87,27 +86,12 @@ export function ProfileConfig() {
 
   useEffect(() => { load(); }, [load]);
 
-  const skills: string[] = (() => {
-    try { return JSON.parse(profile.skills); } catch { return []; }
-  })();
-
   const languages: string[] = (() => {
     try { return JSON.parse(profile.languages); } catch { return []; }
   })();
 
   const update = (field: keyof ProfileData, value: string | number) =>
     setProfile((p) => ({ ...p, [field]: typeof EMPTY[field] === "number" ? Number(value) : value }));
-
-  const addSkill = () => {
-    const v = skillInput.trim();
-    if (v && !skills.includes(v)) {
-      update("skills", JSON.stringify([...skills, v]));
-      setSkillInput("");
-    }
-  };
-
-  const removeSkill = (s: string) =>
-    update("skills", JSON.stringify(skills.filter((x) => x !== s)));
 
   const addLang = () => {
     const v = langInput.trim();
@@ -244,33 +228,6 @@ export function ProfileConfig() {
         </CardContent>
       </Card>
 
-      {/* Skills */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-display">Skills</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-1.5">
-            {skills.map((s) => (
-              <Badge key={s} variant="secondary" className="gap-1 cursor-pointer" onClick={() => removeSkill(s)}>
-                {s} <span className="text-xs opacity-60">✕</span>
-              </Badge>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              value={skillInput}
-              onChange={(e) => setSkillInput(e.target.value)}
-              placeholder="Add a skill…"
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSkill())}
-            />
-            <Button variant="outline" size="sm" onClick={addSkill}>
-              Add
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Languages */}
       <Card>
         <CardHeader>
@@ -298,10 +255,10 @@ export function ProfileConfig() {
         </CardContent>
       </Card>
 
-      {/* Preferences — Theme & Timezone */}
+      {/* Preferences & Features */}
       <Card className="md:col-span-2">
         <CardHeader>
-          <CardTitle className="text-lg font-display">Preferences</CardTitle>
+          <CardTitle className="text-lg font-display">Preferences & Features</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Theme picker */}
@@ -387,24 +344,8 @@ export function ProfileConfig() {
               {timezone ? ` Current: ${timezone}` : " Using your browser's timezone."}
             </p>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Save Button */}
-      <div className="md:col-span-2 flex justify-end gap-2 items-center">
-        {saved && <span className="text-sm text-green-400">Saved!</span>}
-        <Button onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Save Profile"}
-        </Button>
-      </div>
-
-      {/* Features */}
-      <Card className="md:col-span-2">
-        <CardHeader>
-          <CardTitle className="text-lg font-display">Features</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
+          {/* Screen Sharing toggle */}
+          <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
             <div>
               <div className="text-sm font-medium">Screen Sharing</div>
               <div className="text-xs text-muted-foreground/60">Allow sharing your screen with Nexus during chat so it can see what you see.</div>
@@ -416,6 +357,14 @@ export function ProfileConfig() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Save Button */}
+      <div className="md:col-span-2 flex justify-end gap-2 items-center">
+        {saved && <span className="text-sm text-green-400">Saved!</span>}
+        <Button onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save Profile"}
+        </Button>
+      </div>
     </div>
   );
 }
