@@ -140,7 +140,12 @@ export function McpConfig() {
       setStatusMessage("Connecting to server and discovering tools...");
 
       const connectRes = await fetch(`/api/mcp/${savedId}/connect`, { method: "POST" });
-      const connectData = await connectRes.json();
+      let connectData: { error?: string; tools?: unknown[] };
+      try {
+        connectData = await connectRes.json();
+      } catch {
+        connectData = { error: `Server returned non-JSON response (HTTP ${connectRes.status}).` };
+      }
 
       if (!connectRes.ok) {
         // Connection failed — remove the server we just saved so it doesn't linger

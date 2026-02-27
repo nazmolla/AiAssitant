@@ -87,6 +87,8 @@ export function encryptField(plaintext: string | null | undefined): string | nul
  * Decrypt an encrypted envelope back to plaintext.
  * If the value is not encrypted (no prefix), returns it as-is
  * to handle legacy plaintext data gracefully.
+ * If decryption fails (e.g. key mismatch from key rotation), returns null
+ * with a console warning so the caller can handle the missing value.
  */
 export function decryptField(encrypted: string | null | undefined): string | null {
   if (encrypted === null || encrypted === undefined) {
@@ -102,7 +104,8 @@ export function decryptField(encrypted: string | null | undefined): string | nul
   const payload = encrypted.slice(PREFIX.length);
   const parts = payload.split(":");
   if (parts.length !== 3) {
-    throw new Error("Malformed encrypted field");
+    console.warn("[Nexus Crypto] Malformed encrypted field — returning null.");
+    return null;
   }
 
   const [ivHex, tagHex, ciphertextHex] = parts;
@@ -111,15 +114,23 @@ export function decryptField(encrypted: string | null | undefined): string | nul
   const tag = Buffer.from(tagHex, "hex");
   const ciphertext = Buffer.from(ciphertextHex, "hex");
 
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
+  try {
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(tag);
 
-  const decrypted = Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]);
+    const decrypted = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]);
 
-  return decrypted.toString("utf8");
+    return decrypted.toString("utf8");
+  } catch {
+    console.warn(
+      "[Nexus Crypto] Failed to decrypt field — likely encrypted with a different key. " +
+        "The affected record may need to be re-saved."
+    );
+    return null;
+  }
 }
 
 /**
