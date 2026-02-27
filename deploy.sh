@@ -95,9 +95,17 @@ ssh "${REMOTE}" "
   cd ${REMOTE_DIR}
   # Remove old build output to avoid stale chunk collisions
   rm -rf .next
-  # Extract tar — this will NOT overwrite .db files (they're excluded)
-  tar xf ${TAR_NAME}
+  # Safeguard: protect DB files before extraction (belt + suspenders)
+  if [ -f nexus.db ]; then
+    chmod 444 nexus.db
+  fi
+  # Extract tar — DB files are excluded from tarball, but chmod guards too
+  tar xf ${TAR_NAME} --exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm'
   rm -f ${TAR_NAME}
+  # Restore DB permissions
+  if [ -f nexus.db ]; then
+    chmod 664 nexus.db
+  fi
   
   # Install deps if package.json changed
   npm install --production 2>&1 | tail -3
