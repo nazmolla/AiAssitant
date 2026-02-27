@@ -21,6 +21,7 @@ export function AgentDashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showAllLogs, setShowAllLogs] = useState(false);
+  const [renderCount, setRenderCount] = useState(400);
   const [filter, setFilter] = useState<LogFilter>("all");
   const { formatDate } = useTheme();
 
@@ -33,12 +34,17 @@ export function AgentDashboard() {
   }, [showAllLogs]);
 
   useEffect(() => {
+    setRenderCount(showAllLogs ? 400 : 200);
+  }, [showAllLogs]);
+
+  useEffect(() => {
     fetchLogs();
-    if (autoRefresh) {
+    const shouldAutoRefresh = autoRefresh && !showAllLogs;
+    if (shouldAutoRefresh) {
       const interval = setInterval(fetchLogs, 15000);
       return () => clearInterval(interval);
     }
-  }, [autoRefresh, fetchLogs]);
+  }, [autoRefresh, showAllLogs, fetchLogs]);
 
   const filteredLogs = useMemo(() => logs.filter((l) => {
     if (filter === "all") return true;
@@ -49,12 +55,24 @@ export function AgentDashboard() {
   }), [logs, filter]);
 
   // Memoize stat counts to avoid re-computing on every render
-  const stats = useMemo(() => ({
-    total: logs.length,
-    errors: logs.filter((l) => l.level === "error").length,
-    thoughts: logs.filter((l) => l.level === "thought").length,
-    hitl: logs.filter((l) => l.source === "hitl").length,
-  }), [logs]);
+  const stats = useMemo(() => {
+    let errors = 0;
+    let thoughts = 0;
+    let hitl = 0;
+    for (const log of logs) {
+      if (log.level === "error") errors += 1;
+      if (log.level === "thought") thoughts += 1;
+      if (log.source === "hitl") hitl += 1;
+    }
+    return {
+      total: logs.length,
+      errors,
+      thoughts,
+      hitl,
+    };
+  }, [logs]);
+
+  const visibleLogs = useMemo(() => filteredLogs.slice(0, renderCount), [filteredLogs, renderCount]);
 
   const levelColor = (level: string) => {
     switch (level) {
@@ -171,6 +189,12 @@ export function AgentDashboard() {
         </div>
       )}
 
+      {showAllLogs && autoRefresh && (
+        <div className="text-xs text-muted-foreground/70 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2">
+          Auto-refresh is paused in "Show all logs" mode to keep mobile performance smooth.
+        </div>
+      )}
+
       {/* Log Stream */}
       <Card>
         <CardHeader>
@@ -181,7 +205,7 @@ export function AgentDashboard() {
         <CardContent>
           <ScrollArea className="h-[500px]">
             <div className="space-y-1">
-              {filteredLogs.map((log) => (
+              {visibleLogs.map((log) => (
                 <div
                   key={log.id}
                   className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-white/[0.03] text-sm font-mono transition-colors duration-200"
@@ -201,6 +225,16 @@ export function AgentDashboard() {
               {filteredLogs.length === 0 && (
                 <div className="text-center text-muted-foreground/60 py-12 text-sm font-light">
                   {filter !== "all" ? `No ${filter} logs found.` : "No agent logs yet. Start a conversation or enable proactive scanning."}
+                </div>
+              )}
+              {filteredLogs.length > visibleLogs.length && (
+                <div className="pt-2 flex justify-center">
+                  <button
+                    onClick={() => setRenderCount((prev) => prev + 400)}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-white/[0.08] text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors"
+                  >
+                    Load more logs ({filteredLogs.length - visibleLogs.length} remaining)
+                  </button>
                 </div>
               )}
             </div>
