@@ -10,6 +10,9 @@
     "test": "jest --forceExit",
     "test:unit": "jest --selectProjects unit --forceExit",
     "test:integration": "jest --selectProjects integration --forceExit",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:all": "npm run test && npm run test:e2e",
     "test:watch": "jest --watch",
     "db:init": "tsx src/lib/db/init.ts",
     "deploy": "bash deploy.sh",
@@ -68,6 +71,7 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.2.0",
+    "@playwright/test": "^1.58.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.11",
     "@types/jest": "^30.0.0",
