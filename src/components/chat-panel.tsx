@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -119,7 +119,8 @@ export function ChatPanel() {
   // Screen sharing state
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [screenSharing, setScreenSharing] = useState(false);
-  const [latestFrame, setLatestFrame] = useState<string | null>(null);
+  const latestFrameRef = useRef<string | null>(null);
+  const frameImgRef = useRef<HTMLImageElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -175,13 +176,19 @@ export function ChatPanel() {
       // Capture preview frame immediately
       setTimeout(() => {
         const frame = captureFrame();
-        if (frame) setLatestFrame(frame);
+        if (frame) {
+          latestFrameRef.current = frame;
+          if (frameImgRef.current) frameImgRef.current.src = frame;
+        }
       }, 500);
 
-      // Update preview every 5 seconds (reduced from 3s for performance)
+      // Update preview every 5 seconds via ref (no React re-render)
       frameIntervalRef.current = setInterval(() => {
         const frame = captureFrame();
-        if (frame) setLatestFrame(frame);
+        if (frame) {
+          latestFrameRef.current = frame;
+          if (frameImgRef.current) frameImgRef.current.src = frame;
+        }
       }, 5000);
 
       // Handle user stopping share via browser UI
@@ -213,7 +220,7 @@ export function ChatPanel() {
     }
     setScreenStream(null);
     setScreenSharing(false);
-    setLatestFrame(null);
+    latestFrameRef.current = null;
   }
 
   // Clean up screen share on unmount
@@ -475,6 +482,29 @@ export function ChatPanel() {
     }
   }
 
+  const activeThreadTitle = useMemo(() => threads.find(t => t.id === activeThread)?.title, [threads, activeThread]);
+
+  // Pre-process messages: parse attachments once, compute display data
+  const processedMessages = useMemo(() => {
+    return messages
+      .filter((msg) => {
+        if (msg.role === "tool") return false;
+        if (msg.role === "assistant") {
+          const parsedAtt: AttachmentMeta[] = msg.attachments ? JSON.parse(msg.attachments) : [];
+          const hasAtt = parsedAtt.length > 0;
+          const content = sanitizeAssistantContent(msg.content, hasAtt);
+          if (!content || content === "(no content)") return hasAtt;
+        }
+        return true;
+      })
+      .map((msg) => {
+        const attachments: AttachmentMeta[] = msg.attachments ? JSON.parse(msg.attachments) : [];
+        const approvalMeta = msg.role === "system" ? extractApprovalMeta(msg.content) : null;
+        const displayContent = approvalMeta ? stripApprovalMeta(msg.content) : msg.content;
+        return { msg, attachments, approvalMeta, displayContent };
+      });
+  }, [messages]);
+
   return (
     <div className="flex h-full">
       {/* Thread Sidebar — Glass panel */}
@@ -542,29 +572,11 @@ export function ChatPanel() {
               >
                 ← Threads
               </button>
-              <span className="text-xs text-muted-foreground/60 truncate">{threads.find(t => t.id === activeThread)?.title}</span>
+              <span className="text-xs text-muted-foreground/60 truncate">{activeThreadTitle}</span>
             </div>
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-4 max-w-3xl mx-auto">
-                {messages.filter((msg) => {
-                  // Hide tool messages entirely
-                  if (msg.role === "tool") return false;
-                  // Hide assistant messages that have no real content (only tool calls)
-                  if (msg.role === "assistant") {
-                    const content = sanitizeAssistantContent(msg.content, !!(msg.attachments && JSON.parse(msg.attachments).length > 0));
-                    const hasAttachments = msg.attachments && JSON.parse(msg.attachments).length > 0;
-                    if (!content || content === "(no content)") {
-                      // Keep if it has attachments
-                      return !!hasAttachments;
-                    }
-                  }
-                  return true;
-                }).map((msg) => {
-                  const attachments: AttachmentMeta[] = msg.attachments
-                    ? JSON.parse(msg.attachments)
-                    : [];
-                  const approvalMeta = msg.role === "system" ? extractApprovalMeta(msg.content) : null;
-                  const displayContent = approvalMeta ? stripApprovalMeta(msg.content) : msg.content;
+                {processedMessages.map(({ msg, attachments, approvalMeta, displayContent }) => {
 
                   return (
                     <div
@@ -669,9 +681,12 @@ export function ChatPanel() {
                   <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 animate-pulse">
                     <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
                     <span className="text-xs text-red-400 font-medium">Sharing your screen</span>
-                    {latestFrame && (
-                      <img src={latestFrame} alt="Screen preview" className="h-8 rounded ml-auto ring-1 ring-white/10" />
-                    )}
+                    <img
+                      ref={frameImgRef}
+                      alt="Screen preview"
+                      className="h-8 rounded ml-auto ring-1 ring-white/10"
+                      style={{ display: latestFrameRef.current ? undefined : "none" }}
+                    />
                     <button
                       onClick={stopScreenShare}
                       className="ml-1 text-xs px-2 py-0.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors"
@@ -686,7 +701,7 @@ export function ChatPanel() {
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {pendingFiles.map((pf, idx) => (
                       <div
-                        key={idx}
+                        key={`${pf.file.name}-${pf.file.lastModified}`}
                         className="relative group flex items-center gap-1.5 bg-white/[0.04] rounded-xl px-2.5 py-1.5 text-xs border border-white/[0.08]"
                       >
                         {pf.previewUrl ? (
@@ -800,7 +815,7 @@ export function ChatPanel() {
   );
 }
 
-function AttachmentPreview({ attachment }: { attachment: AttachmentMeta }) {
+const AttachmentPreview = memo(function AttachmentPreview({ attachment }: { attachment: AttachmentMeta }) {
   const isImage = attachment.mimeType.startsWith("image/");
   const isVideo = attachment.mimeType.startsWith("video/");
   const url = attachment.storagePath
@@ -843,4 +858,4 @@ function AttachmentPreview({ attachment }: { attachment: AttachmentMeta }) {
       </span>
     </a>
   );
-}
+});

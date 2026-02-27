@@ -92,7 +92,7 @@ export function ApprovalInbox() {
   }
 
   async function handleBulk(ids: string[], action: "approved" | "rejected") {
-    for (const id of ids) setActing((prev) => new Set(prev).add(id));
+    setActing((prev) => { const next = new Set(prev); ids.forEach(id => next.add(id)); return next; });
     try {
       // Process sequentially to avoid race conditions with agent loop continuations
       for (const id of ids) {

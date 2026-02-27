@@ -6,6 +6,20 @@ import { listMcpServers, type McpServerRecord } from "@/lib/db";
 import { addLog } from "@/lib/db";
 import type { ToolDefinition } from "@/lib/llm";
 
+/** Per-server connection timeout (ms). */
+const CONNECT_TIMEOUT_MS = 15_000;
+
+/** Race a promise against a timeout. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Connection to "${label}" timed out after ${ms}ms`)), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
 export interface ConnectedMcpServer {
   record: McpServerRecord;
   client: Client;
@@ -21,18 +35,24 @@ class McpManager {
 
   /**
    * Connect to all configured MCP servers from the database.
+   * Connections run in parallel with individual timeouts.
    */
   async connectAll(): Promise<void> {
     const servers = listMcpServers();
-    for (const server of servers) {
-      try {
-        await this.connect(server);
-      } catch (err) {
+    if (servers.length === 0) return;
+
+    const results = await Promise.allSettled(
+      servers.map((server) => this.connect(server))
+    );
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status === "rejected") {
         addLog({
           level: "error",
           source: "mcp",
-          message: `Failed to connect to MCP server "${server.name}": ${err}`,
-          metadata: JSON.stringify({ serverId: server.id }),
+          message: `Failed to connect to MCP server "${servers[i].name}": ${result.reason}`,
+          metadata: JSON.stringify({ serverId: servers[i].id }),
         });
       }
     }
@@ -93,7 +113,7 @@ class McpManager {
         args,
         env: { ...process.env, ...envVars } as Record<string, string>,
       });
-      await client.connect(transport);
+      await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, server.name);
     } else if (transportType === "sse") {
       const endpoint = server.url || server.command;
       if (!endpoint) {
@@ -104,7 +124,7 @@ class McpManager {
           headers: { ...envVars, ...authHeaders } as Record<string, string>,
         },
       } as any);
-      await client.connect(transport);
+      await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, server.name);
     } else if (transportType === "streamablehttp") {
       const endpoint = server.url || server.command;
       if (!endpoint) {
@@ -115,7 +135,7 @@ class McpManager {
         const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
           requestInit: { headers: httpHeaders },
         });
-        await client.connect(transport);
+        await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, server.name);
       } catch (streamErr) {
         // Fallback to SSE if StreamableHTTP fails (e.g. 404 — server uses legacy SSE)
         addLog({
@@ -134,7 +154,7 @@ class McpManager {
           const sseTransport = new SSEClientTransport(new URL(endpoint), {
             requestInit: { headers: httpHeaders },
           } as any);
-          await client.connect(sseTransport);
+          await withTimeout(client.connect(sseTransport), CONNECT_TIMEOUT_MS, server.name);
         } catch (_sseErr) {
           // Last resort: try SSE at endpoint + /sse (legacy MCP convention)
           addLog({
@@ -151,7 +171,7 @@ class McpManager {
           const sseTransport2 = new SSEClientTransport(new URL(sseUrl), {
             requestInit: { headers: httpHeaders },
           } as any);
-          await client.connect(sseTransport2);
+          await withTimeout(client.connect(sseTransport2), CONNECT_TIMEOUT_MS, server.name);
         }
       }
     } else {

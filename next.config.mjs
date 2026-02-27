@@ -1,6 +1,14 @@
+import { readFileSync } from 'fs';
+
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  env: {
+    NEXT_PUBLIC_APP_VERSION: pkg.version,
+    NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+  },
   experimental: {
     serverComponentsExternalPackages: ['better-sqlite3', 'discord.js', '@discordjs/ws', '@discordjs/rest', 'ssh2'],
     serverActions: {

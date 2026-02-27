@@ -9,6 +9,8 @@ declare global {
   var __nexus_bootstrapPromise: Promise<void> | undefined;
   // eslint-disable-next-line no-var
   var __nexus_bootstrapped: boolean | undefined;
+  // eslint-disable-next-line no-var
+  var __nexus_bgServicesPromise: Promise<void> | undefined;
 }
 
 async function connectConfiguredMcpServers(): Promise<void> {
@@ -41,6 +43,50 @@ async function startDiscordBots(): Promise<void> {
   }
 }
 
+/**
+ * Start background services (MCP connections, Discord bots) without
+ * blocking API route responses.  Called once after the critical path
+ * (DB + scheduler) is ready.
+ */
+function startBackgroundServices(): void {
+  if (globalThis.__nexus_bgServicesPromise) return;
+
+  globalThis.__nexus_bgServicesPromise = (async () => {
+    try {
+      await connectConfiguredMcpServers();
+    } catch (err) {
+      addLog({
+        level: "error",
+        source: "mcp",
+        message: `Failed to auto-connect MCP servers: ${err}`,
+        metadata: null,
+      });
+    }
+
+    try {
+      loadCustomToolsFromDb();
+    } catch (err) {
+      addLog({
+        level: "error",
+        source: "custom-tools",
+        message: `Failed to load custom tools: ${err}`,
+        metadata: null,
+      });
+    }
+
+    try {
+      await startDiscordBots();
+    } catch (err) {
+      addLog({
+        level: "error",
+        source: "discord",
+        message: `Failed to auto-start Discord bots: ${err}`,
+        metadata: null,
+      });
+    }
+  })();
+}
+
 export async function bootstrapRuntime(): Promise<void> {
   if (globalThis.__nexus_bootstrapped) {
     return;
@@ -48,45 +94,14 @@ export async function bootstrapRuntime(): Promise<void> {
 
   if (!globalThis.__nexus_bootstrapPromise) {
     globalThis.__nexus_bootstrapPromise = (async () => {
+      // Critical path: DB + scheduler only — fast, no network I/O
       initializeDatabase();
-
-      try {
-        await connectConfiguredMcpServers();
-      } catch (err) {
-        addLog({
-          level: "error",
-          source: "mcp",
-          message: `Failed to auto-connect MCP servers: ${err}`,
-          metadata: null,
-        });
-      }
-
-      // Load agent-created custom tools from DB
-      try {
-        loadCustomToolsFromDb();
-      } catch (err) {
-        addLog({
-          level: "error",
-          source: "custom-tools",
-          message: `Failed to load custom tools: ${err}`,
-          metadata: null,
-        });
-      }
-
       startScheduler();
 
-      try {
-        await startDiscordBots();
-      } catch (err) {
-        addLog({
-          level: "error",
-          source: "discord",
-          message: `Failed to auto-start Discord bots: ${err}`,
-          metadata: null,
-        });
-      }
-
       globalThis.__nexus_bootstrapped = true;
+
+      // Fire-and-forget: MCP connections + Discord bots run in background
+      startBackgroundServices();
     })();
   }
 

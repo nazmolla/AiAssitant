@@ -39,6 +39,7 @@ export function ToolPolicies() {
   const [policies, setPolicies] = useState<ToolPolicy[]>([]);
   const [serverNames, setServerNames] = useState<Record<string, string>>({});
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [isMobile, setIsMobile] = useState(false);
 
   const fetchAll = useCallback(() => {
     fetch("/api/mcp/tools").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setTools(d); }).catch(console.error);
@@ -52,6 +53,14 @@ export function ToolPolicies() {
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   async function togglePolicy(toolName: string, field: "requires_approval" | "is_proactive_enabled", value: boolean) {
     const existing = policies.find((p) => p.tool_name === toolName);
@@ -194,7 +203,8 @@ export function ToolPolicies() {
             </CardHeader>
             {!isCollapsed && (
             <CardContent className="p-0 pt-2">
-              <div className="md:hidden px-3 pb-3 space-y-2">
+              {isMobile ? (
+              <div className="px-3 pb-3 space-y-2">
                 <div className="flex items-center gap-3 text-[10px]">
                   <div className="flex items-center gap-1">
                     <span className="text-muted-foreground/40 uppercase tracking-wider">Approval:</span>
@@ -236,8 +246,9 @@ export function ToolPolicies() {
                   );
                 })}
               </div>
+              ) : (
 
-              <div className="hidden md:block overflow-x-auto">
+              <div className="overflow-x-auto">
               <table className="w-full min-w-[760px]">
                 <thead>
                   <tr className="border-b border-white/[0.06] text-left text-[11px] text-muted-foreground/50 uppercase tracking-wider">
@@ -277,6 +288,7 @@ export function ToolPolicies() {
                 </tbody>
               </table>
               </div>
+              )}
             </CardContent>
             )}
           </Card>

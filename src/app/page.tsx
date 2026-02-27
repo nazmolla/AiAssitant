@@ -1,24 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
+import dynamic from "next/dynamic";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ChatPanel } from "@/components/chat-panel";
-import { ApprovalInbox } from "@/components/approval-inbox";
-import { KnowledgeVault } from "@/components/knowledge-vault";
-import { McpConfig } from "@/components/mcp-config";
-import { LlmConfig } from "@/components/llm-config";
-import { ChannelsConfig } from "@/components/channels-config";
-import { ProfileConfig } from "@/components/profile-config";
-import { AgentDashboard } from "@/components/agent-dashboard";
-import { UserManagement } from "@/components/user-management";
-import { AuthConfig } from "@/components/auth-config";
-import { ToolPolicies } from "@/components/tool-policies";
-import { CustomToolsConfig } from "@/components/custom-tools-config";
-import { LoggingConfig } from "@/components/logging-config";
 import { useTheme, THEMES, type ThemeId } from "@/components/theme-provider";
+
+/* ── Lazy-loaded tab components (code-split into separate chunks) ── */
+const ChatPanel = dynamic(() => import("@/components/chat-panel").then(m => ({ default: m.ChatPanel })), { ssr: false });
+const ApprovalInbox = dynamic(() => import("@/components/approval-inbox").then(m => ({ default: m.ApprovalInbox })), { ssr: false });
+const KnowledgeVault = dynamic(() => import("@/components/knowledge-vault").then(m => ({ default: m.KnowledgeVault })), { ssr: false });
+const AgentDashboard = dynamic(() => import("@/components/agent-dashboard").then(m => ({ default: m.AgentDashboard })), { ssr: false });
+
+/* ── Lazy-loaded settings sub-tab components ── */
+const McpConfig = dynamic(() => import("@/components/mcp-config").then(m => ({ default: m.McpConfig })), { ssr: false });
+const LlmConfig = dynamic(() => import("@/components/llm-config").then(m => ({ default: m.LlmConfig })), { ssr: false });
+const ChannelsConfig = dynamic(() => import("@/components/channels-config").then(m => ({ default: m.ChannelsConfig })), { ssr: false });
+const ProfileConfig = dynamic(() => import("@/components/profile-config").then(m => ({ default: m.ProfileConfig })), { ssr: false });
+const UserManagement = dynamic(() => import("@/components/user-management").then(m => ({ default: m.UserManagement })), { ssr: false });
+const AuthConfig = dynamic(() => import("@/components/auth-config").then(m => ({ default: m.AuthConfig })), { ssr: false });
+const ToolPolicies = dynamic(() => import("@/components/tool-policies").then(m => ({ default: m.ToolPolicies })), { ssr: false });
+const CustomToolsConfig = dynamic(() => import("@/components/custom-tools-config").then(m => ({ default: m.CustomToolsConfig })), { ssr: false });
+const LoggingConfig = dynamic(() => import("@/components/logging-config").then(m => ({ default: m.LoggingConfig })), { ssr: false });
 
 export default function HomePage() {
   const router = useRouter();
@@ -102,16 +107,19 @@ export default function HomePage() {
           <span className="hidden sm:inline text-[10px] text-muted-foreground/70 bg-primary/5 border border-primary/10 px-2.5 py-1 rounded-full font-medium uppercase tracking-widest">
             Command Center
           </span>
+          <span className="hidden sm:inline text-[9px] text-muted-foreground/40 font-mono">
+            v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}
+          </span>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           <ThemeSwitcher />
           <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" title="Online" />
-          <span className="text-[13px] text-muted-foreground font-medium">
+          <span className="hidden sm:inline text-[13px] text-muted-foreground font-medium max-w-[180px] truncate">
             {displayName || session.user?.email}
           </span>
           <button
             onClick={() => signOut({ callbackUrl: `${window.location.origin}/auth/signin` })}
-            className="text-xs text-muted-foreground/60 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10"
+            className="text-[11px] sm:text-xs text-muted-foreground/60 hover:text-red-400 transition-colors px-1.5 sm:px-2 py-1 rounded-lg hover:bg-red-500/10"
             title="Sign out"
           >
             Logout
@@ -123,62 +131,68 @@ export default function HomePage() {
       <main className="flex-1 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
           <div className="glass px-2 sm:px-6 py-2 flex items-center justify-start overflow-x-auto">
-            <TabsList className="flex-nowrap w-max min-w-max">
+            <TabsList className="grid grid-flow-col auto-cols-max sm:flex-nowrap w-max min-w-max gap-1">
               {!!perms.chat && (
                 <TabsTrigger value="chat">
                   <span className="mr-0 sm:mr-1.5">💬</span>
-                  <span className={activeTab === "chat" ? "inline sm:inline ml-1 sm:ml-0" : "hidden sm:inline"}>Chat</span>
+                  <span className="inline ml-1 sm:ml-0">Chat</span>
                 </TabsTrigger>
               )}
               {!!perms.dashboard && (
                 <TabsTrigger value="dashboard">
                   <span className="mr-0 sm:mr-1.5">📊</span>
-                  <span className={activeTab === "dashboard" ? "inline sm:inline ml-1 sm:ml-0" : "hidden sm:inline"}>Dashboard</span>
+                  <span className="inline ml-1 sm:ml-0">Dashboard</span>
                 </TabsTrigger>
               )}
               {!!perms.approvals && (
                 <TabsTrigger value="approvals">
                   <span className="mr-0 sm:mr-1.5">✅</span>
-                  <span className={activeTab === "approvals" ? "inline sm:inline ml-1 sm:ml-0" : "hidden sm:inline"}>Approvals</span>
+                  <span className="inline ml-1 sm:ml-0">Approvals</span>
                 </TabsTrigger>
               )}
               {!!perms.knowledge && (
                 <TabsTrigger value="knowledge">
                   <span className="mr-0 sm:mr-1.5">🧠</span>
-                  <span className={activeTab === "knowledge" ? "inline sm:inline ml-1 sm:ml-0" : "hidden sm:inline"}>Knowledge</span>
+                  <span className="inline ml-1 sm:ml-0">Knowledge</span>
                 </TabsTrigger>
               )}
               <TabsTrigger value="config">
                 <span className="mr-0 sm:mr-1.5">⚙️</span>
-                <span className={activeTab === "config" ? "inline sm:inline ml-1 sm:ml-0" : "hidden sm:inline"}>Settings</span>
+                <span className="inline ml-1 sm:ml-0">Settings</span>
               </TabsTrigger>
             </TabsList>
           </div>
 
           <TabsContent value="chat" className="flex-1 overflow-hidden m-0">
-            <ChatPanel />
+            {activeTab === "chat" && <ChatPanel />}
           </TabsContent>
 
-          <TabsContent value="dashboard" className="flex-1 overflow-auto m-0 p-6">
-            <div className="max-w-5xl mx-auto">
-              <AgentDashboard />
-            </div>
+          <TabsContent value="dashboard" className="flex-1 overflow-auto m-0 p-3 sm:p-6">
+            {activeTab === "dashboard" && (
+              <div className="max-w-5xl mx-auto">
+                <AgentDashboard />
+              </div>
+            )}
           </TabsContent>
 
-          <TabsContent value="approvals" className="flex-1 overflow-auto m-0 p-6">
-            <div className="max-w-3xl mx-auto">
-              <ApprovalInbox />
-            </div>
+          <TabsContent value="approvals" className="flex-1 overflow-auto m-0 p-3 sm:p-6">
+            {activeTab === "approvals" && (
+              <div className="max-w-3xl mx-auto">
+                <ApprovalInbox />
+              </div>
+            )}
           </TabsContent>
 
-          <TabsContent value="knowledge" className="flex-1 overflow-auto m-0 p-6">
-            <div className="max-w-5xl mx-auto">
-              <KnowledgeVault />
-            </div>
+          <TabsContent value="knowledge" className="flex-1 overflow-auto m-0 p-3 sm:p-6">
+            {activeTab === "knowledge" && (
+              <div className="max-w-5xl mx-auto">
+                <KnowledgeVault />
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="config" className="flex-1 overflow-hidden m-0">
-            <SettingsPanel userRole={userRole} perms={perms} />
+            {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} />}
           </TabsContent>
         </Tabs>
       </main>
@@ -204,7 +218,7 @@ const SETTINGS_PAGES: SettingsPage[] = [
   { key: "channels", label: "Channels", icon: "📡", permKey: "channels" },
   { key: "mcp", label: "MCP Servers", icon: "🔌", permKey: "mcp_servers" },
   { key: "policies", label: "Tool Policies", icon: "🛡️", permKey: "mcp_servers" },
-  { key: "logging", label: "Logging", icon: "🧾", adminOnly: true },
+  { key: "logging", label: "Logging", icon: "🧾" },
   { key: "custom-tools", label: "Custom Tools", icon: "🔧", adminOnly: true },
   { key: "auth", label: "Authentication", icon: "🔐", adminOnly: true },
   { key: "users", label: "Users", icon: "👥", adminOnly: true },
@@ -225,35 +239,43 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
 function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<string, number> }) {
   const [active, setActive] = useState("profile");
 
-  const visiblePages = SETTINGS_PAGES.filter((p) => {
+  const visiblePages = useMemo(() => SETTINGS_PAGES.filter((p) => {
     if (p.adminOnly && userRole !== "admin") return false;
     if (p.permKey && !perms[p.permKey]) return false;
     return true;
-  });
+  }), [userRole, perms]);
 
   const header = SETTINGS_HEADERS[active];
 
   return (
     <div className="flex flex-col sm:flex-row h-full">
       {/* Left sidebar — horizontal scroll on mobile, vertical on desktop */}
-      <nav className="sm:w-52 shrink-0 border-b sm:border-b-0 sm:border-r border-white/[0.06] bg-white/[0.01] overflow-x-auto sm:overflow-y-auto py-2 sm:py-4 px-2">
-        <div className="flex sm:flex-col gap-1 sm:gap-0.5">
+      <nav className="sm:w-52 shrink-0 border-b sm:border-b-0 sm:border-r border-white/[0.06] bg-white/[0.01] overflow-y-auto py-2 sm:py-4 px-2 flex flex-col">
+        <div className="flex flex-wrap sm:flex-col gap-1 sm:gap-0.5 flex-1">
           {visiblePages.map((page) => (
             <button
               key={page.key}
               onClick={() => setActive(page.key)}
-              className={`shrink-0 sm:w-full flex items-center gap-2 sm:gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200 text-left whitespace-nowrap ${
+              className={`sm:w-full flex items-center gap-2 sm:gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200 text-left whitespace-nowrap ${
                 active === page.key
                   ? "bg-primary/10 text-primary border border-primary/15"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
               }`}
             >
               <span className="text-sm">{page.icon}</span>
-              <span className={active === page.key ? "inline sm:inline" : "hidden sm:inline"}>
+              <span className="inline">
                 {page.label}
               </span>
             </button>
           ))}
+        </div>
+        <div className="hidden sm:block mt-4 pt-3 border-t border-white/[0.06] px-3">
+          <div className="text-[10px] text-muted-foreground/40 space-y-0.5">
+            <div>Nexus v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}</div>
+            <div>Built {process.env.NEXT_PUBLIC_BUILD_TIME
+              ? new Date(process.env.NEXT_PUBLIC_BUILD_TIME).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
+              : "dev"}</div>
+          </div>
         </div>
       </nav>
 
@@ -272,7 +294,7 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
           {active === "channels" && <ChannelsConfig />}
           {active === "mcp" && <McpConfig />}
           {active === "policies" && <ToolPolicies />}
-          {active === "logging" && userRole === "admin" && <LoggingConfig />}
+          {active === "logging" && <LoggingConfig />}
           {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
           {active === "auth" && userRole === "admin" && <AuthConfig />}
           {active === "users" && userRole === "admin" && <UserManagement />}
@@ -289,6 +311,7 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
 function ThemeSwitcher() {
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
+  const activeTheme = useMemo(() => THEMES.find(t => t.id === theme), [theme]);
 
   return (
     <div className="relative">
@@ -299,9 +322,9 @@ function ThemeSwitcher() {
       >
         <span
           className="h-3 w-3 rounded-full border border-white/20"
-          style={{ background: THEMES.find((t) => t.id === theme)?.swatch }}
+          style={{ background: activeTheme?.swatch }}
         />
-        <span className="hidden sm:inline">{THEMES.find((t) => t.id === theme)?.label}</span>
+        <span className="hidden sm:inline">{activeTheme?.label}</span>
       </button>
       {open && (
         <>

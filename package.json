@@ -12,7 +12,8 @@
     "test:integration": "jest --selectProjects integration --forceExit",
     "test:watch": "jest --watch",
     "db:init": "tsx src/lib/db/init.ts",
-    "deploy": "npm install && npx playwright install chromium && npm run build && npm run start",
+    "deploy": "bash deploy.sh",
+    "deploy:local": "npm install && npx playwright install chromium && npm run build && npm run start",
     "deploy:dev": "npm install && npx playwright install chromium && npm run dev"
   },
   "dependencies": {

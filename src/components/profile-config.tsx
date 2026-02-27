@@ -51,6 +51,8 @@ const EMPTY: ProfileData = {
   timezone: "",
 };
 
+const LABEL_CLASS = "text-[11px] font-medium text-muted-foreground/60 mb-1.5 block uppercase tracking-wider";
+
 export function ProfileConfig() {
   const [profile, setProfile] = useState<ProfileData>(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -73,6 +75,10 @@ export function ProfileConfig() {
     }
   }, []);
 
+  const timezoneOptions = useMemo(() => timezones.map((tz) => (
+    <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+  )), [timezones]);
+
   const load = useCallback(async () => {
     const res = await fetch("/api/config/profile");
     const data = await res.json();
@@ -88,9 +94,9 @@ export function ProfileConfig() {
 
   useEffect(() => { load(); }, [load]);
 
-  const languages: string[] = (() => {
-    try { return JSON.parse(profile.languages); } catch { return []; }
-  })();
+  const languages: string[] = useMemo(() => {
+    try { return JSON.parse(profile.languages) as string[]; } catch { return []; }
+  }, [profile.languages]);
 
   const update = (field: keyof ProfileData, value: string | number) =>
     setProfile((p) => ({ ...p, [field]: typeof EMPTY[field] === "number" ? Number(value) : value }));
@@ -118,7 +124,7 @@ export function ProfileConfig() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const labelClass = "text-[11px] font-medium text-muted-foreground/60 mb-1.5 block uppercase tracking-wider";
+  const labelClass = LABEL_CLASS;
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -337,9 +343,7 @@ export function ProfileConfig() {
               className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
             >
               <option value="">Auto (browser default)</option>
-              {timezones.map((tz) => (
-                <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
-              ))}
+              {timezoneOptions}
             </select>
             <p className="text-[10px] text-muted-foreground/50 mt-1">
               Controls how dates and times are displayed throughout the app.

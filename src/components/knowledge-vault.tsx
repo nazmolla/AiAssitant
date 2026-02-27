@@ -33,6 +33,7 @@ export function KnowledgeVault() {
   const [editValue, setEditValue] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [renderCount, setRenderCount] = useState(120);
+  const [isMobile, setIsMobile] = useState(false);
   const { formatDate } = useTheme();
 
   const fetchKnowledge = () => {
@@ -73,6 +74,14 @@ export function KnowledgeVault() {
     setRenderCount(120);
   }, [sourceFilter]);
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
   const visibleEntries = useMemo(() => filteredEntries.slice(0, renderCount), [filteredEntries, renderCount]);
 
   return (
@@ -111,7 +120,8 @@ export function KnowledgeVault() {
       {/* Knowledge Table */}
       <Card>
         <CardContent className="p-0">
-          <div className="md:hidden p-3 space-y-2">
+          {isMobile ? (
+          <div className="p-3 space-y-2">
             {visibleEntries.map((entry) => (
               <div key={entry.id} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
                 <div className="flex items-start justify-between gap-2">
@@ -159,8 +169,9 @@ export function KnowledgeVault() {
               </div>
             ))}
           </div>
+          ) : (
 
-          <div className="hidden md:block overflow-x-auto">
+          <div className="overflow-x-auto">
             <table className="w-full min-w-[760px]">
               <thead>
                 <tr className="border-b border-white/[0.06] text-left text-[11px] text-muted-foreground/50 uppercase tracking-wider">
@@ -233,6 +244,7 @@ export function KnowledgeVault() {
               </tbody>
             </table>
           </div>
+          )}
 
           {filteredEntries.length === 0 && (
             <div className="p-12 text-center">

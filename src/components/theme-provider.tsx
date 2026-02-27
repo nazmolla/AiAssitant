@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 
 export type ThemeId = "ember" | "midnight" | "frost" | "sunrise" | "forest" | "amethyst" | "obsidian";
 
@@ -72,7 +72,10 @@ const FONT_STORAGE_KEY = "nexus-font";
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeId>("ember");
   const [font, setFontState] = useState<FontId>("inter");
-  const [timezone, setTimezoneState] = useState<string>("");
+  // Auto-detect browser timezone as default so times are always localized
+  const [timezone, setTimezoneState] = useState<string>(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; }
+  });
 
   // Load from localStorage immediately, then override with DB profile
   useEffect(() => {
@@ -105,7 +108,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             applyFont(data.font);
             try { localStorage.setItem(FONT_STORAGE_KEY, data.font); } catch {}
           }
-          if (typeof data.timezone === "string") {
+          if (typeof data.timezone === "string" && data.timezone) {
             setTimezoneState(data.timezone);
           }
         }
@@ -153,8 +156,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return date.toLocaleString(undefined, opts);
   }, [timezone]);
 
+  const contextValue = useMemo(
+    () => ({ theme, setTheme, font, setFont, timezone, setTimezone, formatDate }),
+    [theme, setTheme, font, setFont, timezone, setTimezone, formatDate]
+  );
+
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, font, setFont, timezone, setTimezone, formatDate }}>
+    <ThemeContext.Provider value={contextValue}>
       {children}
     </ThemeContext.Provider>
   );
