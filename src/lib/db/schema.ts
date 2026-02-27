@@ -69,6 +69,14 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ═══ Server-Wide App Config ═══
+
+CREATE TABLE IF NOT EXISTS app_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ═══ MCP Servers (user_id NULL = global) ═══
 
 CREATE TABLE IF NOT EXISTS mcp_servers (
@@ -171,7 +179,7 @@ CREATE TABLE IF NOT EXISTS approval_queue (
 
 CREATE TABLE IF NOT EXISTS agent_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    level TEXT DEFAULT 'info',
+    level TEXT DEFAULT 'verbose',
     source TEXT,
     message TEXT NOT NULL,
     metadata TEXT,

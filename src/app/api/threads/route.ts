@@ -1,24 +1,66 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { listThreads, createThread } from "@/lib/db";
+import { listThreads, createThread, addLog } from "@/lib/db";
 import { initializeDatabase } from "@/lib/db";
 
 // Ensure DB is initialized
-try { initializeDatabase(); } catch {}
+try {
+  initializeDatabase();
+  addLog({ level: "verbose", source: "api.threads", message: "Database initialized for threads route.", metadata: null });
+} catch (err) {
+  addLog({
+    level: "critical",
+    source: "api.threads",
+    message: "Failed to initialize database for threads route.",
+    metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+  });
+}
 
 export async function GET() {
-  const auth = await requireUser();
-  if ("error" in auth) return auth.error;
+  try {
+    const auth = await requireUser();
+    if ("error" in auth) return auth.error;
 
-  const threads = listThreads(auth.user.id);
-  return NextResponse.json(threads);
+    const threads = listThreads(auth.user.id);
+    addLog({
+      level: "verbose",
+      source: "api.threads",
+      message: "Fetched threads list.",
+      metadata: JSON.stringify({ userId: auth.user.id, count: threads.length }),
+    });
+    return NextResponse.json(threads);
+  } catch (err) {
+    addLog({
+      level: "error",
+      source: "api.threads",
+      message: "Failed to fetch threads.",
+      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+    });
+    return NextResponse.json({ error: "Failed to fetch threads." }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireUser();
-  if ("error" in auth) return auth.error;
+  try {
+    const auth = await requireUser();
+    if ("error" in auth) return auth.error;
 
-  const body = await req.json();
-  const thread = createThread(body.title, auth.user.id);
-  return NextResponse.json(thread, { status: 201 });
+    const body = await req.json();
+    const thread = createThread(body.title, auth.user.id);
+    addLog({
+      level: "verbose",
+      source: "api.threads",
+      message: "Created new thread.",
+      metadata: JSON.stringify({ userId: auth.user.id, threadId: thread.id }),
+    });
+    return NextResponse.json(thread, { status: 201 });
+  } catch (err) {
+    addLog({
+      level: "error",
+      source: "api.threads",
+      message: "Failed to create thread.",
+      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+    });
+    return NextResponse.json({ error: "Failed to create thread." }, { status: 500 });
+  }
 }

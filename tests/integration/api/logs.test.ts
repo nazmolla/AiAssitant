@@ -6,7 +6,7 @@ installAuthMocks();
 
 import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db";
 import { NextRequest } from "next/server";
-import { GET } from "@/app/api/logs/route";
+import { GET, DELETE } from "@/app/api/logs/route";
 import { addLog } from "@/lib/db/queries";
 
 let adminId: string;
@@ -53,8 +53,27 @@ describe("GET /api/logs", () => {
     const data = await res.json();
     expect(data.length).toBe(2);
     const levels = data.map((l: any) => l.level);
-    expect(levels).toContain("info");
+    expect(levels).toContain("verbose");
     expect(levels).toContain("error");
+  });
+
+  test("supports level filter", async () => {
+    setMockUser({ id: adminId, email: "log-admin@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/logs?level=error");
+    const res = await GET(req);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.every((l: any) => l.level === "error")).toBe(true);
+  });
+
+  test("supports source filter", async () => {
+    addLog({ level: "thought", source: null, message: "Thought trace", metadata: null });
+    setMockUser({ id: adminId, email: "log-admin@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/logs?source=thought");
+    const res = await GET(req);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.every((l: any) => l.source === "thought")).toBe(true);
   });
 
   test("respects limit query parameter", async () => {
@@ -89,5 +108,19 @@ describe("GET /api/logs", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
+  });
+
+  test("supports cleanup by level", async () => {
+    addLog({ level: "warning", source: "scheduler", message: "Cleanup me", metadata: null });
+    setMockUser({ id: adminId, email: "log-admin@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/logs", {
+      method: "DELETE",
+      body: JSON.stringify({ mode: "level", level: "warning" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await DELETE(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
   });
 });

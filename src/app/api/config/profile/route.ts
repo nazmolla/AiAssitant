@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { getUserProfile, upsertUserProfile } from "@/lib/db";
+import { getUserProfile, upsertUserProfile, addLog } from "@/lib/db";
 
 // Maximum lengths for profile fields (defence-in-depth)
 const MAX_FIELD_LEN = 500;
@@ -19,8 +19,20 @@ export async function GET() {
     if ("error" in auth) return auth.error;
 
     const profile = getUserProfile(auth.user.id);
+    addLog({
+      level: "verbose",
+      source: "api.config.profile",
+      message: "Fetched profile configuration.",
+      metadata: JSON.stringify({ userId: auth.user.id, exists: !!profile }),
+    });
     return NextResponse.json(profile ?? null);
   } catch (e: any) {
+    addLog({
+      level: "error",
+      source: "api.config.profile",
+      message: "Failed to fetch profile configuration.",
+      metadata: JSON.stringify({ error: e instanceof Error ? e.message : String(e) }),
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -50,8 +62,20 @@ export async function PUT(req: Request) {
       }
     }
     const updated = upsertUserProfile(auth.user.id, sanitized);
+    addLog({
+      level: "verbose",
+      source: "api.config.profile",
+      message: "Updated profile configuration.",
+      metadata: JSON.stringify({ userId: auth.user.id, fields: Object.keys(sanitized) }),
+    });
     return NextResponse.json(updated);
   } catch (e: any) {
+    addLog({
+      level: "error",
+      source: "api.config.profile",
+      message: "Failed to update profile configuration.",
+      metadata: JSON.stringify({ error: e instanceof Error ? e.message : String(e) }),
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

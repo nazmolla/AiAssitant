@@ -8,14 +8,14 @@ import { useTheme } from "@/components/theme-provider";
 
 interface LogEntry {
   id: number;
-  level: string;
+  level: "verbose" | "warning" | "error" | "critical";
   source: string | null;
   message: string;
   metadata: string | null;
   created_at: string;
 }
 
-type LogFilter = "all" | "error" | "thought" | "hitl";
+type LogFilter = "all" | "verbose" | "warning" | "error" | "critical" | "thought";
 
 export function AgentDashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -27,11 +27,13 @@ export function AgentDashboard() {
 
   const fetchLogs = useCallback(() => {
     const limit = showAllLogs ? "all" : "200";
-    fetch(`/api/logs?limit=${limit}`)
+    const level = filter === "thought" || filter === "all" ? "all" : filter;
+    const source = filter === "thought" ? "thought" : "all";
+    fetch(`/api/logs?limit=${limit}&level=${level}&source=${source}`)
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setLogs(d); })
       .catch(console.error);
-  }, [showAllLogs]);
+  }, [showAllLogs, filter]);
 
   useEffect(() => {
     setRenderCount(showAllLogs ? 400 : 200);
@@ -48,27 +50,35 @@ export function AgentDashboard() {
 
   const filteredLogs = useMemo(() => logs.filter((l) => {
     if (filter === "all") return true;
+    if (filter === "thought") return l.source === "thought";
+    if (filter === "verbose") return l.level === "verbose";
+    if (filter === "warning") return l.level === "warning";
     if (filter === "error") return l.level === "error";
-    if (filter === "thought") return l.level === "thought";
-    if (filter === "hitl") return l.source === "hitl";
+    if (filter === "critical") return l.level === "critical";
     return true;
   }), [logs, filter]);
 
   // Memoize stat counts to avoid re-computing on every render
   const stats = useMemo(() => {
+    let verbose = 0;
+    let warnings = 0;
     let errors = 0;
+    let critical = 0;
     let thoughts = 0;
-    let hitl = 0;
     for (const log of logs) {
+      if (log.level === "verbose") verbose += 1;
+      if (log.level === "warning") warnings += 1;
       if (log.level === "error") errors += 1;
-      if (log.level === "thought") thoughts += 1;
-      if (log.source === "hitl") hitl += 1;
+      if (log.level === "critical") critical += 1;
+      if (log.source === "thought") thoughts += 1;
     }
     return {
       total: logs.length,
+      verbose,
+      warnings,
       errors,
+      critical,
       thoughts,
-      hitl,
     };
   }, [logs]);
 
@@ -76,9 +86,10 @@ export function AgentDashboard() {
 
   const levelColor = (level: string) => {
     switch (level) {
+      case "critical": return "destructive";
       case "error": return "destructive";
-      case "warn": return "warning";
-      case "thought": return "secondary";
+      case "warning": return "warning";
+      case "verbose": return "secondary";
       default: return "outline";
     }
   };
@@ -123,7 +134,7 @@ export function AgentDashboard() {
       </div>
 
       {/* Stats Cards — clickable to filter logs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         <Card
           className={`group cursor-pointer transition-all duration-300 ${filter === "all" ? "border-primary/30 bg-primary/5" : "hover:border-primary/20"}`}
           onClick={() => setFilter(filter === "all" ? "all" : "all")}
@@ -136,7 +147,33 @@ export function AgentDashboard() {
           </CardContent>
         </Card>
         <Card
-          className={`group cursor-pointer transition-all duration-300 ${filter === "error" ? "border-red-500/30 bg-red-500/5" : "hover:border-red-500/20"}`}
+          className={`group cursor-pointer transition-all duration-300 ${filter === "verbose" ? "border-blue-500/30 bg-blue-500/5" : "hover:border-blue-500/20"}`}
+          onClick={() => setFilter(filter === "verbose" ? "all" : "verbose")}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Verbose</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl sm:text-3xl font-display font-bold text-blue-400">
+              {stats.verbose}
+            </div>
+          </CardContent>
+        </Card>
+        <Card
+          className={`group cursor-pointer transition-all duration-300 ${filter === "warning" ? "border-yellow-500/30 bg-yellow-500/5" : "hover:border-yellow-500/20"}`}
+          onClick={() => setFilter(filter === "warning" ? "all" : "warning")}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Warnings</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl sm:text-3xl font-display font-bold text-yellow-400">
+              {stats.warnings}
+            </div>
+          </CardContent>
+        </Card>
+        <Card
+          className={`group cursor-pointer transition-all duration-300 ${filter === "error" ? "border-orange-500/30 bg-orange-500/5" : "hover:border-orange-500/20"}`}
           onClick={() => setFilter(filter === "error" ? "all" : "error")}
         >
           <CardHeader className="pb-2">
@@ -149,28 +186,28 @@ export function AgentDashboard() {
           </CardContent>
         </Card>
         <Card
-          className={`group cursor-pointer transition-all duration-300 ${filter === "thought" ? "border-blue-500/30 bg-blue-500/5" : "hover:border-blue-500/20"}`}
+          className={`group cursor-pointer transition-all duration-300 ${filter === "critical" ? "border-red-500/40 bg-red-500/10" : "hover:border-red-500/30"}`}
+          onClick={() => setFilter(filter === "critical" ? "all" : "critical")}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Critical</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl sm:text-3xl font-display font-bold text-red-400">
+              {stats.critical}
+            </div>
+          </CardContent>
+        </Card>
+        <Card
+          className={`group cursor-pointer transition-all duration-300 ${filter === "thought" ? "border-indigo-500/30 bg-indigo-500/5" : "hover:border-indigo-500/20"}`}
           onClick={() => setFilter(filter === "thought" ? "all" : "thought")}
         >
           <CardHeader className="pb-2">
             <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Thoughts</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl sm:text-3xl font-display font-bold text-blue-400">
+            <div className="text-2xl sm:text-3xl font-display font-bold text-indigo-400">
               {stats.thoughts}
-            </div>
-          </CardContent>
-        </Card>
-        <Card
-          className={`group cursor-pointer transition-all duration-300 ${filter === "hitl" ? "border-yellow-500/30 bg-yellow-500/5" : "hover:border-yellow-500/20"}`}
-          onClick={() => setFilter(filter === "hitl" ? "all" : "hitl")}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">HITL Events</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-display font-bold text-yellow-400">
-              {stats.hitl}
             </div>
           </CardContent>
         </Card>
@@ -181,7 +218,15 @@ export function AgentDashboard() {
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground/60">Filtering:</span>
           <Badge variant="outline" className="text-xs">
-            {filter === "error" ? "Errors only" : filter === "thought" ? "Thoughts only" : "HITL events only"}
+            {filter === "verbose"
+              ? "Verbose only"
+              : filter === "warning"
+                ? "Warnings only"
+                : filter === "error"
+                  ? "Errors only"
+                  : filter === "critical"
+                    ? "Critical only"
+                    : "Thought details only"}
           </Badge>
           <button onClick={() => setFilter("all")} className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors">
             Clear

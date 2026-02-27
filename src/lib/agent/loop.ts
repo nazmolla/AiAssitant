@@ -236,7 +236,14 @@ export async function runAgentLoop(
       try {
         const langs = JSON.parse(profile.languages || "[]");
         if (langs.length > 0) fields.push(`Languages: ${langs.join(", ")}`);
-      } catch { /* skip */ }
+      } catch (err) {
+        addLog({
+          level: "verbose",
+          source: "agent",
+          message: "Skipped malformed profile languages while building user context.",
+          metadata: JSON.stringify({ userId, error: err instanceof Error ? err.message : String(err) }),
+        });
+      }
       if (fields.length > 0) {
         profileContext =
           "\n\n<user_profile type=\"user_data\">\n" +
@@ -579,7 +586,14 @@ function dbMessagesToChat(
         for (const tc of tcs) {
           knownToolCallIds.add(tc.id);
         }
-      } catch {}
+      } catch (err) {
+        addLog({
+          level: "verbose",
+          source: "agent",
+          message: "Skipped malformed assistant tool_calls in history reconstruction.",
+          metadata: JSON.stringify({ threadId: m.thread_id, error: err instanceof Error ? err.message : String(err) }),
+        });
+      }
     }
   }
 
@@ -595,7 +609,14 @@ function dbMessagesToChat(
     if (m.role === "assistant" && m.tool_calls) {
       try {
         toolCalls = JSON.parse(m.tool_calls);
-      } catch {}
+      } catch (err) {
+        addLog({
+          level: "verbose",
+          source: "agent",
+          message: "Skipped malformed assistant tool_calls payload.",
+          metadata: JSON.stringify({ threadId: m.thread_id, error: err instanceof Error ? err.message : String(err) }),
+        });
+      }
     }
 
     // Parse tool_call_id for tool messages
@@ -607,7 +628,14 @@ function dbMessagesToChat(
           const tr = JSON.parse(m.tool_results);
           toolCallId = tr.tool_call_id;
           toolName = tr.name;
-        } catch {}
+        } catch (err) {
+          addLog({
+            level: "verbose",
+            source: "agent",
+            message: "Skipped malformed tool_results payload.",
+            metadata: JSON.stringify({ threadId: m.thread_id, error: err instanceof Error ? err.message : String(err) }),
+          });
+        }
       }
       // Skip tool messages that don't have a valid tool_call_id
       // or whose tool_call_id doesn't match a known assistant tool call
@@ -704,8 +732,13 @@ async function executeToolWithPolicy(
         "Nexus Approval Required",
         { level: "medium" }
       );
-    } catch {
-      // non-blocking notification path
+    } catch (err) {
+      addLog({
+        level: "warning",
+        source: "hitl",
+        message: "Failed to send approval notification.",
+        metadata: JSON.stringify({ toolName: toolCall.name, threadId, error: err instanceof Error ? err.message : String(err) }),
+      });
     }
 
     return { status: "pending_approval", approvalId: approval.id };
@@ -790,7 +823,13 @@ async function maybeUpdateThreadTitle(
         "You generate ultra-concise chat thread titles. Reply with ONLY the title, nothing else. No quotes, no period."
       );
       title = (titleResponse.content || "").replace(/^["']|["']$/g, "").replace(/\.+$/, "").trim();
-    } catch {
+    } catch (err) {
+      addLog({
+        level: "verbose",
+        source: "agent",
+        message: "LLM thread title generation failed; using fallback title.",
+        metadata: JSON.stringify({ threadId, error: err instanceof Error ? err.message : String(err) }),
+      });
       // Fallback: extract from the user message
       title = msg;
     }

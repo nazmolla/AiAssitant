@@ -17,6 +17,7 @@ import { UserManagement } from "@/components/user-management";
 import { AuthConfig } from "@/components/auth-config";
 import { ToolPolicies } from "@/components/tool-policies";
 import { CustomToolsConfig } from "@/components/custom-tools-config";
+import { LoggingConfig } from "@/components/logging-config";
 import { useTheme, THEMES, type ThemeId } from "@/components/theme-provider";
 
 export default function HomePage() {
@@ -203,6 +204,7 @@ const SETTINGS_PAGES: SettingsPage[] = [
   { key: "channels", label: "Channels", icon: "📡", permKey: "channels" },
   { key: "mcp", label: "MCP Servers", icon: "🔌", permKey: "mcp_servers" },
   { key: "policies", label: "Tool Policies", icon: "🛡️", permKey: "mcp_servers" },
+  { key: "logging", label: "Logging", icon: "🧾", adminOnly: true },
   { key: "custom-tools", label: "Custom Tools", icon: "🔧", adminOnly: true },
   { key: "auth", label: "Authentication", icon: "🔐", adminOnly: true },
   { key: "users", label: "Users", icon: "👥", adminOnly: true },
@@ -214,6 +216,7 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
   channels: { title: "Communication Channels", subtitle: "Connect messaging platforms so Nexus can chat with you anywhere." },
   mcp: { title: "MCP Servers", subtitle: "Manage Model Context Protocol server connections." },
   policies: { title: "Tool Policies", subtitle: "Configure approval requirements and proactive scanning for each discovered tool." },
+  logging: { title: "Logging", subtitle: "Server-wide log levels, retention boundary, and cleanup tools." },
   "custom-tools": { title: "Custom Tools", subtitle: "Agent-created tools that extend Nexus capabilities at runtime." },
   auth: { title: "Authentication Providers", subtitle: "Configure OAuth login providers and external integrations." },
   users: { title: "User Management", subtitle: "Manage user access, roles, and feature permissions." },
@@ -269,6 +272,7 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
           {active === "channels" && <ChannelsConfig />}
           {active === "mcp" && <McpConfig />}
           {active === "policies" && <ToolPolicies />}
+          {active === "logging" && userRole === "admin" && <LoggingConfig />}
           {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
           {active === "auth" && userRole === "admin" && <AuthConfig />}
           {active === "users" && userRole === "admin" && <UserManagement />}

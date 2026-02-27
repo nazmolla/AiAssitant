@@ -20,6 +20,20 @@
 import type { ToolDefinition, ToolCall } from "@/lib/llm";
 import * as vm from "vm";
 
+function emitCustomToolLog(level: "verbose" | "warning" | "error", args: unknown[]): void {
+  try {
+    const { addLog } = require("@/lib/db/queries") as { addLog: (log: { level: string; source: string | null; message: string; metadata: string | null }) => void };
+    addLog({
+      level,
+      source: "custom-tool",
+      message: "Sandbox console output",
+      metadata: JSON.stringify({ args }),
+    });
+  } catch {
+    // Avoid throwing from log path during bootstrapping or tests.
+  }
+}
+
 // ── Tool Names ────────────────────────────────────────────────
 
 export const CUSTOM_TOOL_PREFIX = "custom.";
@@ -298,7 +312,9 @@ async function deleteCustomTool(args: Record<string, unknown>): Promise<unknown>
   try {
     const db = require("@/lib/db/connection").getDb();
     db.prepare("DELETE FROM tool_policies WHERE tool_name = ?").run(fullName);
-  } catch { /* policy may not exist */ }
+  } catch (err) {
+    emitCustomToolLog("verbose", ["Tool policy cleanup skipped", fullName, err instanceof Error ? err.message : String(err)]);
+  }
 
   // Remove from cache
   customToolsCache.splice(idx, 1);
@@ -332,9 +348,9 @@ async function runSandboxed(
     URLSearchParams,
     Buffer,
     console: {
-      log: (...a: unknown[]) => console.log("[CustomTool]", ...a),
-      warn: (...a: unknown[]) => console.warn("[CustomTool]", ...a),
-      error: (...a: unknown[]) => console.error("[CustomTool]", ...a),
+      log: (...a: unknown[]) => emitCustomToolLog("verbose", a),
+      warn: (...a: unknown[]) => emitCustomToolLog("warning", a),
+      error: (...a: unknown[]) => emitCustomToolLog("error", a),
     },
     parseInt,
     parseFloat,

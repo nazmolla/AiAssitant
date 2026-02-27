@@ -329,6 +329,31 @@ function ensureProfilePreferencesColumns(): void {
   }
 }
 
+function normalizeAgentLogLevels(): void {
+  const db = getDb();
+  if (!tableExists("agent_logs")) return;
+
+  db.prepare(
+    `UPDATE agent_logs
+     SET level = CASE
+       WHEN lower(coalesce(level, '')) IN ('critical', 'fatal', 'panic') THEN 'critical'
+       WHEN lower(coalesce(level, '')) IN ('error', 'err') THEN 'error'
+       WHEN lower(coalesce(level, '')) IN ('warning', 'warn') THEN 'warning'
+       ELSE 'verbose'
+     END`
+  ).run();
+}
+
+function ensureServerLoggingDefaults(): void {
+  const db = getDb();
+  if (!tableExists("app_config")) return;
+
+  db.prepare(
+    `INSERT OR IGNORE INTO app_config (key, value, updated_at)
+     VALUES ('log_level_min', 'verbose', CURRENT_TIMESTAMP)`
+  ).run();
+}
+
 /**
  * Encrypt any existing plaintext secrets in the database.
  * Runs on every startup to catch legacy unencrypted data.
@@ -426,6 +451,8 @@ export function initializeDatabase(): void {
   ensureChannelUserId();
   ensureUserAccessManagement();
   ensureProfilePreferencesColumns();
+  normalizeAgentLogLevels();
+  ensureServerLoggingDefaults();
   seedAllBuiltinToolPolicies();
   ensureEmailToolPolicyDefaults();
   encryptExistingSecrets();

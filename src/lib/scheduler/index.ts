@@ -144,7 +144,13 @@ function enqueueDigestItem(
 function parseChannelConfig(configJson: string): Record<string, unknown> {
   try {
     return JSON.parse(configJson || "{}");
-  } catch {
+  } catch (err) {
+    addLog({
+      level: "verbose",
+      source: "scheduler",
+      message: "Failed to parse channel config JSON; using empty config fallback.",
+      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+    });
     return {};
   }
 }
@@ -462,7 +468,13 @@ async function pollEmailChannels(
     let rawConfig: Record<string, unknown>;
     try {
       rawConfig = JSON.parse(channel.config_json || "{}");
-    } catch {
+    } catch (err) {
+      addLog({
+        level: "warning",
+        source: "email",
+        message: "Failed to parse email channel configuration; skipping malformed fields.",
+        metadata: JSON.stringify({ channelId: channel.id, error: err instanceof Error ? err.message : String(err) }),
+      });
       rawConfig = {};
     }
 
@@ -535,8 +547,17 @@ async function pollEmailChannels(
                     requiredAction: "Review summary and decide whether to onboard, ignore, or reply.",
                     actionLocation: "Nexus Command Center → Channels / Logs",
                   });
-                } catch {
-                  // non-blocking notification path
+                } catch (enqueueErr) {
+                  addLog({
+                    level: "warning",
+                    source: "email",
+                    message: "Failed to enqueue unknown sender digest item.",
+                    metadata: JSON.stringify({
+                      channelId: channel.id,
+                      from: fromAddress,
+                      error: enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr),
+                    }),
+                  });
                 }
                 await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
                 continue;
@@ -592,8 +613,13 @@ async function pollEmailChannels(
       } finally {
         try {
           await client.logout();
-        } catch {
-          // ignore
+        } catch (logoutErr) {
+          addLog({
+            level: "verbose",
+            source: "email",
+            message: "IMAP logout failed during cleanup.",
+            metadata: JSON.stringify({ channelId: channel.id, error: logoutErr instanceof Error ? logoutErr.message : String(logoutErr) }),
+          });
         }
       }
 

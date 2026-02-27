@@ -7,6 +7,7 @@ import {
   getUserByEmail,
   isUserEnabled,
   type AttachmentMeta,
+  addLog,
 } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 import { timingSafeEqual } from "crypto";
@@ -32,15 +33,18 @@ export async function POST(
 ) {
   const channel = getChannel(params.channelId);
   if (!channel) {
+    addLog({ level: "warning", source: "api.channel.webhook", message: "Webhook rejected: channel not found.", metadata: JSON.stringify({ channelId: params.channelId }) });
     return NextResponse.json({ error: "Channel not found" }, { status: 404 });
   }
   if (!channel.enabled) {
+    addLog({ level: "warning", source: "api.channel.webhook", message: "Webhook rejected: channel disabled.", metadata: JSON.stringify({ channelId: channel.id, channelType: channel.channel_type }) });
     return NextResponse.json({ error: "Channel is disabled" }, { status: 403 });
   }
 
   // Verify webhook secret (header only — never accept in query string)
   const secret = req.headers.get("x-webhook-secret");
   if (!secret || !channel.webhook_secret) {
+    addLog({ level: "warning", source: "api.channel.webhook", message: "Webhook rejected: missing/invalid secret.", metadata: JSON.stringify({ channelId: channel.id }) });
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   // Constant-time comparison to prevent timing attacks
@@ -48,9 +52,11 @@ export async function POST(
     const a = Buffer.from(secret, "utf-8");
     const b = Buffer.from(channel.webhook_secret, "utf-8");
     if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      addLog({ level: "warning", source: "api.channel.webhook", message: "Webhook rejected: secret mismatch.", metadata: JSON.stringify({ channelId: channel.id }) });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   } catch {
+    addLog({ level: "warning", source: "api.channel.webhook", message: "Webhook rejected: secret validation failed.", metadata: JSON.stringify({ channelId: channel.id }) });
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -64,6 +70,12 @@ export async function POST(
     }
 
     const body = await req.json();
+    addLog({
+      level: "verbose",
+      source: "api.channel.webhook",
+      message: "Inbound channel webhook payload received.",
+      metadata: JSON.stringify({ channelId: channel.id, channelType: channel.channel_type }),
+    });
 
     // Normalize the inbound payload — each adapter can parse differently
     const message = extractMessage(channel.channel_type, body);
@@ -123,6 +135,13 @@ export async function POST(
     const channelConfig = parseConfig(channel.config_json);
     await dispatchOutboundResponse(channel.channel_type, channelConfig, message.senderId, result);
 
+    addLog({
+      level: "verbose",
+      source: "api.channel.webhook",
+      message: "Inbound webhook processed successfully.",
+      metadata: JSON.stringify({ channelId: channel.id, channelType: channel.channel_type, threadId, toolsUsed: result.toolsUsed?.length || 0 }),
+    });
+
     return NextResponse.json({
       reply: result.content,
       threadId,
@@ -131,7 +150,12 @@ export async function POST(
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error(`[Channel ${channel.channel_type}] Webhook error:`, errorMsg);
+    addLog({
+      level: "error",
+      source: "api.channel.webhook",
+      message: "Webhook processing failed.",
+      metadata: JSON.stringify({ channelId: channel.id, channelType: channel.channel_type, error: errorMsg }),
+    });
     // Don't leak internal error details to external webhook callers
     return NextResponse.json({ error: "Internal processing error" }, { status: 500 });
   }
@@ -174,7 +198,7 @@ async function sendEmailResponse(
   const toEmail = normalizeEmail(to);
 
   if (!emailCfg.smtpHost || !emailCfg.smtpPort || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress || !toEmail) {
-    console.warn("Email channel missing smtpHost/smtpPort/smtpUser/smtpPass/fromAddress or recipient.");
+    addLog({ level: "warning", source: "api.channel.webhook", message: "Email response skipped due to incomplete email configuration.", metadata: null });
     return;
   }
 
@@ -230,7 +254,7 @@ async function sendWhatsAppResponse(
   ).trim();
 
   if (!phoneNumberId || !accessToken) {
-    console.warn("WhatsApp channel missing phoneNumberId/accessToken.");
+    addLog({ level: "warning", source: "api.channel.webhook", message: "WhatsApp response skipped due to missing phoneNumberId/accessToken.", metadata: null });
     return;
   }
 
@@ -270,10 +294,10 @@ async function sendWhatsAppMessage(
 
     if (!res.ok) {
       const text = await res.text();
-      console.error("WhatsApp send error:", text);
+      addLog({ level: "error", source: "api.channel.webhook", message: "WhatsApp text send failed.", metadata: JSON.stringify({ response: text }) });
     }
   } catch (err) {
-    console.error("WhatsApp send request failed:", err);
+    addLog({ level: "error", source: "api.channel.webhook", message: "WhatsApp text send request failed.", metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }) });
   }
 }
 
@@ -303,14 +327,14 @@ async function sendWhatsAppMedia(
 
     if (!uploadRes.ok) {
       const text = await uploadRes.text();
-      console.error("WhatsApp media upload failed:", text);
+      addLog({ level: "error", source: "api.channel.webhook", message: "WhatsApp media upload failed.", metadata: JSON.stringify({ response: text }) });
       return;
     }
 
     const uploadJson = await uploadRes.json();
     const mediaId: string | undefined = uploadJson.id;
     if (!mediaId) {
-      console.error("WhatsApp media upload missing id.", uploadJson);
+      addLog({ level: "error", source: "api.channel.webhook", message: "WhatsApp media upload response missing media id.", metadata: JSON.stringify({ uploadJson }) });
       return;
     }
 
@@ -327,7 +351,7 @@ async function sendWhatsAppMedia(
       [messageType]: mediaPayload,
     });
   } catch (err) {
-    console.error("WhatsApp media send error:", err);
+    addLog({ level: "error", source: "api.channel.webhook", message: "WhatsApp media send failed.", metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }) });
   }
 }
 
