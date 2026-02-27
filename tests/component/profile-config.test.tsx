@@ -160,9 +160,9 @@ describe("ChangePasswordSection", () => {
 
     // Fill in the password fields
     const passwordInputs = screen.getAllByPlaceholderText("••••••••");
-    fireEvent.change(passwordInputs[0], { target: { value: "oldpass123" } });
-    fireEvent.change(passwordInputs[1], { target: { value: "newpass123" } });
-    fireEvent.change(passwordInputs[2], { target: { value: "differentpass" } });
+    fireEvent.change(passwordInputs[0], { target: { value: "OldPass1!" } });
+    fireEvent.change(passwordInputs[1], { target: { value: "NewPass1!" } });
+    fireEvent.change(passwordInputs[2], { target: { value: "Different1!" } });
 
     // Click change password button
     fireEvent.click(screen.getByRole("button", { name: "Change Password" }));
@@ -191,6 +191,25 @@ describe("ChangePasswordSection", () => {
     });
   });
 
+  test("shows validation error for password without uppercase", async () => {
+    render(<ProfileConfig />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Change Password" })).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    const passwordInputs = screen.getAllByPlaceholderText("••••••••");
+    fireEvent.change(passwordInputs[0], { target: { value: "OldPass1!" } });
+    fireEvent.change(passwordInputs[1], { target: { value: "nouppercas1!" } });
+    fireEvent.change(passwordInputs[2], { target: { value: "nouppercas1!" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Change Password" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("New password must contain at least one uppercase letter.")).toBeInTheDocument();
+    });
+  });
+
   test("submits password change and shows success message", async () => {
     render(<ProfileConfig />);
 
@@ -199,9 +218,9 @@ describe("ChangePasswordSection", () => {
     }, { timeout: 3000 });
 
     const passwordInputs = screen.getAllByPlaceholderText("••••••••");
-    fireEvent.change(passwordInputs[0], { target: { value: "oldpass123" } });
-    fireEvent.change(passwordInputs[1], { target: { value: "newpass12345" } });
-    fireEvent.change(passwordInputs[2], { target: { value: "newpass12345" } });
+    fireEvent.change(passwordInputs[0], { target: { value: "OldPass1!" } });
+    fireEvent.change(passwordInputs[1], { target: { value: "NewPass1!" } });
+    fireEvent.change(passwordInputs[2], { target: { value: "NewPass1!" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Change Password" }));
 
@@ -214,7 +233,7 @@ describe("ChangePasswordSection", () => {
       "/api/auth/change-password",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ currentPassword: "oldpass123", newPassword: "newpass12345" }),
+        body: JSON.stringify({ currentPassword: "OldPass1!", newPassword: "NewPass1!" }),
       })
     );
   });

@@ -87,7 +87,8 @@ export function McpConfig() {
     const generatedId = typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-          const r = (Math.random() * 16) | 0;
+          const bytes = crypto.getRandomValues(new Uint8Array(1));
+          const r = bytes[0] & 0xf;
           return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
         });
     if (!newName) return;

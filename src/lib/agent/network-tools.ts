@@ -14,7 +14,7 @@
  */
 
 import type { ToolDefinition } from "@/lib/llm";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import * as net from "net";
 import * as dgram from "dgram";
@@ -23,7 +23,7 @@ import * as https from "https";
 import * as fs from "fs";
 import { Client as SSHClient } from "ssh2";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // ── Limits ────────────────────────────────────────────────────
 const MAX_OUTPUT = 64 * 1024; // 64 KB captured output
@@ -280,10 +280,9 @@ async function netPing(args: Record<string, unknown>): Promise<unknown> {
   // Cross-platform ping: Linux uses -c, Windows uses -n
   const isWindows = process.platform === "win32";
   const countFlag = isWindows ? "-n" : "-c";
-  const cmd = `ping ${countFlag} ${count} ${host}`;
 
   try {
-    const { stdout, stderr } = await execAsync(cmd, {
+    const { stdout, stderr } = await execFileAsync("ping", [countFlag, String(count), host], {
       timeout: CMD_TIMEOUT_MS,
       maxBuffer: MAX_OUTPUT,
     });
@@ -332,8 +331,8 @@ async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
   if (method === "arp" || method === "auto") {
     // Try arp-scan first (Linux only, needs root or setuid)
     try {
-      const subnetArg = subnet ? ` ${subnet}` : "";
-      const { stdout } = await execAsync(`arp-scan -l${subnetArg}`, {
+      const arpArgs = subnet ? ["-l", subnet] : ["-l"];
+      const { stdout } = await execFileAsync("arp-scan", arpArgs, {
         timeout: CMD_TIMEOUT_MS,
         maxBuffer: MAX_OUTPUT,
       });
@@ -343,7 +342,7 @@ async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
       // arp-scan not available or failed; try arp -a
       if (method === "arp" || method === "auto") {
         try {
-          const { stdout } = await execAsync("arp -a", {
+          const { stdout } = await execFileAsync("arp", ["-a"], {
             timeout: CMD_TIMEOUT_MS,
             maxBuffer: MAX_OUTPUT,
           });
@@ -360,7 +359,7 @@ async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
     // Try nmap -sn (ping scan)
     try {
       const target = subnet || "192.168.0.0/24";
-      const { stdout } = await execAsync(`nmap -sn ${target}`, {
+      const { stdout } = await execFileAsync("nmap", ["-sn", target], {
         timeout: 60_000, // nmap scans can take a while
         maxBuffer: MAX_OUTPUT,
       });
@@ -446,13 +445,10 @@ function parseNmapPingScanOutput(output: string, devices: DeviceEntry[]): void {
 
 async function detectLocalSubnet(): Promise<string | null> {
   try {
-    const { stdout } = await execAsync(
-      "ip route | grep -oP 'src \\K[0-9.]+'  | head -1",
-      { timeout: 5000 }
-    );
-    const ip = stdout.trim();
-    if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-      // Assume /24
+    const { stdout } = await execFileAsync("ip", ["route"], { timeout: 5000 });
+    const match = stdout.match(/src\s+(\d+\.\d+\.\d+\.\d+)/);
+    const ip = match?.[1]?.trim();
+    if (ip && /^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
       const parts = ip.split(".");
       return `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
     }
@@ -473,7 +469,7 @@ async function pingSweep(subnet: string, devices: DeviceEntry[]): Promise<void> 
   for (let i = 1; i <= 254; i++) {
     const ip = `${base}.${i}`;
     promises.push(
-      execAsync(`ping -c 1 -W 1 ${ip}`, { timeout: 3000 })
+      execFileAsync("ping", ["-c", "1", "-W", "1", ip], { timeout: 3000 })
         .then(() => {
           devices.push({ ip, mac: null, hostname: null, vendor: null });
         })

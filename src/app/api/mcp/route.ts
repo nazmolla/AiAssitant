@@ -128,7 +128,8 @@ export async function DELETE(req: NextRequest) {
     deleteMcpServer(id);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: `Failed to delete server: ${msg}` }, { status: 500 });
+    console.error(`Failed to delete MCP server ${id}:`, msg);
+    return NextResponse.json({ error: "Failed to delete server." }, { status: 500 });
   }
   return NextResponse.json({ success: true });
 }

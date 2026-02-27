@@ -31,6 +31,11 @@ function getMasterKey(): Buffer {
   if (envSecret) {
     // Derive a fixed-length key from the user-supplied secret
     _masterKey = crypto.scryptSync(envSecret, "nexus-db-salt", KEY_BYTES);
+  } else if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "[Nexus Crypto] NEXUS_DB_SECRET is required in production. " +
+        "Set NEXUS_DB_SECRET environment variable before starting the application."
+    );
   } else {
     // Fallback: derive from machine identity — NOT cryptographically strong
     // but far better than plaintext for unattended / dev setups.

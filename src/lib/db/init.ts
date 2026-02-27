@@ -18,8 +18,19 @@ function tableExists(table: string): boolean {
   return !!row;
 }
 
+// ─── Allowed table names for dynamic PRAGMA / ALTER TABLE queries ──
+const ALLOWED_TABLES = new Set([
+  "identity_config", "llm_providers", "messages", "threads",
+  "user_knowledge", "owner_profile", "user_profiles", "channels",
+  "users", "user_permissions", "tool_policies", "agent_logs",
+  "mcp_servers", "attachments", "webhooks",
+]);
+
 // ─── Helper: get column names for a table ─────────────────────
 function getColumns(table: string): Set<string> {
+  if (!ALLOWED_TABLES.has(table)) {
+    throw new Error(`getColumns: table "${table}" is not in the allowlist.`);
+  }
   const db = getDb();
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string; notnull: number }[];
   return new Set(cols.map((c) => c.name));

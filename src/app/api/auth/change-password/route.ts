@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { compare, hash } from "bcryptjs";
 import { requireUser } from "@/lib/auth/guard";
 import { getUserById, updateUserPassword, addLog } from "@/lib/db";
+import { validatePassword } from "@/lib/auth/password-policy";
 
 const LOCAL_SALT_ROUNDS = 12;
 
@@ -28,6 +29,11 @@ export async function POST(req: Request) {
         { error: "New password must be at least 8 characters." },
         { status: 400 }
       );
+    }
+
+    const policy = validatePassword(newPassword);
+    if (!policy.valid) {
+      return NextResponse.json({ error: policy.message }, { status: 400 });
     }
 
     if (currentPassword === newPassword) {

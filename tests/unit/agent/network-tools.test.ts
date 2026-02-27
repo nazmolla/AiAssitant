@@ -5,16 +5,20 @@
 import { executeBuiltinNetworkTool, NET_TOOL_NAMES } from "@/lib/agent/network-tools";
 
 jest.mock("child_process", () => ({
-  exec: jest.fn((command: string, _options: unknown, callback: (err: Error | null, stdout: string, stderr: string) => void) => {
-    if (command.startsWith("arp-scan")) {
+  execFile: jest.fn((command: string, args: string[], _options: unknown, callback: (err: Error | null, stdout: string, stderr: string) => void) => {
+    // Handle 3-argument form (command, args, callback) when options is the callback
+    if (typeof _options === "function") {
+      callback = _options as (err: Error | null, stdout: string, stderr: string) => void;
+    }
+    if (command === "arp-scan") {
       callback(new Error("arp-scan not available"), "", "");
       return;
     }
-    if (command.startsWith("arp -a")) {
+    if (command === "arp") {
       callback(new Error("arp not available"), "", "");
       return;
     }
-    if (command.startsWith("nmap -sn")) {
+    if (command === "nmap") {
       callback(
         null,
         "Nmap scan report for 192.168.0.1\nHost is up (0.0020s latency).\n",

@@ -12,6 +12,7 @@ import {
   getEnabledAuthProviders,
   isUserEnabled,
 } from "@/lib/db";
+import { validatePassword } from "@/lib/auth/password-policy";
 
 const LOCAL_SALT_ROUNDS = 12;
 
@@ -67,6 +68,11 @@ export function getAuthOptions(): NextAuthOptions {
           // Check if open registration is disabled
           if (process.env.DISABLE_REGISTRATION === "true" && getUserCount() > 0) {
             return null; // Registration disabled — reject new signups
+          }
+          // Enforce password policy on signup
+          const policy = validatePassword(credentials.password);
+          if (!policy.valid) {
+            throw new Error(policy.message);
           }
           const isFirst = getUserCount() === 0;
           const passwordHash = await hash(credentials.password, LOCAL_SALT_ROUNDS);

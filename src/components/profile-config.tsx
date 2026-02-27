@@ -437,6 +437,22 @@ function ChangePasswordSection() {
       setMessage({ type: "error", text: "New password must be at least 8 characters." });
       return;
     }
+    if (!/[A-Z]/.test(newPassword)) {
+      setMessage({ type: "error", text: "New password must contain at least one uppercase letter." });
+      return;
+    }
+    if (!/[a-z]/.test(newPassword)) {
+      setMessage({ type: "error", text: "New password must contain at least one lowercase letter." });
+      return;
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      setMessage({ type: "error", text: "New password must contain at least one digit." });
+      return;
+    }
+    if (!/[^A-Za-z0-9]/.test(newPassword)) {
+      setMessage({ type: "error", text: "New password must contain at least one special character." });
+      return;
+    }
     if (newPassword !== confirmPassword) {
       setMessage({ type: "error", text: "New passwords do not match." });
       return;

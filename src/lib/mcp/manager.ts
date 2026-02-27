@@ -108,10 +108,21 @@ class McpManager {
       if (!server.command) {
         throw new Error("stdio transport requires the command field.");
       }
+      // Only pass safe environment variables to child processes — never leak
+      // secrets like DB passwords, auth tokens, or encryption keys.
+      const SAFE_ENV_VARS = [
+        "PATH", "HOME", "USER", "SHELL", "LANG", "LC_ALL", "LC_CTYPE",
+        "TERM", "TMPDIR", "TMP", "TEMP", "HOSTNAME",
+        "NODE_ENV", "XDG_RUNTIME_DIR", "XDG_DATA_HOME", "XDG_CONFIG_HOME",
+      ];
+      const safeEnv: Record<string, string> = {};
+      for (const key of SAFE_ENV_VARS) {
+        if (process.env[key]) safeEnv[key] = process.env[key]!;
+      }
       const transport = new StdioClientTransport({
         command: server.command,
         args,
-        env: { ...process.env, ...envVars } as Record<string, string>,
+        env: { ...safeEnv, ...envVars } as Record<string, string>,
       });
       await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, server.name);
     } else if (transportType === "sse") {

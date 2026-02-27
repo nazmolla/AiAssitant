@@ -151,6 +151,6 @@ export async function POST(req: NextRequest) {
       message: "Attachment upload failed.",
       metadata: JSON.stringify({ error: msg }),
     });
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: "Attachment upload failed." }, { status: 500 });
   }
 }

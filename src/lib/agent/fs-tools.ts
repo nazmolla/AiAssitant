@@ -654,12 +654,15 @@ async function fsExecuteScript(args: Record<string, unknown>): Promise<unknown> 
     throw new Error(`Working directory not found: ${cwd}`);
   }
 
+  // Explicit shell — this is an intentional HITL-approved script runner.
+  // The shell binary is hardcoded to prevent PATH-based injection.
+  const shellBin = process.platform === "win32" ? "cmd.exe" : "/bin/bash";
   try {
     const { stdout, stderr } = await execAsync(command, {
       cwd,
       timeout,
       maxBuffer: MAX_SCRIPT_OUTPUT,
-      shell: undefined,
+      shell: shellBin,
     });
 
     return {
