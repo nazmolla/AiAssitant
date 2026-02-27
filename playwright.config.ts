@@ -29,5 +29,13 @@ export default defineConfig({
       name: "mobile-chrome",
       use: { ...devices["Pixel 7"] },
     },
+    {
+      name: "iphone-portrait",
+      use: { ...devices["iPhone 16 Pro Max"] },
+    },
+    {
+      name: "iphone-landscape",
+      use: { ...devices["iPhone 16 Pro Max landscape"] },
+    },
   ],
 });
