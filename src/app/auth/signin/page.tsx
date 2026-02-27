@@ -3,9 +3,14 @@
 import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, getProviders } from "next-auth/react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
+import Divider from "@mui/material/Divider";
+import Alert from "@mui/material/Alert";
 
 const PROVIDER_LABELS: Record<string, string> = {
   "azure-ad": "Azure AD",
@@ -57,73 +62,69 @@ export default function SignInPage() {
   }
 
   return (
-    <div className="flex h-screen items-center justify-center bg-background noise relative overflow-hidden">
-      <div className="absolute top-1/3 left-1/3 w-72 h-72 bg-primary/5 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/3 right-1/3 w-72 h-72 bg-primary/3 rounded-full blur-3xl" />
-      <Card className="w-full max-w-md relative z-10">
-        <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-display gradient-text">Nexus</CardTitle>
-          <CardDescription className="text-muted-foreground/60">
-            Sign in to access your sovereign personal AI.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+    <Box sx={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", bgcolor: "background.default" }}>
+      <Card variant="outlined" sx={{ width: "100%", maxWidth: 420, mx: 2 }}>
+        <CardContent sx={{ p: 4, display: "flex", flexDirection: "column", gap: 3 }}>
+          <Box sx={{ textAlign: "center" }}>
+            <Typography variant="h4" sx={{ fontWeight: 700, color: "primary.main" }}>Nexus</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Sign in to access your sovereign personal AI.
+            </Typography>
+          </Box>
           {oauthProviders.length > 0 && (
-            <div className="space-y-3">
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
               {oauthProviders.map((provider) => (
                 <Button
                   key={provider.id}
-                  className="w-full"
-                  variant="outline"
+                  fullWidth
+                  variant="outlined"
                   onClick={() => signIn(provider.id, { callbackUrl: `${window.location.origin}/` })}
                 >
                   Sign in with {provider.name}
                 </Button>
               ))}
-            </div>
+            </Box>
           )}
           {oauthProviders.length > 0 && (
-            <div className="text-center text-[10px] uppercase tracking-widest text-muted-foreground/40 font-medium">
-              or use local credentials
-            </div>
+            <Divider>
+              <Typography variant="caption" color="text.disabled">or use local credentials</Typography>
+            </Divider>
           )}
-          <form className="space-y-3" onSubmit={handleLocalSubmit}>
-            <Input
+          <form style={{ display: "flex", flexDirection: "column", gap: 12 }} onSubmit={handleLocalSubmit}>
+            <TextField
               type="email"
               name="email"
               placeholder="owner@example.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
+              size="small"
+              fullWidth
             />
-            <Input
+            <TextField
               type="password"
               name="password"
               placeholder="Password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
+              size="small"
+              fullWidth
             />
-            <Button className="w-full" type="submit" disabled={isSubmitting}>
+            <Button fullWidth variant="contained" type="submit" disabled={isSubmitting}>
               {isSubmitting ? "Signing in..." : "Sign in with Password"}
             </Button>
-            {status.type !== "idle" && status.message ? (
-              <p
-                className={
-                  status.type === "error"
-                    ? "text-center text-sm text-red-400"
-                    : "text-center text-sm text-green-400"
-                }
-              >
+            {status.type !== "idle" && status.message && (
+              <Alert severity={status.type === "error" ? "error" : "success"} sx={{ fontSize: "0.8rem" }}>
                 {status.message}
-              </p>
-            ) : null}
-            <p className="text-center text-[11px] text-muted-foreground/50 font-light">
+              </Alert>
+            )}
+            <Typography variant="caption" color="text.disabled" sx={{ textAlign: "center" }}>
               New users can register by submitting an email + password. Your account will be pending until an admin activates it.
-            </p>
+            </Typography>
           </form>
         </CardContent>
       </Card>
-    </div>
+    </Box>
   );
 }

@@ -1,10 +1,25 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import TextField from "@mui/material/TextField";
+import Chip from "@mui/material/Chip";
+import Typography from "@mui/material/Typography";
+import Paper from "@mui/material/Paper";
+import Divider from "@mui/material/Divider";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import CircularProgress from "@mui/material/CircularProgress";
+import SendIcon from "@mui/icons-material/Send";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import ScreenShareIcon from "@mui/icons-material/ScreenShare";
+import StopScreenShareIcon from "@mui/icons-material/StopScreenShare";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 
 interface Thread {
   id: string;
@@ -506,112 +521,173 @@ export function ChatPanel() {
   }, [messages]);
 
   return (
-    <div className="flex h-full">
-      {/* Thread Sidebar — Glass panel */}
-      <div className={`${showSidebar ? "flex" : "hidden sm:flex"} w-full sm:w-64 shrink-0 border-r border-white/[0.06] flex-col bg-white/[0.02] backdrop-blur-md`}>
-        <div className="p-3 border-b border-white/[0.06]">
-          <Button onClick={createThread} className="w-full rounded-xl" size="sm" variant="outline">
-            <span className="mr-1.5 text-primary">+</span> New Thread
+    <Box sx={{ display: "flex", height: "100%" }}>
+      {/* Thread Sidebar */}
+      <Paper
+        elevation={0}
+        sx={{
+          display: { xs: showSidebar ? "flex" : "none", sm: "flex" },
+          width: { xs: "100%", sm: 260 },
+          flexShrink: 0,
+          flexDirection: "column",
+          borderRight: 1,
+          borderColor: "divider",
+        }}
+      >
+        <Box sx={{ p: 1.5, borderBottom: 1, borderColor: "divider" }}>
+          <Button
+            onClick={createThread}
+            fullWidth
+            variant="outlined"
+            size="small"
+            startIcon={<AddIcon />}
+          >
+            New Thread
           </Button>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="py-2 px-2 space-y-0.5">
+        </Box>
+        <Box sx={{ flex: 1, overflow: "auto" }}>
+          <List dense disablePadding sx={{ py: 0.5 }}>
             {threads.map((thread) => (
-              <div
+              <ListItemButton
                 key={thread.id}
-                className={`group flex items-start rounded-xl transition-all duration-300 ${
-                  activeThread === thread.id
-                    ? "bg-primary/10 border border-primary/15 shadow-sm shadow-primary/5"
-                    : "hover:bg-white/[0.04] border border-transparent"
-                }`}
+                selected={activeThread === thread.id}
+                onClick={() => { setActiveThread(thread.id); setShowSidebar(false); }}
+                sx={{
+                  mx: 0.5,
+                  borderRadius: 2,
+                  mb: 0.25,
+                  alignItems: "flex-start",
+                  pr: 1,
+                }}
               >
-                <button
-                  onClick={() => { setActiveThread(thread.id); setShowSidebar(false); }}
-                  className="flex-1 min-w-0 text-left px-3 py-2.5"
-                >
-                  <div className="text-[13px] font-medium truncate">{thread.title}</div>
-                  <div className="flex items-center gap-1 mt-1.5">
-                    <Badge
-                      variant={
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
+                    {thread.title}
+                  </Typography>
+                  <Box sx={{ mt: 0.5 }}>
+                    <Chip
+                      label={thread.status}
+                      size="small"
+                      color={
                         thread.status === "active"
                           ? "success"
                           : thread.status === "awaiting_approval"
                           ? "warning"
-                          : "secondary"
+                          : "default"
                       }
-                    >
-                      {thread.status}
-                    </Badge>
-                  </div>
-                </button>
-                <button
+                      sx={{ height: 20, fontSize: "0.7rem" }}
+                    />
+                  </Box>
+                </Box>
+                <IconButton
+                  size="small"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDeleteThread(thread.id);
                   }}
-                  className="shrink-0 mr-2 mt-2.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-200 p-1 rounded-lg hover:bg-red-500/10 text-muted-foreground/60 hover:text-red-400 text-xs"
-                  title="Delete thread"
+                  sx={{
+                    mt: 0.5,
+                    opacity: { xs: 1, sm: 0 },
+                    ".MuiListItemButton-root:hover &": { opacity: 1 },
+                    color: "text.secondary",
+                    "&:hover": { color: "error.main" },
+                  }}
                 >
-                  ✕
-                </button>
-              </div>
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </ListItemButton>
             ))}
-          </div>
-        </ScrollArea>
-      </div>
+          </List>
+        </Box>
+      </Paper>
 
       {/* Chat Area */}
-      <div className={`${!showSidebar ? "flex" : "hidden sm:flex"} flex-1 flex-col min-w-0`}>
+      <Box
+        sx={{
+          display: { xs: !showSidebar ? "flex" : "none", sm: "flex" },
+          flex: 1,
+          flexDirection: "column",
+          minWidth: 0,
+        }}
+      >
         {activeThread ? (
           <>
             {/* Mobile back button */}
-            <div className="sm:hidden flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
-              <button
+            <Box sx={{ display: { xs: "flex", sm: "none" }, alignItems: "center", gap: 1, px: 1.5, py: 1, borderBottom: 1, borderColor: "divider" }}>
+              <Button
+                size="small"
+                variant="text"
+                startIcon={<ArrowBackIcon />}
                 onClick={() => setShowSidebar(true)}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-white/[0.06]"
+                sx={{ textTransform: "none" }}
               >
-                ← Threads
-              </button>
-              <span className="text-xs text-muted-foreground/60 truncate">{activeThreadTitle}</span>
-            </div>
-            <ScrollArea className="flex-1 p-4">
-              <div className="space-y-4 max-w-3xl mx-auto">
+                Threads
+              </Button>
+              <Typography variant="caption" color="text.secondary" noWrap>{activeThreadTitle}</Typography>
+            </Box>
+            <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
+              <Box sx={{ maxWidth: 720, mx: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
                 {processedMessages.map(({ msg, attachments, approvalMeta, displayContent }) => {
 
                   return (
-                    <div
+                    <Box
                       key={msg.id}
-                      className={`flex ${
-                        msg.role === "user" ? "justify-end" : "justify-start"
-                      }`}
+                      sx={{
+                        display: "flex",
+                        justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                      }}
                     >
-                      <div
-                        className={`max-w-[80%] rounded-2xl px-4 py-3 transition-all duration-200 ${
-                          msg.role === "user"
-                            ? "bg-primary text-primary-foreground rounded-br-lg shadow-md shadow-primary/20"
+                      <Paper
+                        elevation={msg.role === "user" ? 2 : 0}
+                        sx={{
+                          maxWidth: "80%",
+                          borderRadius: 3,
+                          px: 2,
+                          py: 1.5,
+                          ...(msg.role === "user"
+                            ? {
+                                bgcolor: "primary.main",
+                                color: "primary.contrastText",
+                                borderBottomRightRadius: 4,
+                              }
                             : msg.role === "system"
-                            ? "bg-orange-500/5 border border-orange-500/15 rounded-bl-lg backdrop-blur-sm"
+                            ? {
+                                bgcolor: "warning.main",
+                                color: "warning.contrastText",
+                                opacity: 0.9,
+                                borderBottomLeftRadius: 4,
+                              }
                             : msg.role === "tool"
-                            ? "bg-white/[0.03] border border-white/[0.06] font-mono text-xs rounded-bl-lg backdrop-blur-sm"
-                            : "bg-gradient-to-b from-white/[0.06] to-white/[0.02] border border-white/[0.08] rounded-bl-lg shadow-lg shadow-black/20 backdrop-blur-md"
-                        }`}
+                            ? {
+                                bgcolor: "action.hover",
+                                fontFamily: "monospace",
+                                fontSize: "0.75rem",
+                                borderBottomLeftRadius: 4,
+                              }
+                            : {
+                                bgcolor: "background.paper",
+                                border: 1,
+                                borderColor: "divider",
+                                borderBottomLeftRadius: 4,
+                              }),
+                        }}
                       >
                         {msg.role !== "user" && (
-                          <div className="text-[10px] font-medium mb-1 text-muted-foreground uppercase tracking-wider">
+                          <Typography variant="overline" sx={{ fontSize: "0.625rem", letterSpacing: 1.2, color: msg.role === "system" ? "inherit" : "text.secondary" }}>
                             {msg.role === "assistant" ? "Nexus" : msg.role}
-                          </div>
+                          </Typography>
                         )}
 
                         {/* Attachments */}
                         {attachments.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mb-2">
+                          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 1 }}>
                             {attachments.map((att) => (
                               <AttachmentPreview key={att.id || att.filename} attachment={att} />
                             ))}
-                          </div>
+                          </Box>
                         )}
 
-                        <div className="whitespace-pre-wrap text-[13px] leading-relaxed">
+                        <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
                           {msg.role === "tool"
                             ? sanitizeToolContent(msg.content, attachments.length > 0)
                             : msg.role === "assistant"
@@ -619,199 +695,192 @@ export function ChatPanel() {
                             : msg.role === "system" && approvalMeta
                             ? displayContent || ""
                             : msg.content || (attachments.length > 0 ? "" : "(no content)")}
-                        </div>
+                        </Typography>
 
                         {/* Inline approval buttons */}
                         {approvalMeta && (() => {
                           const resolved = resolvedApprovals[approvalMeta.approvalId];
                           return (
-                            <div className="mt-3 space-y-2">
-                              <div className="text-[11px] text-muted-foreground/60 space-y-1">
-                                <div><span className="font-medium uppercase tracking-wider">Tool:</span> {approvalMeta.tool_name}</div>
+                            <Box sx={{ mt: 1.5 }}>
+                              <Box sx={{ fontSize: "0.7rem", color: "text.secondary", mb: 1 }}>
+                                <div><strong>Tool:</strong> {approvalMeta.tool_name}</div>
                                 {approvalMeta.reasoning && (
-                                  <div><span className="font-medium uppercase tracking-wider">Reason:</span> {approvalMeta.reasoning}</div>
+                                  <div><strong>Reason:</strong> {approvalMeta.reasoning}</div>
                                 )}
-                                <details className="mt-1">
-                                  <summary className="cursor-pointer hover:text-foreground transition-colors text-[10px]">Arguments</summary>
-                                  <pre className="text-[10px] bg-white/[0.03] p-2 rounded-lg mt-1 overflow-auto border border-white/[0.06]">
+                                <details style={{ marginTop: 4 }}>
+                                  <summary style={{ cursor: "pointer", fontSize: "0.65rem" }}>Arguments</summary>
+                                  <Box component="pre" sx={{ fontSize: "0.65rem", bgcolor: "action.hover", p: 1, borderRadius: 1, mt: 0.5, overflow: "auto" }}>
                                     {JSON.stringify(approvalMeta.args, null, 2)}
-                                  </pre>
+                                  </Box>
                                 </details>
-                              </div>
+                              </Box>
                               {resolved ? (
-                                <div className={`text-xs font-medium px-3 py-1.5 rounded-lg inline-block ${
-                                  resolved === "approved" ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" : "bg-red-500/15 text-red-400 border border-red-500/20"
-                                }`}>
-                                  {resolved === "approved" ? "✓ Approved" : "✕ Denied"}
-                                </div>
+                                <Chip
+                                  label={resolved === "approved" ? "✓ Approved" : "✕ Denied"}
+                                  size="small"
+                                  color={resolved === "approved" ? "success" : "error"}
+                                />
                               ) : (
-                                <div className="flex gap-2 pt-1">
-                                  <button
+                                <Box sx={{ display: "flex", gap: 1, pt: 0.5 }}>
+                                  <Button
+                                    variant="contained"
+                                    color="success"
+                                    size="small"
                                     onClick={() => handleApproval(approvalMeta.approvalId, "approved")}
                                     disabled={actingApproval === approvalMeta.approvalId}
-                                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/25 transition-all duration-200 disabled:opacity-50"
                                   >
                                     {actingApproval === approvalMeta.approvalId ? "Processing..." : "✓ Approve"}
-                                  </button>
-                                  <button
+                                  </Button>
+                                  <Button
+                                    variant="outlined"
+                                    color="error"
+                                    size="small"
                                     onClick={() => handleApproval(approvalMeta.approvalId, "rejected")}
                                     disabled={actingApproval === approvalMeta.approvalId}
-                                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 transition-all duration-200 disabled:opacity-50"
                                   >
                                     ✕ Deny
-                                  </button>
-                                </div>
+                                  </Button>
+                                </Box>
                               )}
-                            </div>
+                            </Box>
                           );
                         })()}
-                      </div>
-                    </div>
+                      </Paper>
+                    </Box>
                   );
                 })}
                 <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
+              </Box>
+            </Box>
 
-            {/* Input Bar — Floating glass panel */}
-            <div className="border-t border-white/[0.06] p-3 bg-white/[0.02] backdrop-blur-xl">
-              <div className="max-w-3xl mx-auto">
+            {/* Input Bar */}
+            <Box sx={{ borderTop: 1, borderColor: "divider", p: 1.5, bgcolor: "background.paper" }}>
+              <Box sx={{ maxWidth: 720, mx: "auto" }}>
                 {/* Screen sharing indicator */}
                 {screenSharing && (
-                  <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 animate-pulse">
-                    <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
-                    <span className="text-xs text-red-400 font-medium">Sharing your screen</span>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, px: 1.5, py: 1, borderRadius: 2, bgcolor: "error.main", color: "error.contrastText", opacity: 0.9 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "white", animation: "pulse 1.5s infinite" }} />
+                    <Typography variant="caption" sx={{ fontWeight: 500 }}>Sharing your screen</Typography>
                     <img
                       ref={frameImgRef}
                       alt="Screen preview"
-                      className="h-8 rounded ml-auto ring-1 ring-white/10"
-                      style={{ display: latestFrameRef.current ? undefined : "none" }}
+                      style={{ height: 32, borderRadius: 4, marginLeft: "auto", display: latestFrameRef.current ? undefined : "none" }}
                     />
-                    <button
+                    <Button
+                      size="small"
+                      variant="text"
                       onClick={stopScreenShare}
-                      className="ml-1 text-xs px-2 py-0.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors"
+                      sx={{ color: "inherit", minWidth: 0 }}
                     >
                       Stop
-                    </button>
-                  </div>
+                    </Button>
+                  </Box>
                 )}
 
                 {/* Pending file previews */}
                 {pendingFiles.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mb: 1 }}>
                     {pendingFiles.map((pf, idx) => (
-                      <div
+                      <Chip
                         key={`${pf.file.name}-${pf.file.lastModified}`}
-                        className="relative group flex items-center gap-1.5 bg-white/[0.04] rounded-xl px-2.5 py-1.5 text-xs border border-white/[0.08]"
-                      >
-                        {pf.previewUrl ? (
+                        label={pf.file.name}
+                        size="small"
+                        variant="outlined"
+                        icon={pf.previewUrl ? (
                           <img
                             src={pf.previewUrl}
                             alt={pf.file.name}
-                            className="h-7 w-7 object-cover rounded-md"
+                            style={{ height: 20, width: 20, objectFit: "cover", borderRadius: 4 }}
                           />
-                        ) : (
-                          <span className="text-sm">📄</span>
-                        )}
-                        <span className="max-w-[100px] truncate text-[11px]">{pf.file.name}</span>
-                        <button
-                          onClick={() => removePendingFile(idx)}
-                          className="ml-0.5 text-muted-foreground hover:text-red-500 transition-colors"
-                          title="Remove"
-                        >
-                          ✕
-                        </button>
-                      </div>
+                        ) : undefined}
+                        onDelete={() => removePendingFile(idx)}
+                        sx={{ maxWidth: 180 }}
+                      />
                     ))}
-                  </div>
+                  </Box>
                 )}
 
-                <div className="flex gap-2 items-center">
+                <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
                   <input
                     ref={fileInputRef}
                     type="file"
                     multiple
                     accept={ACCEPT_STRING}
                     onChange={handleFileSelect}
-                    className="hidden"
+                    style={{ display: "none" }}
                   />
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  <IconButton
+                    size="small"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={loading || !activeThread}
                     title="Attach files"
-                    className="shrink-0 h-9 w-9 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/5"
                   >
-                    📎
-                  </Button>
+                    <AttachFileIcon fontSize="small" />
+                  </IconButton>
                   {screenShareEnabled && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    <IconButton
+                      size="small"
                       onClick={screenSharing ? stopScreenShare : startScreenShare}
                       disabled={loading || !activeThread}
                       title={screenSharing ? "Stop screen sharing" : "Share your screen"}
-                      className={`shrink-0 h-9 w-9 rounded-xl transition-all duration-300 ${
-                        screenSharing
-                          ? "text-red-400 bg-red-500/10 hover:bg-red-500/20 ring-1 ring-red-500/30"
-                          : "text-muted-foreground hover:text-primary hover:bg-primary/5"
-                      }`}
+                      color={screenSharing ? "error" : "default"}
                     >
-                      🖥️
-                    </Button>
+                      {screenSharing ? <StopScreenShareIcon fontSize="small" /> : <ScreenShareIcon fontSize="small" />}
+                    </IconButton>
                   )}
-                  <Input
+                  <TextField
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
                     placeholder="Message Nexus..."
                     disabled={loading}
-                    className="rounded-xl bg-white/[0.03] border-white/[0.08] focus-visible:border-primary/30"
+                    size="small"
+                    fullWidth
+                    variant="outlined"
                   />
-                  <Button
+                  <IconButton
                     onClick={sendMessage}
                     disabled={loading || (!input.trim() && pendingFiles.length === 0 && !screenSharing)}
-                    size="icon"
-                    className="shrink-0 h-9 w-9 rounded-xl shadow-md shadow-primary/20"
+                    color="primary"
+                    title="Send message"
                   >
                     {loading ? (
-                      <span className="h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                      <CircularProgress size={20} color="inherit" />
                     ) : (
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M2 8L14 2L8 14L7 9L2 8Z" fill="currentColor" />
-                      </svg>
+                      <SendIcon fontSize="small" />
                     )}
-                  </Button>
-                </div>
-              </div>
-            </div>
+                  </IconButton>
+                </Box>
+              </Box>
+            </Box>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4 relative">
+          <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative" }}>
             {/* Mobile back button for empty state */}
-            <div className="sm:hidden absolute top-0 left-0 px-3 py-2">
-              <button
+            <Box sx={{ display: { xs: "block", sm: "none" }, position: "absolute", top: 0, left: 0, px: 1.5, py: 1 }}>
+              <Button
+                size="small"
+                variant="text"
+                startIcon={<ArrowBackIcon />}
                 onClick={() => setShowSidebar(true)}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-white/[0.06]"
+                sx={{ textTransform: "none" }}
               >
-                ← Threads
-              </button>
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-64 h-64 bg-primary/3 rounded-full blur-3xl" />
-            </div>
-            <div className="relative z-10 flex flex-col items-center gap-4">
-              <div className="text-5xl opacity-60">💬</div>
-              <div className="text-center space-y-1">
-                <p className="text-sm font-medium text-foreground/60">No thread selected</p>
-                <p className="text-xs text-muted-foreground/60 font-light">Select or create a thread to start chatting.</p>
-              </div>
-            </div>
-          </div>
+                Threads
+              </Button>
+            </Box>
+            <Box sx={{ textAlign: "center" }}>
+              <ChatBubbleOutlineIcon sx={{ fontSize: 64, color: "text.disabled", mb: 2 }} />
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                No thread selected
+              </Typography>
+              <Typography variant="caption" color="text.disabled">
+                Select or create a thread to start chatting.
+              </Typography>
+            </Box>
+          </Box>
         )}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }
 
@@ -825,10 +894,11 @@ const AttachmentPreview = memo(function AttachmentPreview({ attachment }: { atta
   if (isImage && url) {
     return (
       <a href={url} target="_blank" rel="noopener noreferrer">
-        <img
+        <Box
+          component="img"
           src={url}
           alt={attachment.filename}
-          className="max-h-[400px] max-w-full rounded-xl object-contain cursor-zoom-in ring-1 ring-white/[0.08] hover:ring-primary/30 transition-all duration-300"
+          sx={{ maxHeight: 400, maxWidth: "100%", borderRadius: 2, objectFit: "contain", cursor: "zoom-in", border: 1, borderColor: "divider", "&:hover": { borderColor: "primary.main" } }}
         />
       </a>
     );
@@ -836,26 +906,26 @@ const AttachmentPreview = memo(function AttachmentPreview({ attachment }: { atta
 
   if (isVideo && url) {
     return (
-      <video
+      <Box
+        component="video"
         src={url}
         controls
-        className="max-h-48 max-w-xs rounded-xl ring-1 ring-white/[0.08]"
+        sx={{ maxHeight: 192, maxWidth: 320, borderRadius: 2, border: 1, borderColor: "divider" }}
       />
     );
   }
 
   return (
-    <a
+    <Chip
+      component="a"
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-1.5 bg-white/[0.04] rounded-xl px-3 py-2 text-xs border border-white/[0.08] hover:bg-white/[0.06] hover:border-primary/20 transition-all duration-300"
-    >
-      <span className="text-sm">📄</span>
-      <span className="max-w-[140px] truncate text-[11px]">{attachment.filename}</span>
-      <span className="text-[10px] text-muted-foreground/60">
-        {(attachment.sizeBytes / 1024).toFixed(0)} KB
-      </span>
-    </a>
+      clickable
+      icon={<AttachFileIcon sx={{ fontSize: 14 }} />}
+      label={`${attachment.filename} (${(attachment.sizeBytes / 1024).toFixed(0)} KB)`}
+      size="small"
+      variant="outlined"
+    />
   );
 });

@@ -1,9 +1,16 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import Box from "@mui/material/Box";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import Typography from "@mui/material/Typography";
+import Chip from "@mui/material/Chip";
+import Button from "@mui/material/Button";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import MuiSwitch from "@mui/material/Switch";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import { useTheme } from "@/components/theme-provider";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 
@@ -19,13 +26,13 @@ interface LogEntry {
 type LogFilter = "all" | "verbose" | "warning" | "error" | "critical" | "thought";
 
 // Pure helper functions — module-level to avoid re-creation per render
-function levelColor(level: string) {
+function levelColor(level: string): "error" | "warning" | "default" | "info" | "primary" {
   switch (level) {
-    case "critical": return "destructive";
-    case "error": return "destructive";
+    case "critical": return "error";
+    case "error": return "error";
     case "warning": return "warning";
-    case "verbose": return "secondary";
-    default: return "outline";
+    case "verbose": return "default";
+    default: return "info";
   }
 }
 
@@ -108,256 +115,157 @@ export function AgentDashboard() {
   const isMobile = useIsMobile();
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-display font-bold gradient-text">Agent Dashboard</h2>
-          <p className="text-sm text-muted-foreground/60 font-light mt-1">Real-time activity and diagnostics</p>
-        </div>
-        <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 self-start sm:self-auto w-full sm:w-auto">
-          <label className="flex items-center justify-between sm:justify-start gap-2.5 text-[12px] sm:text-[13px] text-muted-foreground cursor-pointer bg-white/[0.03] border border-white/[0.06] rounded-xl px-3 py-2 hover:bg-white/[0.05] transition-all duration-300">
-            <span>Show all logs</span>
-            <input
-              type="checkbox"
-              checked={showAllLogs}
-              onChange={() => setShowAllLogs(!showAllLogs)}
-              className="rounded accent-primary"
-            />
-          </label>
-          <label className="flex items-center justify-between sm:justify-start gap-2.5 text-[12px] sm:text-[13px] text-muted-foreground cursor-pointer bg-white/[0.03] border border-white/[0.06] rounded-xl px-3 py-2 hover:bg-white/[0.05] transition-all duration-300">
-            <span>Auto-refresh</span>
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={() => setAutoRefresh(!autoRefresh)}
-              className="rounded accent-primary"
-            />
-          </label>
-        </div>
-      </div>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { sm: "center" }, justifyContent: "space-between", gap: 2 }}>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>Agent Dashboard</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Real-time activity and diagnostics</Typography>
+        </Box>
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+          <FormControlLabel
+            control={<MuiSwitch size="small" checked={showAllLogs} onChange={() => setShowAllLogs(!showAllLogs)} />}
+            label={<Typography variant="caption">Show all logs</Typography>}
+          />
+          <FormControlLabel
+            control={<MuiSwitch size="small" checked={autoRefresh} onChange={() => setAutoRefresh(!autoRefresh)} />}
+            label={<Typography variant="caption">Auto-refresh</Typography>}
+          />
+        </Box>
+      </Box>
 
       {/* Stats Cards — clickable to filter logs */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-        <Card
-          className={`group cursor-pointer transition-all duration-300 ${filter === "all" ? "border-primary/30 bg-primary/5" : "hover:border-primary/20"}`}
-          onClick={() => setFilter("all")}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Total Logs</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-display font-bold">{stats.total}</div>
-          </CardContent>
-        </Card>
-        <Card
-          className={`group cursor-pointer transition-all duration-300 ${filter === "verbose" ? "border-blue-500/30 bg-blue-500/5" : "hover:border-blue-500/20"}`}
-          onClick={() => setFilter(filter === "verbose" ? "all" : "verbose")}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Verbose</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-display font-bold text-blue-400">
-              {stats.verbose}
-            </div>
-          </CardContent>
-        </Card>
-        <Card
-          className={`group cursor-pointer transition-all duration-300 ${filter === "warning" ? "border-yellow-500/30 bg-yellow-500/5" : "hover:border-yellow-500/20"}`}
-          onClick={() => setFilter(filter === "warning" ? "all" : "warning")}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Warnings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-display font-bold text-yellow-400">
-              {stats.warnings}
-            </div>
-          </CardContent>
-        </Card>
-        <Card
-          className={`group cursor-pointer transition-all duration-300 ${filter === "error" ? "border-orange-500/30 bg-orange-500/5" : "hover:border-orange-500/20"}`}
-          onClick={() => setFilter(filter === "error" ? "all" : "error")}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Errors</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-display font-bold text-red-400">
-              {stats.errors}
-            </div>
-          </CardContent>
-        </Card>
-        <Card
-          className={`group cursor-pointer transition-all duration-300 ${filter === "critical" ? "border-red-500/40 bg-red-500/10" : "hover:border-red-500/30"}`}
-          onClick={() => setFilter(filter === "critical" ? "all" : "critical")}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Critical</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-display font-bold text-red-400">
-              {stats.critical}
-            </div>
-          </CardContent>
-        </Card>
-        <Card
-          className={`group cursor-pointer transition-all duration-300 ${filter === "thought" ? "border-indigo-500/30 bg-indigo-500/5" : "hover:border-indigo-500/20"}`}
-          onClick={() => setFilter(filter === "thought" ? "all" : "thought")}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground/70 uppercase tracking-wider font-normal">Thoughts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-display font-bold text-indigo-400">
-              {stats.thoughts}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", lg: "repeat(6, 1fr)" }, gap: { xs: 1.5, sm: 2 } }}>
+        {([
+          { key: "all" as LogFilter, label: "Total Logs", value: stats.total, color: "primary.main" },
+          { key: "verbose" as LogFilter, label: "Verbose", value: stats.verbose, color: "info.main" },
+          { key: "warning" as LogFilter, label: "Warnings", value: stats.warnings, color: "warning.main" },
+          { key: "error" as LogFilter, label: "Errors", value: stats.errors, color: "error.main" },
+          { key: "critical" as LogFilter, label: "Critical", value: stats.critical, color: "error.dark" },
+          { key: "thought" as LogFilter, label: "Thoughts", value: stats.thoughts, color: "secondary.main" },
+        ] as const).map((stat) => (
+          <Card
+            key={stat.key}
+            variant="outlined"
+            sx={{
+              cursor: "pointer",
+              transition: "all 0.2s",
+              borderColor: filter === stat.key ? `${stat.color}` : "divider",
+              bgcolor: filter === stat.key ? `action.selected` : undefined,
+              "&:hover": { borderColor: stat.color },
+            }}
+            onClick={() => setFilter(stat.key === filter && stat.key !== "all" ? "all" : stat.key)}
+          >
+            <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
+              <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.65rem" }}>{stat.label}</Typography>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: stat.color }}>{stat.value}</Typography>
+            </CardContent>
+          </Card>
+        ))}
+      </Box>
 
-      {/* Active filter indicator */}
-      <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground/70">Log Filters</div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setFilter("all")}
-            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${filter === "all" ? "border-primary/40 bg-primary/15 text-primary" : "border-white/[0.08] text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"}`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilter("verbose")}
-            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${filter === "verbose" ? "border-blue-500/40 bg-blue-500/15 text-blue-200" : "border-white/[0.08] text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"}`}
-          >
-            Verbose
-          </button>
-          <button
-            onClick={() => setFilter("warning")}
-            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${filter === "warning" ? "border-yellow-500/40 bg-yellow-500/15 text-yellow-200" : "border-white/[0.08] text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"}`}
-          >
-            Warning
-          </button>
-          <button
-            onClick={() => setFilter("error")}
-            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${filter === "error" ? "border-orange-500/40 bg-orange-500/15 text-orange-200" : "border-white/[0.08] text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"}`}
-          >
-            Error
-          </button>
-          <button
-            onClick={() => setFilter("critical")}
-            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${filter === "critical" ? "border-red-500/40 bg-red-500/15 text-red-200" : "border-white/[0.08] text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"}`}
-          >
-            Critical
-          </button>
-          <button
-            onClick={() => setFilter("thought")}
-            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${filter === "thought" ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-200" : "border-white/[0.08] text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"}`}
-          >
-            Thought
-          </button>
-        </div>
-      </div>
+      {/* Log Filters */}
+      <Box sx={{ borderRadius: 2, border: 1, borderColor: "divider", p: 1.5 }}>
+        <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.65rem", mb: 1, display: "block" }}>Log Filters</Typography>
+        <ToggleButtonGroup
+          value={filter}
+          exclusive
+          onChange={(_, val) => { if (val !== null) setFilter(val); }}
+          size="small"
+          sx={{ flexWrap: "wrap", gap: 0.5 }}
+        >
+          {(["all", "verbose", "warning", "error", "critical", "thought"] as LogFilter[]).map((f) => (
+            <ToggleButton key={f} value={f} sx={{ textTransform: "capitalize", px: 1.5, py: 0.5, fontSize: "0.75rem" }}>
+              {f}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Box>
 
       {filter !== "all" && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground/60">Filtering:</span>
-          <Badge variant="outline" className="text-xs">
-            {filter === "verbose"
-              ? "Verbose only"
-              : filter === "warning"
-                ? "Warnings only"
-                : filter === "error"
-                  ? "Errors only"
-                  : filter === "critical"
-                    ? "Critical only"
-                    : "Thought details only"}
-          </Badge>
-          <button onClick={() => setFilter("all")} className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors">
-            Clear
-          </button>
-        </div>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Typography variant="caption" color="text.secondary">Filtering:</Typography>
+          <Chip label={`${filter} only`} size="small" variant="outlined" onDelete={() => setFilter("all")} />
+        </Box>
       )}
 
       {showAllLogs && autoRefresh && (
-        <div className="text-xs text-muted-foreground/70 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2">
-          Auto-refresh is paused in "Show all logs" mode to keep mobile performance smooth.
-        </div>
+        <Typography variant="caption" color="text.secondary" sx={{ bgcolor: "action.hover", borderRadius: 1, px: 1.5, py: 1, display: "block" }}>
+          Auto-refresh is paused in &quot;Show all logs&quot; mode to keep mobile performance smooth.
+        </Typography>
       )}
 
       {/* Log Stream */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="gradient-text text-base sm:text-lg">
+      <Card variant="outlined">
+        <Box sx={{ p: 2, borderBottom: 1, borderColor: "divider" }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
             Agent Log Stream {showAllLogs ? "(All)" : "(Latest 200)"}
-          </CardTitle>
-        </CardHeader>
+          </Typography>
+        </Box>
         <CardContent>
-          <ScrollArea className="h-[500px]">
-            <div className="space-y-1">
-              {isMobile ? (
-                <div className="space-y-2">
-                  {visibleLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-2"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-muted-foreground/60 font-light">
-                          {formatDate(log.created_at, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <Badge variant={levelColor(log.level) as "default"}>{log.level}</Badge>
-                          <span className={`text-[10px] font-bold uppercase tracking-wider ${sourceColor(log.source)}`}>
-                            {log.source || "sys"}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="text-xs leading-relaxed text-foreground/85 break-words">{log.message}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {visibleLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-white/[0.03] text-sm font-mono transition-colors duration-200"
-                    >
-                      <span className="text-[11px] text-muted-foreground/50 whitespace-nowrap font-light">
+          <Box sx={{ height: 500, overflow: "auto" }}>
+            {isMobile ? (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {visibleLogs.map((log) => (
+                  <Box
+                    key={log.id}
+                    sx={{ borderRadius: 2, border: 1, borderColor: "divider", p: 1.5, display: "flex", flexDirection: "column", gap: 0.5 }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
                         {formatDate(log.created_at, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </span>
-                      <Badge variant={levelColor(log.level) as "default"}>
-                        {log.level}
-                      </Badge>
-                      <span className={`text-[11px] font-bold uppercase tracking-wider ${sourceColor(log.source)}`}>
-                        {log.source || "sys"}
-                      </span>
-                      <span className="flex-1 text-foreground/80">{log.message}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+                      </Typography>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <Chip label={log.level} size="small" color={levelColor(log.level)} />
+                        <Typography variant="caption" sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }} className={sourceColor(log.source)}>
+                          {log.source || "sys"}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Typography variant="body2" sx={{ wordBreak: "break-word" }}>{log.message}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+                {visibleLogs.map((log) => (
+                  <Box
+                    key={log.id}
+                    sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, p: 1, borderRadius: 2, fontFamily: "monospace", fontSize: "0.875rem", "&:hover": { bgcolor: "action.hover" } }}
+                  >
+                    <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: "nowrap", fontFamily: "monospace" }}>
+                      {formatDate(log.created_at, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                    </Typography>
+                    <Chip label={log.level} size="small" color={levelColor(log.level)} />
+                    <Typography variant="caption" sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }} className={sourceColor(log.source)}>
+                      {log.source || "sys"}
+                    </Typography>
+                    <Typography variant="body2" sx={{ flex: 1, fontFamily: "monospace" }}>{log.message}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
 
               {filteredLogs.length === 0 && (
-                <div className="text-center text-muted-foreground/60 py-12 text-sm font-light">
-                  {filter !== "all" ? `No ${filter} logs found.` : "No agent logs yet. Start a conversation or enable proactive scanning."}
-                </div>
+                <Box sx={{ textAlign: "center", py: 6 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {filter !== "all" ? `No ${filter} logs found.` : "No agent logs yet. Start a conversation or enable proactive scanning."}
+                  </Typography>
+                </Box>
               )}
               {filteredLogs.length > visibleLogs.length && (
-                <div className="pt-2 flex justify-center">
-                  <button
+                <Box sx={{ pt: 1, display: "flex", justifyContent: "center" }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
                     onClick={() => setRenderCount((prev) => prev + 400)}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-white/[0.08] text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors"
                   >
                     Load more logs ({filteredLogs.length - visibleLogs.length} remaining)
-                  </button>
-                </div>
+                  </Button>
+                </Box>
               )}
-            </div>
-          </ScrollArea>
+          </Box>
         </CardContent>
       </Card>
-    </div>
+    </Box>
   );
 }

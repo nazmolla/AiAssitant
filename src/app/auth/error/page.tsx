@@ -1,40 +1,40 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Suspense } from "react";
+import Box from "@mui/material/Box";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import Typography from "@mui/material/Typography";
+import Button from "@mui/material/Button";
 
 function AuthErrorContent() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
 
   return (
-    <div className="flex h-screen items-center justify-center bg-background noise relative overflow-hidden">
-      <div className="absolute top-1/3 left-1/3 w-72 h-72 bg-destructive/5 rounded-full blur-3xl" />
-      <Card className="w-full max-w-md relative z-10">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-display text-destructive">Access Denied</CardTitle>
-          <CardDescription className="text-muted-foreground/60">
+    <Box sx={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", bgcolor: "background.default" }}>
+      <Card variant="outlined" sx={{ width: "100%", maxWidth: 420, mx: 2 }}>
+        <CardContent sx={{ p: 4, textAlign: "center", display: "flex", flexDirection: "column", gap: 2 }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, color: "error.main" }}>Access Denied</Typography>
+          <Typography variant="body2" color="text.secondary">
             {error === "AccessDenied"
               ? "Your account is pending activation. An admin must activate your account before you can sign in."
               : `Authentication error: ${error}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="text-center">
-          <Link href="/">
-            <Button variant="outline">Back to Home</Button>
+          </Typography>
+          <Link href="/" style={{ textDecoration: "none" }}>
+            <Button variant="outlined">Back to Home</Button>
           </Link>
         </CardContent>
       </Card>
-    </div>
+    </Box>
   );
 }
 
 export default function AuthErrorPage() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading...</div>}>
+    <Suspense fallback={<Box sx={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center" }}>Loading...</Box>}>
       <AuthErrorContent />
     </Suspense>
   );

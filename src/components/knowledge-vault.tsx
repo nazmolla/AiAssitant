@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import Box from "@mui/material/Box";
+import MuiButton from "@mui/material/Button";
+import MuiCard from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import { useTheme } from "@/components/theme-provider";
 
 interface KnowledgeEntry {
@@ -87,39 +92,25 @@ export function KnowledgeVault() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-display font-bold gradient-text">Knowledge Vault</h2>
-        <p className="text-sm text-muted-foreground/60 mt-1 font-light">
+        <Typography variant="h5" sx={{ fontWeight: 700, color: "primary.main" }}>Knowledge Vault</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           Nexus continuously captures durable facts from every chat turn. Review and curate them here.
-        </p>
+        </Typography>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant={sourceFilter === "all" ? "default" : "outline"}
-          onClick={() => setSourceFilter("all")}
-        >
-          All
-        </Button>
-        <Button
-          size="sm"
-          variant={sourceFilter === "proactive" ? "default" : "outline"}
-          onClick={() => setSourceFilter("proactive")}
-        >
-          Proactive
-        </Button>
-        <Button
-          size="sm"
-          variant={sourceFilter === "manual" ? "default" : "outline"}
-          onClick={() => setSourceFilter("manual")}
-        >
-          Manual
-        </Button>
-      </div>
+      <ToggleButtonGroup
+        value={sourceFilter}
+        exclusive
+        onChange={(_, v) => { if (v) setSourceFilter(v); }}
+        size="small"
+      >
+        <ToggleButton value="all">All</ToggleButton>
+        <ToggleButton value="proactive">Proactive</ToggleButton>
+        <ToggleButton value="manual">Manual</ToggleButton>
+      </ToggleButtonGroup>
 
-      {/* Knowledge Table */}
-      <Card>
-        <CardContent className="p-0">
+      <MuiCard variant="outlined">
+        <CardContent sx={{ p: 0 }}>
           {isMobile ? (
           <div className="p-3 space-y-2">
             {visibleEntries.map((entry) => (
@@ -133,14 +124,14 @@ export function KnowledgeVault() {
                 </div>
                 {editingId === entry.id ? (
                   <div className="space-y-2">
-                    <Input
+                    <TextField
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
-                      className="h-8"
+                      size="small"
                     />
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={() => updateEntry(entry.id)}>Save</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                      <MuiButton size="small" variant="contained" onClick={() => updateEntry(entry.id)}>Save</MuiButton>
+                      <MuiButton size="small" variant="text" onClick={() => setEditingId(null)}>Cancel</MuiButton>
                     </div>
                   </div>
                 ) : (
@@ -151,19 +142,19 @@ export function KnowledgeVault() {
                     {formatDate(entry.last_updated, { year: "numeric", month: "short", day: "numeric" })}
                   </div>
                   <div className="flex gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
+                    <MuiButton
+                      size="small"
+                      variant="text"
                       onClick={() => {
                         setEditingId(entry.id);
                         setEditValue(entry.value);
                       }}
                     >
                       Edit
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteEntry(entry.id)}>
+                    </MuiButton>
+                    <MuiButton size="small" variant="text" color="error" onClick={() => deleteEntry(entry.id)}>
                       Delete
-                    </Button>
+                    </MuiButton>
                   </div>
                 </div>
               </div>
@@ -191,21 +182,21 @@ export function KnowledgeVault() {
                     <td className="p-4 text-sm">
                       {editingId === entry.id ? (
                         <div className="flex gap-1">
-                          <Input
+                          <TextField
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
-                            className="h-8"
+                            size="small"
                           />
-                          <Button size="sm" onClick={() => updateEntry(entry.id)}>
+                          <MuiButton size="small" variant="contained" onClick={() => updateEntry(entry.id)}>
                             Save
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                          </MuiButton>
+                          <MuiButton
+                            size="small"
+                            variant="text"
                             onClick={() => setEditingId(null)}
                           >
                             Cancel
-                          </Button>
+                          </MuiButton>
                         </div>
                       ) : (
                         entry.value
@@ -219,24 +210,24 @@ export function KnowledgeVault() {
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex justify-end gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
+                        <MuiButton
+                          size="small"
+                          variant="text"
                           onClick={() => {
                             setEditingId(entry.id);
                             setEditValue(entry.value);
                           }}
                         >
                           Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-destructive"
+                        </MuiButton>
+                        <MuiButton
+                          size="small"
+                          variant="text"
+                          color="error"
                           onClick={() => deleteEntry(entry.id)}
                         >
                           Delete
-                        </Button>
+                        </MuiButton>
                       </div>
                     </td>
                   </tr>
@@ -247,30 +238,31 @@ export function KnowledgeVault() {
           )}
 
           {filteredEntries.length === 0 && (
-            <div className="p-12 text-center">
-              <div className="text-3xl mb-3 opacity-30">🧠</div>
-              <p className="text-sm text-muted-foreground/60 font-light">
+            <Box sx={{ p: 6, textAlign: "center" }}>
+              <Typography sx={{ fontSize: "2rem", mb: 1, opacity: 0.3 }}>🧠</Typography>
+              <Typography variant="body2" color="text.secondary">
                 {sourceFilter === "all"
                   ? "No knowledge captured yet. Start chatting or connect proactive MCP sources."
                   : sourceFilter === "proactive"
                     ? "No proactive knowledge facts found yet."
                     : "No manual/chat knowledge facts found yet."}
-              </p>
-            </div>
+              </Typography>
+            </Box>
           )}
 
           {filteredEntries.length > visibleEntries.length && (
-            <div className="p-3 flex justify-center">
-              <button
+            <Box sx={{ p: 1.5, display: "flex", justifyContent: "center" }}>
+              <MuiButton
+                size="small"
+                variant="outlined"
                 onClick={() => setRenderCount((prev) => prev + 120)}
-                className="text-xs px-3 py-1.5 rounded-lg border border-white/[0.08] text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors"
               >
                 Load more ({filteredEntries.length - visibleEntries.length} remaining)
-              </button>
-            </div>
+              </MuiButton>
+            </Box>
           )}
         </CardContent>
-      </Card>
+      </MuiCard>
     </div>
   );
 }

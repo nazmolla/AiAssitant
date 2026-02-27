@@ -4,8 +4,31 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import dynamic from "next/dynamic";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
+import AppBar from "@mui/material/AppBar";
+import Toolbar from "@mui/material/Toolbar";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
+import Button from "@mui/material/Button";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import Chip from "@mui/material/Chip";
+import IconButton from "@mui/material/IconButton";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import CircularProgress from "@mui/material/CircularProgress";
+import Divider from "@mui/material/Divider";
+import LogoutIcon from "@mui/icons-material/Logout";
+import PaletteIcon from "@mui/icons-material/Palette";
+import ChatIcon from "@mui/icons-material/Chat";
+import DashboardIcon from "@mui/icons-material/Dashboard";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import SchoolIcon from "@mui/icons-material/School";
+import SettingsIcon from "@mui/icons-material/Settings";
+import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import { useTheme, THEMES, type ThemeId } from "@/components/theme-provider";
 
 /* ── Lazy-loaded tab components (code-split into separate chunks) ── */
@@ -58,145 +81,106 @@ export default function HomePage() {
 
   if (status === "loading") {
     return (
-      <div className="flex h-screen items-center justify-center bg-background noise">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="h-10 w-10 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-            <div className="absolute inset-0 h-10 w-10 rounded-full bg-primary/10 blur-xl animate-pulse-glow" />
-          </div>
-          <span className="text-sm text-muted-foreground font-light tracking-wide">Loading Nexus...</span>
-        </div>
-      </div>
+      <Box sx={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", bgcolor: "background.default" }}>
+        <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          <CircularProgress size={40} />
+          <Typography variant="body2" color="text.secondary">Loading Nexus...</Typography>
+        </Box>
+      </Box>
     );
   }
 
   if (!session) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background noise relative overflow-hidden">
-        {/* Background glow orbs */}
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary/3 rounded-full blur-3xl" />
-
-        <div className="text-center space-y-8 relative z-10">
-          <div className="space-y-4">
-            <h1 className="text-6xl font-display font-bold gradient-text tracking-tight">
-              Nexus
-            </h1>
-            <p className="text-lg text-muted-foreground font-light tracking-wide uppercase">
-              The AI that actually does things.
-            </p>
-          </div>
-          <Button
-            size="lg"
-            className="rounded-2xl px-10 h-12 text-base font-medium glow-md hover:glow-sm"
-            onClick={() => router.push("/auth/signin")}
-          >
+      <Box sx={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", bgcolor: "background.default" }}>
+        <Box sx={{ textAlign: "center" }}>
+          <Typography variant="h3" fontWeight={700} color="primary" gutterBottom>
+            Nexus
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 4 }}>
+            The AI that actually does things.
+          </Typography>
+          <Button variant="contained" size="large" sx={{ px: 5, py: 1.5, borderRadius: 3 }} onClick={() => router.push("/auth/signin")}>
             Sign In
           </Button>
-        </div>
-      </div>
+        </Box>
+      </Box>
     );
   }
 
+  const tabItems = useMemo(() => {
+    const items: { value: string; label: string; icon: React.ReactElement }[] = [];
+    if (perms.chat) items.push({ value: "chat", label: "Chat", icon: <ChatIcon fontSize="small" /> });
+    if (perms.dashboard) items.push({ value: "dashboard", label: "Dashboard", icon: <DashboardIcon fontSize="small" /> });
+    if (perms.approvals) items.push({ value: "approvals", label: "Approvals", icon: <CheckCircleIcon fontSize="small" /> });
+    if (perms.knowledge) items.push({ value: "knowledge", label: "Knowledge", icon: <SchoolIcon fontSize="small" /> });
+    items.push({ value: "config", label: "Settings", icon: <SettingsIcon fontSize="small" /> });
+    return items;
+  }, [perms]);
+
   return (
-    <div className="flex h-screen flex-col bg-background noise">
-      {/* Header — Glass morphism toolbar */}
-      <header className="glass px-3 sm:px-6 py-3 flex items-center justify-between relative z-20">
-        <div className="flex items-center gap-2 sm:gap-4">
-          <h1 className="text-lg font-display font-bold gradient-text">Nexus</h1>
-          <span className="hidden sm:inline text-[10px] text-muted-foreground/70 bg-primary/5 border border-primary/10 px-2.5 py-1 rounded-full font-medium uppercase tracking-widest">
-            Command Center
-          </span>
-          <span className="hidden sm:inline text-[9px] text-muted-foreground/40 font-mono">
-            v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 sm:gap-3">
-          <ThemeSwitcher />
-          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" title="Online" />
-          <span className="hidden sm:inline text-[13px] text-muted-foreground font-medium max-w-[180px] truncate">
-            {displayName || session.user?.email}
-          </span>
-          <button
-            onClick={() => signOut({ callbackUrl: `${window.location.origin}/auth/signin` })}
-            className="text-[11px] sm:text-xs text-muted-foreground/60 hover:text-red-400 transition-colors px-1.5 sm:px-2 py-1 rounded-lg hover:bg-red-500/10"
-            title="Sign out"
-          >
-            Logout
-          </button>
-        </div>
-      </header>
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100vh", bgcolor: "background.default" }}>
+      {/* Header */}
+      <AppBar position="static" color="default">
+        <Toolbar variant="dense" sx={{ gap: 1, justifyContent: "space-between" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Typography variant="h6" color="primary" fontWeight={700} sx={{ letterSpacing: "-0.5px" }}>
+              Nexus
+            </Typography>
+            <Chip label="Command Center" size="small" variant="outlined" sx={{ display: { xs: "none", sm: "inline-flex" }, fontSize: "0.65rem", height: 22 }} />
+            <Typography variant="caption" color="text.secondary" sx={{ display: { xs: "none", sm: "inline" }, fontFamily: "monospace", fontSize: "0.65rem" }}>
+              v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}
+            </Typography>
+          </Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <ThemeSwitcher />
+            <FiberManualRecordIcon sx={{ fontSize: 10, color: "success.main" }} titleAccess="Online" />
+            <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "inline" }, maxWidth: 180 }} noWrap>
+              {displayName || session.user?.email}
+            </Typography>
+            <IconButton size="small" onClick={() => signOut({ callbackUrl: `${window.location.origin}/auth/signin` })} title="Sign out" color="error">
+              <LogoutIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </Toolbar>
+      </AppBar>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-hidden">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
-          <div className="glass px-2 sm:px-6 py-2 flex items-center justify-start overflow-x-auto">
-            <TabsList className="grid grid-flow-col auto-cols-max sm:flex-nowrap w-max min-w-max gap-1">
-              {!!perms.chat && (
-                <TabsTrigger value="chat">
-                  <span className="mr-0 sm:mr-1.5">💬</span>
-                  <span className="inline ml-1 sm:ml-0">Chat</span>
-                </TabsTrigger>
-              )}
-              {!!perms.dashboard && (
-                <TabsTrigger value="dashboard">
-                  <span className="mr-0 sm:mr-1.5">📊</span>
-                  <span className="inline ml-1 sm:ml-0">Dashboard</span>
-                </TabsTrigger>
-              )}
-              {!!perms.approvals && (
-                <TabsTrigger value="approvals">
-                  <span className="mr-0 sm:mr-1.5">✅</span>
-                  <span className="inline ml-1 sm:ml-0">Approvals</span>
-                </TabsTrigger>
-              )}
-              {!!perms.knowledge && (
-                <TabsTrigger value="knowledge">
-                  <span className="mr-0 sm:mr-1.5">🧠</span>
-                  <span className="inline ml-1 sm:ml-0">Knowledge</span>
-                </TabsTrigger>
-              )}
-              <TabsTrigger value="config">
-                <span className="mr-0 sm:mr-1.5">⚙️</span>
-                <span className="inline ml-1 sm:ml-0">Settings</span>
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          <TabsContent value="chat" className="flex-1 overflow-hidden m-0">
-            {activeTab === "chat" && <ChatPanel />}
-          </TabsContent>
-
-          <TabsContent value="dashboard" className="flex-1 overflow-auto m-0 p-3 sm:p-6">
-            {activeTab === "dashboard" && (
-              <div className="max-w-5xl mx-auto">
-                <AgentDashboard />
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="approvals" className="flex-1 overflow-auto m-0 p-3 sm:p-6">
-            {activeTab === "approvals" && (
-              <div className="max-w-3xl mx-auto">
-                <ApprovalInbox />
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="knowledge" className="flex-1 overflow-auto m-0 p-3 sm:p-6">
-            {activeTab === "knowledge" && (
-              <div className="max-w-5xl mx-auto">
-                <KnowledgeVault />
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="config" className="flex-1 overflow-hidden m-0">
-            {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} />}
-          </TabsContent>
+      {/* Tab bar */}
+      <Box sx={{ borderBottom: 1, borderColor: "divider", bgcolor: "background.paper" }}>
+        <Tabs
+          value={activeTab}
+          onChange={(_, v) => setActiveTab(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ minHeight: 44 }}
+        >
+          {tabItems.map((t) => (
+            <Tab key={t.value} value={t.value} label={t.label} icon={t.icon} iconPosition="start" sx={{ minHeight: 44 }} />
+          ))}
         </Tabs>
-      </main>
-    </div>
+      </Box>
+
+      {/* Content */}
+      <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {activeTab === "chat" && <ChatPanel />}
+        {activeTab === "dashboard" && (
+          <Box sx={{ flex: 1, overflow: "auto", p: { xs: 1.5, sm: 3 } }}>
+            <Box sx={{ maxWidth: 1000, mx: "auto" }}><AgentDashboard /></Box>
+          </Box>
+        )}
+        {activeTab === "approvals" && (
+          <Box sx={{ flex: 1, overflow: "auto", p: { xs: 1.5, sm: 3 } }}>
+            <Box sx={{ maxWidth: 700, mx: "auto" }}><ApprovalInbox /></Box>
+          </Box>
+        )}
+        {activeTab === "knowledge" && (
+          <Box sx={{ flex: 1, overflow: "auto", p: { xs: 1.5, sm: 3 } }}>
+            <Box sx={{ maxWidth: 1000, mx: "auto" }}><KnowledgeVault /></Box>
+          </Box>
+        )}
+        {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} />}
+      </Box>
+    </Box>
   );
 }
 
@@ -248,45 +232,58 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
   const header = SETTINGS_HEADERS[active];
 
   return (
-    <div className="flex flex-col sm:flex-row h-full">
-      {/* Left sidebar — horizontal scroll on mobile, vertical on desktop */}
-      <nav className="sm:w-52 shrink-0 border-b sm:border-b-0 sm:border-r border-white/[0.06] bg-white/[0.01] overflow-y-auto py-2 sm:py-4 px-2 flex flex-col">
-        <div className="flex flex-wrap sm:flex-col gap-1 sm:gap-0.5 flex-1">
+    <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, height: "100%" }}>
+      {/* Sidebar */}
+      <Box sx={{
+        width: { xs: "100%", sm: 210 },
+        flexShrink: 0,
+        borderRight: { sm: 1 },
+        borderBottom: { xs: 1, sm: 0 },
+        borderColor: "divider",
+        bgcolor: "background.paper",
+        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
+      }}>
+        <List dense sx={{ flex: 1, py: 1, px: 1, display: "flex", flexDirection: { xs: "row", sm: "column" }, flexWrap: { xs: "wrap", sm: "nowrap" }, gap: 0.25 }}>
           {visiblePages.map((page) => (
-            <button
+            <ListItemButton
               key={page.key}
+              selected={active === page.key}
               onClick={() => setActive(page.key)}
-              className={`sm:w-full flex items-center gap-2 sm:gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200 text-left whitespace-nowrap ${
-                active === page.key
-                  ? "bg-primary/10 text-primary border border-primary/15"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
-              }`}
+              sx={{
+                borderRadius: 2,
+                minHeight: 40,
+                whiteSpace: "nowrap",
+                px: 1.5,
+                "&.Mui-selected": { bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" } },
+              }}
             >
-              <span className="text-sm">{page.icon}</span>
-              <span className="inline">
-                {page.label}
-              </span>
-            </button>
+              <ListItemIcon sx={{ minWidth: 28, fontSize: "1rem", color: "inherit" }}>{page.icon}</ListItemIcon>
+              <ListItemText primary={page.label} primaryTypographyProps={{ fontSize: "0.8125rem", fontWeight: 500 }} />
+            </ListItemButton>
           ))}
-        </div>
-        <div className="hidden sm:block mt-4 pt-3 border-t border-white/[0.06] px-3">
-          <div className="text-[10px] text-muted-foreground/40 space-y-0.5">
-            <div>Nexus v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}</div>
-            <div>Built {process.env.NEXT_PUBLIC_BUILD_TIME
+        </List>
+        <Box sx={{ display: { xs: "none", sm: "block" }, px: 2, pb: 2, pt: 1, borderTop: 1, borderColor: "divider" }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.625rem", display: "block" }}>
+            Nexus v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.625rem", display: "block" }}>
+            Built {process.env.NEXT_PUBLIC_BUILD_TIME
               ? new Date(process.env.NEXT_PUBLIC_BUILD_TIME).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
-              : "dev"}</div>
-          </div>
-        </div>
-      </nav>
+              : "dev"}
+          </Typography>
+        </Box>
+      </Box>
 
-      {/* Content area */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-6">
-        <div className="max-w-4xl mx-auto space-y-6">
+      {/* Content */}
+      <Box sx={{ flex: 1, overflowY: "auto", p: { xs: 1.5, sm: 3 } }}>
+        <Box sx={{ maxWidth: 900, mx: "auto" }}>
           {header && (
-            <div>
-              <h2 className="text-2xl font-display font-bold gradient-text">{header.title}</h2>
-              <p className="text-sm text-muted-foreground mt-1 font-light">{header.subtitle}</p>
-            </div>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h5" color="primary" fontWeight={700}>{header.title}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{header.subtitle}</Typography>
+            </Box>
           )}
 
           {active === "profile" && <ProfileConfig />}
@@ -298,61 +295,42 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
           {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
           {active === "auth" && userRole === "admin" && <AuthConfig />}
           {active === "users" && userRole === "admin" && <UserManagement />}
-        </div>
-      </div>
-    </div>
+        </Box>
+      </Box>
+    </Box>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Theme Switcher — compact dropdown in the header                            */
+/*  Theme Switcher — dropdown menu in the header                               */
 /* -------------------------------------------------------------------------- */
 
 function ThemeSwitcher() {
   const { theme, setTheme } = useTheme();
-  const [open, setOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const activeTheme = useMemo(() => THEMES.find(t => t.id === theme), [theme]);
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-foreground px-2 py-1.5 rounded-lg hover:bg-white/[0.05] transition-all duration-200"
-        title="Change theme"
-      >
-        <span
-          className="h-3 w-3 rounded-full border border-white/20"
-          style={{ background: activeTheme?.swatch }}
-        />
-        <span className="hidden sm:inline">{activeTheme?.label}</span>
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-2 z-50 w-52 rounded-xl border border-white/[0.08] bg-card/95 backdrop-blur-xl shadow-2xl p-1.5 space-y-0.5">
-            {THEMES.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => { setTheme(t.id); setOpen(false); }}
-                className={`w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all duration-200 ${
-                  theme === t.id
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]"
-                }`}
-              >
-                <span
-                  className="h-3.5 w-3.5 rounded-full border border-white/20 shrink-0"
-                  style={{ background: t.swatch }}
-                />
-                <div className="min-w-0">
-                  <div className="text-[13px] font-medium">{t.label}</div>
-                  <div className="text-[10px] text-muted-foreground/60">{t.description}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+    <>
+      <IconButton size="small" onClick={(e) => setAnchorEl(e.currentTarget)} title="Change theme" sx={{ color: "text.secondary" }}>
+        <PaletteIcon fontSize="small" />
+      </IconButton>
+      <Menu anchorEl={anchorEl} open={!!anchorEl} onClose={() => setAnchorEl(null)} slotProps={{ paper: { sx: { minWidth: 200, mt: 1 } } }}>
+        {THEMES.map((t) => (
+          <MenuItem
+            key={t.id}
+            selected={theme === t.id}
+            onClick={() => { setTheme(t.id); setAnchorEl(null); }}
+            sx={{ gap: 1.5, borderRadius: 1, mx: 0.5 }}
+          >
+            <Box sx={{ width: 14, height: 14, borderRadius: "50%", bgcolor: t.swatch, border: "1px solid", borderColor: "divider", flexShrink: 0 }} />
+            <Box>
+              <Typography variant="body2" fontWeight={500}>{t.label}</Typography>
+              <Typography variant="caption" color="text.secondary">{t.description}</Typography>
+            </Box>
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
   );
 }

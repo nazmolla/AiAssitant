@@ -1,9 +1,13 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import Box from "@mui/material/Box";
+import MuiButton from "@mui/material/Button";
+import MuiCard from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import CardActions from "@mui/material/CardActions";
+import Chip from "@mui/material/Chip";
+import Typography from "@mui/material/Typography";
 import { useTheme } from "@/components/theme-provider";
 
 interface ApprovalRequest {
@@ -118,46 +122,49 @@ export function ApprovalInbox() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <h2 className="text-2xl font-display font-bold gradient-text">Approval Inbox</h2>
-          <p className="text-sm text-muted-foreground/60 font-light mt-1">Review and authorize agent actions</p>
+          <Typography variant="h5" sx={{ fontWeight: 700, color: "primary.main" }}>Approval Inbox</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Review and authorize agent actions</Typography>
         </div>
-        <Badge variant={approvals.length > 0 ? "warning" : "success"}>
-          {approvals.length} pending
-        </Badge>
-      </div>
+        <Chip
+          label={`${approvals.length} pending`}
+          size="small"
+          color={approvals.length > 0 ? "warning" : "success"}
+        />
+      </Box>
 
       {/* Global Approve All / Deny All */}
       {approvals.length > 1 && (
-        <div className="flex gap-2 justify-end">
-          <Button
-            size="sm"
+        <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
+          <MuiButton
+            size="small"
+            variant="contained"
             disabled={isBusy}
             onClick={() => handleBulk(approvals.map((a) => a.id), "approved")}
           >
             {isBusy ? "Processing..." : `Approve All (${approvals.length})`}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
+          </MuiButton>
+          <MuiButton
+            size="small"
+            variant="outlined"
             disabled={isBusy}
             onClick={() => handleBulk(approvals.map((a) => a.id), "rejected")}
           >
             Deny All ({approvals.length})
-          </Button>
-        </div>
+          </MuiButton>
+        </Box>
       )}
 
       {approvals.length === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <div className="text-4xl mb-3 opacity-40">✅</div>
-            <p className="text-sm text-muted-foreground/60 font-light">
+        <MuiCard variant="outlined">
+          <CardContent sx={{ py: 8, textAlign: "center" }}>
+            <Typography sx={{ fontSize: "2rem", mb: 1, opacity: 0.4 }}>✅</Typography>
+            <Typography variant="body2" color="text.secondary">
               No pending approvals. All clear.
-            </p>
+            </Typography>
           </CardContent>
-        </Card>
+        </MuiCard>
       ) : (
         <div className="grid gap-4">
           {grouped.map((group) => {
@@ -171,16 +178,16 @@ export function ApprovalInbox() {
               try { parsedArgs = JSON.parse(approval.args); } catch {}
 
               return (
-                <Card key={approval.id} className="hover:border-primary/20 transition-all duration-300">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base font-display">{approval.tool_name}</CardTitle>
-                      <Badge variant="warning">Pending</Badge>
-                    </div>
-                    <CardDescription className="text-muted-foreground/50">
+                <MuiCard key={approval.id} variant="outlined" sx={{ '&:hover': { borderColor: 'primary.main', opacity: 0.8 }, transition: 'all 0.3s' }}>
+                  <CardContent sx={{ pb: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{approval.tool_name}</Typography>
+                      <Chip label="Pending" size="small" color="warning" />
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
                       {formatDate(approval.created_at)}
-                    </CardDescription>
-                  </CardHeader>
+                    </Typography>
+                  </CardContent>
                   <CardContent className="space-y-3">
                     {approval.reasoning && (
                       <div>
@@ -199,52 +206,53 @@ export function ApprovalInbox() {
                       </pre>
                     </div>
                   </CardContent>
-                  <CardFooter className="gap-2">
-                    <Button
+                  <CardActions sx={{ gap: 1, px: 2, pb: 2 }}>
+                    <MuiButton
+                      variant="contained"
                       onClick={() => handleAction(approval.id, "approved")}
                       disabled={acting.has(approval.id)}
-                      size="sm"
+                      size="small"
                     >
                       {acting.has(approval.id) ? "Processing..." : "Approve"}
-                    </Button>
-                    <Button
-                      variant="outline"
+                    </MuiButton>
+                    <MuiButton
+                      variant="outlined"
                       onClick={() => handleAction(approval.id, "rejected")}
                       disabled={acting.has(approval.id)}
-                      size="sm"
+                      size="small"
                     >
                       Deny
-                    </Button>
-                  </CardFooter>
-                </Card>
+                    </MuiButton>
+                  </CardActions>
+                </MuiCard>
               );
             }
 
             // Multiple items with the same tool name — grouped card
             return (
-              <Card key={group.tool_name} className="hover:border-primary/20 transition-all duration-300">
-                <CardHeader
-                  className="cursor-pointer select-none"
+              <MuiCard key={group.tool_name} variant="outlined" sx={{ '&:hover': { borderColor: 'primary.main', opacity: 0.8 }, transition: 'all 0.3s' }}>
+                <CardContent
+                  sx={{ cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => toggleExpanded(group.tool_name)}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground/40 text-sm">{isExpanded ? "▼" : "▶"}</span>
-                      <CardTitle className="text-base font-display">{group.tool_name}</CardTitle>
-                    </div>
-                    <Badge variant="warning">{count} pending</Badge>
-                  </div>
-                  <CardDescription className="text-muted-foreground/50">
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2" color="text.secondary">{isExpanded ? "▼" : "▶"}</Typography>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{group.tool_name}</Typography>
+                    </Box>
+                    <Chip label={`${count} pending`} size="small" color="warning" />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
                     {formatDate(group.items[0].created_at)}
                     {count > 1 && ` — ${formatDate(group.items[count - 1].created_at)}`}
-                  </CardDescription>
-                </CardHeader>
+                  </Typography>
+                </CardContent>
 
-                {/* Group-level bulk actions */}
-                <CardContent className="pt-0 pb-3">
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
+                <CardContent sx={{ pt: 0, pb: 1 }}>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <MuiButton
+                      size="small"
+                      variant="contained"
                       disabled={isBusy}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -252,10 +260,10 @@ export function ApprovalInbox() {
                       }}
                     >
                       {isBusy ? "Processing..." : `Approve All ${count}`}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
+                    </MuiButton>
+                    <MuiButton
+                      size="small"
+                      variant="outlined"
                       disabled={isBusy}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -263,13 +271,12 @@ export function ApprovalInbox() {
                       }}
                     >
                       Deny All {count}
-                    </Button>
-                  </div>
+                    </MuiButton>
+                  </Box>
                 </CardContent>
 
-                {/* Expanded individual items */}
                 {isExpanded && (
-                  <CardContent className="pt-0 space-y-3">
+                  <CardContent sx={{ pt: 0 }} className="space-y-3">
                     {group.items.map((approval, idx) => {
                       let parsedArgs: Record<string, unknown> = {};
                       try { parsedArgs = JSON.parse(approval.args); } catch {}
@@ -300,29 +307,30 @@ export function ApprovalInbox() {
                               {JSON.stringify(parsedArgs, null, 2)}
                             </pre>
                           </div>
-                          <div className="flex gap-2 pt-1">
-                            <Button
+                          <Box sx={{ display: 'flex', gap: 1, pt: 0.5 }}>
+                            <MuiButton
+                              variant="contained"
                               onClick={() => handleAction(approval.id, "approved")}
                               disabled={acting.has(approval.id)}
-                              size="sm"
+                              size="small"
                             >
                               {acting.has(approval.id) ? "Processing..." : "Approve"}
-                            </Button>
-                            <Button
-                              variant="outline"
+                            </MuiButton>
+                            <MuiButton
+                              variant="outlined"
                               onClick={() => handleAction(approval.id, "rejected")}
                               disabled={acting.has(approval.id)}
-                              size="sm"
+                              size="small"
                             >
                               Deny
-                            </Button>
-                          </div>
+                            </MuiButton>
+                          </Box>
                         </div>
                       );
                     })}
                   </CardContent>
                 )}
-              </Card>
+              </MuiCard>
             );
           })}
         </div>
