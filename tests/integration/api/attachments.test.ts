@@ -167,6 +167,39 @@ describe("POST /api/attachments — upload", () => {
     expect(meta.mimeType).toBe("image/png");
     expect(meta.filename).toBe("photo.png");
   });
+
+  test("uploads DNG image when mime is generic octet-stream", async () => {
+    const dngStub = Buffer.from([0x49, 0x49, 0x2a, 0x00]);
+    const form = new FormData();
+    form.append("file", new Blob([dngStub], { type: "application/octet-stream" }), "raw-photo.dng");
+    form.append("threadId", threadId);
+
+    const req = new NextRequest("http://localhost/api/attachments", {
+      method: "POST",
+      body: form,
+    });
+    const res = await uploadAttachment(req);
+    expect(res.status).toBe(200);
+    const meta = await res.json();
+    expect(meta.filename).toBe("raw-photo.dng");
+  });
+
+  test("uploads HEIC image successfully", async () => {
+    const heicStub = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]);
+    const form = new FormData();
+    form.append("file", new Blob([heicStub], { type: "image/heic" }), "iphone.heic");
+    form.append("threadId", threadId);
+
+    const req = new NextRequest("http://localhost/api/attachments", {
+      method: "POST",
+      body: form,
+    });
+    const res = await uploadAttachment(req);
+    expect(res.status).toBe(200);
+    const meta = await res.json();
+    expect(meta.filename).toBe("iphone.heic");
+    expect(meta.mimeType).toBe("image/heic");
+  });
 });
 
 describe("GET /api/attachments/[...path] — serve files", () => {

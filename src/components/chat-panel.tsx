@@ -39,7 +39,7 @@ interface PendingFile {
 }
 
 const ALLOWED_EXTENSIONS = [
-  ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
+  ".jpg", ".jpeg", ".jfif", ".png", ".gif", ".webp", ".svg", ".heic", ".heif", ".avif", ".bmp", ".tif", ".tiff", ".dng", ".raw",
   ".pdf", ".txt", ".csv", ".md", ".json", ".doc", ".docx", ".xls", ".xlsx",
   ".mp4", ".webm", ".mov",
 ];

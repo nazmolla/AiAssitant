@@ -10,10 +10,21 @@ const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
 const ALLOWED_MIME_TYPES = new Set([
   // Images
   "image/jpeg",
+  "image/jpg",
+  "image/pjpeg",
   "image/png",
   "image/gif",
   "image/webp",
   "image/svg+xml",
+  "image/heic",
+  "image/heif",
+  "image/avif",
+  "image/bmp",
+  "image/tiff",
+  "image/x-tiff",
+  "image/vnd.adobe.photoshop",
+  "image/x-adobe-dng",
+  "image/dng",
   // Documents
   "application/pdf",
   "text/plain",
@@ -29,6 +40,28 @@ const ALLOWED_MIME_TYPES = new Set([
   "video/webm",
   "video/quicktime",
 ]);
+
+const ALLOWED_EXTENSIONS = new Set([
+  // Images
+  ".jpg", ".jpeg", ".jfif", ".png", ".gif", ".webp", ".svg",
+  ".heic", ".heif", ".avif", ".bmp", ".tif", ".tiff", ".dng", ".raw",
+  // Documents
+  ".pdf", ".txt", ".csv", ".md", ".json", ".doc", ".docx", ".xls", ".xlsx",
+  // Videos
+  ".mp4", ".webm", ".mov",
+]);
+
+function isAllowedUpload(file: File): boolean {
+  const ext = path.extname(file.name || "").toLowerCase();
+  if (ALLOWED_MIME_TYPES.has(file.type)) return true;
+
+  // Some clients (including HEIC/DNG uploads) may send generic mime type.
+  if ((file.type === "application/octet-stream" || file.type === "") && ALLOWED_EXTENSIONS.has(ext)) {
+    return true;
+  }
+
+  return false;
+}
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
@@ -61,9 +94,9 @@ export async function POST(req: NextRequest) {
     if (thread.user_id !== auth.user.id && auth.user.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    if (!ALLOWED_MIME_TYPES.has(file.type)) {
+    if (!isAllowedUpload(file)) {
       return NextResponse.json(
-        { error: `Unsupported file type: ${file.type}` },
+        { error: `Unsupported file type: ${file.type || "unknown"}` },
         { status: 400 }
       );
     }

@@ -22,8 +22,10 @@ import {
   type Message,
   type Interaction,
   ChannelType,
+  type Attachment,
 } from "discord.js";
 import { runAgentLoop, type AgentResponse } from "@/lib/agent";
+import type { ContentPart } from "@/lib/llm";
 import {
   getDb,
   getChannelOwnerId,
@@ -41,6 +43,8 @@ const DATA_DIR = path.join(process.cwd(), "data");
 
 // Discord message limit
 const DISCORD_MAX_MSG = 2000;
+const DISCORD_MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+const DISCORD_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".jfif", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".avif", ".dng", ".raw"]);
 
 // ── Slash Command Definitions ─────────────────────────────────
 
@@ -145,8 +149,13 @@ export async function startDiscordBot(
       .replace(new RegExp(`<@!?${client.user!.id}>`, "g"), "")
       .trim();
 
-    if (!text) {
+    const attachmentParts = await buildDiscordImageParts(message.attachments);
+
+    if (!text && attachmentParts.length === 0) {
       text = "Hello!";
+    }
+    if (!text && attachmentParts.length > 0) {
+      text = "Please analyze the attached image(s).";
     }
 
     try {
@@ -160,10 +169,13 @@ export async function startDiscordBot(
       const threadId = resolveThread(channelId, senderId, userId);
 
       const taggedText = `[External Channel Message from Discord user "${message.author.username}"]\n${text}`;
+      const contentParts: ContentPart[] | undefined = attachmentParts.length > 0
+        ? [{ type: "text", text }, ...attachmentParts]
+        : undefined;
       const result = await runAgentLoop(
         threadId,
         taggedText,
-        undefined,
+        contentParts,
         undefined,
         undefined,
         userId ?? undefined
@@ -273,6 +285,61 @@ export async function startDiscordBot(
     message: `Discord bot started for channel ${channelId}`,
     metadata: null,
   });
+}
+
+async function buildDiscordImageParts(
+  attachments: Message["attachments"]
+): Promise<Array<{ type: "image_url"; image_url: { url: string; detail: "auto" } }>> {
+  if (!attachments || attachments.size === 0) return [];
+
+  const parts: Array<{ type: "image_url"; image_url: { url: string; detail: "auto" } }> = [];
+
+  const items = Array.from(attachments.values());
+  for (let i = 0; i < items.length; i++) {
+    const attachment = items[i];
+    if (!isDiscordImageAttachment(attachment)) continue;
+    if (typeof attachment.size === "number" && attachment.size > DISCORD_MAX_IMAGE_BYTES) {
+      continue;
+    }
+
+    try {
+      const res = await fetch(attachment.url);
+      if (!res.ok) continue;
+      const arrayBuffer = await res.arrayBuffer();
+      const mimeType = (attachment.contentType && attachment.contentType.startsWith("image/"))
+        ? attachment.contentType
+        : guessImageMimeFromName(attachment.name);
+      const b64 = Buffer.from(arrayBuffer).toString("base64");
+      parts.push({
+        type: "image_url",
+        image_url: { url: `data:${mimeType};base64,${b64}`, detail: "auto" },
+      });
+    } catch {
+      // ignore malformed attachment fetches
+    }
+  }
+
+  return parts;
+}
+
+function isDiscordImageAttachment(att: Attachment): boolean {
+  if (att.contentType && att.contentType.startsWith("image/")) return true;
+  const name = (att.name || "").toLowerCase();
+  return Array.from(DISCORD_IMAGE_EXTENSIONS).some((ext) => name.endsWith(ext));
+}
+
+function guessImageMimeFromName(name: string | null): string {
+  const lower = (name || "").toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".bmp")) return "image/bmp";
+  if (lower.endsWith(".tif") || lower.endsWith(".tiff")) return "image/tiff";
+  if (lower.endsWith(".heic")) return "image/heic";
+  if (lower.endsWith(".heif")) return "image/heif";
+  if (lower.endsWith(".avif")) return "image/avif";
+  if (lower.endsWith(".dng")) return "image/x-adobe-dng";
+  return "image/jpeg";
 }
 
 /**
