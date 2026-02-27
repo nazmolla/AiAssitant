@@ -49,7 +49,10 @@ function detectBumpType() {
   try {
     let commits;
     try {
-      const lastTag = execSync("git describe --tags --abbrev=0 2>/dev/null", { encoding: "utf-8" }).trim();
+      const lastTag = execSync("git describe --tags --abbrev=0", {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      }).trim();
       commits = execSync(`git log ${lastTag}..HEAD --oneline --no-merges`, { encoding: "utf-8" });
       console.log(`  Analyzing commits since ${lastTag}...`);
     } catch {
@@ -124,3 +127,15 @@ const pkg = JSON.parse(fs.readFileSync(PKG_PATH, "utf-8"));
 pkg.version = newVersion;
 fs.writeFileSync(PKG_PATH, JSON.stringify(pkg, null, 2) + "\n");
 console.log("  ✓ package.json updated");
+
+// Create a git tag so subsequent builds only scan commits since this version
+try {
+  execSync(`git tag -a v${newVersion} -m "v${newVersion}"`, {
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  console.log(`  ✓ Tagged v${newVersion}`);
+} catch {
+  // Tag may already exist or git may not be available — non-fatal
+  console.log(`  ⚠ Could not create tag v${newVersion} (may already exist)`);
+}
