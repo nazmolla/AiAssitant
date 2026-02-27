@@ -326,54 +326,102 @@ export function LlmConfig() {
               <div
                 key={provider.id}
                 className={cn(
-                  "flex items-center justify-between rounded-xl border p-4 hover:bg-white/[0.02] transition-all duration-300",
+                  "rounded-xl border p-4 hover:bg-white/[0.02] transition-all duration-300",
                   provider.is_default
                     ? "border-primary/30 bg-primary/[0.03]"
                     : "border-white/[0.06]"
                 )}
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{provider.label}</span>
-                    {provider.is_default ? (
-                      <Badge variant="success" className="text-[10px]">Default</Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-[10px]">Standby</Badge>
-                    )}
-                    <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
-                      {provider.purpose === "embedding" ? "Embedding" : "Chat"}
-                    </Badge>
-                    <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
-                      {PROVIDER_LABELS[provider.provider_type]}
-                    </Badge>
-                    {provider.config?.routingTier && (
-                      <span className={cn(
-                        "px-1.5 py-0.5 rounded-full text-[10px] font-medium border",
-                        TIER_BADGE_COLORS[provider.config.routingTier] || "bg-white/5 text-muted-foreground border-white/10"
-                      )}>
-                        {provider.config.routingTier}
-                      </span>
-                    )}
+                <div className="md:hidden space-y-3">
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm break-words">{provider.label}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {provider.is_default ? (
+                        <Badge variant="success" className="text-[10px]">Default</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px]">Standby</Badge>
+                      )}
+                      <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
+                        {provider.purpose === "embedding" ? "Embedding" : "Chat"}
+                      </Badge>
+                      <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
+                        {PROVIDER_LABELS[provider.provider_type]}
+                      </Badge>
+                      {provider.config?.routingTier && (
+                        <span className={cn(
+                          "px-1.5 py-0.5 rounded-full text-[10px] font-medium border",
+                          TIER_BADGE_COLORS[provider.config.routingTier] || "bg-white/5 text-muted-foreground border-white/10"
+                        )}>
+                          {provider.config.routingTier}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground/40 mt-1 break-words">
+                      {Object.entries(provider.config)
+                        .filter(([k, v]) => typeof v === "string" && v.length > 0 && k !== "routingTier")
+                        .map(([k, v]) => `${k}: ${v}`)
+                        .join(" · ") || "No config details"}
+                      {provider.has_api_key === false && (
+                        <span className="text-red-400 ml-2">⚠ No API key</span>
+                      )}
+                    </p>
                   </div>
-                  <p className="text-[11px] text-muted-foreground/40 mt-1">
-                    {Object.entries(provider.config)
-                      .filter(([k, v]) => typeof v === "string" && v.length > 0 && k !== "routingTier")
-                      .map(([k, v]) => `${k}: ${v}`)
-                      .join(" · ") || "No config details"}
-                    {provider.has_api_key === false && (
-                      <span className="text-red-400 ml-2">⚠ No API key</span>
+                  <div className="flex items-center gap-2">
+                    {!provider.is_default && (
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => handleSetDefault(provider.id)}>
+                        Make Default
+                      </Button>
                     )}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 ml-3 shrink-0">
-                  {!provider.is_default && (
-                    <Button size="sm" variant="outline" onClick={() => handleSetDefault(provider.id)}>
-                      Make Default
+                    <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(provider.id, provider.label)}>
+                      Remove
                     </Button>
-                  )}
-                  <Button size="sm" variant="destructive" onClick={() => handleDelete(provider.id, provider.label)}>
-                    Remove
-                  </Button>
+                  </div>
+                </div>
+
+                <div className="hidden md:flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{provider.label}</span>
+                      {provider.is_default ? (
+                        <Badge variant="success" className="text-[10px]">Default</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px]">Standby</Badge>
+                      )}
+                      <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
+                        {provider.purpose === "embedding" ? "Embedding" : "Chat"}
+                      </Badge>
+                      <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
+                        {PROVIDER_LABELS[provider.provider_type]}
+                      </Badge>
+                      {provider.config?.routingTier && (
+                        <span className={cn(
+                          "px-1.5 py-0.5 rounded-full text-[10px] font-medium border",
+                          TIER_BADGE_COLORS[provider.config.routingTier] || "bg-white/5 text-muted-foreground border-white/10"
+                        )}>
+                          {provider.config.routingTier}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground/40 mt-1">
+                      {Object.entries(provider.config)
+                        .filter(([k, v]) => typeof v === "string" && v.length > 0 && k !== "routingTier")
+                        .map(([k, v]) => `${k}: ${v}`)
+                        .join(" · ") || "No config details"}
+                      {provider.has_api_key === false && (
+                        <span className="text-red-400 ml-2">⚠ No API key</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-3 shrink-0">
+                    {!provider.is_default && (
+                      <Button size="sm" variant="outline" onClick={() => handleSetDefault(provider.id)}>
+                        Make Default
+                      </Button>
+                    )}
+                    <Button size="sm" variant="destructive" onClick={() => handleDelete(provider.id, provider.label)}>
+                      Remove
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}

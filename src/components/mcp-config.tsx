@@ -243,7 +243,7 @@ export function McpConfig() {
             <Input placeholder="Display Name (e.g., Home Assistant)" value={newName} onChange={(e) => setNewName(e.target.value)} />
 
             {/* Connection type toggle */}
-            <div className="col-span-2 flex gap-2">
+            <div className="col-span-2 flex flex-wrap gap-2">
               <Button
                 type="button"
                 size="sm"
@@ -279,7 +279,7 @@ export function McpConfig() {
                 {/* Auth type */}
                 <div className="col-span-2">
                   <label className="text-[11px] text-muted-foreground/60 mb-1.5 block uppercase tracking-wider font-medium">Authentication</label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button type="button" size="sm" variant={newAuthType === "none" ? "default" : "outline"} onClick={() => setNewAuthType("none")}>
                       None
                     </Button>
@@ -351,43 +351,86 @@ export function McpConfig() {
           </CardHeader>
           <CardContent className="space-y-3">
             {servers.map((server) => (
-              <div key={server.id} className="flex items-center justify-between rounded-xl border border-white/[0.06] p-4 hover:bg-white/[0.02] transition-all duration-300">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{server.name}</span>
-                    <Badge variant={server.connected ? "success" : "secondary"} className="text-xs">
-                      {server.connected ? "Connected" : "Disconnected"}
-                    </Badge>
-                    {server.transport_type && (
-                      <span className="text-[11px] text-muted-foreground/50">
-                        {server.transport_type}
-                        {server.auth_type && server.auth_type !== "none" ? ` · ${server.auth_type}` : ""}
-                      </span>
-                    )}
+              <div key={server.id} className="rounded-xl border border-white/[0.06] p-4 hover:bg-white/[0.02] transition-all duration-300">
+                <div className="md:hidden space-y-3">
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm break-words">{server.name}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <Badge variant={server.connected ? "success" : "secondary"} className="text-xs">
+                        {server.connected ? "Connected" : "Disconnected"}
+                      </Badge>
+                      {server.transport_type && (
+                        <span className="text-[11px] text-muted-foreground/50">
+                          {server.transport_type}
+                          {server.auth_type && server.auth_type !== "none" ? ` · ${server.auth_type}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground/40 mt-1 break-all">
+                      {server.transport_type === "stdio"
+                        ? `${server.command || ""} ${server.args ? JSON.parse(server.args).join(" ") : ""}`
+                        : server.url || server.command || ""}
+                    </p>
                   </div>
-                  <p className="text-[11px] text-muted-foreground/40 mt-1 truncate">
-                    {server.transport_type === "stdio"
-                      ? `${server.command || ""} ${server.args ? JSON.parse(server.args).join(" ") : ""}`
-                      : server.url || server.command || ""}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    {server.connected ? (
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => disconnectServer(server.id)}>
+                        Disconnect
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => connectServer(server.id)}
+                        disabled={connectingId === server.id}
+                      >
+                        {connectingId === server.id ? "Connecting..." : "Connect"}
+                      </Button>
+                    )}
+                    <Button size="sm" variant="destructive" className="flex-1" onClick={() => deleteServer(server.id)}>
+                      Remove
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 ml-3 shrink-0">
-                  {server.connected ? (
-                    <Button size="sm" variant="outline" onClick={() => disconnectServer(server.id)}>
-                      Disconnect
+
+                <div className="hidden md:flex items-center justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{server.name}</span>
+                      <Badge variant={server.connected ? "success" : "secondary"} className="text-xs">
+                        {server.connected ? "Connected" : "Disconnected"}
+                      </Badge>
+                      {server.transport_type && (
+                        <span className="text-[11px] text-muted-foreground/50">
+                          {server.transport_type}
+                          {server.auth_type && server.auth_type !== "none" ? ` · ${server.auth_type}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground/40 mt-1 truncate">
+                      {server.transport_type === "stdio"
+                        ? `${server.command || ""} ${server.args ? JSON.parse(server.args).join(" ") : ""}`
+                        : server.url || server.command || ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-3 shrink-0">
+                    {server.connected ? (
+                      <Button size="sm" variant="outline" onClick={() => disconnectServer(server.id)}>
+                        Disconnect
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => connectServer(server.id)}
+                        disabled={connectingId === server.id}
+                      >
+                        {connectingId === server.id ? "Connecting..." : "Connect"}
+                      </Button>
+                    )}
+                    <Button size="sm" variant="destructive" onClick={() => deleteServer(server.id)}>
+                      Remove
                     </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      onClick={() => connectServer(server.id)}
-                      disabled={connectingId === server.id}
-                    >
-                      {connectingId === server.id ? "Connecting..." : "Connect"}
-                    </Button>
-                  )}
-                  <Button size="sm" variant="destructive" onClick={() => deleteServer(server.id)}>
-                    Remove
-                  </Button>
+                  </div>
                 </div>
               </div>
             ))}

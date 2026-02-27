@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 
 interface ToolPolicy {
@@ -144,7 +144,7 @@ export function ToolPolicies() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground">
         <span>{tools.length} tool{tools.length !== 1 ? "s" : ""} discovered</span>
         <span className="text-muted-foreground/30">•</span>
         <span>{groupKeys.length} group{groupKeys.length !== 1 ? "s" : ""}</span>
@@ -160,14 +160,14 @@ export function ToolPolicies() {
         return (
           <Card key={groupKey}>
             <CardHeader className="pb-0 pt-4 px-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-start sm:items-center justify-between gap-2">
                 <button
                   onClick={() => setCollapsed((prev) => ({ ...prev, [groupKey]: !isCollapsed }))}
-                  className="flex items-center gap-2 text-left group"
+                  className="flex items-center gap-2 text-left group min-w-0"
                 >
                   <span className={`text-[10px] text-muted-foreground/40 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`}>▶</span>
                   <span className="text-sm mr-1">{group.icon}</span>
-                  <CardTitle className="text-sm font-display font-semibold text-primary/90 group-hover:text-primary transition-colors">
+                  <CardTitle className="text-sm font-display font-semibold text-primary/90 group-hover:text-primary transition-colors truncate">
                     {group.label}
                     <span className="ml-2 text-[11px] font-normal text-muted-foreground/50">
                       {group.tools.length} tool{group.tools.length !== 1 ? "s" : ""}
@@ -175,7 +175,7 @@ export function ToolPolicies() {
                   </CardTitle>
                 </button>
                 {!isCollapsed && (
-                  <div className="flex items-center gap-3 text-[10px]">
+                  <div className="hidden sm:flex items-center gap-3 text-[10px] shrink-0">
                     <div className="flex items-center gap-1">
                       <span className="text-muted-foreground/40 uppercase tracking-wider">Approval:</span>
                       <button onClick={() => toggleGroupPolicies(group.tools, "requires_approval", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
@@ -194,7 +194,51 @@ export function ToolPolicies() {
             </CardHeader>
             {!isCollapsed && (
             <CardContent className="p-0 pt-2">
-              <table className="w-full">
+              <div className="md:hidden px-3 pb-3 space-y-2">
+                <div className="flex items-center gap-3 text-[10px]">
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground/40 uppercase tracking-wider">Approval:</span>
+                    <button onClick={() => toggleGroupPolicies(group.tools, "requires_approval", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
+                    <span className="text-muted-foreground/30">|</span>
+                    <button onClick={() => toggleGroupPolicies(group.tools, "requires_approval", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground/40 uppercase tracking-wider">Proactive:</span>
+                    <button onClick={() => toggleGroupPolicies(group.tools, "is_proactive_enabled", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
+                    <span className="text-muted-foreground/30">|</span>
+                    <button onClick={() => toggleGroupPolicies(group.tools, "is_proactive_enabled", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
+                  </div>
+                </div>
+
+                {group.tools.map((tool) => {
+                  const policy = policies.find((p) => p.tool_name === tool.name);
+                  const dotIdx = tool.name.indexOf(".");
+                  const toolName = dotIdx !== -1 ? tool.name.substring(dotIdx + 1) : tool.name;
+                  return (
+                    <div key={tool.name} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
+                      <div className="text-xs font-mono text-primary/80 break-all">{toolName}</div>
+                      <div className="text-xs text-muted-foreground/70 leading-relaxed break-words">{tool.description}</div>
+                      <div className="flex items-center justify-between pt-1">
+                        <div className="text-[11px] text-muted-foreground/70">Approval</div>
+                        <Switch
+                          checked={policy?.requires_approval !== 0}
+                          onCheckedChange={(v) => togglePolicy(tool.name, "requires_approval", v)}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] text-muted-foreground/70">Proactive</div>
+                        <Switch
+                          checked={policy?.is_proactive_enabled === 1}
+                          onCheckedChange={(v) => togglePolicy(tool.name, "is_proactive_enabled", v)}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="hidden md:block overflow-x-auto">
+              <table className="w-full min-w-[760px]">
                 <thead>
                   <tr className="border-b border-white/[0.06] text-left text-[11px] text-muted-foreground/50 uppercase tracking-wider">
                     <th className="px-4 py-2 font-medium">Tool</th>
@@ -210,8 +254,8 @@ export function ToolPolicies() {
                     const toolName = dotIdx !== -1 ? tool.name.substring(dotIdx + 1) : tool.name;
                     return (
                       <tr key={tool.name} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors duration-200">
-                        <td className="px-4 py-3 text-sm font-mono text-primary/80">{toolName}</td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground/60">
+                        <td className="px-4 py-3 text-sm font-mono text-primary/80 max-w-[220px] break-all" title={toolName}>{toolName}</td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground/60 max-w-[360px]" title={tool.description}>
                           {tool.description.substring(0, 80)}
                           {tool.description.length > 80 ? "..." : ""}
                         </td>
@@ -232,6 +276,7 @@ export function ToolPolicies() {
                   })}
                 </tbody>
               </table>
+              </div>
             </CardContent>
             )}
           </Card>

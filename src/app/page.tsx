@@ -24,6 +24,7 @@ export default function HomePage() {
   const { data: session, status } = useSession();
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>("user");
+  const [activeTab, setActiveTab] = useState<string>("chat");
   const [perms, setPerms] = useState<Record<string, number>>({
     chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
     mcp_servers: 1, channels: 0, llm_config: 0, screen_sharing: 1,
@@ -42,6 +43,12 @@ export default function HomePage() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!perms.chat && activeTab === "chat") {
+      setActiveTab("config");
+    }
+  }, [perms.chat, activeTab]);
 
   if (status === "loading") {
     return (
@@ -113,31 +120,36 @@ export default function HomePage() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
-        <Tabs defaultValue={perms.chat ? "chat" : "config"} className="flex flex-col h-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
           <div className="glass px-2 sm:px-6 py-2 flex items-center justify-start overflow-x-auto">
             <TabsList className="flex-nowrap w-max min-w-max">
               {!!perms.chat && (
                 <TabsTrigger value="chat">
-                  <span className="mr-1.5">💬</span> Chat
+                  <span className="mr-0 sm:mr-1.5">💬</span>
+                  <span className={activeTab === "chat" ? "inline sm:inline ml-1 sm:ml-0" : "hidden sm:inline"}>Chat</span>
                 </TabsTrigger>
               )}
               {!!perms.dashboard && (
                 <TabsTrigger value="dashboard">
-                  <span className="mr-1.5">📊</span> Dashboard
+                  <span className="mr-0 sm:mr-1.5">📊</span>
+                  <span className={activeTab === "dashboard" ? "inline sm:inline ml-1 sm:ml-0" : "hidden sm:inline"}>Dashboard</span>
                 </TabsTrigger>
               )}
               {!!perms.approvals && (
                 <TabsTrigger value="approvals">
-                  <span className="mr-1.5">✅</span> Approvals
+                  <span className="mr-0 sm:mr-1.5">✅</span>
+                  <span className={activeTab === "approvals" ? "inline sm:inline ml-1 sm:ml-0" : "hidden sm:inline"}>Approvals</span>
                 </TabsTrigger>
               )}
               {!!perms.knowledge && (
                 <TabsTrigger value="knowledge">
-                  <span className="mr-1.5">🧠</span> Knowledge
+                  <span className="mr-0 sm:mr-1.5">🧠</span>
+                  <span className={activeTab === "knowledge" ? "inline sm:inline ml-1 sm:ml-0" : "hidden sm:inline"}>Knowledge</span>
                 </TabsTrigger>
               )}
               <TabsTrigger value="config">
-                <span className="mr-1.5">⚙️</span> Settings
+                <span className="mr-0 sm:mr-1.5">⚙️</span>
+                <span className={activeTab === "config" ? "inline sm:inline ml-1 sm:ml-0" : "hidden sm:inline"}>Settings</span>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -234,7 +246,9 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
               }`}
             >
               <span className="text-sm">{page.icon}</span>
-              {page.label}
+              <span className={active === page.key ? "inline sm:inline" : "hidden sm:inline"}>
+                {page.label}
+              </span>
             </button>
           ))}
         </div>

@@ -173,52 +173,108 @@ export function ChannelsConfig() {
           const opt = CHANNEL_OPTIONS.find((o) => o.value === ch.channel_type);
           return (
             <Card key={ch.id}>
-              <CardContent className="py-4 flex items-center gap-4">
-                <span className="text-2xl">{opt?.icon || "📡"}</span>
-                <div className="flex-1 min-w-0">
+              <CardContent className="py-4">
+                <div className="md:hidden space-y-3">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl shrink-0">{opt?.icon || "📡"}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium break-words">{ch.label}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <Badge variant="outline" className="text-xs">
+                          {opt?.label || ch.channel_type}
+                        </Badge>
+                        <Badge variant={ch.enabled ? "success" : "secondary"} className="text-xs">
+                          {ch.enabled ? "Active" : "Disabled"}
+                        </Badge>
+                        {ch.channel_type === "discord" && (ch as any).discord_bot_active && (
+                          <Badge variant="success" className="text-xs">
+                            🤖 Bot Online
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1.5 font-mono break-all">
+                        {ch.channel_type === "discord"
+                          ? "Gateway Bot — responds to mentions, DMs, and /ask"
+                          : `Webhook: /api/channels/${ch.id}/webhook`}
+                      </div>
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{ch.label}</span>
-                    <Badge variant="outline" className="text-xs">
-                      {opt?.label || ch.channel_type}
-                    </Badge>
-                    <Badge variant={ch.enabled ? "success" : "secondary"} className="text-xs">
-                      {ch.enabled ? "Active" : "Disabled"}
-                    </Badge>
-                    {ch.channel_type === "discord" && (ch as any).discord_bot_active && (
-                      <Badge variant="success" className="text-xs">
-                        🤖 Bot Online
-                      </Badge>
+                    {ch.channel_type !== "discord" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => copyWebhookUrl(ch)}
+                        title="Copy webhook URL"
+                      >
+                        {copiedId === ch.id ? "✓ Copied" : "📋 Copy URL"}
+                      </Button>
                     )}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1 font-mono truncate">
-                    {ch.channel_type === "discord"
-                      ? "Gateway Bot — responds to mentions, DMs, and /ask"
-                      : `Webhook: /api/channels/${ch.id}/webhook`}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {ch.channel_type !== "discord" && (
+                    <div className="flex items-center justify-center rounded-lg border border-white/[0.08] px-2.5 py-1.5">
+                      <Switch
+                        checked={!!ch.enabled}
+                        onCheckedChange={() => toggleEnabled(ch)}
+                      />
+                    </div>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyWebhookUrl(ch)}
-                      title="Copy webhook URL"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => handleDelete(ch.id)}
                     >
-                      {copiedId === ch.id ? "✓ Copied" : "📋 Copy URL"}
+                      ✕
                     </Button>
-                  )}
-                  <Switch
-                    checked={!!ch.enabled}
-                    onCheckedChange={() => toggleEnabled(ch)}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => handleDelete(ch.id)}
-                  >
-                    ✕
-                  </Button>
+                  </div>
+                </div>
+
+                <div className="hidden md:flex items-center gap-4">
+                  <span className="text-2xl">{opt?.icon || "📡"}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{ch.label}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {opt?.label || ch.channel_type}
+                      </Badge>
+                      <Badge variant={ch.enabled ? "success" : "secondary"} className="text-xs">
+                        {ch.enabled ? "Active" : "Disabled"}
+                      </Badge>
+                      {ch.channel_type === "discord" && (ch as any).discord_bot_active && (
+                        <Badge variant="success" className="text-xs">
+                          🤖 Bot Online
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1 font-mono truncate">
+                      {ch.channel_type === "discord"
+                        ? "Gateway Bot — responds to mentions, DMs, and /ask"
+                        : `Webhook: /api/channels/${ch.id}/webhook`}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {ch.channel_type !== "discord" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyWebhookUrl(ch)}
+                        title="Copy webhook URL"
+                      >
+                        {copiedId === ch.id ? "✓ Copied" : "📋 Copy URL"}
+                      </Button>
+                    )}
+                    <Switch
+                      checked={!!ch.enabled}
+                      onCheckedChange={() => toggleEnabled(ch)}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => handleDelete(ch.id)}
+                    >
+                      ✕
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

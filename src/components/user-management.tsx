@@ -121,7 +121,7 @@ export function UserManagement() {
   return (
     <div className="space-y-4">
       {/* Summary */}
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground">
         <span>{users.length} user{users.length !== 1 ? "s" : ""} registered</span>
         <span className="text-muted-foreground/30">•</span>
         <span>{users.filter(u => u.role === "admin").length} admin{users.filter(u => u.role === "admin").length !== 1 ? "s" : ""}</span>
@@ -133,7 +133,7 @@ export function UserManagement() {
       {users.map((user) => (
         <Card key={user.id} className={`glass-card transition-all ${!user.enabled ? "opacity-50" : ""}`}>
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
+            <div className="hidden md:flex items-center justify-between">
               <div className="flex items-center gap-3">
                 {/* Avatar */}
                 <div className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold ${
@@ -176,11 +176,50 @@ export function UserManagement() {
                 </Button>
               </div>
             </div>
+
+            <div className="md:hidden space-y-3">
+              <div className="flex items-start gap-3">
+                <div className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                  user.role === "admin"
+                    ? "bg-primary/20 text-primary border border-primary/30"
+                    : "bg-muted text-muted-foreground border border-border"
+                }`}>
+                  {(user.display_name || user.email)[0].toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <CardTitle className="text-base font-medium flex items-center gap-2 flex-wrap">
+                    <span className="truncate">{user.display_name || user.email.split("@")[0]}</span>
+                    <Badge
+                      variant={user.role === "admin" ? "default" : "secondary"}
+                      className="text-[10px] px-1.5 py-0"
+                    >
+                      {user.role}
+                    </Badge>
+                    {!user.enabled && (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                        disabled
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5 break-words">
+                    {user.email} · {user.provider_id} · joined {formatDate(user.created_at, { year: "numeric", month: "short", day: "numeric" })}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs w-full"
+                onClick={() => setExpandedUser(expandedUser === user.id ? null : user.id)}
+              >
+                {expandedUser === user.id ? "▲ Collapse" : "▼ Permissions"}
+              </Button>
+            </div>
           </CardHeader>
 
           {/* Quick Controls */}
           <CardContent className="pt-0 pb-3">
-            <div className="flex items-center gap-6 text-sm">
+            <div className="hidden md:flex items-center gap-6 text-sm">
               {/* Role Toggle */}
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-xs">Role:</span>
@@ -238,6 +277,63 @@ export function UserManagement() {
                   </Button>
                 )}
               </div>
+            </div>
+
+            <div className="md:hidden space-y-3 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Role</span>
+                <select
+                  value={user.role}
+                  onChange={(e) => updateUser(user.id, { role: e.target.value })}
+                  disabled={saving === user.id}
+                  className="bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="admin">Admin</option>
+                  <option value="user">User</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Active</span>
+                <Switch
+                  checked={!!user.enabled}
+                  onCheckedChange={(checked) => updateUser(user.id, { enabled: checked })}
+                  disabled={saving === user.id}
+                />
+              </div>
+
+              {deleteConfirm === user.id ? (
+                <div className="space-y-2 rounded-lg border border-red-500/20 bg-red-500/5 p-2.5">
+                  <span className="text-xs text-red-400">Delete this user?</span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="h-7 text-xs px-3 flex-1"
+                      onClick={() => handleDeleteUser(user.id)}
+                    >
+                      Confirm
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs flex-1"
+                      onClick={() => setDeleteConfirm(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-full text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                  onClick={() => setDeleteConfirm(user.id)}
+                >
+                  🗑 Delete
+                </Button>
+              )}
             </div>
           </CardContent>
 
