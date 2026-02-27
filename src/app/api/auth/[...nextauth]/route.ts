@@ -7,7 +7,6 @@ import { getAuthOptions } from "@/lib/auth/options";
  */
 function handler(req: Request, ctx: { params: { nextauth: string[] } }) {
   const options = getAuthOptions();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (NextAuth as any)(req, ctx, options);
 }
 

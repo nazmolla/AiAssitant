@@ -1,11 +1,11 @@
 {
   "name": "nexus-agent",
-  "version": "0.10.1",
+  "version": "0.11.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "prebuild": "node scripts/bump-version.js",
-    "build": "npm run test && next build",
+    "build": "npm run lint && npm run test && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "jest --forceExit",

@@ -80,6 +80,20 @@ export default function HomePage() {
     }
   }, [perms.chat, activeTab]);
 
+  /* ── Hooks that depend on perms — MUST be called before any conditional return
+     to satisfy React's Rules of Hooks (same hook count on every render). ── */
+  const tabItems = useMemo(() => {
+    const items: { value: string; label: string; icon: React.ReactElement }[] = [];
+    if (perms.chat) items.push({ value: "chat", label: "Chat", icon: <ChatIcon fontSize="small" /> });
+    if (perms.dashboard) items.push({ value: "dashboard", label: "Dashboard", icon: <DashboardIcon fontSize="small" /> });
+    if (perms.approvals) items.push({ value: "approvals", label: "Approvals", icon: <CheckCircleIcon fontSize="small" /> });
+    if (perms.knowledge) items.push({ value: "knowledge", label: "Knowledge", icon: <SchoolIcon fontSize="small" /> });
+    items.push({ value: "config", label: "Settings", icon: <SettingsIcon fontSize="small" /> });
+    return items;
+  }, [perms]);
+
+  const activeTabItem = tabItems.find((t) => t.value === activeTab);
+
   if (status === "loading") {
     return (
       <Box sx={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", bgcolor: "background.default" }}>
@@ -108,18 +122,6 @@ export default function HomePage() {
       </Box>
     );
   }
-
-  const tabItems = useMemo(() => {
-    const items: { value: string; label: string; icon: React.ReactElement }[] = [];
-    if (perms.chat) items.push({ value: "chat", label: "Chat", icon: <ChatIcon fontSize="small" /> });
-    if (perms.dashboard) items.push({ value: "dashboard", label: "Dashboard", icon: <DashboardIcon fontSize="small" /> });
-    if (perms.approvals) items.push({ value: "approvals", label: "Approvals", icon: <CheckCircleIcon fontSize="small" /> });
-    if (perms.knowledge) items.push({ value: "knowledge", label: "Knowledge", icon: <SchoolIcon fontSize="small" /> });
-    items.push({ value: "config", label: "Settings", icon: <SettingsIcon fontSize="small" /> });
-    return items;
-  }, [perms]);
-
-  const activeTabItem = tabItems.find((t) => t.value === activeTab);
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100vh", bgcolor: "background.default" }}>

@@ -93,6 +93,8 @@ echo "[6/7] Uploading and extracting..."
 scp "${TAR_NAME}" "${REMOTE}:${REMOTE_DIR}/${TAR_NAME}"
 ssh "${REMOTE}" "
   cd ${REMOTE_DIR}
+  # Remove old build output to avoid stale chunk collisions
+  rm -rf .next
   # Extract tar — this will NOT overwrite .db files (they're excluded)
   tar xf ${TAR_NAME}
   rm -f ${TAR_NAME}

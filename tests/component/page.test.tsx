@@ -198,3 +198,80 @@ describe("HomePage — loading state", () => {
     expect(screen.getByText("Loading Nexus...")).toBeInTheDocument();
   });
 });
+
+/**
+ * CRITICAL: Session state transition tests.
+ *
+ * These test that the component survives a re-render when useSession
+ * transitions between states (loading → authenticated, loading → unauthenticated).
+ * This is what actually happens in the browser on every page load / refresh.
+ *
+ * If any React hook (useMemo, useCallback, etc.) is called AFTER a conditional
+ * early return, the hook count changes between renders and React throws
+ * "Minified React error #310" — a Rules of Hooks violation.
+ *
+ * The previous tests only tested each state in isolation, so they never
+ * caught this class of bug.
+ */
+describe("HomePage — session state transitions (React hooks stability)", () => {
+  test("loading → authenticated: no hooks error on re-render", () => {
+    const { useSession } = jest.requireMock("next-auth/react");
+
+    // 1. First render: loading state (early return with spinner)
+    useSession.mockReturnValue({ data: null, status: "loading" });
+    const { rerender } = render(<HomePage />);
+    expect(screen.getByText("Loading Nexus...")).toBeInTheDocument();
+
+    // 2. Re-render: session loaded (full UI with hooks like useMemo)
+    //    This is where error #310 would fire if hooks are after conditional returns
+    useSession.mockReturnValue({ data: mockSession, status: "authenticated" });
+    expect(() => rerender(<HomePage />)).not.toThrow();
+    expect(screen.getByText("Nexus")).toBeInTheDocument();
+  });
+
+  test("loading → unauthenticated: no hooks error on re-render", () => {
+    const { useSession } = jest.requireMock("next-auth/react");
+
+    // 1. First render: loading state
+    useSession.mockReturnValue({ data: null, status: "loading" });
+    const { rerender } = render(<HomePage />);
+    expect(screen.getByText("Loading Nexus...")).toBeInTheDocument();
+
+    // 2. Re-render: unauthenticated (sign-in prompt)
+    useSession.mockReturnValue({ data: null, status: "unauthenticated" });
+    expect(() => rerender(<HomePage />)).not.toThrow();
+    expect(screen.getByText("Sign In")).toBeInTheDocument();
+  });
+
+  test("unauthenticated → authenticated: no hooks error on re-render", () => {
+    const { useSession } = jest.requireMock("next-auth/react");
+
+    // 1. First render: unauthenticated
+    useSession.mockReturnValue({ data: null, status: "unauthenticated" });
+    const { rerender } = render(<HomePage />);
+    expect(screen.getByText("Sign In")).toBeInTheDocument();
+
+    // 2. Re-render: authenticated
+    useSession.mockReturnValue({ data: mockSession, status: "authenticated" });
+    expect(() => rerender(<HomePage />)).not.toThrow();
+    expect(screen.getByText("Nexus")).toBeInTheDocument();
+  });
+
+  test("authenticated → loading → authenticated: survives full cycle", () => {
+    const { useSession } = jest.requireMock("next-auth/react");
+
+    // 1. Start authenticated
+    useSession.mockReturnValue({ data: mockSession, status: "authenticated" });
+    const { rerender } = render(<HomePage />);
+    expect(screen.getByText("Nexus")).toBeInTheDocument();
+
+    // 2. Token refresh → loading
+    useSession.mockReturnValue({ data: null, status: "loading" });
+    expect(() => rerender(<HomePage />)).not.toThrow();
+
+    // 3. Back to authenticated
+    useSession.mockReturnValue({ data: mockSession, status: "authenticated" });
+    expect(() => rerender(<HomePage />)).not.toThrow();
+    expect(screen.getByText("Nexus")).toBeInTheDocument();
+  });
+});

@@ -9,13 +9,11 @@ let _db: Database.Database | null = null;
 // Avoids re-compiling SQL on every call (better-sqlite3 .prepare() is synchronous
 // but still incurs parsing cost).  Cache is invalidated when the DB is closed.
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 export interface CachedStatement {
   run(...params: any[]): Database.RunResult;
   get(...params: any[]): any;
   all(...params: any[]): any[];
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 const _stmtCache = new Map<string, CachedStatement>();
 
@@ -37,7 +35,6 @@ export function cachedStmt(sql: string, dbGetter: () => Database.Database): Cach
   }
   return stmt;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export function getDb(): Database.Database {
   if (!_db) {
