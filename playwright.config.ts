@@ -11,12 +11,12 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "dot" : "list",
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: "http://localhost:3001",
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
+    command: "npx next start -p 3001",
+    url: "http://localhost:3001",
     reuseExistingServer: true,
     timeout: 120_000,
   },

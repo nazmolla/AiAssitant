@@ -73,12 +73,25 @@ scp deploy.tar user@host:/path/to/app/
 | Component | Technology |
 |-----------|-----------|
 | Runtime | Node.js v20+, TypeScript 5.x |
-| Frontend | Next.js 14, TailwindCSS, Radix UI |
+| Frontend | Next.js 14, Material UI (MUI v7), TailwindCSS |
 | Database | SQLite (`better-sqlite3`) |
 | LLM | Azure OpenAI, OpenAI, Anthropic, LiteLLM (native SDKs + orchestrator) |
 | Browser | Playwright (Chromium) |
 | Auth | NextAuth v4 (credentials + OAuth) |
 | Extensibility | MCP v1.26+ (Stdio, SSE, Streamable HTTP) |
+| Testing | Jest (unit/integration), Playwright (E2E across Desktop Chrome, Pixel 7, iPhone 16 Pro Max) |
+
+---
+
+## Testing
+
+```bash
+npm test              # Jest unit & integration tests
+npm run test:e2e      # Playwright E2E smoke tests (requires production build)
+npm run test:all      # Both Jest and Playwright
+```
+
+Playwright tests run against a production build on 4 device profiles: Desktop Chrome, Pixel 7, iPhone 16 Pro Max (portrait & landscape).
 
 ---
 

@@ -190,7 +190,7 @@ src/
 │   ├── layout.tsx              # Root layout
 │   └── page.tsx                # Main dashboard SPA
 ├── components/                 # React UI components
-│   ├── ui/                     # Primitives (button, card, input, etc.)
+│   ├── ui/                     # MUI adapter primitives (button, card, input, badge, switch, textarea, scroll-area)
 │   ├── agent-dashboard.tsx     # Activity log viewer
 │   ├── approval-inbox.tsx      # HITL approval UI
 │   ├── channels-config.tsx     # Channel management (user-scoped)

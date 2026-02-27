@@ -6,8 +6,6 @@ import { useSession, signOut } from "next-auth/react";
 import dynamic from "next/dynamic";
 import AppBar from "@mui/material/AppBar";
 import Toolbar from "@mui/material/Toolbar";
-import Tabs from "@mui/material/Tabs";
-import Tab from "@mui/material/Tab";
 import Button from "@mui/material/Button";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -21,7 +19,9 @@ import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
+import Drawer from "@mui/material/Drawer";
 import LogoutIcon from "@mui/icons-material/Logout";
+import MenuIcon from "@mui/icons-material/Menu";
 import PaletteIcon from "@mui/icons-material/Palette";
 import ChatIcon from "@mui/icons-material/Chat";
 import DashboardIcon from "@mui/icons-material/Dashboard";
@@ -29,7 +29,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import SchoolIcon from "@mui/icons-material/School";
 import SettingsIcon from "@mui/icons-material/Settings";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
-import { useTheme, THEMES, type ThemeId } from "@/components/theme-provider";
+import { useTheme, THEMES } from "@/components/theme-provider";
 
 /* ── Lazy-loaded tab components (code-split into separate chunks) ── */
 const ChatPanel = dynamic(() => import("@/components/chat-panel").then(m => ({ default: m.ChatPanel })), { ssr: false });
@@ -54,6 +54,7 @@ export default function HomePage() {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>("user");
   const [activeTab, setActiveTab] = useState<string>("chat");
+  const [navDrawerOpen, setNavDrawerOpen] = useState(false);
   const [perms, setPerms] = useState<Record<string, number>>({
     chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
     mcp_servers: 1, channels: 0, llm_config: 0, screen_sharing: 1,
@@ -118,16 +119,30 @@ export default function HomePage() {
     return items;
   }, [perms]);
 
+  const activeTabItem = tabItems.find((t) => t.value === activeTab);
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100vh", bgcolor: "background.default" }}>
       {/* Header */}
       <AppBar position="static" color="default">
         <Toolbar variant="dense" sx={{ gap: 1, justifyContent: "space-between" }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <IconButton size="small" onClick={() => setNavDrawerOpen(true)} sx={{ color: "text.secondary" }}>
+              <MenuIcon fontSize="small" />
+            </IconButton>
             <Typography variant="h6" color="primary" fontWeight={700} sx={{ letterSpacing: "-0.5px" }}>
               Nexus
             </Typography>
-            <Chip label="Command Center" size="small" variant="outlined" sx={{ display: { xs: "none", sm: "inline-flex" }, fontSize: "0.65rem", height: 22 }} />
+            {activeTabItem && (
+              <Chip
+                icon={activeTabItem.icon}
+                label={activeTabItem.label}
+                size="small"
+                variant="outlined"
+                color="primary"
+                sx={{ fontSize: "0.7rem", height: 24, "& .MuiChip-icon": { fontSize: "0.85rem" } }}
+              />
+            )}
             <Typography variant="caption" color="text.secondary" sx={{ display: { xs: "none", sm: "inline" }, fontFamily: "monospace", fontSize: "0.65rem" }}>
               v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}
             </Typography>
@@ -145,20 +160,50 @@ export default function HomePage() {
         </Toolbar>
       </AppBar>
 
-      {/* Tab bar */}
-      <Box sx={{ borderBottom: 1, borderColor: "divider", bgcolor: "background.paper" }}>
-        <Tabs
-          value={activeTab}
-          onChange={(_, v) => setActiveTab(v)}
-          variant="scrollable"
-          scrollButtons="auto"
-          sx={{ minHeight: 44 }}
-        >
+      {/* Navigation Drawer */}
+      <Drawer
+        anchor="left"
+        open={navDrawerOpen}
+        onClose={() => setNavDrawerOpen(false)}
+        slotProps={{ paper: { sx: { width: DRAWER_WIDTH, bgcolor: "background.paper", backgroundImage: "none" } } }}
+      >
+        <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider" }}>
+          <Typography variant="h6" color="primary" fontWeight={700} sx={{ fontSize: "1.1rem" }}>Nexus</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.65rem" }}>Command Center</Typography>
+        </Box>
+        <List disablePadding sx={{ flex: 1, py: 0.5, px: 0.5 }}>
           {tabItems.map((t) => (
-            <Tab key={t.value} value={t.value} label={t.label} icon={t.icon} iconPosition="start" sx={{ minHeight: 44 }} />
+            <ListItemButton
+              key={t.value}
+              selected={activeTab === t.value}
+              onClick={() => { setActiveTab(t.value); setNavDrawerOpen(false); }}
+              sx={{
+                borderRadius: 1.5,
+                minHeight: 38,
+                py: 0.75,
+                px: 1.5,
+                mb: 0.25,
+                "&.Mui-selected": { bgcolor: "primary.main", color: "primary.contrastText", "& .MuiListItemIcon-root": { color: "inherit" }, "&:hover": { bgcolor: "primary.dark" } },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 32, color: "text.secondary" }}>{t.icon}</ListItemIcon>
+              <ListItemText primary={t.label} primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: 500 }} />
+            </ListItemButton>
           ))}
-        </Tabs>
-      </Box>
+        </List>
+        <Divider />
+        <Box sx={{ px: 2, py: 1.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+            <FiberManualRecordIcon sx={{ fontSize: 8, color: "success.main" }} />
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.75rem" }} noWrap>
+              {displayName || session.user?.email}
+            </Typography>
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6rem", display: "block" }}>
+            Nexus v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}
+          </Typography>
+        </Box>
+      </Drawer>
 
       {/* Content */}
       <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
@@ -220,6 +265,8 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
   users: { title: "User Management", subtitle: "Manage user access, roles, and feature permissions." },
 };
 
+const DRAWER_WIDTH = 200;
+
 function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<string, number> }) {
   const [active, setActive] = useState("profile");
 
@@ -232,48 +279,42 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
   const header = SETTINGS_HEADERS[active];
 
   return (
-    <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, height: "100%" }}>
-      {/* Sidebar */}
-      <Box sx={{
-        width: { xs: "100%", sm: 210 },
-        flexShrink: 0,
-        borderRight: { sm: 1 },
-        borderBottom: { xs: 1, sm: 0 },
-        borderColor: "divider",
-        bgcolor: "background.paper",
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-      }}>
-        <List dense sx={{ flex: 1, py: 1, px: 1, display: "flex", flexDirection: { xs: "row", sm: "column" }, flexWrap: { xs: "wrap", sm: "nowrap" }, gap: 0.25 }}>
-          {visiblePages.map((page) => (
-            <ListItemButton
-              key={page.key}
-              selected={active === page.key}
-              onClick={() => setActive(page.key)}
-              sx={{
-                borderRadius: 2,
-                minHeight: 40,
-                whiteSpace: "nowrap",
-                px: 1.5,
-                "&.Mui-selected": { bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" } },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 28, fontSize: "1rem", color: "inherit" }}>{page.icon}</ListItemIcon>
-              <ListItemText primary={page.label} primaryTypographyProps={{ fontSize: "0.8125rem", fontWeight: 500 }} />
-            </ListItemButton>
-          ))}
-        </List>
-        <Box sx={{ display: { xs: "none", sm: "block" }, px: 2, pb: 2, pt: 1, borderTop: 1, borderColor: "divider" }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.625rem", display: "block" }}>
-            Nexus v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.625rem", display: "block" }}>
-            Built {process.env.NEXT_PUBLIC_BUILD_TIME
-              ? new Date(process.env.NEXT_PUBLIC_BUILD_TIME).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
-              : "dev"}
-          </Typography>
-        </Box>
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Horizontal scrollable chip strip */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 0.75,
+          px: 1.5,
+          py: 0.75,
+          borderBottom: 1,
+          borderColor: "divider",
+          bgcolor: "background.paper",
+          overflowX: "auto",
+          overflowY: "hidden",
+          whiteSpace: "nowrap",
+          scrollbarWidth: "none",
+          "&::-webkit-scrollbar": { display: "none" },
+        }}
+      >
+        {visiblePages.map((page) => (
+          <Chip
+            key={page.key}
+            label={`${page.icon} ${page.label}`}
+            size="small"
+            variant={active === page.key ? "filled" : "outlined"}
+            color={active === page.key ? "primary" : "default"}
+            onClick={() => setActive(page.key)}
+            sx={{
+              flexShrink: 0,
+              fontSize: "0.75rem",
+              height: 28,
+              fontWeight: active === page.key ? 600 : 400,
+              cursor: "pointer",
+            }}
+          />
+        ))}
       </Box>
 
       {/* Content */}
@@ -308,7 +349,6 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
 function ThemeSwitcher() {
   const { theme, setTheme } = useTheme();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const activeTheme = useMemo(() => THEMES.find(t => t.id === theme), [theme]);
 
   return (
     <>

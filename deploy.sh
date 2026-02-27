@@ -20,7 +20,8 @@ echo "Target: ${REMOTE}:${REMOTE_DIR}"
 echo ""
 
 # ── Step 1: Build locally ──────────────────────────────────────────
-echo "[1/7] Running tests..."
+echo "[1/7] Bumping version & running tests..."
+node scripts/bump-version.js
 npx jest --no-cache --silent 2>&1 | tail -3
 echo ""
 

@@ -20,6 +20,7 @@ export async function GET() {
 
   return NextResponse.json({
     role: dbUser.role,
+    provider_id: dbUser.provider_id,
     permissions: perms || {
       user_id: guard.user.id,
       chat: 1,

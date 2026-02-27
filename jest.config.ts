@@ -44,10 +44,26 @@ const config: Config = {
         "^.+\\.tsx?$": ["ts-jest", { tsconfig: "tsconfig.json", diagnostics: false }],
       },
     },
+    {
+      displayName: "component",
+      testMatch: ["<rootDir>/tests/component/**/*.test.tsx"],
+      preset: "ts-jest",
+      testEnvironment: "jsdom",
+      moduleNameMapper: {
+        "^@/(.*)$": "<rootDir>/src/$1",
+        "\\.(css|less|scss|sass)$": "identity-obj-proxy",
+      },
+      transform: {
+        "^.+\\.tsx?$": ["ts-jest", { tsconfig: "tsconfig.jest.json", diagnostics: false }],
+      },
+      setupFilesAfterEnv: ["<rootDir>/tests/helpers/setup-jsdom.ts"],
+    },
   ],
   // Coverage thresholds
   collectCoverageFrom: [
     "src/lib/**/*.ts",
+    "src/components/**/*.tsx",
+    "src/app/**/*.tsx",
     "!src/lib/bootstrap.ts",
     "!src/lib/**/index.ts",
   ],

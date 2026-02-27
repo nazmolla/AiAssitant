@@ -11,13 +11,13 @@
 | Runtime | Node.js | v20+ (LTS). Tested on x86-64 and ARM64. |
 | Language | TypeScript | v5.x, Strict Mode |
 | Database | SQLite | `better-sqlite3` — zero-config, single-file persistence |
-| Frontend | Next.js 14 | App Router, TailwindCSS, Radix UI primitives, screen sharing via getDisplayMedia |
+| Frontend | Next.js 14 | App Router, Material UI (MUI v7) with 7 color themes, TailwindCSS, screen sharing via getDisplayMedia |
 | LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy |
 | MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports |
 | Discord | discord.js | Gateway bot with mentions, DMs, and slash commands |
 | Auth | NextAuth v4 | Credentials (email + password) and OAuth (Azure AD, Google) |
 | Browser | Playwright | Chromium headless/headful for automation |
-| Design | Custom | dark theme with coral accent, glass effects |
+| Design | Material Design | 7 switchable dark themes (Ember, Midnight, Frost, Sunrise, Forest, Amethyst, Obsidian), Google Roboto font |
 
 ---
 
@@ -264,7 +264,7 @@ Multi-layered defense against prompt injection across all input vectors:
 |----------------|-------|
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
-| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), interest-cohort=()` |
 | `X-DNS-Prefetch-Control` | `off` |

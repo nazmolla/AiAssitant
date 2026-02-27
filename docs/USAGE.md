@@ -6,7 +6,7 @@
 
 ## User Interface (Command Center)
 
-The Command Center is a single-page dashboard with a premium dark theme (coral accent, glass morphism effects). All tabs are accessible from the left sidebar.
+The Command Center is a single-page dashboard built with Material UI (MUI v7) featuring 7 switchable dark themes and Google Material Design components. All tabs are accessible from the top navigation bar.
 
 ![Command Center overview](images/command-center.png)
 

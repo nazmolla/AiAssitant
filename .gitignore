@@ -5,6 +5,10 @@
 
 # testing
 /coverage
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
 
 # next.js
 /.next/
@@ -44,3 +48,7 @@ next-env.d.ts
 
 # deploy artifacts
 *.tar
+
+# temp diagnostic files
+check-versions.cjs
+test-remote.mjs
