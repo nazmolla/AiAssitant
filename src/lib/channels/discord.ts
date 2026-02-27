@@ -119,7 +119,7 @@ export async function startDiscordBot(
         level: "info",
         source: "discord",
         message: `Registered slash commands for channel ${channelId}`,
-        metadata: null,
+        metadata: JSON.stringify({ channelId, applicationId }),
       });
     } catch (err) {
       addLog({
@@ -283,7 +283,7 @@ export async function startDiscordBot(
     level: "info",
     source: "discord",
     message: `Discord bot started for channel ${channelId}`,
-    metadata: null,
+    metadata: JSON.stringify({ channelId }),
   });
 }
 
@@ -361,7 +361,7 @@ export async function stopDiscordBot(channelId: string): Promise<void> {
     level: "info",
     source: "discord",
     message: `Discord bot stopped for channel ${channelId}`,
-    metadata: null,
+    metadata: JSON.stringify({ channelId }),
   });
 }
 

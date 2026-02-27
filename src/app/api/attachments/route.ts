@@ -75,11 +75,11 @@ export async function POST(req: NextRequest) {
     const threadId = formData.get("threadId") as string | null;
 
     if (!file) {
-      addLog({ level: "warning", source: "api.attachments", message: "Upload rejected: missing file.", metadata: null });
+      addLog({ level: "warning", source: "api.attachments", message: "Upload rejected: missing file.", metadata: JSON.stringify({ threadId, userId: auth.user.id }) });
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
     if (!threadId) {
-      addLog({ level: "warning", source: "api.attachments", message: "Upload rejected: missing threadId.", metadata: null });
+      addLog({ level: "warning", source: "api.attachments", message: "Upload rejected: missing threadId.", metadata: JSON.stringify({ fileName: file.name, fileSize: file.size, fileType: file.type, userId: auth.user.id }) });
       return NextResponse.json({ error: "threadId is required" }, { status: 400 });
     }
     // Validate threadId is a UUID to prevent path traversal

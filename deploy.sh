@@ -74,12 +74,10 @@ echo ""
 # ── Step 4: Stop the server gracefully ────────────────────────────
 echo "[5/7] Stopping remote server..."
 ssh "${REMOTE}" "
-  cd ${REMOTE_DIR} 2>/dev/null || true
-  # Kill anything on port 3000
-  fuser -k 3000/tcp 2>/dev/null || true
+  sudo systemctl stop nexus-agent 2>/dev/null || true
   sleep 2
-  # Force kill if still running
-  fuser -k -9 3000/tcp 2>/dev/null || true
+  # Fallback: kill anything on port 3000 if systemd didn't handle it
+  fuser -k 3000/tcp 2>/dev/null || true
   sleep 1
   if fuser 3000/tcp 2>/dev/null; then
     echo '  ✗ Failed to stop server'
@@ -109,7 +107,7 @@ echo ""
 echo "[7/7] Starting server and verifying..."
 ssh "${REMOTE}" "
   cd ${REMOTE_DIR}
-  nohup npm start > server.log 2>&1 &
+  sudo systemctl restart nexus-agent
   sleep 5
   
   # Verify HTTP 200
@@ -118,7 +116,7 @@ ssh "${REMOTE}" "
     echo \"  ✓ Server running (HTTP \${HTTP_CODE})\"
   else
     echo \"  ✗ Server check failed (HTTP \${HTTP_CODE})\"
-    tail -10 server.log
+    sudo journalctl -u nexus-agent --no-pager -n 15
     exit 1
   fi
 "

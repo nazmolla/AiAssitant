@@ -198,7 +198,7 @@ async function sendEmailResponse(
   const toEmail = normalizeEmail(to);
 
   if (!emailCfg.smtpHost || !emailCfg.smtpPort || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress || !toEmail) {
-    addLog({ level: "warning", source: "api.channel.webhook", message: "Email response skipped due to incomplete email configuration.", metadata: null });
+    addLog({ level: "warning", source: "api.channel.webhook", message: "Email response skipped due to incomplete email configuration.", metadata: JSON.stringify({ toEmail, hasSmtpHost: !!emailCfg.smtpHost, hasSmtpPort: !!emailCfg.smtpPort, hasSmtpUser: !!emailCfg.smtpUser, hasSmtpPass: !!emailCfg.smtpPass, hasFromAddress: !!emailCfg.fromAddress }) });
     return;
   }
 
@@ -254,7 +254,7 @@ async function sendWhatsAppResponse(
   ).trim();
 
   if (!phoneNumberId || !accessToken) {
-    addLog({ level: "warning", source: "api.channel.webhook", message: "WhatsApp response skipped due to missing phoneNumberId/accessToken.", metadata: null });
+    addLog({ level: "warning", source: "api.channel.webhook", message: "WhatsApp response skipped due to missing phoneNumberId/accessToken.", metadata: JSON.stringify({ to, hasPhoneNumberId: !!phoneNumberId, hasAccessToken: !!accessToken }) });
     return;
   }
 

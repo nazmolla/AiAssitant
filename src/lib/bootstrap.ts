@@ -59,7 +59,7 @@ function startBackgroundServices(): void {
         level: "error",
         source: "mcp",
         message: `Failed to auto-connect MCP servers: ${err}`,
-        metadata: null,
+        metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }),
       });
     }
 
@@ -70,7 +70,7 @@ function startBackgroundServices(): void {
         level: "error",
         source: "custom-tools",
         message: `Failed to load custom tools: ${err}`,
-        metadata: null,
+        metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }),
       });
     }
 
@@ -81,7 +81,7 @@ function startBackgroundServices(): void {
         level: "error",
         source: "discord",
         message: `Failed to auto-start Discord bots: ${err}`,
-        metadata: null,
+        metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }),
       });
     }
   })();

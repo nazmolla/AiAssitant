@@ -7,10 +7,13 @@ import CardContent from "@mui/material/CardContent";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
+import Collapse from "@mui/material/Collapse";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import MuiSwitch from "@mui/material/Switch";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { useTheme } from "@/components/theme-provider";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 
@@ -46,12 +49,34 @@ function sourceColor(source: string | null) {
   }
 }
 
+/** Safely parse metadata JSON into a key-value record for display. */
+function parseMetadata(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    return { value: parsed };
+  } catch {
+    return { raw };
+  }
+}
+
+/** Render a single metadata value as readable text. */
+function formatMetaValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") return String(value);
+  return JSON.stringify(value, null, 2);
+}
+
 export function AgentDashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showAllLogs, setShowAllLogs] = useState(false);
   const [renderCount, setRenderCount] = useState(400);
   const [filter, setFilter] = useState<LogFilter>("all");
+  const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
   const { formatDate } = useTheme();
 
   const fetchLogs = useCallback(() => {
@@ -205,43 +230,106 @@ export function AgentDashboard() {
           <Box sx={{ height: 500, overflow: "auto" }}>
             {isMobile ? (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {visibleLogs.map((log) => (
-                  <Box
-                    key={log.id}
-                    sx={{ borderRadius: 2, border: 1, borderColor: "divider", p: 1.5, display: "flex", flexDirection: "column", gap: 0.5 }}
-                  >
-                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        {formatDate(log.created_at, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </Typography>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                {visibleLogs.map((log) => {
+                  const isExpanded = expandedLogId === log.id;
+                  const meta = parseMetadata(log.metadata);
+                  const hasDetails = meta !== null;
+                  return (
+                    <Box
+                      key={log.id}
+                      sx={{
+                        borderRadius: 2,
+                        border: 1,
+                        borderColor: isExpanded ? "primary.main" : "divider",
+                        p: 1.5,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 0.5,
+                        cursor: hasDetails ? "pointer" : "default",
+                        transition: "border-color 0.2s",
+                        "&:hover": hasDetails ? { borderColor: "primary.light" } : {},
+                      }}
+                      onClick={() => hasDetails && setExpandedLogId(isExpanded ? null : log.id)}
+                    >
+                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatDate(log.created_at, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </Typography>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                          <Chip label={log.level} size="small" color={levelColor(log.level)} />
+                          <Typography variant="caption" sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }} className={sourceColor(log.source)}>
+                            {log.source || "sys"}
+                          </Typography>
+                          {hasDetails && (isExpanded ? <ExpandLessIcon sx={{ fontSize: 16, color: "text.secondary" }} /> : <ExpandMoreIcon sx={{ fontSize: 16, color: "text.secondary" }} />)}
+                        </Box>
+                      </Box>
+                      <Typography variant="body2" sx={{ wordBreak: "break-word" }}>{log.message}</Typography>
+                      <Collapse in={isExpanded} unmountOnExit>
+                        <Box sx={{ mt: 1, p: 1.5, bgcolor: "action.hover", borderRadius: 1, borderLeft: 3, borderColor: "primary.main" }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>Details</Typography>
+                          {meta && Object.entries(meta).map(([key, val]) => (
+                            <Box key={key} sx={{ display: "flex", gap: 1, mb: 0.5 }}>
+                              <Typography variant="caption" sx={{ fontWeight: 600, minWidth: 80, color: "text.secondary", fontFamily: "monospace" }}>{key}:</Typography>
+                              <Typography variant="caption" sx={{ wordBreak: "break-all", fontFamily: "monospace", whiteSpace: "pre-wrap" }}>{formatMetaValue(val)}</Typography>
+                            </Box>
+                          ))}
+                        </Box>
+                      </Collapse>
+                    </Box>
+                  );
+                })}
+              </Box>
+            ) : (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+                {visibleLogs.map((log) => {
+                  const isExpanded = expandedLogId === log.id;
+                  const meta = parseMetadata(log.metadata);
+                  const hasDetails = meta !== null;
+                  return (
+                    <Box key={log.id}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 1.5,
+                          p: 1,
+                          borderRadius: 2,
+                          fontFamily: "monospace",
+                          fontSize: "0.875rem",
+                          cursor: hasDetails ? "pointer" : "default",
+                          bgcolor: isExpanded ? "action.selected" : "transparent",
+                          "&:hover": { bgcolor: isExpanded ? "action.selected" : "action.hover" },
+                        }}
+                        onClick={() => hasDetails && setExpandedLogId(isExpanded ? null : log.id)}
+                      >
+                        <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: "nowrap", fontFamily: "monospace" }}>
+                          {formatDate(log.created_at, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </Typography>
                         <Chip label={log.level} size="small" color={levelColor(log.level)} />
                         <Typography variant="caption" sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }} className={sourceColor(log.source)}>
                           {log.source || "sys"}
                         </Typography>
+                        <Typography variant="body2" sx={{ flex: 1, fontFamily: "monospace" }}>{log.message}</Typography>
+                        {hasDetails && (
+                          isExpanded
+                            ? <ExpandLessIcon sx={{ fontSize: 18, color: "text.secondary", mt: 0.25 }} />
+                            : <ExpandMoreIcon sx={{ fontSize: 18, color: "text.secondary", mt: 0.25 }} />
+                        )}
                       </Box>
+                      <Collapse in={isExpanded} unmountOnExit>
+                        <Box sx={{ ml: 7, mr: 2, mb: 1, p: 1.5, bgcolor: "action.hover", borderRadius: 1, borderLeft: 3, borderColor: "primary.main" }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, mb: 0.5, display: "block" }}>Details</Typography>
+                          {meta && Object.entries(meta).map(([key, val]) => (
+                            <Box key={key} sx={{ display: "flex", gap: 1.5, mb: 0.25 }}>
+                              <Typography variant="caption" sx={{ fontWeight: 600, minWidth: 120, color: "text.secondary", fontFamily: "monospace" }}>{key}:</Typography>
+                              <Typography variant="caption" sx={{ wordBreak: "break-all", fontFamily: "monospace", whiteSpace: "pre-wrap", flex: 1 }}>{formatMetaValue(val)}</Typography>
+                            </Box>
+                          ))}
+                        </Box>
+                      </Collapse>
                     </Box>
-                    <Typography variant="body2" sx={{ wordBreak: "break-word" }}>{log.message}</Typography>
-                  </Box>
-                ))}
-              </Box>
-            ) : (
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
-                {visibleLogs.map((log) => (
-                  <Box
-                    key={log.id}
-                    sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, p: 1, borderRadius: 2, fontFamily: "monospace", fontSize: "0.875rem", "&:hover": { bgcolor: "action.hover" } }}
-                  >
-                    <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: "nowrap", fontFamily: "monospace" }}>
-                      {formatDate(log.created_at, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                    </Typography>
-                    <Chip label={log.level} size="small" color={levelColor(log.level)} />
-                    <Typography variant="caption" sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }} className={sourceColor(log.source)}>
-                      {log.source || "sys"}
-                    </Typography>
-                    <Typography variant="body2" sx={{ flex: 1, fontFamily: "monospace" }}>{log.message}</Typography>
-                  </Box>
-                ))}
+                  );
+                })}
               </Box>
             )}
 

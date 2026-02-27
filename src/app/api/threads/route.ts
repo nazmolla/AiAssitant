@@ -6,7 +6,7 @@ import { initializeDatabase } from "@/lib/db";
 // Ensure DB is initialized
 try {
   initializeDatabase();
-  addLog({ level: "verbose", source: "api.threads", message: "Database initialized for threads route.", metadata: null });
+  addLog({ level: "verbose", source: "api.threads", message: "Database initialized for threads route.", metadata: JSON.stringify({ pid: process.pid }) });
 } catch (err) {
   addLog({
     level: "critical",

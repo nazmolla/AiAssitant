@@ -672,7 +672,7 @@ async function executeSchedulerTool(
         level: "warn",
         source: "scheduler",
         message: `Skipping proactive tool \"${toolName}\": MCP server \"${serverId || "unknown"}\" is not connected.`,
-        metadata: null,
+        metadata: JSON.stringify({ toolName, serverId: serverId || "unknown" }),
       });
       _proactiveSkipWarned.add(toolName);
     }
@@ -695,7 +695,7 @@ export async function runProactiveScan(): Promise<void> {
     level: "info",
     source: "scheduler",
     message: "Proactive scan started.",
-    metadata: null,
+    metadata: JSON.stringify({ adminUserId: defaultAdminUserId }),
   });
 
   try {
@@ -705,7 +705,7 @@ export async function runProactiveScan(): Promise<void> {
       level: "error",
       source: "email",
       message: `Email polling cycle failed: ${err}`,
-      metadata: null,
+      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
     });
   }
 
@@ -721,7 +721,7 @@ export async function runProactiveScan(): Promise<void> {
       level: "info",
       source: "scheduler",
       message: "No proactive-enabled tools configured. Skipping scan.",
-      metadata: null,
+      metadata: JSON.stringify({ totalPolicies: listToolPolicies().length }),
     });
     return;
   }
@@ -735,7 +735,7 @@ export async function runProactiveScan(): Promise<void> {
             level: "warn",
             source: "scheduler",
             message: `Skipping proactive poll for "${policy.tool_name}": required input arguments are unavailable in current proactive context.`,
-            metadata: null,
+            metadata: JSON.stringify({ toolName: policy.tool_name }),
           });
           _proactivePollArgWarned.add(policy.tool_name);
         }
@@ -878,7 +878,7 @@ export async function runProactiveScan(): Promise<void> {
                 level: "error",
                 source: "scheduler",
                 message: `Auto-executed tool "${actionTool}" failed: ${executionError}`,
-                metadata: null,
+                metadata: JSON.stringify({ tool: actionTool, args: actionArgs, error: executionError instanceof Error ? executionError.message : String(executionError) }),
               });
             }
           }
@@ -887,7 +887,7 @@ export async function runProactiveScan(): Promise<void> {
             level: "info",
             source: "scheduler",
             message: `No action needed for "${policy.tool_name}": ${assessment.summary || "(no summary provided)"}`,
-            metadata: null,
+            metadata: JSON.stringify({ toolName: policy.tool_name, assessment }),
           });
         }
       } catch {
@@ -903,7 +903,7 @@ export async function runProactiveScan(): Promise<void> {
         level: "error",
         source: "scheduler",
         message: `Error polling "${policy.tool_name}": ${err}`,
-        metadata: null,
+        metadata: JSON.stringify({ toolName: policy.tool_name, error: err instanceof Error ? err.message : String(err) }),
       });
     }
   }
@@ -915,7 +915,7 @@ export async function runProactiveScan(): Promise<void> {
       level: "warn",
       source: "scheduler",
       message: `Failed flushing scheduler digest notifications: ${err}`,
-      metadata: null,
+      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err), digestUserCount: digestByUser.size }),
     });
   }
 
@@ -923,7 +923,7 @@ export async function runProactiveScan(): Promise<void> {
     level: "info",
     source: "scheduler",
     message: "Proactive scan completed.",
-    metadata: null,
+    metadata: JSON.stringify({ policiesScanned: policies.length, digestUserCount: digestByUser.size }),
   });
 }
 
@@ -945,7 +945,7 @@ export function startScheduler(): void {
         level: "error",
         source: "scheduler",
         message: `Scheduler error: ${err}`,
-        metadata: null,
+        metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err), schedule }),
       });
     }
   });
@@ -956,7 +956,7 @@ export function startScheduler(): void {
     level: "info",
     source: "scheduler",
     message: `Proactive scheduler started with schedule: ${schedule}`,
-    metadata: null,
+    metadata: JSON.stringify({ schedule }),
   });
 }
 
@@ -971,7 +971,7 @@ export function stopScheduler(): void {
       level: "info",
       source: "scheduler",
       message: "Proactive scheduler stopped.",
-      metadata: null,
+      metadata: JSON.stringify({ stoppedAt: new Date().toISOString() }),
     });
   }
 }
