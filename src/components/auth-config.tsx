@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { ApiKeysConfig } from "@/components/api-keys-config";
 
 type AuthProviderType = "azure-ad" | "google" | "discord";
 
@@ -176,6 +177,8 @@ export function AuthConfig() {
     <div className="space-y-4">
       {loading && <p className="text-sm text-muted-foreground">Loading...</p>}
 
+      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mt-2">OAuth Providers</h3>
+
       {PROVIDER_FORMS.map((form) => {
         const existing = getExisting(form.type);
         const isEditing = editingType === form.type;
@@ -264,6 +267,10 @@ export function AuthConfig() {
           </Card>
         );
       })}
+
+      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mt-6 pt-4 border-t border-border">API Keys</h3>
+      <p className="text-xs text-muted-foreground -mt-2">Create bearer tokens for mobile apps, scripts, and external integrations.</p>
+      <ApiKeysConfig />
     </div>
   );
 }

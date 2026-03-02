@@ -129,6 +129,10 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 2. **Think** — Retrieve relevant knowledge via semantic search, construct a context-rich prompt, and call the LLM
 3. **Act** — Execute tool calls (with HITL gating), capture new knowledge, and deliver the response
 
+### Real-Time Streaming
+
+The chat API uses **Server-Sent Events (SSE)** to stream intermediate messages (thinking steps, tool calls, tool results) to the client in real-time as the agent loop progresses. This gives immediate visibility into the agent's reasoning process instead of waiting for the full loop to complete.
+
 ### Notification & Inbound Email Safety Path
 
 - **Per-user thresholds** — Channel notifications are filtered by each user profile's `notification_level` (`low`, `medium`, `high`, `disaster`).

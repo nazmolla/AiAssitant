@@ -286,7 +286,7 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
   alexa: { title: "Alexa Smart Home", subtitle: "Connect your Amazon Alexa account to control smart home devices, make announcements, and read sensors." },
   logging: { title: "Logging", subtitle: "Server-wide log levels, retention boundary, and cleanup tools." },
   "custom-tools": { title: "Custom Tools", subtitle: "Agent-created tools that extend Nexus capabilities at runtime." },
-  auth: { title: "Authentication Providers", subtitle: "Configure OAuth login providers and external integrations." },
+  auth: { title: "Authentication", subtitle: "Configure OAuth login providers, API keys, and external integrations." },
   users: { title: "User Management", subtitle: "Manage user access, roles, and feature permissions." },
 };
 

@@ -50,6 +50,17 @@ export async function middleware(req: NextRequest) {
     );
   }
 
+  // --- API-key bearer tokens bypass NextAuth session middleware ---
+  // Requests carrying `Authorization: Bearer nxk_...` are validated later
+  // in the route-level guards (guard.ts) — let them through here.
+  const authHeader = req.headers.get("authorization") ?? "";
+  const isApiKeyRequest = authHeader.toLowerCase().startsWith("bearer nxk_");
+
+  if (isApiKeyRequest) {
+    // Skip NextAuth middleware entirely — the route guard will validate the key.
+    return NextResponse.next();
+  }
+
   // --- For API routes: return proper 401 JSON instead of sign-in page redirect ---
   const isApiRoute = req.nextUrl.pathname.startsWith("/api/");
 

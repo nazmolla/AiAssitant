@@ -16,3 +16,9 @@
 
 - Always run `npx jest --forceExit` before deploying.
 - After deployment, verify the Jetson responds with HTTP 200 and check `journalctl -u nexus-agent` for errors.
+
+
+## Request End
+- At the end of any request that changes files, make sure to update the following: Tests (unit tests and integration tests, and UI tests), Documentation (README, USAGE, INSTALLATION, ARCHITECTURE, TECH_SPECS), Scan for code vulnerabilities and apply fixes.
+-Once that is done successfully, then you can proceed to deploy using the deployment instructions above, and make sure to verify the deployment was successful by checking the HTTP response and logs as described in the Testing section above.
+-Then commit and push changes with proper commit messages and PR descriptions that reference the issue number and describe the changes made, the testing performed, and any other relevant information for reviewers and future reference.

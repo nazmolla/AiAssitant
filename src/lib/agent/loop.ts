@@ -141,7 +141,8 @@ export async function runAgentLoop(
     storagePath: string;
   }>,
   continuation?: boolean,
-  userId?: string
+  userId?: string,
+  onMessage?: (msg: Message) => void
 ): Promise<AgentResponse> {
   // Use the orchestrator to pick the best model for this task
   const hasImages = contentParts?.some((p) => p.type === "image_url") ?? false;
@@ -176,6 +177,7 @@ export async function runAgentLoop(
       tool_results: null,
       attachments: attachmentsMeta ? JSON.stringify(attachmentsMeta) : null,
     });
+    onMessage?.(savedMsg);
 
     // Persist attachment records in the attachments table
     if (attachmentsMeta) {
@@ -293,7 +295,7 @@ export async function runAgentLoop(
     // If LLM wants to call tools
     if (response.toolCalls.length > 0) {
       // Save the assistant message with tool calls
-      addMessage({
+      const savedThinking = addMessage({
         thread_id: threadId,
         role: "assistant",
         content: response.content,
@@ -301,6 +303,7 @@ export async function runAgentLoop(
         tool_results: null,
         attachments: null,
       });
+      onMessage?.(savedThinking);
 
       chatMessages.push({
         role: "assistant",
@@ -424,6 +427,7 @@ export async function runAgentLoop(
             tool_results: JSON.stringify({ tool_call_id: toolCall.id, name: toolCall.name, result: result.result }),
             attachments: toolAttachments,
           });
+          onMessage?.(savedMsg);
 
           // Persist screenshot attachment record in DB
           if (toolAttachments) {
@@ -459,7 +463,7 @@ export async function runAgentLoop(
         } else {
           // Persist error results to DB so history is complete
           const errorContent = `[ERROR] Tool "${toolCall.name}" failed: ${result.error}`;
-          addMessage({
+          const savedError = addMessage({
             thread_id: threadId,
             role: "tool",
             content: errorContent,
@@ -467,6 +471,7 @@ export async function runAgentLoop(
             tool_results: JSON.stringify({ tool_call_id: toolCall.id, name: toolCall.name, error: result.error }),
             attachments: null,
           });
+          onMessage?.(savedError);
 
           chatMessages.push({
             role: "tool",
@@ -509,6 +514,7 @@ export async function runAgentLoop(
       tool_results: null,
       attachments: finalAttachments,
     });
+    onMessage?.(savedFinal);
 
     // Persist screenshot attachments on the final assistant message too
     if (attachmentsForResponse.length > 0) {
@@ -545,7 +551,7 @@ export async function runAgentLoop(
 
   // Max iterations reached
   const fallback = "I've reached the maximum number of tool iterations. Please try rephrasing your request.";
-  addMessage({
+  const savedFallback = addMessage({
     thread_id: threadId,
     role: "assistant",
     content: fallback,
@@ -553,6 +559,7 @@ export async function runAgentLoop(
     tool_results: null,
     attachments: null,
   });
+  onMessage?.(savedFallback);
 
   knowledgeSnippets.push(`[Assistant]\n${fallback}`);
   await persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId);

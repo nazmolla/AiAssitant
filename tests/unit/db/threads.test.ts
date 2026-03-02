@@ -94,6 +94,8 @@ describe("Messages", () => {
     expect(msg.id).toBeGreaterThan(0);
     expect(msg.role).toBe("user");
     expect(msg.content).toBe("Hello agent");
+    expect(msg.created_at).toBeDefined();
+    expect(typeof msg.created_at).toBe("string");
   });
 
   test("addMessage inserts an assistant message", () => {

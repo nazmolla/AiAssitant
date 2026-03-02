@@ -142,7 +142,8 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT,
     tool_calls TEXT,
     tool_results TEXT,
-    attachments TEXT
+    attachments TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS attachments (
@@ -249,6 +250,23 @@ CREATE TABLE IF NOT EXISTS custom_tools (
     enabled INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ═══ API Keys (bearer-token auth for mobile / external clients) ═══
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,                        -- UUID
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,                          -- human-readable label
+    key_hash TEXT NOT NULL,                      -- SHA-256 hash of the raw key
+    key_prefix TEXT NOT NULL,                    -- first 8 chars for identification (e.g. 'nxk_abc1')
+    scopes TEXT NOT NULL DEFAULT '["chat"]',     -- JSON array of granted scopes
+    expires_at DATETIME,                         -- NULL = never expires
+    last_used_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
 
 -- ═══ Performance Indexes ═══
 

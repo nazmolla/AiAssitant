@@ -128,15 +128,43 @@ export async function POST(
   }
 
   try {
-    const response = await runAgentLoop(
-      params.threadId,
-      message || "(see attached files)",
-      contentParts,
-      attachments,
-      undefined,
-      auth.user.id
-    );
-    return NextResponse.json(response);
+    // Stream messages via SSE as the agent loop progresses
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          const response = await runAgentLoop(
+            params.threadId,
+            message || "(see attached files)",
+            contentParts,
+            attachments,
+            undefined,
+            auth.user.id,
+            (msg) => {
+              // Send each saved message as an SSE event
+              const data = JSON.stringify(msg);
+              controller.enqueue(encoder.encode(`event: message\ndata: ${data}\n\n`));
+            }
+          );
+          // Send final completion event
+          controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(response)}\n\n`));
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:\\\\[^\s]+/g, "[path]");
+          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: safeMsg })}\n\n`));
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     // Sanitize internal paths from error messages

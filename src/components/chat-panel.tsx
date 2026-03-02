@@ -49,6 +49,7 @@ interface Message {
   tool_calls: string | null;
   tool_results: string | null;
   attachments: string | null;
+  created_at: string | null;
 }
 
 interface PendingFile {
@@ -456,6 +457,7 @@ export function ChatPanel() {
         tool_calls: null,
         tool_results: null,
         attachments: optimisticAttachments.length > 0 ? JSON.stringify(optimisticAttachments) : null,
+        created_at: new Date().toISOString(),
       },
     ]);
 
@@ -477,25 +479,87 @@ export function ChatPanel() {
           screenFrames: frames.length > 0 ? frames : undefined,
         }),
       });
-      const data = await res.json();
 
-      if (data.error) {
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
         setMessages((prev) => [
           ...prev,
-          { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${data.error}`, tool_calls: null, tool_results: null, attachments: null },
+          { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${errData.error || res.statusText}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
         ]);
-      } else {
-        // Refresh messages from server
-        const threadRes = await fetch(`/api/threads/${activeThread}`);
-        const threadData = await threadRes.json();
-        setMessages(threadData.messages || []);
-        // Refresh thread list to pick up auto-generated title
-        fetch("/api/threads").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setThreads(d); }).catch(console.error);
+        return;
+      }
+
+      // Consume SSE stream
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response stream");
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let seenUserMsg = false;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE events from the buffer
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // Keep incomplete line in buffer
+        let currentEvent = "";
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            const jsonStr = line.slice(6);
+            try {
+              const data = JSON.parse(jsonStr);
+              if (currentEvent === "message") {
+                // Skip the user message we already have optimistically
+                if (data.role === "user" && !seenUserMsg) {
+                  seenUserMsg = true;
+                  // Replace optimistic user msg with server version (has real id + created_at)
+                  setMessages((prev) => {
+                    const copy = [...prev];
+                    // Find last optimistic user message
+                    for (let i = copy.length - 1; i >= 0; i--) {
+                      if (copy[i].role === "user" && copy[i].id === Date.now()) {
+                        copy[i] = data;
+                        return copy;
+                      }
+                    }
+                    // If no match (id changed), replace last user msg
+                    for (let i = copy.length - 1; i >= 0; i--) {
+                      if (copy[i].role === "user") {
+                        copy[i] = data;
+                        return copy;
+                      }
+                    }
+                    return [...copy, data];
+                  });
+                } else {
+                  // Append new message from the stream
+                  setMessages((prev) => [...prev, data as Message]);
+                }
+              } else if (currentEvent === "done") {
+                // Agent loop completed — refresh thread list for auto-generated title
+                fetch("/api/threads").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setThreads(d); }).catch(console.error);
+              } else if (currentEvent === "error") {
+                setMessages((prev) => [
+                  ...prev,
+                  { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${data.error}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
+                ]);
+              }
+            } catch {
+              // Ignore malformed JSON
+            }
+            currentEvent = "";
+          }
+        }
       }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${err}`, tool_calls: null, tool_results: null, attachments: null },
+        { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${err}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
       ]);
     } finally {
       setLoading(false);
@@ -596,8 +660,20 @@ export function ChatPanel() {
       result.push({ msg, attachments, approvalMeta, displayContent, thoughts: [] });
     }
 
+    // If thoughts are still pending (streaming — final assistant message hasn't arrived yet),
+    // synthesize a placeholder so the user can see the agent's progress in real-time
+    if (pendingThoughts.length > 0 && loading) {
+      result.push({
+        msg: { id: -1, thread_id: "", role: "assistant", content: null, tool_calls: null, tool_results: null, attachments: null, created_at: null },
+        attachments: [],
+        approvalMeta: null,
+        displayContent: null,
+        thoughts: pendingThoughts,
+      });
+    }
+
     return result;
-  }, [messages]);
+  }, [messages, loading]);
 
   return (
     <Box sx={{ display: "flex", height: "100%" }}>
@@ -758,7 +834,7 @@ export function ChatPanel() {
                         )}
 
                         {/* Collapsible Thoughts */}
-                        {thoughts.length > 0 && <ThoughtsBlock thoughts={thoughts} />}
+                        {thoughts.length > 0 && <ThoughtsBlock thoughts={thoughts} autoExpand={loading} />}
 
                         {/* Attachments */}
                         {attachments.length > 0 && (
@@ -770,7 +846,9 @@ export function ChatPanel() {
                         )}
 
                         <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
-                          {msg.role === "tool"
+                          {msg.id === -1 && loading
+                            ? ""
+                            : msg.role === "tool"
                             ? sanitizeToolContent(msg.content, attachments.length > 0)
                             : msg.role === "assistant"
                             ? sanitizeAssistantContent(msg.content, attachments.length > 0)
@@ -778,6 +856,35 @@ export function ChatPanel() {
                             ? displayContent || ""
                             : msg.content || (attachments.length > 0 ? "" : "(no content)")}
                         </Typography>
+                        {msg.id === -1 && loading && (
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
+                            <CircularProgress size={14} />
+                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
+                              Thinking...
+                            </Typography>
+                          </Box>
+                        )}
+
+                        {/* Timestamp */}
+                        {msg.created_at && (
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              display: "block",
+                              mt: 0.5,
+                              fontSize: "0.6rem",
+                              color: msg.role === "user" ? "rgba(255,255,255,0.7)" : "text.disabled",
+                              textAlign: msg.role === "user" ? "right" : "left",
+                            }}
+                          >
+                            {new Date(msg.created_at).toLocaleString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </Typography>
+                        )}
 
                         {/* Inline approval buttons */}
                         {approvalMeta && (() => {
@@ -983,8 +1090,13 @@ function shortToolName(name: string): string {
   return parts[parts.length - 1];
 }
 
-const ThoughtsBlock = memo(function ThoughtsBlock({ thoughts }: { thoughts: ThoughtStep[] }) {
+const ThoughtsBlock = memo(function ThoughtsBlock({ thoughts, autoExpand }: { thoughts: ThoughtStep[]; autoExpand?: boolean }) {
   const [expanded, setExpanded] = useState(false);
+
+  // Auto-expand when streaming
+  useEffect(() => {
+    if (autoExpand) setExpanded(true);
+  }, [autoExpand]);
 
   // Count total tool calls across all steps
   const totalTools = thoughts.reduce((sum, t) => sum + t.toolCalls.length, 0);

@@ -31,6 +31,9 @@ export function installAuthMocks(): void {
       if (!mockUser) {
         return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
       }
+      if (mockUser.apiKeyScopes) {
+        return { error: NextResponse.json({ error: "Admin endpoints require session authentication, not API keys." }, { status: 403 }) };
+      }
       if (mockUser.role !== "admin") {
         return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
       }
@@ -50,6 +53,9 @@ export function installAuthMocks(): void {
     requireAdmin: jest.fn(async () => {
       if (!mockUser) {
         return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+      }
+      if (mockUser.apiKeyScopes) {
+        return { error: NextResponse.json({ error: "Admin endpoints require session authentication, not API keys." }, { status: 403 }) };
       }
       if (mockUser.role !== "admin") {
         return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };

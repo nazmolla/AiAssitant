@@ -9,7 +9,7 @@ installAuthMocks();
 
 // Mock the agent loop
 jest.mock("@/lib/agent", () => ({
-  runAgentLoop: jest.fn(async (_threadId: string, message: string) => ({
+  runAgentLoop: jest.fn(async (_threadId: string, message: string, _cp: unknown, _att: unknown, _cont: unknown, _uid: unknown, _onMsg: unknown) => ({
     content: `Echo: ${message}`,
     toolsUsed: [],
     pendingApprovals: [],
@@ -22,6 +22,26 @@ import { NextRequest } from "next/server";
 import { POST } from "@/app/api/threads/[threadId]/chat/route";
 import { createThread, updateThreadStatus } from "@/lib/db/queries";
 import { runAgentLoop } from "@/lib/agent";
+
+/** Parse an SSE Response into an array of { event, data } objects */
+async function parseSSE(res: Response): Promise<Array<{ event: string; data: unknown }>> {
+  const text = await res.text();
+  const events: Array<{ event: string; data: unknown }> = [];
+  let currentEvent = "";
+  for (const line of text.split("\n")) {
+    if (line.startsWith("event: ")) {
+      currentEvent = line.slice(7).trim();
+    } else if (line.startsWith("data: ")) {
+      try {
+        events.push({ event: currentEvent, data: JSON.parse(line.slice(6)) });
+      } catch {
+        events.push({ event: currentEvent, data: line.slice(6) });
+      }
+      currentEvent = "";
+    }
+  }
+  return events;
+}
 
 let userId: string;
 let otherUserId: string;
@@ -110,8 +130,10 @@ describe("POST /api/threads/[threadId]/chat", () => {
     });
     const res = await POST(req, { params: { threadId } });
     expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.content).toBe("Echo: What is 2+2?");
+    const events = await parseSSE(res);
+    const doneEvent = events.find((e) => e.event === "done");
+    expect(doneEvent).toBeDefined();
+    expect((doneEvent!.data as { content: string }).content).toBe("Echo: What is 2+2?");
 
     // Verify runAgentLoop was called with correct args
     expect(runAgentLoop).toHaveBeenCalledWith(
@@ -120,11 +142,12 @@ describe("POST /api/threads/[threadId]/chat", () => {
       undefined,
       undefined,
       undefined,
-      userId
+      userId,
+      expect.any(Function)
     );
   });
 
-  test("returns 500 when agent loop throws", async () => {
+  test("returns error event when agent loop throws", async () => {
     (runAgentLoop as jest.Mock).mockRejectedValue(new Error("LLM connection failed"));
 
     setMockUser({ id: userId, email: "chat@test.com", role: "user" });
@@ -134,9 +157,12 @@ describe("POST /api/threads/[threadId]/chat", () => {
       headers: { "Content-Type": "application/json" },
     });
     const res = await POST(req, { params: { threadId } });
-    expect(res.status).toBe(500);
-    const data = await res.json();
-    expect(data.error).toBeDefined();
+    // SSE stream begins with 200, errors are sent as error events
+    expect(res.status).toBe(200);
+    const events = await parseSSE(res);
+    const errorEvent = events.find((e) => e.event === "error");
+    expect(errorEvent).toBeDefined();
+    expect((errorEvent!.data as { error: string }).error).toBeDefined();
   });
 
   test("thread can receive messages after approval is resolved", async () => {
@@ -170,7 +196,9 @@ describe("POST /api/threads/[threadId]/chat", () => {
     });
     const unblockedRes = await POST(unblockedReq, { params: { threadId } });
     expect(unblockedRes.status).toBe(200);
-    const data = await unblockedRes.json();
-    expect(data.content).toBe("Yes, I'm here!");
+    const events = await parseSSE(unblockedRes);
+    const doneEvent = events.find((e) => e.event === "done");
+    expect(doneEvent).toBeDefined();
+    expect((doneEvent!.data as { content: string }).content).toBe("Yes, I'm here!");
   });
 });

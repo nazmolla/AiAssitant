@@ -24,7 +24,7 @@ const ALLOWED_TABLES = new Set([
   "identity_config", "llm_providers", "messages", "threads",
   "user_knowledge", "owner_profile", "user_profiles", "channels",
   "users", "user_permissions", "tool_policies", "agent_logs",
-  "mcp_servers", "attachments", "webhooks",
+  "mcp_servers", "attachments", "webhooks", "api_keys",
 ]);
 
 // ─── Helper: get column names for a table ─────────────────────
@@ -61,6 +61,18 @@ function ensureMessageAttachmentsColumn(): void {
   const cols = getColumns("messages");
   if (!cols.has("attachments")) {
     db.prepare("ALTER TABLE messages ADD COLUMN attachments TEXT").run();
+  }
+}
+
+function ensureMessageCreatedAtColumn(): void {
+  const db = getDb();
+  if (!tableExists("messages")) return;
+  const cols = getColumns("messages");
+  if (!cols.has("created_at")) {
+    // SQLite doesn't allow CURRENT_TIMESTAMP as default in ALTER TABLE ADD COLUMN
+    // (non-constant default). Column is nullable; new inserts get the default
+    // from the CREATE TABLE schema. Existing rows will have NULL.
+    db.prepare("ALTER TABLE messages ADD COLUMN created_at DATETIME").run();
   }
 }
 
@@ -470,6 +482,7 @@ export function initializeDatabase(): void {
   ensureIdentityPasswordColumn();
   ensureLlmProviderPurposeColumn();
   ensureMessageAttachmentsColumn();
+  ensureMessageCreatedAtColumn();
   ensureUserIdColumns();
   ensureMcpServerNewColumns();
   ensureScreenSharingColumn();
@@ -483,7 +496,17 @@ export function initializeDatabase(): void {
   seedAllBuiltinToolPolicies();
   ensureEmailToolPolicyDefaults();
   encryptExistingSecrets();
+  revokeExpiredKeys();
   console.log("[Nexus DB] Schema initialized successfully.");
+}
+
+/** Clean up any API keys that have passed their expiry date. */
+function revokeExpiredKeys(): void {
+  try {
+    const { revokeExpiredApiKeys } = require("./queries");
+    const purged = revokeExpiredApiKeys();
+    if (purged > 0) console.log(`[Nexus DB] Revoked ${purged} expired API key(s).`);
+  } catch { /* queries may not be loaded yet during first init */ }
 }
 
 // Run directly with `tsx src/lib/db/init.ts`
