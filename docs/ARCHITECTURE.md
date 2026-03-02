@@ -205,9 +205,35 @@ Communication channels are **owned by the user who creates them**. Each channel 
 
 ---
 
+## iOS Companion App
+
+A native **SwiftUI** iOS app (`ios/NexusAgent/`) provides full feature parity with the web UI. The app communicates with the Nexus Agent server over the existing REST + SSE API — no backend changes required.
+
+### iOS Architecture
+
+| Layer | Pattern | Details |
+|-------|---------|------------------------------------------|
+| UI | SwiftUI | iOS 17+, TabView with 5 tabs |
+| State | MVVM | 8 `@MainActor` ObservableObject ViewModels |
+| Network | URLSession | Cookie-based auth, SSE streaming via `URLSessionDataDelegate` |
+| Auth | NextAuth flow | CSRF → credentials callback → cookie session |
+| Storage | Keychain | Server URL, session cookie, user info |
+| Discovery | Network scan | Auto-discovers server on local network via `/api/auth/csrf` probe |
+
+See the [iOS README](../ios/NexusAgent/README.md) for setup instructions.
+
+---
+
 ## Project Structure
 
 ```
+ios/NexusAgent/NexusAgent/    # iOS SwiftUI companion app
+├── Models/                    # 15 Codable structs
+├── Services/                  # APIClient, AuthService, SSEClient, KeychainService, ServerDiscovery
+├── ViewModels/                # 8 MVVM ViewModels
+├── Views/                     # Auth, Chat, Knowledge, Approvals, Settings, Profile
+├── ContentView.swift          # TabView root
+└── NexusAgentApp.swift        # @main entry point
 src/
 ├── app/                        # Next.js App Router
 │   ├── api/                    # API route handlers

@@ -16,6 +16,7 @@
 | MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports |
 | Discord | discord.js | Gateway bot with mentions, DMs, and slash commands |
 | Auth | NextAuth v4 | Credentials (email + password) and OAuth (Azure AD, Google) |
+| iOS App | SwiftUI | Native iOS 17+ companion app with full feature parity (see [iOS README](../ios/NexusAgent/README.md)) |
 | Browser | Playwright | Chromium headless/headful for automation |
 | Design | Material Design | 7 switchable dark themes (Ember, Midnight, Frost, Sunrise, Forest, Amethyst, Obsidian), Google Roboto font |
 
