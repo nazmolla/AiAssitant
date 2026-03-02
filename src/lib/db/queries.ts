@@ -1066,6 +1066,35 @@ export function deleteChannel(id: string): void {
   getDb().prepare("DELETE FROM channels WHERE id = ?").run(id);
 }
 
+// ─── IMAP UID Tracking ──────────────────────────────────────
+
+export interface ChannelImapState {
+  lastImapUid: number;
+  lastImapUidvalidity: number;
+}
+
+export function getChannelImapState(channelId: string): ChannelImapState {
+  const row = stmt(
+    "SELECT last_imap_uid, last_imap_uidvalidity FROM channels WHERE id = ?"
+  ).get(channelId) as { last_imap_uid: number | null; last_imap_uidvalidity: number | null } | undefined;
+  return {
+    lastImapUid: row?.last_imap_uid ?? 0,
+    lastImapUidvalidity: row?.last_imap_uidvalidity ?? 0,
+  };
+}
+
+export function updateChannelImapState(
+  channelId: string,
+  uid: number,
+  uidvalidity: number
+): void {
+  getDb()
+    .prepare(
+      "UPDATE channels SET last_imap_uid = ?, last_imap_uidvalidity = ? WHERE id = ?"
+    )
+    .run(uid, uidvalidity, channelId);
+}
+
 /**
  * Get the owner user_id for a channel.
  * Used by webhook/Discord handlers â€” the channel owner is assumed to be the user.

@@ -48,6 +48,8 @@ import {
   getUserByEmail,
   isUserEnabled,
   getDb,
+  getChannelImapState,
+  updateChannelImapState,
 } from "@/lib/db";
 import { ingestKnowledgeFromText } from "@/lib/knowledge";
 import { retrieveKnowledge } from "@/lib/knowledge/retriever";
@@ -505,12 +507,50 @@ async function pollEmailChannels(
 
         const lock = await client.getMailboxLock("INBOX");
         try {
-          const unseenRaw = await client.search({ seen: false });
-          const unseen = Array.isArray(unseenRaw) ? unseenRaw : [];
-          if (unseen.length === 0) continue;
+          // ── UID-based incremental fetch ────────────────────
+          // Track the last UID we processed per channel so we only
+          // fetch genuinely new messages instead of re-reading all.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mailboxUidValidity = (client.mailbox && typeof client.mailbox === "object" ? ((client.mailbox as any).uidValidity ?? 0) : 0) as number;
+          const imapState = getChannelImapState(channel.id);
+
+          // If UIDVALIDITY changed the server rebuilt UIDs — reset our cursor
+          let lastUid = imapState.lastImapUid;
+          if (mailboxUidValidity !== imapState.lastImapUidvalidity) {
+            lastUid = 0;
+            addLog({
+              level: "info",
+              source: "email",
+              message: `UIDVALIDITY changed for channel "${channel.label}" (${imapState.lastImapUidvalidity} → ${mailboxUidValidity}); resetting UID cursor.`,
+              metadata: JSON.stringify({ channelId: channel.id }),
+            });
+          }
+
+          // Build search criteria: unseen + newer than our last UID
+          const searchCriteria: Record<string, unknown> = { seen: false };
+          if (lastUid > 0) {
+            searchCriteria.uid = `${lastUid + 1}:*`;
+          }
+
+          const unseenRaw = await client.search(searchCriteria);
+          const unseen = (Array.isArray(unseenRaw) ? unseenRaw : []).filter(
+            (uid: number) => uid > lastUid
+          );
+          if (unseen.length === 0) {
+            // Still update UIDVALIDITY even with no new messages
+            if (mailboxUidValidity !== imapState.lastImapUidvalidity) {
+              updateChannelImapState(channel.id, lastUid, mailboxUidValidity);
+            }
+            continue;
+          }
+
+          let highestUid = lastUid;
 
           for await (const msg of client.fetch(unseen, { uid: true, envelope: true, source: true })) {
             try {
+              // Track the highest UID we process
+              if (msg.uid > highestUid) highestUid = msg.uid;
+
               const parsed = await simpleParser(msg.source as Buffer);
               const fromAddress = parsed.from?.value?.[0]?.address
                 ? normalizeEmail(parsed.from.value[0].address)
@@ -604,6 +644,11 @@ async function pollEmailChannels(
                 metadata: JSON.stringify({ channelId: channel.id }),
               });
             }
+          }
+
+          // Persist the highest UID we successfully saw so next poll skips them
+          if (highestUid > lastUid || mailboxUidValidity !== imapState.lastImapUidvalidity) {
+            updateChannelImapState(channel.id, highestUid, mailboxUidValidity);
           }
         } finally {
           lock.release();
