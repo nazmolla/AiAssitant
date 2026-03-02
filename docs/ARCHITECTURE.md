@@ -7,96 +7,116 @@
 ## Architecture Diagram
 
 ```mermaid
-graph TB
-    subgraph Channels["Communication Channels"]
-        WEB["Web Chat<br/>(Next.js UI)"]
-        DISCORD["Discord Bot<br/>(discord.js)"]
-        WHATSAPP["WhatsApp<br/>(Webhook)"]
-        WEBHOOK["Custom Webhooks"]
-        EMAIL["Email Channel<br/>(SMTP + IMAP)"]
+%%{init: {'theme':'base','themeVariables': {'fontSize': '17px','fontFamily':'Inter, Segoe UI, sans-serif'}}}%%
+flowchart LR
+    subgraph C["🟦 Channels"]
+        WEB["Web Chat"]
+        DISCORD["Discord"]
+        WHATSAPP["WhatsApp"]
+        WEBHOOK["Webhooks"]
+        EMAIL["Email (IMAP/SMTP)"]
     end
 
-    subgraph Core["Agent Core (Sense-Think-Act)"]
-        LOOP["Agent Loop<br/>(loop.ts)"]
-        GATE["HITL Gatekeeper<br/>(gatekeeper.ts)"]
-        KNOW["Knowledge System<br/>(Auto-Capture + Retrieval)"]
-        SCHED["Proactive Scheduler<br/>(Cron)"]
-        INBOUND["Inbound Email Classifier<br/>(summary + severity)"]
-        NOTIFY["Channel Notifier<br/>(per-user threshold filter)"]
-        TRUST["Untrusted Email Guard<br/>(prompt-injection boundary)"]
+    subgraph S["🟨 Security + Auth"]
+        MW["Middleware\nRate limit + security headers"]
+        AUTH["NextAuth\nJWT session"]
+        TRUST["Untrusted Email Guard\nPrompt-injection boundary"]
     end
 
-    subgraph LLM["LLM Providers"]
+    subgraph A["🟥 Agent Core (Sense → Think → Act)"]
+        LOOP["Agent Loop"]
+        ORCH["Model Orchestrator\nTask classifier + scorer"]
+        GATE["HITL Gatekeeper\nTool policy enforcement"]
+        KNOW["Knowledge System\nCapture + retrieval"]
+        SCHED["Proactive Scheduler"]
+        INBOUND["Inbound Email Classifier\nSummary + severity"]
+        NOTIFY["Channel Notifier\nPer-user thresholds"]
+    end
+
+    subgraph T["🟧 Execution Surfaces"]
+        subgraph BT["Built-in Tools"]
+            WEBT["Web Tools"]
+            BROWSER["Browser Tools"]
+            FS["File System Tools"]
+            CUSTOM["Custom Tools (Sandbox)"]
+            ALEXA["Alexa Smart Home (14)"]
+        end
+        subgraph MCP["MCP Servers"]
+            STDIO["Stdio"]
+            SSE["SSE"]
+            HTTP["Streamable HTTP"]
+        end
+    end
+
+    subgraph L["🟪 LLM Providers"]
         AZURE["Azure OpenAI"]
         OPENAI["OpenAI"]
         ANTHRO["Anthropic"]
     end
 
-    subgraph Orchestrator["Model Orchestrator"]
-        CLASSIFY["Task Classifier<br/>(Heuristic)"]
-        SCORE["Provider Scorer<br/>(Capability Match)"]
-    end
-
-    subgraph Tools["Built-in Tools"]
-        WEBT["Web Tools<br/>(Search, Fetch, Extract)"]
-        BROWSER["Browser Automation<br/>(Playwright)"]
-        FS["File System<br/>(HITL-Gated)"]
-        CUSTOM["Custom Tools<br/>(Agent-Created, Sandboxed)"]
-        ALEXA["Alexa Smart Home<br/>(14 device tools)"]
-    end
-
-    subgraph MCP["MCP Servers"]
-        STDIO["Stdio Transport"]
-        SSE["SSE Transport"]
-        HTTP["Streamable HTTP"]
-    end
-
-    subgraph Data["Data Layer"]
-        DB[("SQLite<br/>nexus.db")]
+    subgraph D["🟩 Data"]
+        DB[("SQLite\nnexus.db")]
         EMBED["Vector Embeddings"]
     end
 
-    subgraph Auth["Auth & Security"]
-        NEXTAUTH["NextAuth v4<br/>(JWT)"]
-        MW["Middleware<br/>(Rate Limit + Headers)"]
+    subgraph LEG["Legend"]
+        LEG1["🟦 Inbound/Outbound Channels"]
+        LEG2["🟨 Security Boundary"]
+        LEG3["🟥 Core Decision Engine"]
+        LEG4["🟧 Tool / MCP Execution"]
+        LEG5["🟪 Model Providers"]
+        LEG6["🟩 Persistence + Retrieval"]
     end
 
-    WEB --> MW
-    DISCORD --> LOOP
+    WEB --> MW --> AUTH --> LOOP
     WHATSAPP --> MW
     WEBHOOK --> MW
-    EMAIL --> INBOUND
+    DISCORD --> LOOP
+    EMAIL --> INBOUND --> TRUST --> LOOP
     INBOUND --> NOTIFY
-    INBOUND --> TRUST
-    TRUST --> LOOP
-    MW --> NEXTAUTH
-    NEXTAUTH --> LOOP
-    LOOP --> GATE
-    GATE -->|approved| Tools
-    GATE -->|approved| MCP
-    LOOP --> Orchestrator
-    Orchestrator --> LLM
-    LOOP --> KNOW
-    KNOW --> EMBED
-    KNOW --> DB
+
     SCHED --> LOOP
     SCHED --> NOTIFY
-    LOOP --> NOTIFY
-    NOTIFY --> DISCORD
+
+    LOOP --> ORCH --> AZURE
+    ORCH --> OPENAI
+    ORCH --> ANTHRO
+
+    LOOP --> KNOW --> EMBED
+    KNOW --> DB
+    LOOP --> DB
+
+    LOOP --> GATE
+    GATE -->|approved| WEBT
+    GATE -->|approved| BROWSER
+    GATE -->|approved| FS
+    GATE -->|approved| CUSTOM
+    GATE -->|approved| ALEXA
+    GATE -->|approved| STDIO
+    GATE -->|approved| SSE
+    GATE -->|approved| HTTP
+    GATE --> DB
+
+    LOOP --> NOTIFY --> DISCORD
     NOTIFY --> WHATSAPP
     NOTIFY --> WEBHOOK
     NOTIFY --> EMAIL
-    LOOP --> DB
-    GATE --> DB
 
-    style Channels fill:#1a1a2e,stroke:#e8604c,color:#fff
-    style Core fill:#1a1a2e,stroke:#e8604c,color:#fff
-    style LLM fill:#1a1a2e,stroke:#e8604c,color:#fff
-    style Tools fill:#1a1a2e,stroke:#e8604c,color:#fff
-    style MCP fill:#1a1a2e,stroke:#e8604c,color:#fff
-    style Data fill:#1a1a2e,stroke:#e8604c,color:#fff
-    style Orchestrator fill:#1a1a2e,stroke:#e8604c,color:#fff
-    style Auth fill:#1a1a2e,stroke:#e8604c,color:#fff
+    classDef channels fill:#12395b,stroke:#4ea8de,color:#ffffff,stroke-width:2px;
+    classDef security fill:#4a3b00,stroke:#f4d35e,color:#ffffff,stroke-width:2px;
+    classDef core fill:#5f0f40,stroke:#ff6b6b,color:#ffffff,stroke-width:2px;
+    classDef tools fill:#6b2f00,stroke:#f49d37,color:#ffffff,stroke-width:2px;
+    classDef llm fill:#3c1f6e,stroke:#b8a1ff,color:#ffffff,stroke-width:2px;
+    classDef data fill:#0b4f3c,stroke:#57cc99,color:#ffffff,stroke-width:2px;
+    classDef legend fill:#1f2937,stroke:#9ca3af,color:#ffffff,stroke-width:1px;
+
+    class WEB,DISCORD,WHATSAPP,WEBHOOK,EMAIL channels;
+    class MW,AUTH,TRUST security;
+    class LOOP,ORCH,GATE,KNOW,SCHED,INBOUND,NOTIFY core;
+    class WEBT,BROWSER,FS,CUSTOM,ALEXA,STDIO,SSE,HTTP tools;
+    class AZURE,OPENAI,ANTHRO llm;
+    class DB,EMBED data;
+    class LEG1,LEG2,LEG3,LEG4,LEG5,LEG6 legend;
 ```
 
 ---

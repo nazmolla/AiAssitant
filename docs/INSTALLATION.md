@@ -51,7 +51,7 @@ Open [http://localhost:3000](http://localhost:3000) to access the Command Center
 | `DATABASE_PATH` | No | SQLite database file path (default: `nexus.db`) |
 | `PROACTIVE_CRON_SCHEDULE` | No | Cron expression for the proactive scheduler (default: every 15 min) |
 
-> **LLM keys, OAuth providers, and Discord credentials** are no longer set in `.env`. Configure them at runtime through the admin UI — see [Usage → LLM Configuration](USAGE.md#llm-configuration) and [Usage → Authentication Providers](USAGE.md#authentication-providers).
+> **LLM keys, OAuth providers, and Discord credentials** are no longer set in `.env`. Configure them at runtime through the admin UI — see [Usage Configuration](USAGE_CONFIGURATION.md#llm-providers) and [Admin Operations](USAGE_ADMIN.md#authentication-providers).
 
 ---
 

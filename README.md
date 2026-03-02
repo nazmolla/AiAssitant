@@ -65,7 +65,7 @@ scp deploy.tar user@host:/path/to/app/
 | [Architecture](docs/ARCHITECTURE.md) | System design, Sense-Think-Act loop, architecture diagram, multi-user model |
 | [Technical Specifications](docs/TECH_SPECS.md) | Tech stack, database schema, API routes, security details |
 | [Installation Guide](docs/INSTALLATION.md) | Prerequisites, environment variables, production build, remote deployment, migration |
-| [Usage & Configuration](docs/USAGE.md) | UI walkthrough, LLM setup, MCP servers, channels, HITL, knowledge vault |
+| [Usage Handbook](docs/USAGE.md) | Overview + drill-down guides: getting started, daily workflows, configuration, admin operations, troubleshooting |
 
 ---
 

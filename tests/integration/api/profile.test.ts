@@ -38,7 +38,7 @@ describe("PUT /api/config/profile", () => {
     const req = new NextRequest("http://localhost/api/config/profile", {
       method: "PUT",
       body: JSON.stringify({
-        display_name: "Mohamed",
+        display_name: "Demo User",
         title: "Engineer",
         bio: "Building things",
       }),
@@ -47,7 +47,7 @@ describe("PUT /api/config/profile", () => {
     const res = await PUT(req);
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.display_name).toBe("Mohamed");
+    expect(data.display_name).toBe("Demo User");
     expect(data.title).toBe("Engineer");
     expect(data.bio).toBe("Building things");
   });
@@ -57,7 +57,7 @@ describe("PUT /api/config/profile", () => {
     const res = await GET();
     const data = await res.json();
     expect(data).not.toBeNull();
-    expect(data.display_name).toBe("Mohamed");
+    expect(data.display_name).toBe("Demo User");
   });
 
   test("updates partial fields (preserves others)", async () => {
@@ -70,7 +70,7 @@ describe("PUT /api/config/profile", () => {
     const res = await PUT(req);
     const data = await res.json();
     expect(data.title).toBe("Senior Engineer");
-    expect(data.display_name).toBe("Mohamed");
+    expect(data.display_name).toBe("Demo User");
   });
 
   test("sanitizes overly long bio", async () => {

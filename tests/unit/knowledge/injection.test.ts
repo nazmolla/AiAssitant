@@ -61,7 +61,7 @@ describe("Injection Detection", () => {
   });
 
   test("allows normal text", () => {
-    expect(looksLikeInjection("Mohamed's email is test@example.com")).toBe(false);
+    expect(looksLikeInjection("User email is test@example.com")).toBe(false);
   });
 
   test("allows normal entity/attribute/value", () => {

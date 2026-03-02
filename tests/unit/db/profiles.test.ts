@@ -19,13 +19,13 @@ describe("User Profiles", () => {
 
   test("upsertUserProfile creates a new profile", () => {
     const profile = upsertUserProfile(userId, {
-      display_name: "Mohamed",
+      display_name: "Demo User",
       title: "Developer",
       bio: "Building AI agents",
       location: "Dubai",
       skills: JSON.stringify(["TypeScript", "Python"]),
     });
-    expect(profile.display_name).toBe("Mohamed");
+    expect(profile.display_name).toBe("Demo User");
     expect(profile.title).toBe("Developer");
     expect(profile.bio).toBe("Building AI agents");
     expect(profile.location).toBe("Dubai");
@@ -37,7 +37,7 @@ describe("User Profiles", () => {
     });
     expect(profile.title).toBe("Senior Developer");
     // Other fields should be preserved
-    expect(profile.display_name).toBe("Mohamed");
+    expect(profile.display_name).toBe("Demo User");
     expect(profile.bio).toBe("Building AI agents");
   });
 

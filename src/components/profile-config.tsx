@@ -140,7 +140,7 @@ export function ProfileConfig() {
             <Input
               value={profile.display_name}
               onChange={(e) => update("display_name", e.target.value)}
-              placeholder="Mohamed Nazmi"
+              placeholder="Demo User"
             />
           </div>
           <div>
