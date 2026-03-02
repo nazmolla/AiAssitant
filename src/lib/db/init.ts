@@ -449,6 +449,18 @@ function encryptExistingSecrets(): void {
   })();
 }
 
+function ensureChannelImapUidColumns(): void {
+  const db = getDb();
+  if (!tableExists("channels")) return;
+  const cols = getColumns("channels");
+  if (!cols.has("last_imap_uid")) {
+    db.prepare("ALTER TABLE channels ADD COLUMN last_imap_uid INTEGER DEFAULT 0").run();
+  }
+  if (!cols.has("last_imap_uidvalidity")) {
+    db.prepare("ALTER TABLE channels ADD COLUMN last_imap_uidvalidity INTEGER DEFAULT 0").run();
+  }
+}
+
 export function initializeDatabase(): void {
   const db = getDb();
   db.exec(SCHEMA_SQL);
@@ -460,6 +472,7 @@ export function initializeDatabase(): void {
   ensureScreenSharingColumn();
   migrateToMultiUser();
   ensureChannelUserId();
+  ensureChannelImapUidColumns();
   ensureUserAccessManagement();
   ensureProfilePreferencesColumns();
   normalizeAgentLogLevels();
