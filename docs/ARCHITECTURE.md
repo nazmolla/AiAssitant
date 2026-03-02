@@ -131,7 +131,7 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 
 ### Real-Time Streaming
 
-The chat API uses **Server-Sent Events (SSE)** to stream intermediate messages (thinking steps, tool calls, tool results) to the client in real-time as the agent loop progresses. This gives immediate visibility into the agent's reasoning process instead of waiting for the full loop to complete.
+The chat API uses **Server-Sent Events (SSE)** via a `TransformStream` to stream intermediate messages (thinking steps, tool calls, tool results) to the client in real-time as the agent loop progresses. The response is returned immediately with the readable side of the transform, while the agent loop writes SSE events to the writable side asynchronously. This gives immediate visibility into the agent's reasoning process instead of waiting for the full loop to complete. Each message includes a `created_at` timestamp persisted in the database.
 
 ### Notification & Inbound Email Safety Path
 

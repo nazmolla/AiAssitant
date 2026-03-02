@@ -495,6 +495,7 @@ export function ChatPanel() {
       const decoder = new TextDecoder();
       let buffer = "";
       let seenUserMsg = false;
+      let currentEvent = "";
 
       while (true) {
         const { value, done } = await reader.read();
@@ -504,7 +505,6 @@ export function ChatPanel() {
         // Parse SSE events from the buffer
         const lines = buffer.split("\n");
         buffer = lines.pop() || ""; // Keep incomplete line in buffer
-        let currentEvent = "";
 
         for (const line of lines) {
           if (line.startsWith("event: ")) {

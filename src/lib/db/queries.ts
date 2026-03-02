@@ -762,8 +762,8 @@ export function addMessage(msg: Omit<Message, "id" | "created_at">): Message {
   const db = getDb();
   const row = db
     .prepare(
-      `INSERT INTO messages (thread_id, role, content, tool_calls, tool_results, attachments)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO messages (thread_id, role, content, tool_calls, tool_results, attachments, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
        RETURNING *`
     )
     .get(msg.thread_id, msg.role, msg.content, msg.tool_calls, msg.tool_results, msg.attachments ?? null) as Message;

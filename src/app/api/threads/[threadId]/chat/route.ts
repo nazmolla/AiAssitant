@@ -6,6 +6,9 @@ import type { ContentPart } from "@/lib/llm";
 import fs from "fs";
 import pathMod from "path";
 
+/** Prevent Next.js from caching SSE responses */
+export const dynamic = "force-dynamic";
+
 const ATTACHMENTS_DIR = pathMod.join(process.cwd(), "data", "attachments");
 
 /** MIME types we can read as UTF-8 text and pass directly to the LLM */
@@ -128,46 +131,48 @@ export async function POST(
   }
 
   try {
-    // Stream messages via SSE as the agent loop progresses
+    // Stream messages via SSE as the agent loop progresses.
+    // Use TransformStream so the Response is returned immediately and data
+    // is pushed incrementally as the agent loop fires onMessage callbacks.
     const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          const response = await runAgentLoop(
-            params.threadId,
-            message || "(see attached files)",
-            contentParts,
-            attachments,
-            undefined,
-            auth.user.id,
-            (msg) => {
-              // Send each saved message as an SSE event
-              const data = JSON.stringify(msg);
-              controller.enqueue(encoder.encode(`event: message\ndata: ${data}\n\n`));
-            }
-          );
-          // Send final completion event
-          controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(response)}\n\n`));
-        } catch (err) {
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:\\\\[^\s]+/g, "[path]");
-          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: safeMsg })}\n\n`));
-        } finally {
-          controller.close();
-        }
-      },
-    });
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
 
-    return new Response(stream, {
+    // Fire-and-forget: run the agent loop asynchronously, writing SSE events
+    (async () => {
+      try {
+        const response = await runAgentLoop(
+          params.threadId,
+          message || "(see attached files)",
+          contentParts,
+          attachments,
+          undefined,
+          auth.user.id,
+          (msg) => {
+            const data = JSON.stringify(msg);
+            writer.write(encoder.encode(`event: message\ndata: ${data}\n\n`));
+          }
+        );
+        await writer.write(encoder.encode(`event: done\ndata: ${JSON.stringify(response)}\n\n`));
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:\\\\[^\s]+/g, "[path]");
+        await writer.write(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: safeMsg })}\n\n`));
+      } finally {
+        await writer.close();
+      }
+    })();
+
+    return new Response(readable, {
       headers: {
         "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
+        "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    // Sanitize internal paths from error messages
     const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:\\\\[^\s]+/g, "[path]");
     return NextResponse.json({ error: safeMsg }, { status: 500 });
   }
