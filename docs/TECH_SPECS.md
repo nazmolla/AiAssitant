@@ -215,7 +215,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 |--------|----------|------|-------------|
 | `GET/POST` | `/api/threads` | User | List/create threads (user-scoped) |
 | `GET/DELETE` | `/api/threads/[threadId]` | User | Get/delete thread (ownership enforced) |
-| `POST` | `/api/threads/[threadId]/chat` | User | Send message and run agent loop (SSE streaming) |
+| `POST` | `/api/threads/[threadId]/chat` | User | Send message and run agent loop (SSE streaming: `status`, `message`, `done`, `error` events) |
 | `GET/POST` | `/api/knowledge` | User | List/upsert knowledge entries (user-scoped) |
 | `GET/POST` | `/api/mcp` | User | List/add MCP servers (global + user-scoped) |
 | `POST` | `/api/mcp/[serverId]/connect` | Auth | Connect to an MCP server |

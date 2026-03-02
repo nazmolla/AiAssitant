@@ -10,6 +10,7 @@ Use Chat for day-to-day assistant interactions.
 
 - Start/select a thread
 - Send prompts and receive streaming responses — intermediate thinking steps (tool calls, results) appear in real-time as the agent works
+- Every response shows an "Analyzing…" block that reveals the agent's internal process: model selection, knowledge retrieval, and LLM generation — even for simple questions with no tool calls
 - Each message shows a timestamp
 - Expand the "Thought for N steps" block to see the agent's reasoning process, tool calls, and results
 - Add file attachments when needed

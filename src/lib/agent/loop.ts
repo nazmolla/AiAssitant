@@ -142,12 +142,15 @@ export async function runAgentLoop(
   }>,
   continuation?: boolean,
   userId?: string,
-  onMessage?: (msg: Message) => void
+  onMessage?: (msg: Message) => void,
+  onStatus?: (status: { step: string; detail?: string }) => void
 ): Promise<AgentResponse> {
   // Use the orchestrator to pick the best model for this task
+  onStatus?.({ step: "Selecting model", detail: "Classifying task complexity…" });
   const hasImages = contentParts?.some((p) => p.type === "image_url") ?? false;
   const orchestration = selectProvider(userMessage || "continuation", hasImages);
   const provider = orchestration.provider;
+  onStatus?.({ step: "Selecting model", detail: `Task: ${orchestration.taskType} → ${orchestration.providerLabel}` });
   const mcpManager = getMcpManager();
   const mcpTools = mcpManager.getAllTools();
   // Load custom (agent-created) tools
@@ -207,7 +210,9 @@ export async function runAgentLoop(
   const knowledgeSnippets: string[] = [`[User]\n${queryText}`];
 
   // Build context from knowledge vault (scoped to user)
+  onStatus?.({ step: "Retrieving knowledge", detail: "Searching knowledge vault…" });
   const relevantKnowledge = await retrieveKnowledge(queryText, 8, userId);
+  onStatus?.({ step: "Retrieving knowledge", detail: `Found ${relevantKnowledge.length} relevant ${relevantKnowledge.length === 1 ? "entry" : "entries"}` });
   let knowledgeContext = "";
   if (relevantKnowledge.length > 0) {
     knowledgeContext =
@@ -219,6 +224,7 @@ export async function runAgentLoop(
       "\n</knowledge_context>";
   }
   // Inject profile data as context so the LLM knows the user
+  onStatus?.({ step: "Building context", detail: "Loading user profile and chat history" });
   let profileContext = "";
   if (userId) {
     const profile = getUserProfile(userId);
@@ -282,6 +288,7 @@ export async function runAgentLoop(
   while (iterations < MAX_TOOL_ITERATIONS) {
     iterations++;
 
+    onStatus?.({ step: "Generating response", detail: `Sending to ${orchestration.providerLabel}${iterations > 1 ? ` (iteration ${iterations})` : ""}` });
     const response: ChatResponse = await provider.chat(
       chatMessages,
       tools.length > 0 ? tools : undefined,
@@ -313,6 +320,7 @@ export async function runAgentLoop(
 
       // Process each tool call through the unified policy gatekeeper
       for (const toolCall of response.toolCalls) {
+        onStatus?.({ step: "Executing tool", detail: toolCall.name });
         const result = await executeToolWithPolicy(toolCall, threadId, response.content || undefined);
 
         if (result.status === "pending_approval") {
@@ -462,7 +470,13 @@ export async function runAgentLoop(
           }
         } else {
           // Persist error results to DB so history is complete
-          const errorContent = `[ERROR] Tool "${toolCall.name}" failed: ${result.error}`;
+          // Sanitize error message to avoid leaking internal paths or stack traces to the client
+          const sanitizedError = (result.error || "Unknown error")
+            .split("\n")[0]
+            .replace(/[A-Z]:[\\\/][^\s]+/g, "[path]")
+            .replace(/\/home\/[^\s]+/g, "[path]")
+            .slice(0, 200);
+          const errorContent = `[ERROR] Tool "${toolCall.name}" failed: ${sanitizedError}`;
           const savedError = addMessage({
             thread_id: threadId,
             role: "tool",

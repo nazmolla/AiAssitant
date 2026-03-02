@@ -143,6 +143,7 @@ describe("POST /api/threads/[threadId]/chat", () => {
       undefined,
       undefined,
       userId,
+      expect.any(Function),
       expect.any(Function)
     );
   });

@@ -95,6 +95,12 @@ export async function POST(
     }
     for (const att of attachments) {
       const filePath = pathMod.join(ATTACHMENTS_DIR, att.storagePath);
+      // Prevent path traversal: ensure resolved path stays within ATTACHMENTS_DIR
+      const resolvedPath = pathMod.resolve(filePath);
+      if (!resolvedPath.startsWith(pathMod.resolve(ATTACHMENTS_DIR))) {
+        contentParts.push({ type: "text", text: `📎 File "${att.filename}" has an invalid storage path.` });
+        continue;
+      }
       const fileExists = fs.existsSync(filePath);
 
       if (att.mimeType.startsWith("image/") && fileExists) {
@@ -151,12 +157,16 @@ export async function POST(
           (msg) => {
             const data = JSON.stringify(msg);
             writer.write(encoder.encode(`event: message\ndata: ${data}\n\n`));
+          },
+          (status) => {
+            const data = JSON.stringify(status);
+            writer.write(encoder.encode(`event: status\ndata: ${data}\n\n`));
           }
         );
         await writer.write(encoder.encode(`event: done\ndata: ${JSON.stringify(response)}\n\n`));
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
-        const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:\\\\[^\s]+/g, "[path]");
+        const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:[\\/][^\s]+/g, "[path]");
         await writer.write(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: safeMsg })}\n\n`));
       } finally {
         await writer.close();
@@ -173,7 +183,7 @@ export async function POST(
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:\\\\[^\s]+/g, "[path]");
+    const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:[\\/][^\s]+/g, "[path]");
     return NextResponse.json({ error: safeMsg }, { status: 500 });
   }
 }

@@ -22,6 +22,8 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import PsychologyIcon from "@mui/icons-material/Psychology";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import BuildIcon from "@mui/icons-material/Build";
@@ -99,6 +101,12 @@ function stripApprovalMeta(content: string | null): string {
   return content.replace(/\n?<!-- APPROVAL:\{[\s\S]*?\} -->/,"").trim();
 }
 
+/** Safely parse JSON with a fallback — prevents component crashes on malformed data */
+function safeJsonParse<T>(json: string | null, fallback: T): T {
+  if (!json) return fallback;
+  try { return JSON.parse(json); } catch { return fallback; }
+}
+
 /** Strip sandbox/file paths from assistant messages so users see clean text */
 function sanitizeAssistantContent(content: string | null, hasAttachments: boolean): string {
   if (!content) return hasAttachments ? "" : "(no content)";
@@ -129,6 +137,7 @@ export function ChatPanel() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [thinkingSteps, setThinkingSteps] = useState<Array<{ step: string; detail?: string; timestamp: number }>>([]);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [screenShareEnabled, setScreenShareEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -431,6 +440,7 @@ export function ChatPanel() {
     setInput("");
     setPendingFiles([]);
     setLoading(true);
+    setThinkingSteps([]);
 
     // Capture screen frame if sharing is active
     const frames: string[] = [];
@@ -540,6 +550,18 @@ export function ChatPanel() {
                   // Append new message from the stream
                   setMessages((prev) => [...prev, data as Message]);
                 }
+              } else if (currentEvent === "status") {
+                // Agent thinking/analysis step — accumulate for the ThinkingBlock display
+                setThinkingSteps((prev) => {
+                  const existing = prev.findIndex((s) => s.step === data.step);
+                  if (existing >= 0) {
+                    // Update detail for an existing step
+                    const copy = [...prev];
+                    copy[existing] = { ...copy[existing], detail: data.detail, timestamp: Date.now() };
+                    return copy;
+                  }
+                  return [...prev, { step: data.step, detail: data.detail, timestamp: Date.now() }];
+                });
               } else if (currentEvent === "done") {
                 // Agent loop completed — refresh thread list for auto-generated title
                 fetch("/api/threads").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setThreads(d); }).catch(console.error);
@@ -609,7 +631,7 @@ export function ChatPanel() {
           });
           // Collect tool attachments too
           if (msg.attachments) {
-            const toolAtts: AttachmentMeta[] = JSON.parse(msg.attachments);
+            const toolAtts: AttachmentMeta[] = safeJsonParse(msg.attachments, []);
             lastThought.attachments.push(...toolAtts);
           }
         }
@@ -624,14 +646,14 @@ export function ChatPanel() {
           thinking: msg.content,
           toolCalls: parsedCalls,
           toolResults: [],
-          attachments: msg.attachments ? JSON.parse(msg.attachments) : [],
+          attachments: safeJsonParse<AttachmentMeta[]>(msg.attachments, []),
         });
         continue;
       }
 
       // Final assistant message (no tool_calls) = visible response with collected thoughts
       if (msg.role === "assistant") {
-        const attachments: AttachmentMeta[] = msg.attachments ? JSON.parse(msg.attachments) : [];
+        const attachments: AttachmentMeta[] = safeJsonParse<AttachmentMeta[]>(msg.attachments, []);
         const hasAtt = attachments.length > 0;
         const content = sanitizeAssistantContent(msg.content, hasAtt);
         // Skip empty assistant messages unless they have attachments
@@ -652,7 +674,7 @@ export function ChatPanel() {
       }
 
       // User / system messages
-      const attachments: AttachmentMeta[] = msg.attachments ? JSON.parse(msg.attachments) : [];
+      const attachments: AttachmentMeta[] = safeJsonParse<AttachmentMeta[]>(msg.attachments, []);
       const approvalMeta = msg.role === "system" ? extractApprovalMeta(msg.content) : null;
       const displayContent = approvalMeta ? stripApprovalMeta(msg.content) : msg.content;
       // Flush any orphaned thoughts before user/system messages
@@ -670,10 +692,19 @@ export function ChatPanel() {
         displayContent: null,
         thoughts: pendingThoughts,
       });
+    } else if (loading && thinkingSteps.length > 0 && !result.some((r) => r.msg.role === "assistant")) {
+      // No assistant message yet, but we have thinking steps — show a placeholder
+      result.push({
+        msg: { id: -1, thread_id: "", role: "assistant", content: null, tool_calls: null, tool_results: null, attachments: null, created_at: null },
+        attachments: [],
+        approvalMeta: null,
+        displayContent: null,
+        thoughts: [],
+      });
     }
 
     return result;
-  }, [messages, loading]);
+  }, [messages, loading, thinkingSteps]);
 
   return (
     <Box sx={{ display: "flex", height: "100%" }}>
@@ -782,7 +813,7 @@ export function ChatPanel() {
             </Box>
             <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
               <Box sx={{ maxWidth: 720, mx: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
-                {processedMessages.map(({ msg, attachments, approvalMeta, displayContent, thoughts }) => {
+                {processedMessages.map(({ msg, attachments, approvalMeta, displayContent, thoughts }, pmIdx) => {
 
                   return (
                     <Box
@@ -831,6 +862,11 @@ export function ChatPanel() {
                           <Typography variant="overline" sx={{ fontSize: "0.625rem", letterSpacing: 1.2, color: msg.role === "system" ? "inherit" : "text.secondary" }}>
                             {msg.role === "assistant" ? "Nexus" : msg.role}
                           </Typography>
+                        )}
+
+                        {/* Agent Thinking Steps — shown on the last assistant message */}
+                        {msg.role === "assistant" && pmIdx === processedMessages.length - 1 && thinkingSteps.length > 0 && (
+                          <ThinkingBlock steps={thinkingSteps} autoExpand={loading} />
                         )}
 
                         {/* Collapsible Thoughts */}
@@ -1072,6 +1108,115 @@ export function ChatPanel() {
     </Box>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/*  ThinkingBlock — shows agent analysis steps (model selection, knowledge     */
+/*  retrieval, etc.) in a Gemini/Copilot-style collapsible block              */
+/* -------------------------------------------------------------------------- */
+
+interface ThinkingStep {
+  step: string;
+  detail?: string;
+  timestamp: number;
+}
+
+const ThinkingBlock = memo(function ThinkingBlock({ steps, autoExpand }: { steps: ThinkingStep[]; autoExpand?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Auto-expand when streaming
+  useEffect(() => {
+    if (autoExpand) setExpanded(true);
+  }, [autoExpand]);
+
+  const stepCount = steps.length;
+
+  return (
+    <Box sx={{ mb: 1 }}>
+      {/* Toggle button */}
+      <Box
+        onClick={() => setExpanded(!expanded)}
+        sx={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 0.5,
+          cursor: "pointer",
+          userSelect: "none",
+          borderRadius: 2,
+          px: 1,
+          py: 0.5,
+          bgcolor: "action.hover",
+          "&:hover": { bgcolor: "action.selected" },
+          transition: "background-color 0.15s",
+        }}
+      >
+        <AutoAwesomeIcon sx={{ fontSize: 16, color: autoExpand ? "primary.main" : "text.secondary" }} />
+        <Typography variant="caption" sx={{ fontWeight: 500, fontSize: "0.7rem", color: "text.secondary" }}>
+          {autoExpand ? "Analyzing…" : `Analyzed in ${stepCount} ${stepCount === 1 ? "step" : "steps"}`}
+        </Typography>
+        {autoExpand && (
+          <CircularProgress size={12} sx={{ ml: 0.5 }} />
+        )}
+        {expanded ? (
+          <ExpandLessIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+        ) : (
+          <ExpandMoreIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+        )}
+      </Box>
+
+      {/* Expandable content */}
+      <Collapse in={expanded} timeout="auto" unmountOnExit>
+        <Box
+          sx={{
+            mt: 1,
+            pl: 1.5,
+            borderLeft: 2,
+            borderColor: autoExpand ? "primary.main" : "divider",
+            display: "flex",
+            flexDirection: "column",
+            gap: 0.75,
+          }}
+        >
+          {steps.map((s, idx) => {
+            const isLatest = autoExpand && idx === steps.length - 1;
+            return (
+              <Box key={`${s.step}-${idx}`} sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                {isLatest ? (
+                  <CircularProgress size={12} sx={{ flexShrink: 0 }} />
+                ) : (
+                  <CheckCircleOutlineIcon sx={{ fontSize: 14, color: "success.main", flexShrink: 0 }} />
+                )}
+                <Box>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: "0.7rem",
+                      color: isLatest ? "text.primary" : "text.secondary",
+                    }}
+                  >
+                    {s.step}
+                  </Typography>
+                  {s.detail && (
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        fontSize: "0.65rem",
+                        color: "text.disabled",
+                        ml: 0.75,
+                      }}
+                    >
+                      {s.detail}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      </Collapse>
+    </Box>
+  );
+});
 
 /* -------------------------------------------------------------------------- */
 /*  ThoughtsBlock — collapsible thinking steps (collapsed by default)          */

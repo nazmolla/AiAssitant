@@ -133,6 +133,17 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 
 The chat API uses **Server-Sent Events (SSE)** via a `TransformStream` to stream intermediate messages (thinking steps, tool calls, tool results) to the client in real-time as the agent loop progresses. The response is returned immediately with the readable side of the transform, while the agent loop writes SSE events to the writable side asynchronously. This gives immediate visibility into the agent's reasoning process instead of waiting for the full loop to complete. Each message includes a `created_at` timestamp persisted in the database.
 
+The SSE stream supports three event types:
+
+| Event      | Description |
+|------------|-------------|
+| `status`   | Agent analysis steps (model selection, knowledge retrieval, LLM call). Shown in a collapsible "Analyzing…" block in the UI — similar to Gemini/Copilot thinking indicators. |
+| `message`  | Database-persisted messages (user, assistant, tool). Standard chat messages with full content. |
+| `done`     | Final response metadata emitted when the agent loop completes. Triggers thread list refresh. |
+| `error`    | Error details when the agent loop throws, sanitized to avoid leaking paths. |
+
+The `status` events provide transparency into the agent's internal process for **every** response — not just tool-using ones — so users always see what the agent is doing (selecting a model, searching the knowledge vault, generating a response).
+
 ### Notification & Inbound Email Safety Path
 
 - **Per-user thresholds** — Channel notifications are filtered by each user profile's `notification_level` (`low`, `medium`, `high`, `disaster`).
