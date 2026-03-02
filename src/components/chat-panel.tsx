@@ -1056,12 +1056,20 @@ export function ChatPanel() {
                   <TextField
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                      }
+                    }}
                     placeholder="Message Nexus..."
                     disabled={loading}
                     size="small"
                     fullWidth
                     variant="outlined"
+                    multiline
+                    maxRows={6}
+                    inputProps={{ style: { lineHeight: 1.5 } }}
                   />
                   <IconButton
                     onClick={sendMessage}
