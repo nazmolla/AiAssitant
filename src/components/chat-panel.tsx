@@ -12,6 +12,7 @@ import Divider from "@mui/material/Divider";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import CircularProgress from "@mui/material/CircularProgress";
+import Collapse from "@mui/material/Collapse";
 import SendIcon from "@mui/icons-material/Send";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
@@ -20,6 +21,10 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import PsychologyIcon from "@mui/icons-material/Psychology";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import BuildIcon from "@mui/icons-material/Build";
 
 interface Thread {
   id: string;
@@ -499,25 +504,99 @@ export function ChatPanel() {
 
   const activeThreadTitle = useMemo(() => threads.find(t => t.id === activeThread)?.title, [threads, activeThread]);
 
-  // Pre-process messages: parse attachments once, compute display data
-  const processedMessages = useMemo(() => {
-    return messages
-      .filter((msg) => {
-        if (msg.role === "tool") return false;
-        if (msg.role === "assistant") {
-          const parsedAtt: AttachmentMeta[] = msg.attachments ? JSON.parse(msg.attachments) : [];
-          const hasAtt = parsedAtt.length > 0;
-          const content = sanitizeAssistantContent(msg.content, hasAtt);
-          if (!content || content === "(no content)") return hasAtt;
+  // Pre-process messages: group thinking steps into collapsible blocks
+  interface ThoughtStep {
+    thinking: string | null;      // assistant reasoning text
+    toolCalls: Array<{ name: string; args: Record<string, unknown> }>;
+    toolResults: Array<{ name: string; result: string }>;
+    attachments: AttachmentMeta[];
+  }
+  interface ProcessedMessage {
+    msg: Message;
+    attachments: AttachmentMeta[];
+    approvalMeta: ReturnType<typeof extractApprovalMeta>;
+    displayContent: string | null;
+    thoughts: ThoughtStep[];
+  }
+
+  const processedMessages: ProcessedMessage[] = useMemo(() => {
+    const result: ProcessedMessage[] = [];
+    let pendingThoughts: ThoughtStep[] = [];
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+
+      // Tool messages — collect results into the current thought step
+      if (msg.role === "tool") {
+        if (pendingThoughts.length > 0) {
+          const lastThought = pendingThoughts[pendingThoughts.length - 1];
+          // Try to match tool name from the preceding assistant's tool_calls
+          let name = "tool";
+          if (lastThought.toolCalls.length > 0) {
+            // Tool results come in the same order as tool_calls
+            const idx = lastThought.toolResults.length;
+            if (idx < lastThought.toolCalls.length) {
+              name = lastThought.toolCalls[idx].name;
+            }
+          }
+          lastThought.toolResults.push({
+            name,
+            result: msg.content || "(no output)",
+          });
+          // Collect tool attachments too
+          if (msg.attachments) {
+            const toolAtts: AttachmentMeta[] = JSON.parse(msg.attachments);
+            lastThought.attachments.push(...toolAtts);
+          }
         }
-        return true;
-      })
-      .map((msg) => {
+        continue;
+      }
+
+      // Assistant message WITH tool_calls = thinking step
+      if (msg.role === "assistant" && msg.tool_calls) {
+        let parsedCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+        try { parsedCalls = JSON.parse(msg.tool_calls).map((tc: { name: string; arguments: Record<string, unknown> }) => ({ name: tc.name, args: tc.arguments })); } catch { /* ignore */ }
+        pendingThoughts.push({
+          thinking: msg.content,
+          toolCalls: parsedCalls,
+          toolResults: [],
+          attachments: msg.attachments ? JSON.parse(msg.attachments) : [],
+        });
+        continue;
+      }
+
+      // Final assistant message (no tool_calls) = visible response with collected thoughts
+      if (msg.role === "assistant") {
         const attachments: AttachmentMeta[] = msg.attachments ? JSON.parse(msg.attachments) : [];
-        const approvalMeta = msg.role === "system" ? extractApprovalMeta(msg.content) : null;
-        const displayContent = approvalMeta ? stripApprovalMeta(msg.content) : msg.content;
-        return { msg, attachments, approvalMeta, displayContent };
-      });
+        const hasAtt = attachments.length > 0;
+        const content = sanitizeAssistantContent(msg.content, hasAtt);
+        // Skip empty assistant messages unless they have attachments
+        if ((!content || content === "(no content)") && !hasAtt) {
+          // Flush pending thoughts since this message is skipped
+          pendingThoughts = [];
+          continue;
+        }
+        result.push({
+          msg,
+          attachments,
+          approvalMeta: null,
+          displayContent: msg.content,
+          thoughts: pendingThoughts,
+        });
+        pendingThoughts = [];
+        continue;
+      }
+
+      // User / system messages
+      const attachments: AttachmentMeta[] = msg.attachments ? JSON.parse(msg.attachments) : [];
+      const approvalMeta = msg.role === "system" ? extractApprovalMeta(msg.content) : null;
+      const displayContent = approvalMeta ? stripApprovalMeta(msg.content) : msg.content;
+      // Flush any orphaned thoughts before user/system messages
+      pendingThoughts = [];
+      result.push({ msg, attachments, approvalMeta, displayContent, thoughts: [] });
+    }
+
+    return result;
   }, [messages]);
 
   return (
@@ -627,7 +706,7 @@ export function ChatPanel() {
             </Box>
             <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
               <Box sx={{ maxWidth: 720, mx: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
-                {processedMessages.map(({ msg, attachments, approvalMeta, displayContent }) => {
+                {processedMessages.map(({ msg, attachments, approvalMeta, displayContent, thoughts }) => {
 
                   return (
                     <Box
@@ -677,6 +756,9 @@ export function ChatPanel() {
                             {msg.role === "assistant" ? "Nexus" : msg.role}
                           </Typography>
                         )}
+
+                        {/* Collapsible Thoughts */}
+                        {thoughts.length > 0 && <ThoughtsBlock thoughts={thoughts} />}
 
                         {/* Attachments */}
                         {attachments.length > 0 && (
@@ -883,6 +965,183 @@ export function ChatPanel() {
     </Box>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/*  ThoughtsBlock — collapsible thinking steps (collapsed by default)          */
+/* -------------------------------------------------------------------------- */
+
+interface ThoughtStep {
+  thinking: string | null;
+  toolCalls: Array<{ name: string; args: Record<string, unknown> }>;
+  toolResults: Array<{ name: string; result: string }>;
+  attachments: AttachmentMeta[];
+}
+
+/** Pretty-print a tool name: "builtin.web_fetch" → "web_fetch", "mcp.server.tool" → "tool" */
+function shortToolName(name: string): string {
+  const parts = name.split(".");
+  return parts[parts.length - 1];
+}
+
+const ThoughtsBlock = memo(function ThoughtsBlock({ thoughts }: { thoughts: ThoughtStep[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Count total tool calls across all steps
+  const totalTools = thoughts.reduce((sum, t) => sum + t.toolCalls.length, 0);
+
+  // Collect all unique tool names for the summary chip
+  const toolNames = Array.from(new Set(thoughts.flatMap((t) => t.toolCalls.map((tc) => shortToolName(tc.name)))));  const summaryLabel = totalTools === 1
+    ? `Used ${toolNames[0]}`
+    : `${totalTools} tool calls`;
+
+  return (
+    <Box sx={{ mb: 1 }}>
+      {/* Toggle button */}
+      <Box
+        onClick={() => setExpanded(!expanded)}
+        sx={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 0.5,
+          cursor: "pointer",
+          userSelect: "none",
+          borderRadius: 2,
+          px: 1,
+          py: 0.5,
+          bgcolor: "action.hover",
+          "&:hover": { bgcolor: "action.selected" },
+          transition: "background-color 0.15s",
+        }}
+      >
+        <PsychologyIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+        <Typography variant="caption" sx={{ fontWeight: 500, fontSize: "0.7rem", color: "text.secondary" }}>
+          Thought for {thoughts.length} {thoughts.length === 1 ? "step" : "steps"}
+        </Typography>
+        <Chip
+          label={summaryLabel}
+          size="small"
+          variant="outlined"
+          icon={<BuildIcon sx={{ fontSize: "12px !important" }} />}
+          sx={{ height: 20, fontSize: "0.65rem", ml: 0.5, "& .MuiChip-icon": { fontSize: 12 } }}
+        />
+        {expanded ? (
+          <ExpandLessIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+        ) : (
+          <ExpandMoreIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+        )}
+      </Box>
+
+      {/* Expandable content */}
+      <Collapse in={expanded} timeout="auto" unmountOnExit>
+        <Box
+          sx={{
+            mt: 1,
+            pl: 1.5,
+            borderLeft: 2,
+            borderColor: "divider",
+            display: "flex",
+            flexDirection: "column",
+            gap: 1.5,
+          }}
+        >
+          {thoughts.map((step, stepIdx) => (
+            <Box key={stepIdx}>
+              {/* Thinking text */}
+              {step.thinking && (
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontSize: "0.8rem",
+                    color: "text.secondary",
+                    fontStyle: "italic",
+                    whiteSpace: "pre-wrap",
+                    lineHeight: 1.5,
+                    mb: 0.5,
+                  }}
+                >
+                  {step.thinking}
+                </Typography>
+              )}
+
+              {/* Tool calls & results */}
+              {step.toolCalls.map((tc, tcIdx) => {
+                const result = step.toolResults[tcIdx];
+                return (
+                  <Box key={tcIdx} sx={{ mb: 0.5 }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 0.25 }}>
+                      <BuildIcon sx={{ fontSize: 12, color: "text.disabled" }} />
+                      <Typography
+                        variant="caption"
+                        sx={{ fontWeight: 600, fontFamily: "monospace", fontSize: "0.7rem", color: "text.secondary" }}
+                      >
+                        {shortToolName(tc.name)}
+                      </Typography>
+                    </Box>
+                    {/* Collapsible args */}
+                    <details style={{ marginLeft: 8 }}>
+                      <summary style={{ cursor: "pointer", fontSize: "0.65rem", color: "inherit", opacity: 0.7 }}>
+                        Arguments
+                      </summary>
+                      <Box
+                        component="pre"
+                        sx={{
+                          fontSize: "0.65rem",
+                          bgcolor: "action.hover",
+                          p: 0.75,
+                          borderRadius: 1,
+                          mt: 0.25,
+                          overflow: "auto",
+                          maxHeight: 120,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {JSON.stringify(tc.args, null, 2)}
+                      </Box>
+                    </details>
+                    {/* Tool result */}
+                    {result && (
+                      <details style={{ marginLeft: 8 }}>
+                        <summary style={{ cursor: "pointer", fontSize: "0.65rem", color: "inherit", opacity: 0.7 }}>
+                          Result
+                        </summary>
+                        <Box
+                          component="pre"
+                          sx={{
+                            fontSize: "0.65rem",
+                            bgcolor: "action.hover",
+                            p: 0.75,
+                            borderRadius: 1,
+                            mt: 0.25,
+                            overflow: "auto",
+                            maxHeight: 200,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {result.result}
+                        </Box>
+                      </details>
+                    )}
+
+                    {/* Inline attachments from tool results (e.g., screenshots) */}
+                    {step.attachments.length > 0 && tcIdx === step.toolCalls.length - 1 && (
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.5 }}>
+                        {step.attachments.map((att) => (
+                          <AttachmentPreview key={att.id || att.filename} attachment={att} />
+                        ))}
+                      </Box>
+                    )}
+                  </Box>
+                );
+              })}
+            </Box>
+          ))}
+        </Box>
+      </Collapse>
+    </Box>
+  );
+});
 
 const AttachmentPreview = memo(function AttachmentPreview({ attachment }: { attachment: AttachmentMeta }) {
   const isImage = attachment.mimeType.startsWith("image/");
