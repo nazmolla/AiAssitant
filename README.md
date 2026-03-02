@@ -20,6 +20,7 @@
 - **Admin Notifications via Channels** — approval/proactive notices prefer IM channels, fallback to email
 - **Security Hardened** — prompt injection defense, CSP headers, rate limiting, input validation
 - **Email Injection Hardening** — inbound email content is handled as untrusted data and guarded before agent processing
+- **Alexa Smart Home** — native integration with 14 Alexa tools for announcements, light/volume control, sensors, and DND management
 
 ---
 

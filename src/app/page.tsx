@@ -47,6 +47,7 @@ const AuthConfig = dynamic(() => import("@/components/auth-config").then(m => ({
 const ToolPolicies = dynamic(() => import("@/components/tool-policies").then(m => ({ default: m.ToolPolicies })), { ssr: false });
 const CustomToolsConfig = dynamic(() => import("@/components/custom-tools-config").then(m => ({ default: m.CustomToolsConfig })), { ssr: false });
 const LoggingConfig = dynamic(() => import("@/components/logging-config").then(m => ({ default: m.LoggingConfig })), { ssr: false });
+const AlexaConfig = dynamic(() => import("@/components/alexa-config").then(m => ({ default: m.AlexaConfig })), { ssr: false });
 
 export default function HomePage() {
   const router = useRouter();
@@ -249,6 +250,7 @@ const SETTINGS_PAGES: SettingsPage[] = [
   { key: "channels", label: "Channels", icon: "📡", permKey: "channels" },
   { key: "mcp", label: "MCP Servers", icon: "🔌", permKey: "mcp_servers" },
   { key: "policies", label: "Tool Policies", icon: "🛡️", permKey: "mcp_servers" },
+  { key: "alexa", label: "Alexa", icon: "🔊" },
   { key: "logging", label: "Logging", icon: "🧾" },
   { key: "custom-tools", label: "Custom Tools", icon: "🔧", adminOnly: true },
   { key: "auth", label: "Authentication", icon: "🔐", adminOnly: true },
@@ -261,6 +263,7 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
   channels: { title: "Communication Channels", subtitle: "Connect messaging platforms so Nexus can chat with you anywhere." },
   mcp: { title: "MCP Servers", subtitle: "Manage Model Context Protocol server connections." },
   policies: { title: "Tool Policies", subtitle: "Configure approval requirements and proactive scanning for each discovered tool." },
+  alexa: { title: "Alexa Smart Home", subtitle: "Connect your Amazon Alexa account to control smart home devices, make announcements, and read sensors." },
   logging: { title: "Logging", subtitle: "Server-wide log levels, retention boundary, and cleanup tools." },
   "custom-tools": { title: "Custom Tools", subtitle: "Agent-created tools that extend Nexus capabilities at runtime." },
   auth: { title: "Authentication Providers", subtitle: "Configure OAuth login providers and external integrations." },
@@ -334,6 +337,7 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
           {active === "channels" && <ChannelsConfig />}
           {active === "mcp" && <McpConfig />}
           {active === "policies" && <ToolPolicies />}
+          {active === "alexa" && <AlexaConfig />}
           {active === "logging" && <LoggingConfig />}
           {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
           {active === "auth" && userRole === "admin" && <AuthConfig />}

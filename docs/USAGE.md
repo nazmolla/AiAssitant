@@ -20,6 +20,7 @@ The Command Center is a single-page dashboard built with Material UI (MUI v7) fe
 | **Channels** | Configure communication channels (WhatsApp, Discord, Email, webhooks) |
 | **LLM Config** | Add/switch between chat and embedding providers at runtime |
 | **Profile** | Per-user profile editor (name, bio, skills, social links) with feature toggles |
+| **Alexa** | Alexa Smart Home integration — configure credentials and control 14 smart home tools |
 | **User Management** | *(Admin only)* Enable/disable users, change roles, manage per-user permissions |
 
 ---
@@ -324,6 +325,7 @@ If an embedding model is configured, knowledge retrieval uses cosine similarity 
 - **MCP server tools** — approval required by default (configurable per tool)
 - **Custom tool creation/deletion** — policy-driven (configured in tool policies)
 - **Email sending (`builtin.email_send`)** — approval required by default
+- **Alexa mutating tools** — announce, light/volume/DND changes require approval by default
 - **Web search/fetch** — no approval required
 - **Browser automation** — no approval required
 
@@ -341,6 +343,48 @@ When a tool or proactive action requires approval, Nexus notifies **admin users 
 2. Fallback to Email channel
 
 To receive IM notifications, map the admin user in the channel user mapping for that channel.
+
+---
+
+## Alexa Smart Home
+
+Nexus includes a native integration with Amazon Alexa that exposes 14 smart home tools to the agent. No external MCP server or Docker container required — the tools run directly inside Nexus.
+
+### Setup
+
+1. Open **Settings → Alexa** (admin only)
+2. Enter your `UBID_MAIN` and `AT_MAIN` cookies from an authenticated Alexa session at [alexa.amazon.com](https://alexa.amazon.com)
+3. Click **Save Credentials** — values are encrypted at rest using AES-256-GCM
+
+> **How to get cookies:** Sign in to [alexa.amazon.com](https://alexa.amazon.com) in your browser, open DevTools → Application → Cookies, and copy the values of `ubid-main` and `at-main`.
+
+### Available Tools (14)
+
+| Tool | Description | Approval Required |
+|------|-------------|:-:|
+| `alexa_announce` | Send text-to-speech announcement to one or all Echo devices | ✅ |
+| `alexa_get_bedroom_state` | Get bedroom temperature, illuminance, motion, and light state | ❌ |
+| `alexa_list_lights` | List all smart home light devices with IDs and capabilities | ❌ |
+| `alexa_set_light_power` | Turn a smart light on or off | ✅ |
+| `alexa_set_light_brightness` | Set light brightness (0–100) | ✅ |
+| `alexa_set_light_color` | Set light color by name or Kelvin temperature (2200–6500) | ✅ |
+| `alexa_get_music_status` | Get currently playing track, artist, provider, and progress | ❌ |
+| `alexa_get_device_volumes` | Get volume levels of all Alexa devices | ❌ |
+| `alexa_set_device_volume` | Set device volume to a specific level (0–100) | ✅ |
+| `alexa_adjust_device_volume` | Adjust device volume by a relative amount (-100 to +100) | ✅ |
+| `alexa_get_all_sensor_data` | Get temperature, illuminance, and motion from all sensors | ❌ |
+| `alexa_list_smarthome_devices` | List all smart home devices with categories and endpoints | ❌ |
+| `alexa_get_dnd_status` | Get Do Not Disturb status for all devices | ❌ |
+| `alexa_set_dnd_status` | Enable or disable DND on a specific device | ✅ |
+
+### Security
+
+- Credentials are **encrypted at rest** using AES-256-GCM column encryption (same as LLM API keys)
+- The GET endpoint returns **masked** credential values (first/last few characters only)
+- All mutating tools (announce, light/volume/DND changes) require **HITL approval** by default
+- Read-only tools (sensors, status, listing) execute without approval
+- Device discovery results are cached in-memory for 5 minutes to reduce API calls
+- Tool approval policies are configurable in **Settings → Tool Policies**
 
 ---
 

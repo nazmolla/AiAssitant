@@ -15,6 +15,7 @@ const TOOL_PREFIX_GROUPS: Array<{ prefix: string; group: string }> = [
   { prefix: "builtin.email_", group: "Email Tools" },
   { prefix: "builtin.file_", group: "File Generation" },
   { prefix: "builtin.nexus_", group: "Tool Management" },
+  { prefix: "builtin.alexa_", group: "Alexa Smart Home" },
   { prefix: "custom.", group: "Custom Tools" },
 ];
 

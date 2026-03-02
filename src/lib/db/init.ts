@@ -9,6 +9,7 @@ import { BUILTIN_EMAIL_TOOLS, EMAIL_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent
 import { BUILTIN_FILE_TOOLS, FILE_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/file-tools";
 import { BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/custom-tools";
 import { BROWSER_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/browser-tools";
+import { BUILTIN_ALEXA_TOOLS, ALEXA_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/alexa-tools";
 import { v4 as uuid } from "uuid";
 
 // ─── Helper: check if a table exists ─────────────────────────
@@ -223,10 +224,11 @@ const TOOLS_REQUIRING_APPROVAL = new Set([
   ...FILE_TOOLS_REQUIRING_APPROVAL,
   ...CUSTOM_TOOLS_REQUIRING_APPROVAL,
   ...BROWSER_TOOLS_REQUIRING_APPROVAL,
+  ...ALEXA_TOOLS_REQUIRING_APPROVAL,
 ]);
 
 /**
- * Seed policies for ALL built-in tools (web, browser, fs, network, email, toolmaker).
+ * Seed policies for ALL built-in tools (web, browser, fs, network, email, toolmaker, alexa).
  * Tools in the "requiring approval" sets get requires_approval=1;
  * all others default to requires_approval=0.  Uses INSERT OR IGNORE so
  * existing policies (e.g. customised by admin) are never overwritten.
@@ -246,6 +248,7 @@ function seedAllBuiltinToolPolicies(): void {
     ...BUILTIN_EMAIL_TOOLS,
     ...BUILTIN_FILE_TOOLS,
     ...BUILTIN_TOOLMAKER_TOOLS,
+    ...BUILTIN_ALEXA_TOOLS,
   ];
 
   // Wrap in a transaction for atomicity and performance (single fsync)

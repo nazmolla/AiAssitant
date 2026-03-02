@@ -14,6 +14,7 @@ import { isNetworkTool, executeBuiltinNetworkTool } from "./network-tools";
 import { isEmailTool, executeBuiltinEmailTool } from "./email-tools";
 import { isFileTool, executeBuiltinFileTool } from "./file-tools";
 import { isCustomTool, executeCustomTool } from "./custom-tools";
+import { isAlexaTool, executeAlexaTool } from "./alexa-tools";
 import {
   getToolPolicy,
   createApprovalRequest,
@@ -131,6 +132,8 @@ export async function executeWithGatekeeper(
       result = await executeBuiltinEmailTool(toolCall.name, toolCall.arguments, thread?.user_id ?? undefined, threadId);
     } else if (isFileTool(toolCall.name)) {
       result = await executeBuiltinFileTool(toolCall.name, toolCall.arguments, { threadId });
+    } else if (isAlexaTool(toolCall.name)) {
+      result = await executeAlexaTool(toolCall.name, toolCall.arguments);
     } else if (isCustomTool(toolCall.name)) {
       result = await executeCustomTool(toolCall.name, toolCall.arguments);
     } else {

@@ -196,6 +196,16 @@ CREATE TABLE channel_user_mappings (
 );
 ```
 
+### G. App Configuration (Key-Value)
+
+The `app_config` table stores application-wide settings as key-value pairs. Sensitive values are encrypted with AES-256-GCM.
+
+| Key | Description | Encrypted |
+|-----|-------------|:-:|
+| `alexa.ubid_main` | Amazon Alexa UBID_MAIN cookie | ✅ |
+| `alexa.at_main` | Amazon Alexa AT_MAIN cookie | ✅ |
+| `log_level_min` | Minimum log severity level to persist | ❌ |
+
 ---
 
 ## API Routes
@@ -216,6 +226,7 @@ CREATE TABLE channel_user_mappings (
 | `GET/POST/PATCH/DELETE` | `/api/config/auth` | Admin | Manage OAuth and Discord auth providers |
 | `GET/POST/PATCH/DELETE` | `/api/config/channels` | User | Manage communication channels (user-scoped, ownership enforced) |
 | `GET/PUT` | `/api/config/profile` | User | Get/update user profile (user-scoped) |
+| `GET/PUT` | `/api/config/alexa` | Admin | Get masked / store encrypted Alexa Smart Home credentials |
 | `GET/POST/PUT/DELETE` | `/api/config/custom-tools` | Admin | Manage agent-created custom tools |
 | `POST` | `/api/channels/[channelId]/webhook` | Webhook | Receive inbound messages from channels |
 | `POST` | `/api/attachments` | User | Upload file attachments |

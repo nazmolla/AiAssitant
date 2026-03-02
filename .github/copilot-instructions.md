@@ -9,8 +9,8 @@
 
 ## Local Server
 
-- **NEVER start a local dev server.** Do not run `next dev`, `next start`, or any server locally.
-- The only deployment target is the Jetson at `YOUR_SERVER_IP:3000`.
+- **NEVER start a local dev server.** Do not run `next dev`, `next start`, or any server locally for deployment purposes, however, you can run it for local development and testing then make sure you stop immediately after.
+- The only production deployment target is the Jetson at `YOUR_SERVER_IP:3000`.
 
 ## Testing
 

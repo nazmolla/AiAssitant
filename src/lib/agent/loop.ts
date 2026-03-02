@@ -26,6 +26,7 @@ import { BUILTIN_NETWORK_TOOLS, isNetworkTool, executeBuiltinNetworkTool } from 
 import { BUILTIN_EMAIL_TOOLS, isEmailTool, executeBuiltinEmailTool } from "./email-tools";
 import { BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool } from "./file-tools";
 import { isCustomTool } from "./custom-tools";
+import { BUILTIN_ALEXA_TOOLS, isAlexaTool, executeAlexaTool } from "./alexa-tools";
 import {
   addMessage,
   getThreadMessages,
@@ -151,7 +152,7 @@ export async function runAgentLoop(
   // Load custom (agent-created) tools
   const { getCustomToolDefinitions } = await import("./custom-tools");
   const customTools = getCustomToolDefinitions();
-  const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...BUILTIN_FILE_TOOLS, ...customTools, ...mcpTools];
+  const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...BUILTIN_FILE_TOOLS, ...BUILTIN_ALEXA_TOOLS, ...customTools, ...mcpTools];
 
   if (!continuation) {
     // Build attachment metadata JSON
@@ -766,6 +767,8 @@ async function executeToolWithPolicy(
       );
     } else if (isFileTool(toolCall.name)) {
       result = await executeBuiltinFileTool(toolCall.name, toolCall.arguments, { threadId });
+    } else if (isAlexaTool(toolCall.name)) {
+      result = await executeAlexaTool(toolCall.name, toolCall.arguments);
     } else if (isCustomTool(toolCall.name)) {
       result = await execCustom(toolCall.name, toolCall.arguments);
     } else {

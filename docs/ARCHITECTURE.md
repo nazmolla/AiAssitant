@@ -42,6 +42,7 @@ graph TB
         BROWSER["Browser Automation<br/>(Playwright)"]
         FS["File System<br/>(HITL-Gated)"]
         CUSTOM["Custom Tools<br/>(Agent-Created, Sandboxed)"]
+        ALEXA["Alexa Smart Home<br/>(14 device tools)"]
     end
 
     subgraph MCP["MCP Servers"]
@@ -136,6 +137,7 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 | **Safe Email Ingestion** | Inbound email is classified, summarized, and guarded as untrusted content before reaching the agent loop. |
 | **Screen Sharing** | Share your screen with the agent via browser `getDisplayMedia()` — the agent sees what you see and can reason about it. |
 | **Security Hardened** | Comprehensive prompt injection defense, security headers (CSP, X-Frame-Options, etc.), rate limiting, input validation, and path traversal protection. |
+| **Alexa Smart Home** | Native integration with Amazon Alexa — 14 tools for announcements, light control, volume, sensors, DND, and device management. Cookie-based auth with encrypted credential storage. |
 
 ---
 
@@ -199,15 +201,15 @@ src/
 │   ├── knowledge-vault.tsx     # Knowledge CRUD
 │   ├── llm-config.tsx          # LLM provider management
 │   ├── mcp-config.tsx          # MCP server management
-│   └── profile-config.tsx      # User profile editor with feature toggles
-├── lib/
+│   └── profile-config.tsx      # User profile editor with feature toggles│   ├── alexa-config.tsx        # Alexa Smart Home credential management├── lib/
 │   ├── agent/                  # Core agent logic
 │   │   ├── loop.ts             # Sense-Think-Act agent loop
 │   │   ├── gatekeeper.ts       # HITL policy enforcement
 │   │   ├── custom-tools.ts     # Self-extending tool system (VM sandbox)
 │   │   ├── web-tools.ts        # Web search/fetch tools
 │   │   ├── browser-tools.ts    # Playwright browser automation
-│   │   └── fs-tools.ts         # File system tools
+│   │   ├── fs-tools.ts         # File system tools
+│   │   └── alexa-tools.ts      # Alexa Smart Home integration (14 tools)
 │   ├── auth/                   # Authentication
 │   │   ├── options.ts          # NextAuth config (multi-user)
 │   │   ├── guard.ts            # requireUser/requireAdmin guards
