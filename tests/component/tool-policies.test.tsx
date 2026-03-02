@@ -210,6 +210,26 @@ describe("ToolPolicies — tool grouping & display", () => {
     expect(screen.getByText(/1 proactive/)).toBeInTheDocument();
   });
 
+  test("supports global collapse all and expand all", async () => {
+    render(<ToolPolicies />);
+
+    await waitFor(() => {
+      expect(screen.getByText("turn_on_light")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Collapse all"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("turn_on_light")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Expand all"));
+
+    await waitFor(() => {
+      expect(screen.getByText("turn_on_light")).toBeInTheDocument();
+    });
+  });
+
   test("empty state shown when no tools exist", async () => {
     setupFetchMock({ tools: [] });
     render(<ToolPolicies />);

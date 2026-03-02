@@ -54,6 +54,7 @@ export default function HomePage() {
   const { data: session, status } = useSession();
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>("user");
+  const [isUserMetaLoading, setIsUserMetaLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("chat");
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
   const [perms, setPerms] = useState<Record<string, number>>({
@@ -62,17 +63,36 @@ export default function HomePage() {
   });
 
   useEffect(() => {
-    fetch("/api/config/profile")
-      .then((r) => r.json())
-      .then((p) => { if (p?.display_name) setDisplayName(p.display_name); })
-      .catch(() => {});
-    fetch("/api/admin/users/me")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.role) setUserRole(d.role);
-        if (d?.permissions) setPerms(d.permissions);
-      })
-      .catch(() => {});
+    let mounted = true;
+
+    const loadUserMeta = async () => {
+      try {
+        const [profileResult, meResult] = await Promise.allSettled([
+          fetch("/api/config/profile").then((r) => r.json()),
+          fetch("/api/admin/users/me").then((r) => r.json()),
+        ]);
+
+        if (!mounted) return;
+
+        if (profileResult.status === "fulfilled" && profileResult.value?.display_name) {
+          setDisplayName(profileResult.value.display_name);
+        }
+
+        if (meResult.status === "fulfilled") {
+          const data = meResult.value;
+          if (data?.role) setUserRole(data.role);
+          if (data?.permissions) setPerms(data.permissions);
+        }
+      } finally {
+        if (mounted) setIsUserMetaLoading(false);
+      }
+    };
+
+    loadUserMeta();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -226,7 +246,7 @@ export default function HomePage() {
             <Box sx={{ maxWidth: 1000, mx: "auto" }}><KnowledgeVault /></Box>
           </Box>
         )}
-        {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} />}
+        {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} isUserMetaLoading={isUserMetaLoading} />}
       </Box>
     </Box>
   );
@@ -272,7 +292,7 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
 
 const DRAWER_WIDTH = 200;
 
-function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<string, number> }) {
+function SettingsPanel({ userRole, perms, isUserMetaLoading }: { userRole: string; perms: Record<string, number>; isUserMetaLoading: boolean }) {
   const [active, setActive] = useState("profile");
 
   const visiblePages = useMemo(() => SETTINGS_PAGES.filter((p) => {
@@ -280,6 +300,13 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
     if (p.permKey && !perms[p.permKey]) return false;
     return true;
   }), [userRole, perms]);
+
+  useEffect(() => {
+    if (visiblePages.length === 0) return;
+    if (!visiblePages.some((page) => page.key === active)) {
+      setActive(visiblePages[0].key);
+    }
+  }, [active, visiblePages]);
 
   const header = SETTINGS_HEADERS[active];
 
@@ -303,28 +330,45 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
           "&::-webkit-scrollbar": { display: "none" },
         }}
       >
-        {visiblePages.map((page) => (
+        {isUserMetaLoading ? (
           <Chip
-            key={page.key}
-            label={`${page.icon} ${page.label}`}
+            label="Loading settings..."
             size="small"
-            variant={active === page.key ? "filled" : "outlined"}
-            color={active === page.key ? "primary" : "default"}
-            onClick={() => setActive(page.key)}
-            sx={{
-              flexShrink: 0,
-              fontSize: "0.75rem",
-              height: 28,
-              fontWeight: active === page.key ? 600 : 400,
-              cursor: "pointer",
-            }}
+            variant="outlined"
+            sx={{ flexShrink: 0, fontSize: "0.75rem", height: 28 }}
           />
-        ))}
+        ) : (
+          <>
+            {visiblePages.map((page) => (
+              <Chip
+                key={page.key}
+                label={`${page.icon} ${page.label}`}
+                size="small"
+                variant={active === page.key ? "filled" : "outlined"}
+                color={active === page.key ? "primary" : "default"}
+                onClick={() => setActive(page.key)}
+                sx={{
+                  flexShrink: 0,
+                  fontSize: "0.75rem",
+                  height: 28,
+                  fontWeight: active === page.key ? 600 : 400,
+                  cursor: "pointer",
+                }}
+              />
+            ))}
+          </>
+        )}
       </Box>
 
       {/* Content */}
       <Box sx={{ flex: 1, overflowY: "auto", p: { xs: 1.5, sm: 3 } }}>
         <Box sx={{ maxWidth: 900, mx: "auto" }}>
+          {isUserMetaLoading ? (
+            <Box sx={{ py: 8, display: "flex", justifyContent: "center" }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : (
+            <>
           {header && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h5" color="primary" fontWeight={700}>{header.title}</Typography>
@@ -342,6 +386,8 @@ function SettingsPanel({ userRole, perms }: { userRole: string; perms: Record<st
           {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
           {active === "auth" && userRole === "admin" && <AuthConfig />}
           {active === "users" && userRole === "admin" && <UserManagement />}
+            </>
+          )}
         </Box>
       </Box>
     </Box>
