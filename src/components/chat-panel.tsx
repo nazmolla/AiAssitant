@@ -286,12 +286,31 @@ export function ChatPanel() {
   // ── Audio Recording (Speech-to-Text) ──────────────────────────
 
   async function startRecording() {
+    // getUserMedia requires a secure context (HTTPS or localhost)
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert(
+        "Microphone access is not available.\n\n"
+        + "This feature requires HTTPS or localhost. "
+        + "If you're accessing the app over HTTP on a non-localhost address, "
+        + "your browser blocks microphone access for security reasons."
+      );
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-      const recorder = new MediaRecorder(stream, { mimeType });
+
+      // Pick the best supported MIME type
+      const candidates = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/ogg;codecs=opus",
+      ];
+      const mimeType = candidates.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+      const recorderOptions: MediaRecorderOptions = mimeType ? { mimeType } : {};
+      const recorder = new MediaRecorder(stream, recorderOptions);
+      const actualMime = recorder.mimeType; // what the browser actually chose
       audioChunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
@@ -300,20 +319,25 @@ export function ChatPanel() {
 
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        const blob = new Blob(audioChunksRef.current, { type: actualMime });
         if (blob.size < 100) return; // too short to transcribe
 
         setTranscribing(true);
         try {
+          const ext = actualMime.includes("mp4") || actualMime.includes("m4a") ? "mp4"
+            : actualMime.includes("ogg") ? "ogg"
+            : "webm";
           const formData = new FormData();
-          formData.append("audio", blob, `recording.${mimeType.includes("webm") ? "webm" : "mp4"}`);
+          formData.append("audio", blob, `recording.${ext}`);
           const res = await fetch("/api/audio/transcribe", { method: "POST", body: formData });
+          const data = await res.json();
           if (res.ok) {
-            const { text } = await res.json();
-            if (text) setInput((prev) => (prev ? prev + " " + text : text));
+            if (data.text) setInput((prev) => (prev ? prev + " " + data.text : data.text));
+          } else {
+            alert("Transcription failed: " + (data.error || `HTTP ${res.status}`));
           }
-        } catch {
-          // silent — user can retry
+        } catch (err) {
+          alert("Transcription failed: " + (err instanceof Error ? err.message : String(err)));
         } finally {
           setTranscribing(false);
         }
@@ -322,8 +346,13 @@ export function ChatPanel() {
       recorder.start(250); // collect data every 250ms
       mediaRecorderRef.current = recorder;
       setRecording(true);
-    } catch {
-      // Microphone permission denied or not available
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Permission") || msg.includes("NotAllowed")) {
+        alert("Microphone permission was denied. Please allow microphone access in your browser settings.");
+      } else {
+        alert("Could not start recording: " + msg);
+      }
     }
   }
 
@@ -356,6 +385,8 @@ export function ChatPanel() {
         body: JSON.stringify({ text }),
       });
       if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        alert("Text-to-speech failed: " + (errData?.error || `HTTP ${res.status}`));
         setPlayingTtsId(null);
         return;
       }
@@ -376,7 +407,8 @@ export function ChatPanel() {
       };
 
       await audio.play();
-    } catch {
+    } catch (err) {
+      alert("Text-to-speech failed: " + (err instanceof Error ? err.message : String(err)));
       setPlayingTtsId(null);
     }
   }

@@ -186,6 +186,53 @@ No manual steps required — the migration is **idempotent** and safe to run mul
 
 ---
 
+## HTTPS Setup (Required for Voice Input)
+
+The browser's `getUserMedia` API (microphone access) requires a **secure context** — HTTPS or localhost. For network access (e.g., `YOUR_SERVER_IP`), you must serve over HTTPS.
+
+The recommended approach uses **nginx** as an HTTPS reverse proxy in front of Next.js.
+
+### Automated Setup
+
+Run the provided setup script on the server:
+
+```bash
+bash scripts/setup-https.sh
+```
+
+This script:
+1. Generates a self-signed SSL certificate (10-year validity) at `/etc/nginx/ssl/`
+2. Configures nginx to proxy `HTTPS:443 → Next.js:3000`
+3. Enables HTTP → HTTPS redirect
+4. Supports SSE streaming, WebSocket upgrade, and 30 MB file uploads
+
+### Manual Setup
+
+If you prefer manual configuration:
+
+```bash
+# Generate self-signed cert
+sudo mkdir -p /etc/nginx/ssl
+sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+  -keyout /etc/nginx/ssl/nexus.key -out /etc/nginx/ssl/nexus.crt \
+  -subj '/CN=YOUR_IP/O=Nexus Agent' \
+  -addext 'subjectAltName=IP:YOUR_IP'
+
+# Place the nginx config (see scripts/setup-https.sh for the full config)
+sudo cp nexus-agent.conf /etc/nginx/sites-available/nexus-agent
+sudo ln -sf /etc/nginx/sites-available/nexus-agent /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+> **Note:** Self-signed certificates trigger a browser warning. Accept the certificate once per browser/device. After accepting, all features including microphone access will work.
+
+### Access
+
+After setup, access the app at `https://YOUR_IP` (port 443, no port needed in URL).
+
+---
+
 ## Troubleshooting
 
 | Issue | Solution |
@@ -195,3 +242,6 @@ No manual steps required — the migration is **idempotent** and safe to run mul
 | Port already in use | Change port with `npx next start -p <port>` or stop the existing process |
 | ARM64 native modules | Run `npm install` on the target device to rebuild native addons for the correct architecture |
 | Database locked errors | Ensure only one instance of the server is running against the same `nexus.db` file |
+| Mic button doesn't work | `getUserMedia` requires HTTPS. Set up nginx HTTPS proxy — see [HTTPS Setup](#https-setup-required-for-voice-input) |
+| nginx 502 Bad Gateway | Ensure `nexus-agent` systemd service is running: `sudo systemctl status nexus-agent` |
+| Certificate warning in browser | Expected for self-signed certs. Click "Advanced" → "Proceed" to accept |

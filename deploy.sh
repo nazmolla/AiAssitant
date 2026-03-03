@@ -120,15 +120,19 @@ ssh "${REMOTE}" "
   sudo systemctl restart nexus-agent
   sleep 5
   
-  # Verify HTTP 200
-  HTTP_CODE=\$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000)
+  # Verify HTTP 200 (via HTTPS through nginx)
+  HTTP_CODE=\$(curl -sk -o /dev/null -w '%{http_code}' https://localhost)
   if [ \"\${HTTP_CODE}\" = '200' ]; then
-    echo \"  ✓ Server running (HTTP \${HTTP_CODE})\"
+    echo \"  ✓ Server running (HTTPS \${HTTP_CODE})\"
   else
-    echo \"  ✗ Server check failed (HTTP \${HTTP_CODE})\"
+    echo \"  ✗ Server check failed (HTTPS \${HTTP_CODE})\"
     sudo journalctl -u nexus-agent --no-pager -n 15
     exit 1
   fi
+
+  # Also verify nginx is proxying correctly
+  NGINX_OK=\$(curl -sk -o /dev/null -w '%{http_code}' https://YOUR_SERVER_IP)
+  echo \"  ✓ HTTPS proxy: \${NGINX_OK}\"
 "
 
 # DB data integrity check (separate SSH to avoid heredoc quoting issues)

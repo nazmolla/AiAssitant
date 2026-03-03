@@ -18,6 +18,7 @@ flowchart LR
     end
 
     subgraph S["🟨 Security + Auth"]
+        NGINX["nginx\nHTTPS reverse proxy"]
         MW["Middleware\nRate limit + security headers"]
         AUTH["NextAuth\nJWT session"]
         TRUST["Untrusted Email Guard\nPrompt-injection boundary"]
@@ -69,7 +70,7 @@ flowchart LR
         LEG6["🟩 Persistence + Retrieval"]
     end
 
-    WEB --> MW --> AUTH --> LOOP
+    WEB --> NGINX --> MW --> AUTH --> LOOP
     WHATSAPP --> MW
     WEBHOOK --> MW
     DISCORD --> LOOP
@@ -117,7 +118,7 @@ flowchart LR
     classDef legend fill:#1f2937,stroke:#9ca3af,color:#ffffff,stroke-width:1px;
 
     class WEB,DISCORD,WHATSAPP,WEBHOOK,EMAIL channels;
-    class MW,AUTH,TRUST security;
+    class NGINX,MW,AUTH,TRUST security;
     class LOOP,ORCH,GATE,KNOW,SCHED,INBOUND,NOTIFY,AUDIO core;
     class WEBT,BROWSER,FS,CUSTOM,ALEXA,STDIO,SSE,HTTP tools;
     class AZURE,OPENAI,ANTHRO llm;
