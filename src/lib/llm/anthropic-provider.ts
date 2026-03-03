@@ -26,7 +26,8 @@ export class AnthropicChatProvider implements ChatProvider {
   async chat(
     messages: ChatMessage[],
     tools?: ToolDefinition[],
-    systemPrompt?: string
+    systemPrompt?: string,
+    onToken?: (token: string) => void
   ): Promise<ChatResponse> {
     const anthropicMessages: Anthropic.MessageParam[] = [];
 
@@ -78,6 +79,47 @@ export class AnthropicChatProvider implements ChatProvider {
       input_schema: t.inputSchema as Anthropic.Tool.InputSchema,
     }));
 
+    // Streaming mode: yield tokens as they arrive for real-time display
+    if (onToken) {
+      const stream = this.client.messages.stream({
+        model: this.model,
+        max_tokens: 4096,
+        system: systemPrompt || undefined,
+        messages: anthropicMessages,
+        tools: anthropicTools,
+      });
+
+      // Fire onToken for each text delta as it arrives
+      stream.on("text", (text) => {
+        onToken(text);
+      });
+
+      // Wait for the complete message
+      const finalMessage = await stream.finalMessage();
+
+      let content: string | null = null;
+      const toolCalls: ChatResponse["toolCalls"] = [];
+
+      for (const block of finalMessage.content) {
+        if (block.type === "text") {
+          content = block.text;
+        } else if (block.type === "tool_use") {
+          toolCalls.push({
+            id: block.id,
+            name: block.name,
+            arguments: block.input as Record<string, unknown>,
+          });
+        }
+      }
+
+      return {
+        content,
+        toolCalls,
+        finishReason: finalMessage.stop_reason || "end_turn",
+      };
+    }
+
+    // Non-streaming mode (fallback)
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 4096,

@@ -146,7 +146,15 @@ The chat interface supports **voice input** (Speech-to-Text) and **voice output*
 
 ### Real-Time Streaming
 
-The chat API uses **Server-Sent Events (SSE)** via a `TransformStream` to stream intermediate messages (thinking steps, tool calls, tool results) to the client in real-time as the agent loop progresses. The response is returned immediately with the readable side of the transform, while the agent loop writes SSE events to the writable side asynchronously. This gives immediate visibility into the agent's reasoning process instead of waiting for the full loop to complete. Each message includes a `created_at` timestamp persisted in the database.
+The chat API uses **Server-Sent Events (SSE)** via a `TransformStream` to stream responses in real-time. Both OpenAI and Anthropic providers support **token-level streaming** — individual text tokens are sent to the client via `event: token` SSE events as they arrive from the LLM API, providing instant perceived response time. The full SSE event lifecycle is:
+
+1. `event: token` — Individual text tokens streamed from the LLM in real-time (displayed progressively in the chat UI)
+2. `event: status` — Agent thinking steps (model selection, knowledge retrieval, tool execution)
+3. `event: message` — Complete messages persisted to DB (user echo, assistant responses, tool results)
+4. `event: done` — Agent loop completed with final result
+5. `event: error` — Error occurred during processing
+
+The `onToken` callback is threaded from the chat route → agent loop → LLM provider. When streaming is enabled, providers use `stream: true` (OpenAI) or `messages.stream()` (Anthropic) to yield tokens incrementally. The complete response is still returned from `provider.chat()` for DB persistence and tool-call processing. Each message includes a `created_at` timestamp persisted in the database.
 
 The SSE stream supports three event types:
 

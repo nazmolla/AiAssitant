@@ -698,10 +698,44 @@ export function ChatPanel() {
                     }
                     return [...copy, data];
                   });
+                } else if (data.role === "assistant") {
+                  // Replace streaming placeholder if it exists, otherwise append
+                  setMessages((prev) => {
+                    const streamIdx = prev.findIndex((m) => m.role === "assistant" && m.id < 0);
+                    if (streamIdx >= 0) {
+                      const copy = [...prev];
+                      copy[streamIdx] = data as Message;
+                      return copy;
+                    }
+                    return [...prev, data as Message];
+                  });
                 } else {
-                  // Append new message from the stream
+                  // Append new message from the stream (tool results, etc.)
                   setMessages((prev) => [...prev, data as Message]);
                 }
+              } else if (currentEvent === "token") {
+                // Streaming token — append to the current streaming assistant message
+                const token = data as string;
+                setMessages((prev) => {
+                  // Find existing streaming placeholder (negative id)
+                  const streamIdx = prev.findIndex((m) => m.role === "assistant" && m.id < 0);
+                  if (streamIdx >= 0) {
+                    const copy = [...prev];
+                    copy[streamIdx] = { ...copy[streamIdx], content: (copy[streamIdx].content || "") + token };
+                    return copy;
+                  }
+                  // Create a new streaming placeholder
+                  return [...prev, {
+                    id: -1,
+                    thread_id: activeThread,
+                    role: "assistant" as const,
+                    content: token,
+                    tool_calls: null,
+                    tool_results: null,
+                    attachments: null,
+                    created_at: new Date().toISOString(),
+                  }];
+                });
               } else if (currentEvent === "status") {
                 // Agent thinking/analysis step — accumulate for the ThinkingBlock display
                 setThinkingSteps((prev) => {

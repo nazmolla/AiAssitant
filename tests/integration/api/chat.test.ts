@@ -144,8 +144,45 @@ describe("POST /api/threads/[threadId]/chat", () => {
       undefined,
       userId,
       expect.any(Function),
+      expect.any(Function),
       expect.any(Function)
     );
+  });
+
+  test("streams token events via SSE when agent calls onToken", async () => {
+    // Override mock to invoke the onToken callback during execution
+    (runAgentLoop as jest.Mock).mockImplementation(
+      async (_threadId: string, message: string, _cp: unknown, _att: unknown, _cont: unknown, _uid: unknown, _onMsg: unknown, _onStatus: unknown, onToken?: (token: string) => void) => {
+        // Simulate streaming tokens
+        onToken?.("Hello");
+        onToken?.(" world");
+        onToken?.("!");
+        return {
+          content: `Echo: ${message}`,
+          toolsUsed: [],
+          pendingApprovals: [],
+          attachments: [],
+        };
+      }
+    );
+
+    setMockUser({ id: userId, email: "chat@test.com", role: "user" });
+    const req = new NextRequest(`http://localhost/api/threads/${threadId}/chat`, {
+      method: "POST",
+      body: JSON.stringify({ message: "Stream test" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req, { params: { threadId } });
+    expect(res.status).toBe(200);
+    const events = await parseSSE(res);
+    const tokenEvents = events.filter((e) => e.event === "token");
+    expect(tokenEvents).toHaveLength(3);
+    expect(tokenEvents[0].data).toBe("Hello");
+    expect(tokenEvents[1].data).toBe(" world");
+    expect(tokenEvents[2].data).toBe("!");
+    // done event should still be present
+    const doneEvent = events.find((e) => e.event === "done");
+    expect(doneEvent).toBeDefined();
   });
 
   test("returns error event when agent loop throws", async () => {

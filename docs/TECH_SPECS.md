@@ -14,7 +14,7 @@
 | Frontend | Next.js 14 | App Router, Material UI (MUI v7) with 7 color themes, TailwindCSS, screen sharing via getDisplayMedia |
 | HTTPS | nginx + self-signed cert | Reverse proxy HTTPS:443 → Next.js:3000. Required for mic access over network. TLSv1.2/1.3, HTTP → HTTPS redirect, SSE passthrough. |
 | Audio | OpenAI Whisper + TTS-1 | Speech-to-Text (mic input, 25 MB max, webm/wav/mp3/ogg/flac) and Text-to-Speech (9 voices, MP3 output). Uses existing OpenAI SDK. |
-| LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy |
+| LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy. **Streaming responses** — tokens are streamed in real-time via SSE `token` events for instant perceived latency. |
 | MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports. `list_changed` auto-refresh (500 ms debounce). |
 | Discord | discord.js | Gateway bot with mentions, DMs, and slash commands |
 | Auth | NextAuth v4 | Credentials (email + password) and OAuth (Azure AD, Google) |
@@ -218,7 +218,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 |--------|----------|------|-------------|
 | `GET/POST` | `/api/threads` | User | List/create threads (user-scoped) |
 | `GET/DELETE` | `/api/threads/[threadId]` | User | Get/delete thread (ownership enforced) |
-| `POST` | `/api/threads/[threadId]/chat` | User | Send message and run agent loop (SSE streaming: `status`, `message`, `done`, `error` events) |
+| `POST` | `/api/threads/[threadId]/chat` | User | Send message and run agent loop (SSE streaming: `token`, `status`, `message`, `done`, `error` events) |
 | `GET/POST` | `/api/knowledge` | User | List/upsert knowledge entries (user-scoped) |
 | `GET/POST` | `/api/mcp` | User | List/add MCP servers (global + user-scoped) |
 | `POST` | `/api/mcp/[serverId]/connect` | Auth | Connect to an MCP server |

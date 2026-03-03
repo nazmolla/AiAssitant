@@ -143,7 +143,8 @@ export async function runAgentLoop(
   continuation?: boolean,
   userId?: string,
   onMessage?: (msg: Message) => void,
-  onStatus?: (status: { step: string; detail?: string }) => void
+  onStatus?: (status: { step: string; detail?: string }) => void,
+  onToken?: (token: string) => void
 ): Promise<AgentResponse> {
   // Use the orchestrator to pick the best model for this task
   onStatus?.({ step: "Selecting model", detail: "Classifying task complexity…" });
@@ -292,7 +293,8 @@ export async function runAgentLoop(
     const response: ChatResponse = await provider.chat(
       chatMessages,
       tools.length > 0 ? tools : undefined,
-      SYSTEM_PROMPT + profileContext + knowledgeContext
+      SYSTEM_PROMPT + profileContext + knowledgeContext,
+      onToken
     );
 
     if (response.content) {

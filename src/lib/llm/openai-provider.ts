@@ -53,7 +53,8 @@ export class OpenAIChatProvider implements ChatProvider {
   async chat(
     messages: ChatMessage[],
     tools?: ToolDefinition[],
-    systemPrompt?: string
+    systemPrompt?: string,
+    onToken?: (token: string) => void
   ): Promise<ChatResponse> {
     const oaiMessages: OpenAI.ChatCompletionMessageParam[] = [];
 
@@ -105,6 +106,65 @@ export class OpenAIChatProvider implements ChatProvider {
       },
     }));
 
+    // Streaming mode: yield tokens as they arrive for real-time display
+    if (onToken) {
+      const stream = await this.client.chat.completions.create({
+        model: this.model,
+        messages: oaiMessages,
+        tools: oaiTools,
+        tool_choice: tools && tools.length > 0 ? "auto" : undefined,
+        stream: true,
+      });
+
+      let content = "";
+      const toolCallsMap = new Map<number, { id: string; name: string; arguments: string }>();
+      let finishReason = "stop";
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta;
+        if (!delta) continue;
+
+        if (delta.content) {
+          content += delta.content;
+          onToken(delta.content);
+        }
+
+        if (delta.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const existing = toolCallsMap.get(tc.index);
+            if (existing) {
+              if (tc.function?.arguments) {
+                existing.arguments += tc.function.arguments;
+              }
+            } else {
+              toolCallsMap.set(tc.index, {
+                id: tc.id || "",
+                name: tc.function?.name || "",
+                arguments: tc.function?.arguments || "",
+              });
+            }
+          }
+        }
+
+        if (chunk.choices[0]?.finish_reason) {
+          finishReason = chunk.choices[0].finish_reason;
+        }
+      }
+
+      const toolCalls = Array.from(toolCallsMap.values()).map((tc) => ({
+        id: tc.id,
+        name: tc.name,
+        arguments: JSON.parse(tc.arguments || "{}"),
+      }));
+
+      return {
+        content: content || null,
+        toolCalls,
+        finishReason,
+      };
+    }
+
+    // Non-streaming mode (fallback)
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages: oaiMessages,

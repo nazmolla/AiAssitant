@@ -41,6 +41,7 @@ export interface ChatProvider {
   chat(
     messages: ChatMessage[],
     tools?: ToolDefinition[],
-    systemPrompt?: string
+    systemPrompt?: string,
+    onToken?: (token: string) => void
   ): Promise<ChatResponse>;
 }
