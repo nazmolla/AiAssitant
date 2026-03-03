@@ -162,12 +162,16 @@ CREATE TABLE tool_policies (
 
 CREATE TABLE approval_queue (
     id TEXT PRIMARY KEY,
-    thread_id TEXT REFERENCES threads(id),
+    thread_id TEXT REFERENCES threads(id),  -- NULL for proactive (scheduler) approvals
     tool_name TEXT, args TEXT, reasoning TEXT,
     status TEXT DEFAULT 'pending',       -- 'pending' | 'approved' | 'rejected'
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
+
+> **Proactive approvals**: When `thread_id` is `NULL`, the approval was created by the proactive scheduler (no associated chat thread). These appear in the Approval Inbox for admins and are executed directly when approved — no agent loop continuation is needed.
+>
+> **Severity capping**: Smart home / IoT tool assessments (prefixes: `builtin.alexa_`, `builtin.smart_home_`, `builtin.iot_`, `builtin.hue_`, `builtin.nest_`, `builtin.ring_`) are automatically capped at `high` severity — they can never produce `disaster`-level events.
 
 ### E. Custom Tools (Self-Extending)
 
@@ -227,7 +231,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `GET/POST` | `/api/mcp` | User | List/add MCP servers (global + user-scoped) |
 | `POST` | `/api/mcp/[serverId]/connect` | Auth | Connect to an MCP server |
 | `GET` | `/api/mcp/tools` | Auth | List all available MCP tools |
-| `GET/POST` | `/api/approvals` | Auth | List/resolve pending approvals |
+| `GET/POST` | `/api/approvals` | Auth | List/resolve pending approvals (includes proactive/threadless approvals for admins) |
 | `GET/POST` | `/api/policies` | Auth | List/update tool policies |
 | `GET` | `/api/logs` | Auth | Fetch agent activity logs |
 | `GET/POST` | `/api/config/llm` | Auth | Manage LLM provider configs |

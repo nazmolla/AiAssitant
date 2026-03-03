@@ -73,13 +73,14 @@ Your job:
 1. Analyze the data for anything noteworthy, urgent, or requiring the owner's attention.
 2. Always include a severity field with one of: "low", "medium", "high", "disaster".
 3. If a concrete action can be taken now, you MUST respond with a JSON object: { "action_needed": true, "severity": "low|medium|high|disaster", "tool": "tool_name", "args": {}, "reasoning": "why" }
-4. Use "disaster" only for incidents that likely require immediate owner attention (security breach, safety issue, major service outage, critical data loss).
+4. Use "disaster" ONLY for incidents that represent an IMMEDIATE THREAT to safety, security, or critical infrastructure — examples: security breach, gas leak, fire alarm, major service outage with data loss, critical system failure.
 5. Use "low|medium|high" for routine hiccups, missing data, transient API issues, temporary no-device states, or non-critical anomalies.
-6. Do NOT return "action needed" as narrative text without tool+args. Prefer executable actions over summaries.
-7. Only respond with { "action_needed": false, "severity": "low|medium|high|disaster", "summary": "brief note" } when there is truly no concrete action to execute.
-8. Consider the user's known preferences and context.
-9. Do NOT propose notification-channel tools (Discord/WhatsApp/Email/etc.) as remediation for transient tool/service failures. For failure-only signals, prefer no action_needed and summarize.
-10. Do NOT mention assumed delivery channels/platform choices in reasoning unless explicitly provided by trusted context.
+6. CRITICAL — Smart home / IoT device events (lights, fans, thermostats, locks, speakers, plugs, sensors, cameras, etc.) are NEVER "disaster". Use "low" for routine state changes and status checks, "medium" for unexpected states or minor anomalies, "high" only when a device failure could have safety implications (e.g. a smoke detector going offline).
+7. Do NOT return "action needed" as narrative text without tool+args. Prefer executable actions over summaries.
+8. Only respond with { "action_needed": false, "severity": "low|medium|high|disaster", "summary": "brief note" } when there is truly no concrete action to execute.
+9. Consider the user's known preferences and context.
+10. Do NOT propose notification-channel tools (Discord/WhatsApp/Email/etc.) as remediation for transient tool/service failures. For failure-only signals, prefer no action_needed and summarize.
+11. Do NOT mention assumed delivery channels/platform choices in reasoning unless explicitly provided by trusted context.
 
 Always respond with valid JSON only.`;
 
@@ -351,8 +352,34 @@ function toProactiveAssessment(value: Record<string, unknown>): ProactiveAssessm
   };
 }
 
-function normalizeAssessmentLevel(assessment: ProactiveAssessment): NotificationLevel {
-  return assessment.severity || "high";
+/**
+ * Tool-name prefixes for known low-risk categories (smart home, IoT).
+ * Assessments for these tools are capped at "high" — never "disaster".
+ */
+const LOW_RISK_TOOL_PREFIXES = [
+  "builtin.alexa_",
+  "builtin.smart_home_",
+  "builtin.iot_",
+  "builtin.hue_",
+  "builtin.nest_",
+  "builtin.ring_",
+];
+
+function isLowRiskTool(toolName: string): boolean {
+  const lower = toolName.toLowerCase();
+  return LOW_RISK_TOOL_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
+
+function normalizeAssessmentLevel(
+  assessment: ProactiveAssessment,
+  toolName?: string,
+): NotificationLevel {
+  const raw = assessment.severity || "high";
+  // Cap known low-risk tools (smart home / IoT) — they should never be "disaster"
+  if (raw === "disaster" && toolName && isLowRiskTool(toolName)) {
+    return "high";
+  }
+  return raw;
 }
 
 async function buildProactiveWebQuery(): Promise<string> {
@@ -732,6 +759,23 @@ async function executeSchedulerTool(
 }
 
 /**
+ * Execute a tool that was approved through the proactive approval flow.
+ * This is the public API used by the approvals POST handler when a proactive
+ * (thread_id === null) approval is approved by the user.
+ */
+export async function executeProactiveApprovedTool(
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  const mcpManager = getMcpManager();
+  const execution = await executeSchedulerTool(toolName, args, mcpManager);
+  if (execution.skipped) {
+    throw new Error(`Tool "${toolName}" skipped: MCP server not connected.`);
+  }
+  return execution.result;
+}
+
+/**
  * Run a single proactive scan cycle.
  */
 export async function runProactiveScan(): Promise<void> {
@@ -871,7 +915,7 @@ export async function runProactiveScan(): Promise<void> {
             : true;
           const actionArgs = assessment.args || {};
           const reasoning = assessment.reasoning || "Proactive observer requested an action.";
-          const eventLevel = normalizeAssessmentLevel(assessment);
+          const eventLevel = normalizeAssessmentLevel(assessment, actionTool);
 
           if (isFailureDrivenAssessment(assessment)) {
             addLog({
@@ -886,8 +930,14 @@ export async function runProactiveScan(): Promise<void> {
           addLog({
             level: "info",
             source: "scheduler",
-            message: `Proactive action triggered [severity=${assessment.severity || "unspecified"}]: ${reasoning}`,
-            metadata: JSON.stringify(assessment),
+            message: `Proactive action triggered [severity=${eventLevel}${eventLevel !== assessment.severity ? ` (capped from ${assessment.severity})` : ""}]: ${reasoning}`,
+            metadata: JSON.stringify({
+              ...assessment,
+              effectiveLevel: eventLevel,
+              capped: eventLevel !== assessment.severity,
+              tool: actionTool,
+              source: "proactive",
+            }),
           });
 
           if (requiresApproval) {
@@ -896,6 +946,13 @@ export async function runProactiveScan(): Promise<void> {
               tool_name: actionTool,
               args: JSON.stringify(actionArgs),
               reasoning,
+            });
+
+            addLog({
+              level: "info",
+              source: "scheduler",
+              message: `Proactive approval created [id=${approval.id}] for "${actionTool}" (severity=${eventLevel}).`,
+              metadata: JSON.stringify({ approvalId: approval.id, tool: actionTool, severity: eventLevel, reasoning }),
             });
 
             enqueueDigestItem(digestByUser, defaultAdminUserId, {

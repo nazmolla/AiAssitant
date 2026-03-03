@@ -29,6 +29,8 @@ When a tool action requires approval:
 3. You approve or reject
 4. Assistant continues based on decision
 
+**Proactive approvals** — The background scheduler can also create approval requests for actions it detects (e.g. a smart home device anomaly). These appear in the Approvals tab with a "Proactive" badge and are visible to admins. When approved, the tool is executed directly without needing a chat thread.
+
 ![Approvals tab (test env)](images/usage-approvals.png)
 
 ## Knowledge Workflow

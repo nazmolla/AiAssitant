@@ -9,11 +9,11 @@
 - **Multi-User Isolation** — per-user knowledge, threads, channels, and profiles
 - **Proactive Intelligence** — background scheduler monitors MCP tools and generates reminders
 - **Autonomous Knowledge Capture** — every conversation is mined for durable facts
-- **Human-in-the-Loop (HITL)** — sensitive tool calls require explicit approval
+- **Human-in-the-Loop (HITL)** — sensitive tool calls require explicit approval; proactive scheduler approvals appear in the Approval Inbox for admins
 - **Browser Automation** — Playwright-powered web navigation, form filling, and screenshots
 - **Multi-Channel** — Web chat, WhatsApp, Discord, and custom webhooks
 - **Two-Way Email Channel** — SMTP send + IMAP receive with shared inbox routing
-- **Notification Severity Thresholds** — each user controls which alert levels trigger channel notifications
+- **Notification Severity Thresholds** — each user controls which alert levels trigger channel notifications; smart home/IoT tools are automatically capped below `disaster`
 - **Full Analytics Dashboard** — date-range KPIs, sessions graph, outcomes trends, and chart drilldown to detailed logs
 - **Screen Sharing** — share your screen with the agent for visual reasoning
 - **Model Orchestrator** — intelligent task routing picks the best LLM (local for background, cloud for complex)

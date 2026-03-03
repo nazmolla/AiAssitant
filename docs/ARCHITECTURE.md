@@ -170,6 +170,7 @@ The `status` events provide transparency into the agent's internal process for *
 ### Notification & Inbound Email Safety Path
 
 - **Per-user thresholds** — Channel notifications are filtered by each user profile's `notification_level` (`low`, `medium`, `high`, `disaster`).
+- **Severity capping** — Smart home / IoT tools (Alexa, Hue, Nest, Ring, etc.) are automatically capped at `high` severity — they can never emit `disaster`-level events, regardless of LLM assessment. This prevents false critical alerts for routine device state changes.
 - **Channel-first alerts** — Proactive/admin/unknown-sender notices are delivered through configured communication channels instead of posting into chat threads.
 - **Unknown sender summaries** — Inbound IMAP messages from unknown senders are summarized and severity-classified before notification routing.
 - **Injection boundary** — Inbound email bodies are treated as untrusted external content and wrapped/sanitized before any LLM prompt ingestion.
@@ -181,10 +182,10 @@ The `status` events provide transparency into the agent's internal process for *
 | Principle | Description |
 |-----------|-------------|
 | **Multi-User Isolation** | Each user's knowledge, threads, and profile are scoped by `user_id`. No cross-user data leakage. |
-| **Proactive Intelligence** | A background scheduler polls MCP tools and uses the LLM to generate reminders or actions. |
+| **Proactive Intelligence** | A background scheduler polls MCP tools and uses the LLM to generate reminders or actions. Proactive approvals (no chat thread) appear in the Approval Inbox and are visible to admins. |
 | **Autonomous Knowledge Capture** | Every chat turn is mined for durable facts, keeping the Knowledge Vault up to date without manual entry. |
 | **Vector-Aware Reasoning** | Semantic embedding search retrieves the most relevant knowledge before responding. |
-| **Human-in-the-Loop (HITL)** | Unified tool policy system governs ALL tools (built-in, custom, and MCP). Per-tool approval and proactive toggles. Sensitive calls are held in an approval queue. |
+| **Human-in-the-Loop (HITL)** | Unified tool policy system governs ALL tools (built-in, custom, and MCP). Per-tool approval and proactive toggles. Sensitive calls are held in an approval queue. Both thread-bound and proactive (threadless) approvals are surfaced in the Approval Inbox. |
 | **Model Orchestrator** | Intelligent task routing classifies each message (complex/simple/background/vision) and selects the best LLM provider based on capabilities, speed, cost, and tier. |
 | **Self-Extending Tools** | The agent can create, compile, and register new tools at runtime. Custom tools run in a VM sandbox with no file system or process access. |
 | **Native SDKs** | Direct use of Azure OpenAI, OpenAI, Anthropic, LiteLLM, and MCP SDKs — no LangChain. |
@@ -192,7 +193,7 @@ The `status` events provide transparency into the agent's internal process for *
 | **Browser Automation** | Playwright-powered tools let the agent navigate pages, fill forms, take screenshots, and manage sessions. |
 | **File System Access** | Built-in tools to read, write, list, and search files — with HITL gating on destructive operations. |
 | **Multi-Channel Comms** | WhatsApp, Discord, webhooks, and web chat — each channel resolves senders to internal users. |
-| **User-Scoped Alerting** | Per-user notification thresholds (`low` → `disaster`) suppress or deliver channel notifications based on event severity. |
+| **User-Scoped Alerting** | Per-user notification thresholds (`low` → `disaster`) suppress or deliver channel notifications based on event severity. Smart home/IoT tools are automatically capped below `disaster`. |
 | **Safe Email Ingestion** | Inbound email is classified, summarized, and guarded as untrusted content before reaching the agent loop. |
 | **Screen Sharing** | Share your screen with the agent via browser `getDisplayMedia()` — the agent sees what you see and can reason about it. |
 | **Voice I/O (STT/TTS)** | Mic button records audio via MediaRecorder, transcribes with Whisper. Speaker button on assistant messages plays TTS-1 audio. No extra dependencies — uses the existing OpenAI SDK. |

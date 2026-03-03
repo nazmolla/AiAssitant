@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { listPendingApprovals, getApprovalById, updateApprovalStatus, updateThreadStatus, getThreadMessages, addMessage, getThread } from "@/lib/db";
+import { listPendingApprovals, getApprovalById, updateApprovalStatus, updateThreadStatus, getThreadMessages, addMessage, getThread, addLog } from "@/lib/db";
 import { executeApprovedTool, continueAgentLoop } from "@/lib/agent";
+import { executeProactiveApprovedTool } from "@/lib/scheduler";
 import type { ToolCall } from "@/lib/llm";
 
 export async function GET() {
@@ -13,11 +14,13 @@ export async function GET() {
   // Clean up stale approvals: auto-reject entries whose thread no longer exists
   // or whose thread is no longer awaiting_approval (i.e. the action is no longer
   // blocking anything — these are not actionable).
+  // Proactive approvals (thread_id === null) are always actionable since they
+  // originate from the scheduler and have no associated chat thread.
   const actionable: typeof all = [];
   for (const a of all) {
     if (!a.thread_id) {
-      // Orphaned (no thread) — silently reject
-      updateApprovalStatus(a.id, "rejected");
+      // Proactive scheduler approval — no thread needed, always actionable
+      actionable.push(a);
       continue;
     }
     const thread = getThread(a.thread_id);
@@ -35,10 +38,12 @@ export async function GET() {
   }
 
   // Scope visibility: admins see all, regular users see only their threads
+  // Proactive approvals (no thread) are admin-only
   const pending = auth.user.role === "admin"
     ? actionable
     : actionable.filter((a) => {
-        const thread = getThread(a.thread_id!);
+        if (!a.thread_id) return false; // Proactive approvals are admin-only
+        const thread = getThread(a.thread_id);
         return thread?.user_id === auth.user.id;
       });
 
@@ -91,7 +96,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Ensure user is admin or owns the thread
-  if (auth.user.role !== "admin" && approval.thread_id) {
+  // Proactive approvals (no thread) require admin role
+  if (auth.user.role !== "admin") {
+    if (!approval.thread_id) {
+      // Proactive approvals are admin-only
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     const thread = getThread(approval.thread_id);
     if (!thread || thread.user_id !== auth.user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -99,6 +109,32 @@ export async function POST(req: NextRequest) {
   }
 
   updateApprovalStatus(approvalId, action);
+
+  if (action === "approved" && !approval.thread_id) {
+    // Proactive approval — execute the tool directly without a thread context
+    const args = JSON.parse(approval.args);
+    try {
+      const result = await executeProactiveApprovedTool(approval.tool_name, args);
+
+      addLog({
+        level: "info",
+        source: "hitl",
+        message: `Proactive approval "${approval.tool_name}" executed successfully.`,
+        metadata: JSON.stringify({ approvalId, result: JSON.stringify(result).substring(0, 500) }),
+      });
+
+      return NextResponse.json({ status: "approved", result: { status: "executed", result } });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      addLog({
+        level: "error",
+        source: "hitl",
+        message: `Proactive approval "${approval.tool_name}" failed: ${errorMsg}`,
+        metadata: JSON.stringify({ approvalId }),
+      });
+      return NextResponse.json({ status: "approved", result: { status: "error", error: errorMsg } });
+    }
+  }
 
   if (action === "approved" && approval.thread_id) {
     // Execute the tool now
@@ -154,9 +190,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: "approved", result });
   }
 
-  // Rejected — unfreeze the thread
+  // Rejected — unfreeze the thread (only if there's a thread to unfreeze)
   if (action === "rejected" && approval.thread_id) {
     updateThreadStatus(approval.thread_id, "active");
+  }
+
+  // Log proactive approval rejections for auditability
+  if (action === "rejected" && !approval.thread_id) {
+    addLog({
+      level: "info",
+      source: "hitl",
+      message: `Proactive approval "${approval.tool_name}" rejected by ${auth.user.email}.`,
+      metadata: JSON.stringify({ approvalId, reasoning: approval.reasoning }),
+    });
   }
 
   return NextResponse.json({ status: action });

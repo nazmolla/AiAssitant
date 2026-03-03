@@ -181,7 +181,12 @@ export function ApprovalInbox() {
                 <MuiCard key={approval.id} variant="outlined" sx={{ '&:hover': { borderColor: 'primary.main', opacity: 0.8 }, transition: 'all 0.3s' }}>
                   <CardContent sx={{ pb: 1 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{approval.tool_name}</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{approval.tool_name}</Typography>
+                        {!approval.thread_id && (
+                          <Chip label="Proactive" size="small" color="info" variant="outlined" />
+                        )}
+                      </Box>
                       <Chip label="Pending" size="small" color="warning" />
                     </Box>
                     <Typography variant="caption" color="text.secondary">
@@ -239,6 +244,9 @@ export function ApprovalInbox() {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Typography variant="body2" color="text.secondary">{isExpanded ? "▼" : "▶"}</Typography>
                       <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{group.tool_name}</Typography>
+                      {group.items.some((a) => !a.thread_id) && (
+                        <Chip label="Proactive" size="small" color="info" variant="outlined" />
+                      )}
                     </Box>
                     <Chip label={`${count} pending`} size="small" color="warning" />
                   </Box>
