@@ -4,7 +4,7 @@ struct LLMProvider: Codable, Identifiable, Equatable {
     let id: String
     let label: String
     let provider_type: String        // 'azure-openai' | 'openai' | 'anthropic' | 'litellm'
-    let purpose: String              // 'chat' | 'embedding' | 'audio'
+    let purpose: String              // 'chat' | 'embedding' | 'tts' | 'stt'
     let config: LLMProviderConfig?
     let is_default: Bool
     let created_at: String?
@@ -24,8 +24,6 @@ struct LLMProviderConfig: Codable {
     var endpoint: String?
     var deployment: String?
     var apiVersion: String?
-    var ttsDeployment: String?
-    var sttDeployment: String?
 
     // OpenAI / LiteLLM
     var baseURL: String?

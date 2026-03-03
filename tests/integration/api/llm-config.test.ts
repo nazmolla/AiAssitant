@@ -107,14 +107,14 @@ describe("POST /api/config/llm", () => {
     expect(res.status).toBe(201);
   });
 
-  test("creates an audio-purpose OpenAI provider", async () => {
+  test("creates a TTS-purpose OpenAI provider", async () => {
     setMockUser({ id: adminId, email: "llm-admin@example.com", role: "admin" });
     const req = new NextRequest("http://localhost/api/config/llm", {
       method: "POST",
       body: JSON.stringify({
-        label: "Audio Provider",
+        label: "TTS Provider",
         provider_type: "openai",
-        purpose: "audio",
+        purpose: "tts",
         config: { apiKey: "sk-audio-key" },
       }),
       headers: { "Content-Type": "application/json" },
@@ -122,22 +122,21 @@ describe("POST /api/config/llm", () => {
     const res = await POST(req);
     expect(res.status).toBe(201);
     const data = await res.json();
-    expect(data.purpose).toBe("audio");
+    expect(data.purpose).toBe("tts");
   });
 
-  test("creates an audio-purpose Azure provider with TTS/STT deployments", async () => {
+  test("creates an STT-purpose Azure provider with deployment", async () => {
     setMockUser({ id: adminId, email: "llm-admin@example.com", role: "admin" });
     const req = new NextRequest("http://localhost/api/config/llm", {
       method: "POST",
       body: JSON.stringify({
-        label: "Azure Audio",
+        label: "Azure STT",
         provider_type: "azure-openai",
-        purpose: "audio",
+        purpose: "stt",
         config: {
           apiKey: "azure-audio-key",
           endpoint: "https://my-resource.openai.azure.com",
-          ttsDeployment: "tts-1",
-          sttDeployment: "whisper-1",
+          deployment: "whisper",
         },
       }),
       headers: { "Content-Type": "application/json" },
@@ -145,7 +144,7 @@ describe("POST /api/config/llm", () => {
     const res = await POST(req);
     expect(res.status).toBe(201);
     const data = await res.json();
-    expect(data.purpose).toBe("audio");
+    expect(data.purpose).toBe("stt");
     expect(data.provider_type).toBe("azure-openai");
   });
 

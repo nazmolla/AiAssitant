@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "provider_type is invalid." }, { status: 400 });
   }
   if (!isPurpose(purpose)) {
-    return NextResponse.json({ error: "purpose must be 'chat', 'embedding', or 'audio'." }, { status: 400 });
+    return NextResponse.json({ error: "purpose must be 'chat', 'embedding', 'tts', or 'stt'." }, { status: 400 });
   }
   if (!config || typeof config !== "object") {
     return NextResponse.json({ error: "config must be an object." }, { status: 400 });
@@ -95,7 +95,7 @@ export async function PATCH(req: NextRequest) {
 
   if (body.purpose !== undefined) {
     if (!isPurpose(body.purpose)) {
-      return NextResponse.json({ error: "purpose must be 'chat', 'embedding', or 'audio'." }, { status: 400 });
+      return NextResponse.json({ error: "purpose must be 'chat', 'embedding', 'tts', or 'stt'." }, { status: 400 });
     }
     updates.purpose = body.purpose;
   }
@@ -167,7 +167,7 @@ function isProviderType(value: unknown): value is LlmProviderType {
 }
 
 function isPurpose(value: unknown): value is LlmProviderPurpose {
-  return value === "chat" || value === "embedding" || value === "audio";
+  return value === "chat" || value === "embedding" || value === "tts" || value === "stt";
 }
 
 function buildConfig(provider: LlmProviderType, input: Record<string, unknown>, purpose: LlmProviderPurpose = "chat"): Record<string, any> {
@@ -210,26 +210,15 @@ function buildConfig(provider: LlmProviderType, input: Record<string, unknown>, 
       const endpoint = read("endpoint", true)!;
       const apiVersion = read("apiVersion");
 
-      if (purpose === "audio") {
-        // Audio providers use separate TTS/STT deployments instead of a single deployment
-        const ttsDeployment = read("ttsDeployment") || "tts";
-        const sttDeployment = read("sttDeployment") || "whisper";
-        base = {
-          apiKey,
-          endpoint,
-          ttsDeployment,
-          sttDeployment,
-          ...(apiVersion ? { apiVersion } : {}),
-        };
-      } else {
-        const deployment = read("deployment", true)!;
-        base = {
-          apiKey,
-          endpoint,
-          deployment,
-          ...(apiVersion ? { apiVersion } : {}),
-        };
-      }
+      // TTS/STT purposes: deployment is optional (defaults to model name)
+      const deploymentRequired = purpose !== "tts" && purpose !== "stt";
+      const deployment = read("deployment", deploymentRequired);
+      base = {
+        apiKey,
+        endpoint,
+        ...(deployment ? { deployment } : {}),
+        ...(apiVersion ? { apiVersion } : {}),
+      };
     } else if (provider === "openai") {
       const apiKey = read("apiKey", true)!;
       const model = read("model");

@@ -49,14 +49,27 @@ const MOCK_AZURE_PROVIDER: LlmProviderRecord = {
 
 const MOCK_AUDIO_PROVIDER: LlmProviderRecord = {
   id: "provider-3",
-  label: "Audio Provider",
+  label: "TTS Provider",
   provider_type: "azure-openai",
-  purpose: "audio",
+  purpose: "tts",
   config_json: JSON.stringify({
     apiKey: "azure-key-456",
     endpoint: "https://audio.openai.azure.com",
-    ttsDeployment: "my-tts",
-    sttDeployment: "my-whisper",
+    deployment: "my-tts",
+  }),
+  is_default: 0,
+  created_at: new Date().toISOString(),
+};
+
+const MOCK_STT_PROVIDER: LlmProviderRecord = {
+  id: "provider-3b",
+  label: "STT Provider",
+  provider_type: "azure-openai",
+  purpose: "stt",
+  config_json: JSON.stringify({
+    apiKey: "azure-key-456",
+    endpoint: "https://audio.openai.azure.com",
+    deployment: "my-whisper",
   }),
   is_default: 0,
   created_at: new Date().toISOString(),
@@ -64,9 +77,9 @@ const MOCK_AUDIO_PROVIDER: LlmProviderRecord = {
 
 const MOCK_OPENAI_AUDIO_PROVIDER: LlmProviderRecord = {
   id: "provider-4",
-  label: "OpenAI Audio",
+  label: "OpenAI TTS",
   provider_type: "openai",
-  purpose: "audio",
+  purpose: "tts",
   config_json: JSON.stringify({ apiKey: "sk-audio-key" }),
   is_default: 0,
   created_at: new Date().toISOString(),
@@ -90,21 +103,23 @@ beforeEach(() => {
 
 describe("getAudioClient", () => {
   test("creates OpenAI client from openai provider", () => {
-    const client = getAudioClient();
-    expect(client).toBeDefined();
-    expect(client.audio).toBeDefined();
+    const result = getAudioClient();
+    expect(result).toBeDefined();
+    expect(result.client).toBeDefined();
+    expect(result.client.audio).toBeDefined();
+    expect(result.model).toBe("tts-1");
   });
 
   test("prefers openai over azure-openai", () => {
     mockProviders = [MOCK_AZURE_PROVIDER, MOCK_OPENAI_PROVIDER];
-    const client = getAudioClient();
-    expect(client).toBeDefined();
+    const result = getAudioClient();
+    expect(result.client).toBeDefined();
   });
 
   test("falls back to azure-openai when no openai provider", () => {
     mockProviders = [MOCK_AZURE_PROVIDER];
-    const client = getAudioClient();
-    expect(client).toBeDefined();
+    const result = getAudioClient();
+    expect(result.client).toBeDefined();
   });
 
   test("throws when no compatible provider configured", () => {
@@ -114,16 +129,16 @@ describe("getAudioClient", () => {
     expect(() => getAudioClient()).toThrow(/No OpenAI-compatible/);
   });
 
-  test("prefers providers with purpose=audio over chat providers", () => {
+  test("prefers providers with purpose=tts over chat providers", () => {
     mockProviders = [MOCK_OPENAI_PROVIDER, MOCK_OPENAI_AUDIO_PROVIDER];
     const OpenAI = require("openai").default;
     getAudioClient();
-    // The audio-purpose provider should be chosen; check the apiKey used
+    // The tts-purpose provider should be chosen; check the apiKey used
     const lastCall = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
     expect(lastCall.apiKey).toBe("sk-audio-key");
   });
 
-  test("falls back to chat provider when no audio provider exists", () => {
+  test("falls back to chat provider when no tts provider exists", () => {
     mockProviders = [MOCK_OPENAI_PROVIDER];
     const OpenAI = require("openai").default;
     getAudioClient();
@@ -131,7 +146,7 @@ describe("getAudioClient", () => {
     expect(lastCall.apiKey).toBe("test-key-123");
   });
 
-  test("uses ttsDeployment for TTS on azure-openai audio provider", () => {
+  test("uses deployment for TTS on azure-openai tts provider", () => {
     mockProviders = [MOCK_AUDIO_PROVIDER];
     const OpenAI = require("openai").default;
     getAudioClient("tts");
@@ -139,33 +154,39 @@ describe("getAudioClient", () => {
     expect(lastCall.baseURL).toContain("/my-tts");
   });
 
-  test("uses sttDeployment for STT on azure-openai audio provider", () => {
-    mockProviders = [MOCK_AUDIO_PROVIDER];
+  test("uses deployment for STT on azure-openai stt provider", () => {
+    mockProviders = [MOCK_STT_PROVIDER];
     const OpenAI = require("openai").default;
     getAudioClient("stt");
     const lastCall = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
     expect(lastCall.baseURL).toContain("/my-whisper");
   });
 
-  test("uses default tts/whisper deployments when not specified", () => {
-    const providerNoDeployments: LlmProviderRecord = {
+  test("uses model name as deployment when not specified", () => {
+    const providerNoDeployment: LlmProviderRecord = {
       ...MOCK_AZURE_PROVIDER,
-      purpose: "audio" as LlmProviderRecord["purpose"],
+      purpose: "tts" as LlmProviderRecord["purpose"],
       config_json: JSON.stringify({
         apiKey: "azure-key-789",
         endpoint: "https://test.openai.azure.com",
       }),
     };
-    mockProviders = [providerNoDeployments];
+    mockProviders = [providerNoDeployment];
     const OpenAI = require("openai").default;
     
     getAudioClient("tts");
-    let lastCall = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
-    expect(lastCall.baseURL).toContain("/tts");
-    
-    getAudioClient("stt");
-    lastCall = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
-    expect(lastCall.baseURL).toContain("/whisper");
+    const lastCall = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
+    expect(lastCall.baseURL).toContain("/tts-1");
+  });
+
+  test("returns custom model from provider config", () => {
+    const customModelProvider: LlmProviderRecord = {
+      ...MOCK_OPENAI_PROVIDER,
+      purpose: "tts" as LlmProviderRecord["purpose"],
+      config_json: JSON.stringify({ apiKey: "k", model: "gpt-4o-mini-tts" }),
+    };
+    mockProviders = [customModelProvider];
+    expect(getAudioClient("tts").model).toBe("gpt-4o-mini-tts");
   });
 });
 
