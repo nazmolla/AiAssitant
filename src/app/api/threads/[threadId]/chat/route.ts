@@ -162,8 +162,8 @@ export async function POST(
             const data = JSON.stringify(status);
             writer.write(encoder.encode(`event: status\ndata: ${data}\n\n`));
           },
-          (token) => {
-            writer.write(encoder.encode(`event: token\ndata: ${JSON.stringify(token)}\n\n`));
+          async (token) => {
+            await writer.write(encoder.encode(`event: token\ndata: ${JSON.stringify(token)}\n\n`));
           }
         );
         await writer.write(encoder.encode(`event: done\ndata: ${JSON.stringify(response)}\n\n`));

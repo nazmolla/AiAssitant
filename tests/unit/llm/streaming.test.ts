@@ -195,12 +195,18 @@ describe("AnthropicChatProvider streaming", () => {
   });
 
   test("uses streaming when onToken is provided", async () => {
-    const textCallbacks: ((text: string) => void)[] = [];
+    // Mock stream as async iterable + finalMessage
+    const events = [
+      { type: "content_block_delta", delta: { type: "text_delta", text: "Hello" } },
+      { type: "content_block_delta", delta: { type: "text_delta", text: " world" } },
+      { type: "content_block_delta", delta: { type: "text_delta", text: "!" } },
+      { type: "message_stop" },
+    ];
 
     mockStream.mockReturnValue({
-      on: jest.fn((event: string, cb: (text: string) => void) => {
-        if (event === "text") textCallbacks.push(cb);
-      }),
+      [Symbol.asyncIterator]: async function* () {
+        for (const event of events) yield event;
+      },
       finalMessage: jest.fn().mockResolvedValue({
         content: [{ type: "text", text: "Hello world!" }],
         stop_reason: "end_turn",
@@ -210,19 +216,9 @@ describe("AnthropicChatProvider streaming", () => {
     const tokens: string[] = [];
     const messages: ChatMessage[] = [{ role: "user", content: "Hi" }];
 
-    // Start the chat (it will set up the stream listener then await finalMessage)
-    const resultPromise = provider.chat(messages, undefined, undefined, (token) => {
+    const result = await provider.chat(messages, undefined, undefined, (token) => {
       tokens.push(token);
     });
-
-    // Simulate text events before finalMessage resolves
-    for (const cb of textCallbacks) {
-      cb("Hello");
-      cb(" world");
-      cb("!");
-    }
-
-    const result = await resultPromise;
 
     expect(tokens).toEqual(["Hello", " world", "!"]);
     expect(result.content).toBe("Hello world!");
@@ -232,13 +228,16 @@ describe("AnthropicChatProvider streaming", () => {
   });
 
   test("handles streaming with tool calls", async () => {
+    const events = [
+      { type: "content_block_delta", delta: { type: "text_delta", text: "I'll search for that" } },
+      { type: "content_block_delta", delta: { type: "input_json_delta", partial_json: '{"query":"hello"}' } },
+      { type: "message_stop" },
+    ];
+
     mockStream.mockReturnValue({
-      on: jest.fn((event: string, cb: (text: string) => void) => {
-        if (event === "text") {
-          // Fire text events synchronously
-          cb("I'll search for that");
-        }
-      }),
+      [Symbol.asyncIterator]: async function* () {
+        for (const event of events) yield event;
+      },
       finalMessage: jest.fn().mockResolvedValue({
         content: [
           { type: "text", text: "I'll search for that" },
@@ -265,7 +264,7 @@ describe("AnthropicChatProvider streaming", () => {
       tokens.push(token);
     });
 
-    expect(tokens).toContain("I'll search for that");
+    expect(tokens).toEqual(["I'll search for that"]);
     expect(result.toolCalls).toHaveLength(1);
     expect(result.toolCalls[0].name).toBe("web_search");
     expect(result.toolCalls[0].arguments).toEqual({ query: "hello" });

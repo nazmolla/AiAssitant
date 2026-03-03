@@ -42,6 +42,6 @@ export interface ChatProvider {
     messages: ChatMessage[],
     tools?: ToolDefinition[],
     systemPrompt?: string,
-    onToken?: (token: string) => void
+    onToken?: (token: string) => void | Promise<void>
   ): Promise<ChatResponse>;
 }

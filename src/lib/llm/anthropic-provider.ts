@@ -27,7 +27,7 @@ export class AnthropicChatProvider implements ChatProvider {
     messages: ChatMessage[],
     tools?: ToolDefinition[],
     systemPrompt?: string,
-    onToken?: (token: string) => void
+    onToken?: (token: string) => void | Promise<void>
   ): Promise<ChatResponse> {
     const anthropicMessages: Anthropic.MessageParam[] = [];
 
@@ -89,12 +89,18 @@ export class AnthropicChatProvider implements ChatProvider {
         tools: anthropicTools,
       });
 
-      // Fire onToken for each text delta as it arrives
-      stream.on("text", (text) => {
-        onToken(text);
-      });
+      // Use async iteration for proper backpressure — await each onToken
+      // so the write flushes to the HTTP response before consuming the next chunk.
+      for await (const event of stream) {
+        if (
+          event.type === "content_block_delta" &&
+          event.delta.type === "text_delta"
+        ) {
+          await onToken(event.delta.text);
+        }
+      }
 
-      // Wait for the complete message
+      // Get the accumulated final message (stream already fully consumed)
       const finalMessage = await stream.finalMessage();
 
       let content: string | null = null;

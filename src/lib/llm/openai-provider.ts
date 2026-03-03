@@ -54,7 +54,7 @@ export class OpenAIChatProvider implements ChatProvider {
     messages: ChatMessage[],
     tools?: ToolDefinition[],
     systemPrompt?: string,
-    onToken?: (token: string) => void
+    onToken?: (token: string) => void | Promise<void>
   ): Promise<ChatResponse> {
     const oaiMessages: OpenAI.ChatCompletionMessageParam[] = [];
 
@@ -126,7 +126,7 @@ export class OpenAIChatProvider implements ChatProvider {
 
         if (delta.content) {
           content += delta.content;
-          onToken(delta.content);
+          await onToken(delta.content);
         }
 
         if (delta.tool_calls) {

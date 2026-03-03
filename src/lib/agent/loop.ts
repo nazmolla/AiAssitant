@@ -144,7 +144,7 @@ export async function runAgentLoop(
   userId?: string,
   onMessage?: (msg: Message) => void,
   onStatus?: (status: { step: string; detail?: string }) => void,
-  onToken?: (token: string) => void
+  onToken?: (token: string) => void | Promise<void>
 ): Promise<AgentResponse> {
   // Use the orchestrator to pick the best model for this task
   onStatus?.({ step: "Selecting model", detail: "Classifying task complexity…" });
