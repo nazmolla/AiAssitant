@@ -16,7 +16,7 @@ Use Chat for day-to-day assistant interactions.
 - Add file attachments when needed
 - Use screen sharing when enabled in your profile
 - **Voice input** — Click the mic button (🎤) to dictate a message. Audio is transcribed via Whisper and appended to the input field. The button pulses red while recording and shows a spinner while transcribing.
-- **Voice output** — Click the speaker icon (🔊) on any assistant message to hear it read aloud via TTS. Click again to stop. Requires an OpenAI-compatible LLM provider to be configured.
+- **Voice output** — Click the speaker icon (🔊) on any assistant message to hear it read aloud via TTS. Click again to stop. Choose your preferred voice (alloy, ash, coral, echo, fable, onyx, nova, sage, shimmer) in **Settings → Profile → Preferences → TTS Voice**. Requires an OpenAI-compatible LLM provider to be configured.
 
 ![Chat tab (test env)](images/usage-chat.png)
 

@@ -95,7 +95,7 @@ jest.mock("@/components/custom-tools-config", () => ({ CustomToolsConfig: () => 
 jest.mock("@/components/logging-config", () => ({ LoggingConfig: () => <div data-testid="logging">Logging Config</div> }));
 jest.mock("@/components/alexa-config", () => ({ AlexaConfig: () => <div data-testid="alexa">Alexa Config</div> }));
 
-import HomePage from "@/app/page";
+import HomePage from "@/app/[[...path]]/page";
 
 // ── Helper: navigate to Settings tab ─────────────────────────────
 

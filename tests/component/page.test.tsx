@@ -126,7 +126,7 @@ jest.mock("@/components/custom-tools-config", () => ({ CustomToolsConfig: () => 
 jest.mock("@/components/logging-config", () => ({ LoggingConfig: () => <div data-testid="logging-config">Logging</div> }));
 
 // ── Import the component AFTER mocks ─────────────────────────────
-import HomePage from "@/app/page";
+import HomePage from "@/app/[[...path]]/page";
 
 // ── Tests ────────────────────────────────────────────────────────
 

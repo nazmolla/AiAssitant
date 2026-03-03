@@ -6,6 +6,7 @@ import { getUserProfile, upsertUserProfile, addLog } from "@/lib/db";
 const MAX_FIELD_LEN = 500;
 const MAX_BIO_LEN = 2000;
 const NOTIFICATION_LEVELS = new Set(["low", "medium", "high", "disaster"]);
+const VALID_TTS_VOICES = new Set(["alloy", "ash", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"]);
 
 function sanitizeField(value: unknown, maxLen: number): string | undefined {
   if (value === undefined) return undefined;
@@ -48,7 +49,7 @@ export async function PUT(req: Request) {
       "display_name", "title", "bio", "location", "phone",
       "email", "website", "linkedin", "github", "twitter",
       "skills", "languages", "company", "screen_sharing_enabled",
-      "notification_level", "theme", "font", "timezone",
+      "notification_level", "theme", "font", "timezone", "tts_voice",
     ] as const;
     const sanitized: Record<string, unknown> = {};
     for (const key of ALLOWED_FIELDS) {
@@ -58,6 +59,8 @@ export async function PUT(req: Request) {
           ? (body[key] ? 1 : 0)
           : key === "notification_level"
             ? (NOTIFICATION_LEVELS.has(String(body[key]).toLowerCase()) ? String(body[key]).toLowerCase() : "disaster")
+          : key === "tts_voice"
+            ? (VALID_TTS_VOICES.has(String(body[key]).toLowerCase()) ? String(body[key]).toLowerCase() : "nova")
           : sanitizeField(body[key], maxLen);
       }
     }

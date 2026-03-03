@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     theme TEXT DEFAULT 'ember',
     font TEXT DEFAULT 'inter',
     timezone TEXT DEFAULT '',
+    tts_voice TEXT DEFAULT 'nova',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

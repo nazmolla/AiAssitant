@@ -88,6 +88,18 @@ describe("ProfileConfig", () => {
       expect(screen.getByText("Save Profile")).toBeInTheDocument();
     });
   });
+
+  test("renders TTS Voice picker section", async () => {
+    render(<ProfileConfig />);
+    await waitFor(() => {
+      expect(screen.getByText("TTS Voice")).toBeInTheDocument();
+    });
+    // Verify all 9 voices are rendered
+    expect(screen.getByText("Alloy")).toBeInTheDocument();
+    expect(screen.getByText("Nova")).toBeInTheDocument();
+    expect(screen.getByText("Echo")).toBeInTheDocument();
+    expect(screen.getByText("Shimmer")).toBeInTheDocument();
+  });
 });
 
 describe("ChangePasswordSection", () => {

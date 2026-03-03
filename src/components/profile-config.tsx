@@ -29,6 +29,7 @@ interface ProfileData {
   theme: string;
   font: string;
   timezone: string;
+  tts_voice: string;
 }
 
 const EMPTY: ProfileData = {
@@ -50,6 +51,7 @@ const EMPTY: ProfileData = {
   theme: "ember",
   font: "inter",
   timezone: "",
+  tts_voice: "nova",
 };
 
 const LABEL_CLASS = "text-[11px] font-medium text-muted-foreground/60 mb-1.5 block uppercase tracking-wider";
@@ -90,6 +92,10 @@ export function ProfileConfig() {
       if (merged.theme && merged.theme !== theme) setTheme(merged.theme as ThemeId);
       if (merged.font && merged.font !== font) setFont(merged.font as FontId);
       if (merged.timezone !== timezone) setTimezone(merged.timezone || "");
+      // Sync TTS voice to localStorage for chat panel access
+      if (merged.tts_voice) {
+        try { localStorage.setItem("nexus_tts_voice", merged.tts_voice); } catch { /* noop */ }
+      }
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -120,6 +126,8 @@ export function ProfileConfig() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(profile),
     });
+    // Sync TTS voice to localStorage for chat panel access
+    try { localStorage.setItem("nexus_tts_voice", profile.tts_voice || "nova"); } catch { /* noop */ }
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -366,6 +374,40 @@ export function ProfileConfig() {
             </select>
             <p className="text-[10px] text-muted-foreground/50 mt-1">
               Controls which severity levels trigger channel notifications for proactive and inbound-email events.
+            </p>
+          </div>
+
+          {/* TTS Voice picker */}
+          <div>
+            <label className={labelClass}>TTS Voice</label>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-1">
+              {([
+                { id: "alloy", label: "Alloy", desc: "Neutral & balanced" },
+                { id: "ash", label: "Ash", desc: "Warm & clear" },
+                { id: "coral", label: "Coral", desc: "Warm & engaging" },
+                { id: "echo", label: "Echo", desc: "Smooth & resonant" },
+                { id: "fable", label: "Fable", desc: "Expressive & dynamic" },
+                { id: "onyx", label: "Onyx", desc: "Deep & authoritative" },
+                { id: "nova", label: "Nova", desc: "Friendly & warm" },
+                { id: "sage", label: "Sage", desc: "Calm & measured" },
+                { id: "shimmer", label: "Shimmer", desc: "Bright & energetic" },
+              ] as const).map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => update("tts_voice", v.id)}
+                  className={`flex flex-col items-center gap-1 rounded-xl px-3 py-2.5 text-center border transition-all duration-200 ${
+                    profile.tts_voice === v.id
+                      ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                      : "border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.03]"
+                  }`}
+                >
+                  <div className="text-[13px] font-medium">{v.label}</div>
+                  <div className="text-[10px] text-muted-foreground/60">{v.desc}</div>
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground/50 mt-1">
+              The voice used when reading messages aloud. Changes take effect on the next TTS request.
             </p>
           </div>
 

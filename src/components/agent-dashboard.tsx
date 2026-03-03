@@ -209,7 +209,10 @@ export function AgentDashboard() {
   const sessionAnalytics = useMemo(() => {
     const sessionsMap = new Map<string, LogEntry[]>();
     for (const log of logsInRange) {
-      const sessionId = extractSessionKey(log.metadata) ?? `event-${log.id}`;
+      const sessionId = extractSessionKey(log.metadata);
+      // Only group logs that have an actual session identifier — logs without
+      // session metadata are standalone events, not sessions.
+      if (!sessionId) continue;
       const existing = sessionsMap.get(sessionId);
       if (existing) existing.push(log);
       else sessionsMap.set(sessionId, [log]);

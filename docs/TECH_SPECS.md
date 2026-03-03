@@ -56,6 +56,10 @@ CREATE TABLE user_profiles (
     display_name TEXT, title TEXT, bio TEXT, location TEXT, phone TEXT,
     email TEXT, website TEXT, linkedin TEXT, github TEXT, twitter TEXT,
     skills TEXT DEFAULT '[]', languages TEXT DEFAULT '[]', company TEXT,
+    screen_sharing_enabled INTEGER DEFAULT 1,
+    notification_level TEXT DEFAULT 'disaster',
+    theme TEXT DEFAULT 'ember', font TEXT DEFAULT 'inter',
+    timezone TEXT DEFAULT '', tts_voice TEXT DEFAULT 'nova',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -213,6 +213,7 @@ export interface UserProfile {
   theme: string;
   font: string;
   timezone: string;
+  tts_voice: string;
   updated_at: string;
 }
 
@@ -241,11 +242,12 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
     theme: profile.theme ?? existing?.theme ?? "ember",
     font: profile.font ?? existing?.font ?? "inter",
     timezone: profile.timezone ?? existing?.timezone ?? "",
+    tts_voice: profile.tts_voice ?? existing?.tts_voice ?? "nova",
   };
   getDb()
     .prepare(
-      `INSERT INTO user_profiles (user_id, display_name, title, bio, location, phone, email, website, linkedin, github, twitter, skills, languages, company, screen_sharing_enabled, notification_level, theme, font, timezone, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `INSERT INTO user_profiles (user_id, display_name, title, bio, location, phone, email, website, linkedin, github, twitter, skills, languages, company, screen_sharing_enabled, notification_level, theme, font, timezone, tts_voice, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(user_id) DO UPDATE SET
          display_name = excluded.display_name,
          title = excluded.title,
@@ -265,6 +267,7 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
          theme = excluded.theme,
          font = excluded.font,
          timezone = excluded.timezone,
+         tts_voice = excluded.tts_voice,
          updated_at = CURRENT_TIMESTAMP`
     )
     .run(
@@ -272,7 +275,7 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
       p.display_name, p.title, p.bio, p.location,
       p.phone, p.email, p.website, p.linkedin,
       p.github, p.twitter, p.skills, p.languages, p.company,
-      p.screen_sharing_enabled, p.notification_level, p.theme, p.font, p.timezone
+      p.screen_sharing_enabled, p.notification_level, p.theme, p.font, p.timezone, p.tts_voice
     );
   return getUserProfile(userId)!;
 }

@@ -43,7 +43,7 @@ The **Dashboard** tab provides a full analytics view built from runtime logs and
 ### What You Can Do
 
 - Select a **date range** to scope all metrics and charts.
-- Monitor KPI cards: **Sessions**, **Engagement**, **Resolution**, **Escalation**, **Abandon**, **CSAT**.
+- Monitor KPI cards: **Sessions**, **Engagement**, **Resolution**, **Escalation**, **Abandon**, **CSAT**. Sessions are counted from logs that contain session metadata (e.g. `sessionId`, `threadId`, `conversationId`) — standalone events without session IDs are excluded.
 - Use **Errors & Activities** chart bucket click to drill into detailed logs.
 - Use **Sessions** chart bucket click to drill into session-associated details.
 - Track **Session Outcomes Over Time** (resolved/escalated/abandoned).

@@ -380,10 +380,17 @@ export function ChatPanel() {
 
     setPlayingTtsId(messageId);
     try {
+      // Read preferred TTS voice from localStorage (synced from profile settings)
+      let voice = "nova";
+      try {
+        const stored = localStorage.getItem("nexus_tts_voice");
+        if (stored) voice = stored;
+      } catch { /* noop */ }
+
       const res = await fetch("/api/audio/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, voice }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => null);

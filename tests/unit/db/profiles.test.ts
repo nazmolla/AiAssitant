@@ -89,4 +89,20 @@ describe("User Profiles", () => {
     profile = upsertUserProfile(userId, { notification_level: "high" });
     expect(profile.notification_level).toBe("high");
   });
+
+  test("upsertUserProfile defaults tts_voice to nova", () => {
+    const newUser = seedTestUser({ email: "tts-default@example.com" });
+    const profile = upsertUserProfile(newUser, {});
+    expect(profile.tts_voice).toBe("nova");
+  });
+
+  test("upsertUserProfile handles tts_voice preference", () => {
+    let profile = upsertUserProfile(userId, { tts_voice: "echo" });
+    expect(profile.tts_voice).toBe("echo");
+    profile = upsertUserProfile(userId, { tts_voice: "shimmer" });
+    expect(profile.tts_voice).toBe("shimmer");
+    // Update other field — tts_voice should be preserved
+    profile = upsertUserProfile(userId, { title: "Test" });
+    expect(profile.tts_voice).toBe("shimmer");
+  });
 });

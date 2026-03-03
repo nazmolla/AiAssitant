@@ -352,6 +352,9 @@ function ensureProfilePreferencesColumns(): void {
     if (!cols.has("notification_level")) {
       db.prepare(`ALTER TABLE ${table} ADD COLUMN notification_level TEXT DEFAULT 'disaster'`).run();
     }
+    if (!cols.has("tts_voice")) {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN tts_voice TEXT DEFAULT 'nova'`).run();
+    }
   }
 }
 

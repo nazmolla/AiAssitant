@@ -157,4 +157,28 @@ describe("PUT /api/config/profile", () => {
     const data = await res.json();
     expect(data.notification_level).toBe("disaster");
   });
+
+  test("saves and returns tts_voice preference", async () => {
+    setMockUser({ id: userId, email: "profile-api@example.com", role: "user" });
+    const req = new NextRequest("http://localhost/api/config/profile", {
+      method: "PUT",
+      body: JSON.stringify({ tts_voice: "echo" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await PUT(req);
+    const data = await res.json();
+    expect(data.tts_voice).toBe("echo");
+  });
+
+  test("invalid tts_voice falls back to nova", async () => {
+    setMockUser({ id: userId, email: "profile-api@example.com", role: "user" });
+    const req = new NextRequest("http://localhost/api/config/profile", {
+      method: "PUT",
+      body: JSON.stringify({ tts_voice: "invalid-voice" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await PUT(req);
+    const data = await res.json();
+    expect(data.tts_voice).toBe("nova");
+  });
 });
