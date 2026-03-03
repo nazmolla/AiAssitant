@@ -305,3 +305,40 @@ IP-based sliding-window rate limiter in middleware:
 | XSS reflection | Not reflected |
 | Source maps | Not exposed |
 | Data exposure without auth | No real data leaks — all routes return 401 |
+
+---
+
+## Dashboard Analytics Computation
+
+The analytics dashboard (`src/components/agent-dashboard.tsx`) computes operational metrics from `/api/logs` data entirely in the client layer.
+
+### Inputs
+
+- Source API: `GET /api/logs?limit=all&level=all&source=all`
+- Date range: `startDate` / `endDate` controls applied in-memory
+- Session key inference from metadata JSON fields:
+    - `sessionId`, `session_id`, `threadId`, `thread_id`, `conversationId`, `conversation_id`, `chatId`, `chat_id`, `run_id`
+
+### Derived KPIs
+
+- **Sessions**: unique inferred session keys in date range
+- **Engagement rate**: sessions with >= 3 events or agent/thought activity
+- **Resolution / Escalation / Abandon rates**: inferred by outcome classification over session logs
+- **CSAT proxy**: bounded score in range `[1,5]` derived from session outcomes
+
+### Charts and Drilldown
+
+- **Errors & Activities chart**: 8 time buckets over selected date range
+- **Sessions chart**: unique session counts per bucket
+- **Session outcomes chart**: resolved/escalated/abandoned per bucket
+- Bucket click applies drilldown filter to the existing detail stream (log explorer)
+
+### Driver Tables
+
+Three topic-level driver tables are computed from inferred topics and outcomes:
+
+- Resolution rate drivers
+- Escalation rate drivers
+- Abandon rate drivers
+
+Each row reports topic rate and delta impact against overall rate.

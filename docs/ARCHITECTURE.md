@@ -173,6 +173,7 @@ The `status` events provide transparency into the agent's internal process for *
 | **Screen Sharing** | Share your screen with the agent via browser `getDisplayMedia()` — the agent sees what you see and can reason about it. |
 | **Security Hardened** | Comprehensive prompt injection defense, security headers (CSP, X-Frame-Options, etc.), rate limiting, input validation, and path traversal protection. |
 | **Alexa Smart Home** | Native integration with Amazon Alexa — 14 tools for announcements, light control, volume, sensors, DND, and device management. Cookie-based auth with encrypted credential storage. |
+| **Analytics-Driven Observability** | Dashboard computes date-range KPIs, session outcomes, trend charts, and topic drivers with interactive drilldown to raw logs. |
 
 ---
 
@@ -254,7 +255,7 @@ src/
 │   └── page.tsx                # Main dashboard SPA
 ├── components/                 # React UI components
 │   ├── ui/                     # MUI adapter primitives (button, card, input, badge, switch, textarea, scroll-area)
-│   ├── agent-dashboard.tsx     # Activity log viewer
+│   ├── agent-dashboard.tsx     # Full analytics dashboard + drilldown log explorer
 │   ├── approval-inbox.tsx      # HITL approval UI
 │   ├── channels-config.tsx     # Channel management (user-scoped)
 │   ├── chat-panel.tsx          # Thread/chat with inline approvals

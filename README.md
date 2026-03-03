@@ -14,6 +14,7 @@
 - **Multi-Channel** — Web chat, WhatsApp, Discord, and custom webhooks
 - **Two-Way Email Channel** — SMTP send + IMAP receive with shared inbox routing
 - **Notification Severity Thresholds** — each user controls which alert levels trigger channel notifications
+- **Full Analytics Dashboard** — date-range KPIs, sessions graph, outcomes trends, and chart drilldown to detailed logs
 - **Screen Sharing** — share your screen with the agent for visual reasoning
 - **Model Orchestrator** — intelligent task routing picks the best LLM (local for background, cloud for complex)
 - **Self-Extending Tools** — the agent can create its own tools at runtime, compiled and sandboxed
@@ -66,6 +67,16 @@ scp deploy.tar user@host:/path/to/app/
 | [Technical Specifications](docs/TECH_SPECS.md) | Tech stack, database schema, API routes, security details |
 | [Installation Guide](docs/INSTALLATION.md) | Prerequisites, environment variables, production build, remote deployment, migration |
 | [Usage Handbook](docs/USAGE.md) | Overview + drill-down guides: getting started, daily workflows, configuration, admin operations, troubleshooting |
+
+### Analytics Overview
+
+The **Dashboard** tab now provides analytics views for operations and reliability:
+
+- Date-range scoped metrics (sessions, engagement, resolution, escalation, abandon, CSAT)
+- Errors vs Activities trend with clickable bucket drilldown into log details
+- Sessions trend with session-scoped drilldown into details
+- Session outcomes trend (resolved/escalated/abandoned)
+- Driver tables for resolution, escalation, and abandon rates
 
 ---
 

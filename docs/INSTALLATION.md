@@ -40,6 +40,19 @@ Open [http://localhost:3000](http://localhost:3000) to access the Command Center
 
 > **First-time setup:** The first user to sign in (via email + password or OAuth) automatically becomes the **admin**. Subsequent users receive the **user** role. Each user gets isolated knowledge, threads, and profile settings.
 
+### Post-Setup Validation (Recommended)
+
+```bash
+npx jest --forceExit
+```
+
+Then open the **Dashboard** tab and verify:
+
+- KPI analytics cards are visible
+- Errors/Activities and Sessions charts render
+- Clicking a chart bucket drills down to detail logs
+- Log entries show full date + time
+
 ---
 
 ## Environment Variables

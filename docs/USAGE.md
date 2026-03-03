@@ -33,3 +33,24 @@ All screenshots are captured from the **test environment**.
 ## UI Snapshot
 
 ![Command Center overview (test env)](images/usage-command-center-overview.png)
+
+---
+
+## Analytics Dashboard (New)
+
+The **Dashboard** tab provides a full analytics view built from runtime logs and session metadata.
+
+### What You Can Do
+
+- Select a **date range** to scope all metrics and charts.
+- Monitor KPI cards: **Sessions**, **Engagement**, **Resolution**, **Escalation**, **Abandon**, **CSAT**.
+- Use **Errors & Activities** chart bucket click to drill into detailed logs.
+- Use **Sessions** chart bucket click to drill into session-associated details.
+- Track **Session Outcomes Over Time** (resolved/escalated/abandoned).
+- Review **driver tables** that show topic-level contribution to resolution/escalation/abandon rates.
+
+### Drilldown Behavior
+
+- Clicking a chart bucket applies a temporary filter to the detail stream.
+- Drilldown can be cleared from the chip shown under the chart header.
+- Detail rows show **full date and time** for each log entry.
