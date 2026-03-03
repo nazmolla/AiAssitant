@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
     mcp_id: null,
     requires_approval: 0,
     is_proactive_enabled: 0,
+    scope: "global",
   });
 
   // Reload cache

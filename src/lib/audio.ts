@@ -7,10 +7,15 @@
  *
  * With separate TTS/STT purposes each provider uses the standard `deployment`
  * field — no special audio-specific fields needed.
+ *
+ * Local Whisper: When configured via app_config, a local Whisper server
+ * (e.g. faster-whisper-server or whisper.cpp) is used as a fallback if the
+ * cloud provider fails.  Set `whisper_local_url` (e.g. http://localhost:8083)
+ * and `whisper_local_enabled` = "true" in app_config.
  */
 
 import OpenAI from "openai";
-import { listLlmProviders, type LlmProviderRecord } from "@/lib/db";
+import { listLlmProviders, getAppConfig, type LlmProviderRecord } from "@/lib/db";
 
 /** Supported TTS voices */
 export type TtsVoice = "alloy" | "ash" | "coral" | "echo" | "fable" | "onyx" | "nova" | "sage" | "shimmer";
@@ -104,6 +109,8 @@ export function getAudioClient(operation: AudioOperation = "tts"): AudioClientRe
 
 /**
  * Transcribe audio to text using OpenAI Whisper.
+ * Falls back to local Whisper server if cloud transcription fails and
+ * local Whisper is configured.
  */
 export async function transcribeAudio(
   audioBuffer: Buffer,
@@ -114,19 +121,111 @@ export async function transcribeAudio(
     throw new Error(`Audio file exceeds ${MAX_AUDIO_SIZE_MB}MB limit.`);
   }
 
-  const { client, model } = getAudioClient("stt");
+  let cloudError: Error | undefined;
 
-  // Create a File-like object from the buffer
+  // 1. Try cloud provider first
+  try {
+    const { client, model } = getAudioClient("stt");
+    const uint8 = new Uint8Array(audioBuffer);
+    const file = new File([uint8], filename, { type: mimeType });
+
+    const result = await client.audio.transcriptions.create({
+      model,
+      file,
+      response_format: "text",
+    });
+
+    return typeof result === "string" ? result : (result as unknown as { text: string }).text;
+  } catch (err) {
+    cloudError = err instanceof Error ? err : new Error(String(err));
+  }
+
+  // 2. Fall back to local Whisper if configured
+  const localConfig = getLocalWhisperConfig();
+  if (localConfig.enabled && localConfig.url) {
+    try {
+      return await transcribeAudioLocal(audioBuffer, filename, mimeType, localConfig);
+    } catch (localErr) {
+      const localMessage = localErr instanceof Error ? localErr.message : String(localErr);
+      throw new Error(
+        `Cloud STT failed: ${cloudError?.message}. Local Whisper also failed: ${localMessage}`
+      );
+    }
+  }
+
+  // No local fallback configured — throw the cloud error
+  throw cloudError ?? new Error("No STT provider configured.");
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Local Whisper fallback                                                      */
+/* -------------------------------------------------------------------------- */
+
+export interface LocalWhisperConfig {
+  enabled: boolean;
+  url: string;
+  model: string;
+}
+
+/**
+ * Read local Whisper configuration from app_config.
+ * Keys: whisper_local_enabled, whisper_local_url, whisper_local_model
+ */
+export function getLocalWhisperConfig(): LocalWhisperConfig {
+  const enabled = getAppConfig("whisper_local_enabled") === "true";
+  const url = getAppConfig("whisper_local_url") || "";
+  const model = getAppConfig("whisper_local_model") || "whisper-1";
+  return { enabled, url, model };
+}
+
+/**
+ * Transcribe audio using a local Whisper server.
+ * Supports OpenAI-compatible `/v1/audio/transcriptions` endpoint
+ * (e.g. faster-whisper-server, whisper.cpp server).
+ */
+async function transcribeAudioLocal(
+  audioBuffer: Buffer,
+  filename: string,
+  mimeType: string,
+  config: LocalWhisperConfig
+): Promise<string> {
+  const baseUrl = config.url.replace(/\/$/, "");
+
+  // Block cloud metadata endpoints from being used as Whisper URL
+  try {
+    const parsed = new URL(baseUrl);
+    const blockedHosts = ['169.254.169.254', 'metadata.google.internal', 'metadata.azure.com'];
+    if (blockedHosts.includes(parsed.hostname)) {
+      throw new Error("Local Whisper URL points to a blocked metadata endpoint.");
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('blocked')) throw e;
+    throw new Error(`Invalid local Whisper URL: ${baseUrl}`);
+  }
+
+  const endpoint = `${baseUrl}/v1/audio/transcriptions`;
+
+  // Build multipart form data
+  const formData = new FormData();
   const uint8 = new Uint8Array(audioBuffer);
   const file = new File([uint8], filename, { type: mimeType });
+  formData.append("file", file);
+  formData.append("model", config.model);
+  formData.append("response_format", "json");
 
-  const result = await client.audio.transcriptions.create({
-    model,
-    file,
-    response_format: "text",
+  const response = await fetch(endpoint, {
+    method: "POST",
+    body: formData,
+    signal: AbortSignal.timeout(30_000), // 30s timeout for local
   });
 
-  return typeof result === "string" ? result : (result as unknown as { text: string }).text;
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Local Whisper returned ${response.status}: ${body}`);
+  }
+
+  const result = await response.json();
+  return typeof result === "string" ? result : (result as { text: string }).text;
 }
 
 /**

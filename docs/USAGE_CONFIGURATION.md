@@ -44,12 +44,13 @@ Scopes:
 
 ## Tool Policies (HITL + Proactive)
 
-Each discovered tool has two key controls:
+Each discovered tool has three key controls:
 
-- `requires_approval`
-- `is_proactive_enabled`
+- `requires_approval` — whether the tool needs human approval before execution
+- `is_proactive_enabled` — whether the proactive scheduler can invoke this tool
+- `scope` — **Global** (available to all users) or **User Only** (admin-only, hidden from non-admin users)
 
-Includes global **Expand all / Collapse all** controls.
+Includes global **Expand all / Collapse all** controls. Summary bar shows tool count, groups, approval count, proactive count, and user-only count.
 
 ![Tool Policies settings (test env)](images/usage-settings-tool-policies.png)
 
@@ -80,3 +81,36 @@ Setup:
 1. Open **Settings → Alexa**
 2. Save `UBID_MAIN` and `AT_MAIN`
 3. Manage approvals/proactive behavior in Tool Policies
+
+---
+
+## Local Whisper (Admin)
+
+Deploy a local Whisper server as a fallback for cloud Speech-to-Text. When the cloud STT provider fails, Nexus automatically retries via the local server.
+
+Setup:
+1. Open **Settings → Local Whisper**
+2. Enable the fallback toggle
+3. Enter the server URL (e.g. `http://localhost:8083`)
+4. Set the model name (e.g. `large-v3`, `small`, `whisper-1`)
+5. Click **Test Connection** to verify
+6. Click **Save Configuration**
+
+The local Whisper server must expose an OpenAI-compatible `/v1/audio/transcriptions` endpoint. Recommended servers:
+- **faster-whisper-server** — Python, CTranslate2 + CUDA, ideal for Jetson
+- **whisper.cpp** — C++, CUDA support, lightweight
+
+---
+
+## Audio Mode (Chat)
+
+Hands-free conversation mode — talk to Nexus without clicking buttons.
+
+Activation:
+1. Click the **headset icon** (🎧) in the chat input bar
+2. Recording starts automatically
+3. After you stop speaking, Nexus transcribes, processes, and speaks the response
+4. After the response finishes playing, recording auto-starts again
+5. Click the headset icon again (or the "Stop" button in the status banner) to exit
+
+The status banner shows the current phase: Listening → Transcribing → Thinking → Speaking.

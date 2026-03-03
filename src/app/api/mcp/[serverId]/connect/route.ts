@@ -28,6 +28,7 @@ export async function POST(
           mcp_id: server.id,
           requires_approval: 1,
           is_proactive_enabled: 0,
+          scope: "global",
         });
       }
     }

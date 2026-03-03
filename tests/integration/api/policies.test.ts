@@ -112,4 +112,55 @@ describe("POST /api/policies", () => {
     expect(updated.requires_approval).toBe(0);
     expect(updated.is_proactive_enabled).toBe(1);
   });
+
+  test("creates policy with scope=user", async () => {
+    setMockUser({ id: adminId, email: "admin-pol@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/policies", {
+      method: "POST",
+      body: JSON.stringify({
+        tool_name: "admin_tool",
+        requires_approval: true,
+        scope: "user",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+
+    const list = await GET();
+    const data = await list.json();
+    const policy = data.find((p: any) => p.tool_name === "admin_tool");
+    expect(policy).toBeDefined();
+    expect(policy.scope).toBe("user");
+  });
+
+  test("defaults scope to global when not specified", async () => {
+    setMockUser({ id: adminId, email: "admin-pol@example.com", role: "admin" });
+    const list = await GET();
+    const data = await list.json();
+    const policy = data.find((p: any) => p.tool_name === "file_write");
+    expect(policy).toBeDefined();
+    expect(policy.scope).toBe("global");
+  });
+
+  test("defaults invalid scope to global", async () => {
+    setMockUser({ id: adminId, email: "admin-pol@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/policies", {
+      method: "POST",
+      body: JSON.stringify({
+        tool_name: "bad_scope_tool",
+        requires_approval: false,
+        scope: "invalid",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+
+    const list = await GET();
+    const data = await list.json();
+    const policy = data.find((p: any) => p.tool_name === "bad_scope_tool");
+    expect(policy).toBeDefined();
+    expect(policy.scope).toBe("global");
+  });
 });

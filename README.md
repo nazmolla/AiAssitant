@@ -9,13 +9,15 @@
 - **Multi-User Isolation** — per-user knowledge, threads, channels, and profiles
 - **Proactive Intelligence** — background scheduler monitors MCP tools and generates reminders
 - **Autonomous Knowledge Capture** — every conversation is mined for durable facts
-- **Human-in-the-Loop (HITL)** — sensitive tool calls require explicit approval; proactive scheduler approvals appear in the Approval Inbox for admins
+- **Human-in-the-Loop (HITL)** — sensitive tool calls require explicit approval; proactive scheduler approvals appear in the Approval Inbox for admins; per-tool **scope** (Global or User Only) controls visibility
 - **Browser Automation** — Playwright-powered web navigation, form filling, and screenshots
 - **Multi-Channel** — Web chat, WhatsApp, Discord, and custom webhooks
 - **Two-Way Email Channel** — SMTP send + IMAP receive with shared inbox routing
 - **Notification Severity Thresholds** — each user controls which alert levels trigger channel notifications; smart home/IoT tools are automatically capped below `disaster`
 - **Full Analytics Dashboard** — date-range KPIs, sessions graph, outcomes trends, and chart drilldown to detailed logs
 - **Screen Sharing** — share your screen with the agent for visual reasoning
+- **Audio Mode** — hands-free conversation with auto-listen and streaming TTS; continuous talk→transcribe→respond→speak loop
+- **Local Whisper Fallback** — optional local Whisper server (faster-whisper-server or whisper.cpp) as automatic STT backup when cloud fails
 - **Model Orchestrator** — intelligent task routing picks the best LLM (local for background, cloud for complex)
 - **Self-Extending Tools** — the agent can create its own tools at runtime, compiled and sandboxed
 - **Admin Notifications via Channels** — approval/proactive notices prefer IM channels, fallback to email

@@ -31,6 +31,7 @@ import MicIcon from "@mui/icons-material/Mic";
 import MicOffIcon from "@mui/icons-material/MicOff";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
+import HeadsetMicIcon from "@mui/icons-material/HeadsetMic";
 import MarkdownMessage from "./markdown-message";
 
 interface Thread {
@@ -170,6 +171,14 @@ export function ChatPanel() {
   const [playingTtsId, setPlayingTtsId] = useState<number | null>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Audio mode — continuous voice conversation
+  const [audioMode, setAudioMode] = useState(false);
+  const audioModeRef = useRef(false); // ref for use in callbacks
+  const audioModeTtsQueue = useRef<string>("");     // accumulates tokens for TTS
+  const audioModeSpeaking = useRef(false);           // true while TTS is playing
+  const audioModeProcessing = useRef(false);         // true while a TTS chunk is being fetched/played
+  const audioModePendingText = useRef<string | null>(null); // transcribed text waiting to be sent
+
   /** Capture a single frame from the screen share video stream */
   const captureFrame = useCallback((): string | null => {
     const video = videoRef.current;
@@ -281,6 +290,7 @@ export function ChatPanel() {
         ttsAudioRef.current.pause();
         ttsAudioRef.current = null;
       }
+      audioModeRef.current = false;
     };
   }, [screenStream]);
 
@@ -333,7 +343,15 @@ export function ChatPanel() {
           const res = await fetch("/api/audio/transcribe", { method: "POST", body: formData });
           const data = await res.json();
           if (res.ok) {
-            if (data.text) setInput((prev) => (prev ? prev + " " + data.text : data.text));
+            if (data.text) {
+              if (audioModeRef.current) {
+                // In audio mode, auto-send the transcribed text immediately
+                audioModePendingText.current = data.text;
+                setInput(data.text);
+              } else {
+                setInput((prev) => (prev ? prev + " " + data.text : data.text));
+              }
+            }
           } else {
             alert("Transcription failed: " + (data.error || `HTTP ${res.status}`));
           }
@@ -418,6 +436,101 @@ export function ChatPanel() {
     } catch (err) {
       alert("Text-to-speech failed: " + (err instanceof Error ? err.message : String(err)));
       setPlayingTtsId(null);
+    }
+  }
+
+  // ── Audio Mode — Continuous Voice Conversation ─────────────────
+
+  function toggleAudioMode() {
+    const next = !audioMode;
+    setAudioMode(next);
+    audioModeRef.current = next;
+    if (!next) {
+      // Turning off: stop any recording, TTS, reset queue
+      if (recording) stopRecording();
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current = null;
+        setPlayingTtsId(null);
+      }
+      audioModeTtsQueue.current = "";
+      audioModeSpeaking.current = false;
+      audioModeProcessing.current = false;
+      audioModePendingText.current = null;
+    }
+  }
+
+  // Auto-send transcribed text in audio mode
+  useEffect(() => {
+    if (!transcribing && audioModeRef.current && audioModePendingText.current) {
+      const text = audioModePendingText.current;
+      audioModePendingText.current = null;
+      // setInput was already called — trigger send on next tick
+      setTimeout(() => {
+        sendMessageRef.current?.();
+      }, 50);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transcribing]);
+
+  // Ref to sendMessage for use in audio mode callbacks
+  const sendMessageRef = useRef<(() => void) | null>(null);
+
+  /** Play TTS for audio mode — speaks the full response text, then auto-listens */
+  async function audioModePlayTts(text: string) {
+    if (!audioModeRef.current || !text.trim()) return;
+    audioModeSpeaking.current = true;
+    audioModeProcessing.current = true;
+
+    try {
+      let voice = "nova";
+      try {
+        const stored = localStorage.getItem("nexus_tts_voice");
+        if (stored) voice = stored;
+      } catch { /* noop */ }
+
+      const res = await fetch("/api/audio/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voice }),
+      });
+
+      if (!res.ok || !audioModeRef.current) {
+        audioModeSpeaking.current = false;
+        audioModeProcessing.current = false;
+        return;
+      }
+
+      const audioBlob = await res.blob();
+      const url = URL.createObjectURL(audioBlob);
+      const audio = new Audio(url);
+      ttsAudioRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        ttsAudioRef.current = null;
+        audioModeSpeaking.current = false;
+        audioModeProcessing.current = false;
+        // Auto-start listening again after TTS finishes
+        if (audioModeRef.current) {
+          setTimeout(() => {
+            if (audioModeRef.current && !recording) {
+              startRecording();
+            }
+          }, 300);
+        }
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        ttsAudioRef.current = null;
+        audioModeSpeaking.current = false;
+        audioModeProcessing.current = false;
+      };
+
+      await audio.play();
+    } catch {
+      audioModeSpeaking.current = false;
+      audioModeProcessing.current = false;
     }
   }
 
@@ -601,6 +714,7 @@ export function ChatPanel() {
     setPendingFiles([]);
     setLoading(true);
     setThinkingSteps([]);
+    audioModeTtsQueue.current = ""; // reset TTS accumulator
 
     // Capture screen frame if sharing is active
     const frames: string[] = [];
@@ -724,6 +838,12 @@ export function ChatPanel() {
               } else if (currentEvent === "token") {
                 // Streaming token — append to the current streaming assistant message
                 const token = data as string;
+
+                // Accumulate for audio mode TTS
+                if (audioModeRef.current) {
+                  audioModeTtsQueue.current += token;
+                }
+
                 setMessages((prev) => {
                   // Find existing streaming placeholder (negative id)
                   const streamIdx = prev.findIndex((m) => m.role === "assistant" && m.id < 0);
@@ -759,6 +879,13 @@ export function ChatPanel() {
               } else if (currentEvent === "done") {
                 // Agent loop completed — refresh thread list for auto-generated title
                 fetch("/api/threads").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setThreads(d); }).catch(console.error);
+
+                // Audio mode: speak the full streamed response
+                if (audioModeRef.current && audioModeTtsQueue.current.trim()) {
+                  const fullText = audioModeTtsQueue.current;
+                  audioModeTtsQueue.current = "";
+                  audioModePlayTts(sanitizeAssistantContent(fullText, false));
+                }
               } else if (currentEvent === "error") {
                 setMessages((prev) => [
                   ...prev,
@@ -781,6 +908,9 @@ export function ChatPanel() {
       setLoading(false);
     }
   }
+
+  // Keep sendMessageRef in sync for audio mode auto-send
+  sendMessageRef.current = sendMessage;
 
   const activeThreadTitle = useMemo(() => threads.find(t => t.id === activeThread)?.title, [threads, activeThread]);
 
@@ -1215,6 +1345,25 @@ export function ChatPanel() {
                   </Box>
                 )}
 
+                {/* Audio mode indicator */}
+                {audioMode && (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, px: 1.5, py: 1, borderRadius: 2, bgcolor: "primary.main", color: "primary.contrastText", opacity: 0.9 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "white", animation: "pulse 1.5s infinite" }} />
+                    <HeadsetMicIcon sx={{ fontSize: 16 }} />
+                    <Typography variant="caption" sx={{ fontWeight: 500 }}>
+                      {audioModeSpeaking ? "Speaking..." : recording ? "Listening..." : transcribing ? "Transcribing..." : loading ? "Thinking..." : "Audio mode active"}
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={toggleAudioMode}
+                      sx={{ color: "inherit", minWidth: 0, ml: "auto" }}
+                    >
+                      Stop
+                    </Button>
+                  </Box>
+                )}
+
                 {/* Pending file previews */}
                 {pendingFiles.length > 0 && (
                   <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mb: 1 }}>
@@ -1268,6 +1417,28 @@ export function ChatPanel() {
                   )}
                   <IconButton
                     size="small"
+                    onClick={() => {
+                      toggleAudioMode();
+                      if (!audioMode && !recording) {
+                        setTimeout(() => startRecording(), 150);
+                      }
+                    }}
+                    disabled={loading || !activeThread}
+                    title={audioMode ? "Turn off audio mode" : "Turn on audio mode (hands-free conversation)"}
+                    color={audioMode ? "primary" : "default"}
+                    sx={audioMode ? {
+                      bgcolor: "primary.main",
+                      color: "primary.contrastText",
+                      "&:hover": { bgcolor: "primary.dark" },
+                      animation: "pulse 2s infinite",
+                      "@keyframes pulse": { "0%, 100%": { opacity: 1 }, "50%": { opacity: 0.7 } },
+                    } : {}}
+                  >
+                    <HeadsetMicIcon fontSize="small" />
+                  </IconButton>
+                  {!audioMode && (
+                  <IconButton
+                    size="small"
                     onClick={recording ? stopRecording : startRecording}
                     disabled={loading || transcribing || !activeThread}
                     title={recording ? "Stop recording" : transcribing ? "Transcribing..." : "Voice input"}
@@ -1282,6 +1453,7 @@ export function ChatPanel() {
                       <MicIcon fontSize="small" />
                     )}
                   </IconButton>
+                  )}
                   <TextField
                     value={input}
                     onChange={(e) => setInput(e.target.value)}

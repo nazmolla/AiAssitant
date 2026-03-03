@@ -262,6 +262,7 @@ async function createCustomTool(args: Record<string, unknown>): Promise<unknown>
     mcp_id: null,
     requires_approval: 0,
     is_proactive_enabled: 0,
+    scope: "global",
   });
 
   // Update cache

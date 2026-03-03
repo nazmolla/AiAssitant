@@ -248,8 +248,8 @@ const TOOLS_REQUIRING_APPROVAL = new Set([
 function seedAllBuiltinToolPolicies(): void {
   const db = getDb();
   const stmt = db.prepare(
-    `INSERT OR IGNORE INTO tool_policies (tool_name, mcp_id, requires_approval, is_proactive_enabled)
-     VALUES (?, NULL, ?, 0)`
+    `INSERT OR IGNORE INTO tool_policies (tool_name, mcp_id, requires_approval, is_proactive_enabled, scope)
+     VALUES (?, NULL, ?, 0, 'global')`
   );
 
   const allBuiltinTools = [
@@ -285,6 +285,15 @@ function ensureScreenSharingColumn(): void {
     if (!cols.has("screen_sharing_enabled")) {
       db.prepare(`ALTER TABLE ${table} ADD COLUMN screen_sharing_enabled INTEGER DEFAULT 1`).run();
     }
+  }
+}
+
+function ensureToolPolicyScopeColumn(): void {
+  const db = getDb();
+  if (!tableExists("tool_policies")) return;
+  const cols = getColumns("tool_policies");
+  if (!cols.has("scope")) {
+    db.prepare("ALTER TABLE tool_policies ADD COLUMN scope TEXT DEFAULT 'global'").run();
   }
 }
 
@@ -489,6 +498,7 @@ export function initializeDatabase(): void {
   ensureUserIdColumns();
   ensureMcpServerNewColumns();
   ensureScreenSharingColumn();
+  ensureToolPolicyScopeColumn();
   migrateToMultiUser();
   ensureChannelUserId();
   ensureChannelImapUidColumns();

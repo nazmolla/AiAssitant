@@ -35,6 +35,8 @@ import {
   addLog,
   addAttachment,
   getUserProfile,
+  getUserById,
+  listToolPolicies,
   type Message,
   type AttachmentMeta,
 } from "@/lib/db";
@@ -157,7 +159,19 @@ export async function runAgentLoop(
   // Load custom (agent-created) tools
   const { getCustomToolDefinitions } = await import("./custom-tools");
   const customTools = getCustomToolDefinitions();
-  const tools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...BUILTIN_FILE_TOOLS, ...BUILTIN_ALEXA_TOOLS, ...customTools, ...mcpTools];
+  const allTools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...BUILTIN_FILE_TOOLS, ...BUILTIN_ALEXA_TOOLS, ...customTools, ...mcpTools];
+
+  // Filter tools by scope: non-admin users only see tools with scope = 'global'
+  const isAdmin = userId ? (getUserById(userId)?.role === "admin") : true;
+  const tools = isAdmin
+    ? allTools
+    : (() => {
+        const policyMap = new Map(listToolPolicies().map((p) => [p.tool_name, p]));
+        return allTools.filter((t) => {
+          const policy = policyMap.get(t.name);
+          return !policy || policy.scope !== "user";
+        });
+      })();
 
   if (!continuation) {
     // Build attachment metadata JSON

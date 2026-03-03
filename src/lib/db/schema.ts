@@ -164,7 +164,8 @@ CREATE TABLE IF NOT EXISTS tool_policies (
     tool_name TEXT PRIMARY KEY,
     mcp_id TEXT REFERENCES mcp_servers(id),
     requires_approval BOOLEAN DEFAULT 1,
-    is_proactive_enabled BOOLEAN DEFAULT 0
+    is_proactive_enabled BOOLEAN DEFAULT 0,
+    scope TEXT DEFAULT 'global'          -- 'global' | 'user'
 );
 
 CREATE TABLE IF NOT EXISTS approval_queue (

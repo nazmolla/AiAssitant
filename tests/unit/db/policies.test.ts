@@ -59,6 +59,51 @@ describe("Tool Policies", () => {
     const policies = listToolPolicies();
     expect(policies.length).toBeGreaterThanOrEqual(2);
   });
+
+  test("upsertToolPolicy defaults scope to global", () => {
+    upsertToolPolicy({
+      tool_name: "scope_default_tool",
+      mcp_id: null,
+      requires_approval: 0,
+      is_proactive_enabled: 0,
+    });
+    const policy = getToolPolicy("scope_default_tool");
+    expect(policy).toBeDefined();
+    expect(policy!.scope).toBe("global");
+  });
+
+  test("upsertToolPolicy creates policy with user scope", () => {
+    upsertToolPolicy({
+      tool_name: "user_only_tool",
+      mcp_id: null,
+      requires_approval: 1,
+      is_proactive_enabled: 0,
+      scope: "user",
+    });
+    const policy = getToolPolicy("user_only_tool");
+    expect(policy).toBeDefined();
+    expect(policy!.scope).toBe("user");
+  });
+
+  test("upsertToolPolicy updates scope from global to user", () => {
+    upsertToolPolicy({
+      tool_name: "scope_update_tool",
+      mcp_id: null,
+      requires_approval: 0,
+      is_proactive_enabled: 0,
+      scope: "global",
+    });
+    expect(getToolPolicy("scope_update_tool")!.scope).toBe("global");
+
+    upsertToolPolicy({
+      tool_name: "scope_update_tool",
+      mcp_id: null,
+      requires_approval: 0,
+      is_proactive_enabled: 0,
+      scope: "user",
+    });
+    expect(getToolPolicy("scope_update_tool")!.scope).toBe("user");
+  });
 });
 
 describe("Approval Queue", () => {

@@ -32,11 +32,11 @@ const MOCK_TOOLS = [
 ];
 
 const MOCK_POLICIES = [
-  { tool_name: "web_search", mcp_id: null, requires_approval: 1, is_proactive_enabled: 0 },
-  { tool_name: "read_file", mcp_id: null, requires_approval: 0, is_proactive_enabled: 0 },
-  { tool_name: "a1b2c3d4-e5f6-7890-abcd-ef1234567890.turn_on_light", mcp_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", requires_approval: 1, is_proactive_enabled: 0 },
-  { tool_name: "a1b2c3d4-e5f6-7890-abcd-ef1234567890.get_temperature", mcp_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", requires_approval: 0, is_proactive_enabled: 1 },
-  { tool_name: "f9e8d7c6-b5a4-3210-fedc-ba0987654321.create_issue", mcp_id: "f9e8d7c6-b5a4-3210-fedc-ba0987654321", requires_approval: 1, is_proactive_enabled: 0 },
+  { tool_name: "web_search", mcp_id: null, requires_approval: 1, is_proactive_enabled: 0, scope: "global" },
+  { tool_name: "read_file", mcp_id: null, requires_approval: 0, is_proactive_enabled: 0, scope: "global" },
+  { tool_name: "a1b2c3d4-e5f6-7890-abcd-ef1234567890.turn_on_light", mcp_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", requires_approval: 1, is_proactive_enabled: 0, scope: "global" },
+  { tool_name: "a1b2c3d4-e5f6-7890-abcd-ef1234567890.get_temperature", mcp_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", requires_approval: 0, is_proactive_enabled: 1, scope: "user" },
+  { tool_name: "f9e8d7c6-b5a4-3210-fedc-ba0987654321.create_issue", mcp_id: "f9e8d7c6-b5a4-3210-fedc-ba0987654321", requires_approval: 1, is_proactive_enabled: 0, scope: "global" },
 ];
 
 // ── Fetch Mock ───────────────────────────────────────────────────
@@ -221,6 +221,7 @@ describe("ToolPolicies — tool grouping & display", () => {
     expect(screen.getByText(/4 groups/)).toBeInTheDocument();
     expect(screen.getByText(/3 requiring approval/)).toBeInTheDocument();
     expect(screen.getByText(/1 proactive/)).toBeInTheDocument();
+    expect(screen.getByText(/1 user-only/)).toBeInTheDocument();
   });
 
   test("supports global collapse all and expand all", async () => {

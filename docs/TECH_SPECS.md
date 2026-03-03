@@ -13,7 +13,7 @@
 | Database | SQLite | `better-sqlite3` — zero-config, single-file persistence |
 | Frontend | Next.js 14 | App Router, Material UI (MUI v7) with 7 color themes, TailwindCSS, screen sharing via getDisplayMedia, **Markdown rendering** via `react-markdown` + `remark-gfm` |
 | HTTPS | nginx + self-signed cert | Reverse proxy HTTPS:443 → Next.js:3000. Required for mic access over network. TLSv1.2/1.3, HTTP → HTTPS redirect, SSE passthrough. |
-| Audio | OpenAI Whisper + TTS-1 | Speech-to-Text (mic input, 25 MB max, webm/wav/mp3/ogg/flac) and Text-to-Speech (9 voices, MP3 output). Supports dedicated `tts` and `stt` purpose providers with standard deployment field for Azure OpenAI. |
+| Audio | OpenAI Whisper + TTS-1 | Speech-to-Text (mic input, 25 MB max, webm/wav/mp3/ogg/flac) and Text-to-Speech (9 voices, MP3 output). Supports dedicated `tts` and `stt` purpose providers with standard deployment field for Azure OpenAI. **Local Whisper fallback** — optional local Whisper server (faster-whisper-server or whisper.cpp) as automatic backup when cloud STT fails. **Audio mode** — hands-free conversation with auto-listen and streaming TTS. |
 | LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy. **Streaming responses** — tokens are streamed in real-time via SSE `token` events for instant perceived latency. |
 | MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports. `list_changed` auto-refresh (500 ms debounce). |
 | Discord | discord.js | Gateway bot with mentions, DMs, and slash commands |
@@ -157,7 +157,8 @@ CREATE TABLE tool_policies (
     tool_name TEXT PRIMARY KEY,
     mcp_id TEXT REFERENCES mcp_servers(id),
     requires_approval BOOLEAN DEFAULT 1,
-    is_proactive_enabled BOOLEAN DEFAULT 0
+    is_proactive_enabled BOOLEAN DEFAULT 0,
+    scope TEXT DEFAULT 'global'         -- 'global' (all users) | 'user' (admin only)
 );
 
 CREATE TABLE approval_queue (
@@ -246,6 +247,9 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `GET/POST` | `/api/mcp/[serverId]/oauth/*` | Auth | OAuth authorize/callback for MCP servers |
 | `POST` | `/api/audio/transcribe` | User | Speech-to-Text via Whisper (multipart/form-data audio, max 25 MB) |
 | `POST` | `/api/audio/tts` | User | Text-to-Speech via TTS-1 (JSON `{text, voice?}`, returns MP3 binary) |
+| `POST` | `/api/audio/tts-stream` | User | Streaming-friendly TTS endpoint for audio mode (no-cache headers) |
+| `GET/PUT` | `/api/config/whisper` | Admin | Get/update local Whisper server configuration |
+| `POST` | `/api/config/whisper` | Admin | Test connectivity to local Whisper server |
 | `GET` | `/api/admin/users` | Admin | List all users with permissions |
 | `PUT/DELETE` | `/api/admin/users` | Admin | Update user role/status or delete user |
 | `GET` | `/api/admin/users/me` | User | Get current user's role and permissions |

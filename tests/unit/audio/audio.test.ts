@@ -86,17 +86,20 @@ const MOCK_OPENAI_AUDIO_PROVIDER: LlmProviderRecord = {
 };
 
 let mockProviders: LlmProviderRecord[] = [MOCK_OPENAI_PROVIDER];
+let mockAppConfig: Record<string, string> = {};
 
 jest.mock("@/lib/db", () => ({
   listLlmProviders: jest.fn(() => mockProviders),
+  getAppConfig: jest.fn((key: string) => mockAppConfig[key]),
   addLog: jest.fn(),
 }));
 
-import { getAudioClient, transcribeAudio, textToSpeech, MAX_AUDIO_SIZE_BYTES } from "@/lib/audio";
+import { getAudioClient, transcribeAudio, textToSpeech, getLocalWhisperConfig, MAX_AUDIO_SIZE_BYTES } from "@/lib/audio";
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockProviders = [MOCK_OPENAI_PROVIDER];
+  mockAppConfig = {};
 });
 
 // ── Tests ────────────────────────────────────────────────────────
@@ -265,5 +268,115 @@ describe("textToSpeech", () => {
 
   test("rejects empty text", async () => {
     await expect(textToSpeech("")).rejects.toThrow(/empty/i);
+  });
+});
+
+describe("getLocalWhisperConfig", () => {
+  test("returns disabled by default", () => {
+    const config = getLocalWhisperConfig();
+    expect(config.enabled).toBe(false);
+    expect(config.url).toBe("");
+    expect(config.model).toBe("whisper-1");
+  });
+
+  test("returns enabled with configured URL", () => {
+    mockAppConfig = {
+      whisper_local_enabled: "true",
+      whisper_local_url: "http://localhost:8083",
+      whisper_local_model: "large-v3",
+    };
+    const config = getLocalWhisperConfig();
+    expect(config.enabled).toBe(true);
+    expect(config.url).toBe("http://localhost:8083");
+    expect(config.model).toBe("large-v3");
+  });
+
+  test("defaults model to whisper-1 when not set", () => {
+    mockAppConfig = {
+      whisper_local_enabled: "true",
+      whisper_local_url: "http://localhost:8083",
+    };
+    const config = getLocalWhisperConfig();
+    expect(config.model).toBe("whisper-1");
+  });
+});
+
+describe("transcribeAudio — local Whisper fallback", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  test("falls back to local Whisper when cloud fails", async () => {
+    // Cloud fails
+    mockCreate.mockRejectedValue(new Error("Cloud service unavailable"));
+
+    // Local Whisper configured
+    mockAppConfig = {
+      whisper_local_enabled: "true",
+      whisper_local_url: "http://localhost:8083",
+      whisper_local_model: "large-v3",
+    };
+
+    // Mock fetch for local Whisper server
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ text: "Local transcription result" }),
+    }) as jest.Mock;
+
+    const buffer = Buffer.from("fake-audio-data");
+    const result = await transcribeAudio(buffer, "test.webm", "audio/webm");
+
+    expect(result).toBe("Local transcription result");
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://localhost:8083/v1/audio/transcriptions",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  test("throws combined error when both cloud and local fail", async () => {
+    mockCreate.mockRejectedValue(new Error("Cloud error"));
+
+    mockAppConfig = {
+      whisper_local_enabled: "true",
+      whisper_local_url: "http://localhost:8083",
+    };
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: () => Promise.resolve("Internal Server Error"),
+    }) as jest.Mock;
+
+    const buffer = Buffer.from("fake-audio-data");
+    await expect(transcribeAudio(buffer, "test.webm", "audio/webm"))
+      .rejects.toThrow(/Cloud STT failed.*Local Whisper also failed/);
+  });
+
+  test("throws cloud error when local Whisper is disabled", async () => {
+    mockCreate.mockRejectedValue(new Error("Cloud error"));
+    mockAppConfig = {};
+
+    const buffer = Buffer.from("fake-audio-data");
+    await expect(transcribeAudio(buffer, "test.webm", "audio/webm"))
+      .rejects.toThrow("Cloud error");
+  });
+
+  test("uses cloud when it succeeds (does not call local)", async () => {
+    mockCreate.mockResolvedValue("Cloud transcription");
+
+    mockAppConfig = {
+      whisper_local_enabled: "true",
+      whisper_local_url: "http://localhost:8083",
+    };
+
+    global.fetch = jest.fn() as jest.Mock;
+
+    const buffer = Buffer.from("fake-audio-data");
+    const result = await transcribeAudio(buffer, "test.webm", "audio/webm");
+
+    expect(result).toBe("Cloud transcription");
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
