@@ -101,3 +101,37 @@ export function defaultRequiresApproval(toolName: string, source: DiscoveredTool
   if (source === "mcp") return 1;
   return 0;
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Tool name normalization                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Lazy-loaded set of all known builtin tool names (without the "builtin." prefix). */
+let _builtinShortNames: Map<string, string> | null = null;
+
+function getBuiltinShortNameMap(): Map<string, string> {
+  if (!_builtinShortNames) {
+    _builtinShortNames = new Map();
+    for (const tool of getAllBuiltinTools()) {
+      if (tool.name.startsWith("builtin.")) {
+        _builtinShortNames.set(tool.name.slice("builtin.".length), tool.name);
+      }
+    }
+  }
+  return _builtinShortNames;
+}
+
+/**
+ * Normalize a tool name the LLM may have mangled.
+ *
+ * The LLM sometimes strips the "builtin." prefix when calling a tool
+ * (e.g. "alexa_announce" instead of "builtin.alexa_announce").
+ * This function restores it when the short name matches a known builtin.
+ */
+export function normalizeToolName(name: string): string {
+  // Already qualified (contains a dot) — return as-is
+  if (name.includes(".")) return name;
+
+  const fullName = getBuiltinShortNameMap().get(name);
+  return fullName ?? name;
+}

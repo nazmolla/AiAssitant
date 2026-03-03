@@ -297,6 +297,7 @@ src/
 │   ├── agent/                  # Core agent logic
 │   │   ├── loop.ts             # Sense-Think-Act agent loop
 │   │   ├── gatekeeper.ts       # HITL policy enforcement
+│   │   ├── discovery.ts        # Tool discovery, group inference, name normalization
 │   │   ├── custom-tools.ts     # Self-extending tool system (VM sandbox)
 │   │   ├── web-tools.ts        # Web search/fetch tools
 │   │   ├── browser-tools.ts    # Playwright browser automation

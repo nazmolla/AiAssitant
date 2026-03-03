@@ -256,6 +256,20 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 
 ---
 
+## Tool Dispatch & Name Normalization
+
+All built-in tools use the `builtin.` prefix (e.g. `builtin.alexa_announce`, `builtin.browser_navigate`). MCP tools use `serverId.toolName` format.
+
+**Dispatch chain** (identical in `loop.ts`, `gatekeeper.ts`, `scheduler/index.ts`):
+
+`isBuiltinWebTool → isBrowserTool → isFsTool → isFileTool → isNetworkTool → isEmailTool → isAlexaTool → isCustomTool → MCP fallback`
+
+**Name normalization**: The LLM sometimes strips the `builtin.` prefix when calling tools (e.g. `alexa_announce` instead of `builtin.alexa_announce`). The `normalizeToolName()` function in `discovery.ts` lazily builds a map of all known builtin short names and restores the prefix before dispatch. Applied in all three dispatch entry points.
+
+**Discovery**: `discovery.ts` uses barrel exports from `agent/index.ts` (via `import * as agentExports from "./index"`) to dynamically discover all `BUILTIN_*_TOOLS` arrays and `*_REQUIRING_APPROVAL` arrays. To avoid circular dependencies, `discovery.ts` is **not** re-exported from the barrel — consumers import directly from `@/lib/agent/discovery`.
+
+---
+
 ## Security
 
 ### Static Analysis Fixes

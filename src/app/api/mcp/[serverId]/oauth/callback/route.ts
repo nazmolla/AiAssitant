@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth/guard";
 import { getMcpServer, upsertMcpServer, type McpServerRecord } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 /**
  * OAuth callback handler. Receives the authorization code from the OAuth provider
  * (e.g., Home Assistant), exchanges it for an access token, stores it in the DB,

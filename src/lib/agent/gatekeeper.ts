@@ -57,6 +57,11 @@ export async function executeWithGatekeeper(
   threadId: string,
   reasoning?: string
 ): Promise<GatekeeperResult> {
+  // Normalize tool name — the LLM sometimes strips the "builtin." prefix
+  // Use lazy import to avoid circular dependency (gatekeeper → discovery → index → gatekeeper)
+  const { normalizeToolName } = await import("./discovery");
+  toolCall = { ...toolCall, name: normalizeToolName(toolCall.name) };
+
   const policy = getToolPolicy(toolCall.name);
 
   // Default-deny for unknown tools: if no policy exists, require approval.
@@ -190,6 +195,8 @@ export async function executeApprovedTool(
       result = await executeBuiltinEmailTool(toolName, args, thread?.user_id ?? undefined, threadId);
     } else if (isFileTool(toolName)) {
       result = await executeBuiltinFileTool(toolName, args, { threadId });
+    } else if (isAlexaTool(toolName)) {
+      result = await executeAlexaTool(toolName, args);
     } else if (isCustomTool(toolName)) {
       result = await executeCustomTool(toolName, args);
     } else {

@@ -35,7 +35,11 @@ import {
   executeCustomTool,
   getCustomToolDefinitions,
   BUILTIN_TOOLMAKER_TOOLS,
+  isAlexaTool,
+  executeAlexaTool,
+  BUILTIN_ALEXA_TOOLS,
 } from "@/lib/agent";
+import { normalizeToolName } from "@/lib/agent/discovery";
 import {
   listToolPolicies,
   getToolPolicy,
@@ -476,6 +480,7 @@ function toolRequiresArguments(toolName: string, mcpManager: ReturnType<typeof g
     ...BUILTIN_EMAIL_TOOLS,
     ...BUILTIN_FILE_TOOLS,
     ...BUILTIN_TOOLMAKER_TOOLS,
+    ...BUILTIN_ALEXA_TOOLS,
     ...getCustomToolDefinitions(),
   ];
 
@@ -717,6 +722,9 @@ async function executeSchedulerTool(
   args: Record<string, unknown>,
   mcpManager: ReturnType<typeof getMcpManager>
 ): Promise<SchedulerToolExecution> {
+  // Normalize tool name — restore "builtin." prefix if stripped
+  toolName = normalizeToolName(toolName);
+
   if (isBuiltinWebTool(toolName)) {
     return { skipped: false, result: await executeBuiltinWebTool(toolName, args) };
   }
@@ -726,14 +734,17 @@ async function executeSchedulerTool(
   if (isFsTool(toolName)) {
     return { skipped: false, result: await executeBuiltinFsTool(toolName, args) };
   }
-    if (isFileTool(toolName)) {
-      return { skipped: false, result: await executeBuiltinFileTool(toolName, args) };
-    }
+  if (isFileTool(toolName)) {
+    return { skipped: false, result: await executeBuiltinFileTool(toolName, args) };
+  }
   if (isNetworkTool(toolName)) {
     return { skipped: false, result: await executeBuiltinNetworkTool(toolName, args) };
   }
   if (isEmailTool(toolName)) {
     return { skipped: false, result: await executeBuiltinEmailTool(toolName, args) };
+  }
+  if (isAlexaTool(toolName)) {
+    return { skipped: false, result: await executeAlexaTool(toolName, args) };
   }
   if (isCustomTool(toolName)) {
     return { skipped: false, result: await executeCustomTool(toolName, args) };

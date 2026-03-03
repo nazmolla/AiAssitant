@@ -730,6 +730,11 @@ async function executeToolWithPolicy(
 ): Promise<import("./gatekeeper").GatekeeperResult> {
   const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg } = await import("@/lib/db");
   const { executeCustomTool: execCustom } = await import("./custom-tools");
+  const { normalizeToolName } = await import("./discovery");
+
+  // Normalize tool name — the LLM sometimes strips the "builtin." prefix
+  toolCall = { ...toolCall, name: normalizeToolName(toolCall.name) };
+
   const policy = getToolPolicy(toolCall.name);
 
   if (policy && policy.requires_approval) {

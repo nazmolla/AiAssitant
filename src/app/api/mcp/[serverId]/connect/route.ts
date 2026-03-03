@@ -3,6 +3,8 @@ import { requireAdmin } from "@/lib/auth";
 import { getMcpManager } from "@/lib/mcp";
 import { getMcpServer, upsertToolPolicy, getToolPolicy } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(
   _req: NextRequest,
   { params }: { params: { serverId: string } }

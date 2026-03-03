@@ -3,6 +3,8 @@ import { requireAdmin } from "@/lib/auth";
 import { getMcpServer } from "@/lib/db";
 import { randomUUID } from "crypto";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Initiates the OAuth authorization flow for an MCP server.
  * Redirects the user to the server's OAuth authorization endpoint.
