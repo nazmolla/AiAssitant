@@ -38,6 +38,8 @@ Scopes:
 - **Global** (shared)
 - **User** (owner-only)
 
+**Auto-refresh:** When a connected MCP server installs or removes tools at runtime (e.g. Forage), the agent detects the `list_changed` notification and refreshes the tool list automatically — no restart or manual reconnect needed.
+
 ---
 
 ## Tool Policies (HITL + Proactive)

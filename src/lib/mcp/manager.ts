@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { listMcpServers, type McpServerRecord } from "@/lib/db";
 import { addLog } from "@/lib/db";
 import type { ToolDefinition } from "@/lib/llm";
@@ -59,6 +60,52 @@ class McpManager {
   }
 
   /**
+   * Build a Client with listChanged.tools handler that auto-refreshes
+   * the connection's tool list when the server emits list_changed.
+   */
+  private createClient(server: McpServerRecord): Client {
+    return new Client(
+      { name: "nexus-agent", version: "1.0.0" },
+      {
+        capabilities: {},
+        listChanged: {
+          tools: {
+            autoRefresh: true,
+            debounceMs: 500,
+            onChanged: (err: Error | null, tools: Tool[] | null) => {
+              if (err) {
+                addLog({
+                  level: "error",
+                  source: "mcp",
+                  message: `Failed to refresh tools for "${server.name}" after list_changed: ${err.message}`,
+                  metadata: JSON.stringify({ serverId: server.id }),
+                });
+                return;
+              }
+              const conn = this.connections.get(server.id);
+              if (!conn || !tools) return;
+
+              const oldCount = conn.tools.length;
+              conn.tools = tools.map((t) => ({
+                name: `${server.id}.${t.name}`,
+                description: t.description || "",
+                inputSchema: (t.inputSchema as Record<string, unknown>) || {},
+              }));
+
+              addLog({
+                level: "info",
+                source: "mcp",
+                message: `MCP server "${server.name}" tools refreshed: ${oldCount} → ${conn.tools.length} tools.`,
+                metadata: JSON.stringify({ tools: conn.tools.map((t) => t.name) }),
+              });
+            },
+          },
+        },
+      }
+    );
+  }
+
+  /**
    * Connect to a single MCP server.
    */
   async connect(server: McpServerRecord): Promise<ConnectedMcpServer> {
@@ -91,10 +138,7 @@ class McpManager {
       }
     }
 
-    let client = new Client(
-      { name: "nexus-agent", version: "1.0.0" },
-      { capabilities: {} }
-    );
+    let client = this.createClient(server);
 
     const transportType = server.transport_type || "stdio";
 
@@ -158,10 +202,7 @@ class McpManager {
 
         // Try SSE at the original URL first (some servers use SSE at the same endpoint)
         try {
-          client = new Client(
-            { name: "nexus-agent", version: "1.0.0" },
-            { capabilities: {} }
-          );
+          client = this.createClient(server);
           const sseTransport = new SSEClientTransport(new URL(endpoint), {
             requestInit: { headers: httpHeaders },
           } as any);
@@ -174,10 +215,7 @@ class McpManager {
             message: `SSE at original URL failed for "${server.name}", trying /sse suffix: ${_sseErr}`,
             metadata: JSON.stringify({ serverId: server.id }),
           });
-          client = new Client(
-            { name: "nexus-agent", version: "1.0.0" },
-            { capabilities: {} }
-          );
+          client = this.createClient(server);
           const sseUrl = endpoint.replace(/\/$/, "") + "/sse";
           const sseTransport2 = new SSEClientTransport(new URL(sseUrl), {
             requestInit: { headers: httpHeaders },

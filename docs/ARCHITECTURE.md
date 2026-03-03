@@ -165,6 +165,7 @@ The `status` events provide transparency into the agent's internal process for *
 | **Model Orchestrator** | Intelligent task routing classifies each message (complex/simple/background/vision) and selects the best LLM provider based on capabilities, speed, cost, and tier. |
 | **Self-Extending Tools** | The agent can create, compile, and register new tools at runtime. Custom tools run in a VM sandbox with no file system or process access. |
 | **Native SDKs** | Direct use of Azure OpenAI, OpenAI, Anthropic, LiteLLM, and MCP SDKs — no LangChain. |
+| **MCP Auto-Refresh** | Subscribes to `list_changed` notifications from MCP servers. When a server installs or removes tools at runtime (e.g. Forage), the tool list is refreshed automatically with a 500 ms debounce — no restart required. |
 | **Browser Automation** | Playwright-powered tools let the agent navigate pages, fill forms, take screenshots, and manage sessions. |
 | **File System Access** | Built-in tools to read, write, list, and search files — with HITL gating on destructive operations. |
 | **Multi-Channel Comms** | WhatsApp, Discord, webhooks, and web chat — each channel resolves senders to internal users. |
@@ -293,7 +294,7 @@ src/
 │   ├── channels/               # Channel integrations
 │   │   └── discord.ts          # Discord Gateway bot (uses channel owner resolution)
 │   ├── mcp/                    # MCP client management
-│   │   └── manager.ts          # Connect, discover, invoke
+│   │   └── manager.ts          # Connect, discover, invoke, auto-refresh
 │   ├── scheduler/              # Proactive cron scheduler
 │   └── bootstrap.ts            # Runtime initialization
 └── middleware.ts                # Auth + rate limiting + security middleware

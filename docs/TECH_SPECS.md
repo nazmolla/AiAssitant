@@ -13,7 +13,7 @@
 | Database | SQLite | `better-sqlite3` — zero-config, single-file persistence |
 | Frontend | Next.js 14 | App Router, Material UI (MUI v7) with 7 color themes, TailwindCSS, screen sharing via getDisplayMedia |
 | LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy |
-| MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports |
+| MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports. `list_changed` auto-refresh (500 ms debounce). |
 | Discord | discord.js | Gateway bot with mentions, DMs, and slash commands |
 | Auth | NextAuth v4 | Credentials (email + password) and OAuth (Azure AD, Google) |
 | iOS App | SwiftUI | Native iOS 17+ companion app with full feature parity (see [iOS README](../ios/NexusAgent/README.md)) |

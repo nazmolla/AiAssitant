@@ -135,13 +135,16 @@ describe("ToolPolicies — server name resolution (Bug #4)", () => {
     setupFetchMock({ servers: { error: "decryption failed" } });
     render(<ToolPolicies />);
 
-    // Tools still render — but with GUID fallback (this is the pre-fix behavior)
+    // Groups load collapsed — expand all to see tools
     await waitFor(() => {
       expect(screen.getByText(/a1b2c3d4/)).toBeInTheDocument();
     });
+    fireEvent.click(screen.getByText("Expand all"));
 
     // The tools themselves still appear — component doesn't crash
-    expect(screen.getByText("turn_on_light")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("turn_on_light")).toBeInTheDocument();
+    });
     expect(screen.getByText("create_issue")).toBeInTheDocument();
   });
 
@@ -161,7 +164,12 @@ describe("ToolPolicies — server name resolution (Bug #4)", () => {
 
     render(<ToolPolicies />);
 
-    // Tools still render with GUID fallback
+    // Groups load collapsed — expand all, then verify tools render with GUID fallback
+    await waitFor(() => {
+      expect(screen.getByText("Expand all")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Expand all"));
+
     await waitFor(() => {
       expect(screen.getByText("turn_on_light")).toBeInTheDocument();
     });
@@ -190,10 +198,15 @@ describe("ToolPolicies — tool grouping & display", () => {
   test("strips server ID prefix from MCP tool display names", async () => {
     render(<ToolPolicies />);
 
+    // Groups load collapsed — expand all to see tool names
+    await waitFor(() => {
+      expect(screen.getByText("Expand all")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Expand all"));
+
     await waitFor(() => {
       expect(screen.getByText("turn_on_light")).toBeInTheDocument();
     });
-
     expect(screen.getByText("get_temperature")).toBeInTheDocument();
     expect(screen.getByText("create_issue")).toBeInTheDocument();
   });
@@ -213,20 +226,24 @@ describe("ToolPolicies — tool grouping & display", () => {
   test("supports global collapse all and expand all", async () => {
     render(<ToolPolicies />);
 
+    // Groups start collapsed by default
     await waitFor(() => {
-      expect(screen.getByText("turn_on_light")).toBeInTheDocument();
+      expect(screen.getByText("Expand all")).toBeInTheDocument();
     });
+    expect(screen.queryByText("turn_on_light")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Collapse all"));
-
-    await waitFor(() => {
-      expect(screen.queryByText("turn_on_light")).not.toBeInTheDocument();
-    });
-
+    // Expand all → tools become visible
     fireEvent.click(screen.getByText("Expand all"));
 
     await waitFor(() => {
       expect(screen.getByText("turn_on_light")).toBeInTheDocument();
+    });
+
+    // Collapse all → tools hidden again
+    fireEvent.click(screen.getByText("Collapse all"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("turn_on_light")).not.toBeInTheDocument();
     });
   });
 
@@ -261,6 +278,12 @@ describe("ToolPolicies — toggle interactions", () => {
 
   test("toggling approval calls POST /api/policies", async () => {
     const { container } = render(<ToolPolicies />);
+
+    // Groups load collapsed — expand all to access toggle switches
+    await waitFor(() => {
+      expect(screen.getByText("Expand all")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Expand all"));
 
     await waitFor(() => {
       expect(screen.getByText("web_search")).toBeInTheDocument();

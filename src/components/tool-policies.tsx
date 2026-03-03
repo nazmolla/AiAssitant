@@ -263,7 +263,7 @@ export function ToolPolicies() {
 
       {groupKeys.map((groupKey) => {
         const group = grouped[groupKey];
-        const isCollapsed = collapsed[groupKey] ?? false;
+        const isCollapsed = collapsed[groupKey] ?? true;
         return (
           <Card key={groupKey}>
             <CardHeader className="pb-0 pt-4 px-4">
