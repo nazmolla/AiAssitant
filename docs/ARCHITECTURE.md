@@ -142,7 +142,7 @@ The chat interface supports **voice input** (Speech-to-Text) and **voice output*
 
 - **Speech-to-Text**: Click the mic button to record audio via the browser MediaRecorder API (`audio/webm;codecs=opus`). The recording is sent to `POST /api/audio/transcribe` which forwards it to OpenAI's **Whisper** (`whisper-1`) model. The transcribed text is appended to the chat input field. Max file size: 25 MB.
 - **Text-to-Speech**: Click the speaker icon on any assistant message to hear it read aloud. The message text is sent to `POST /api/audio/tts` which calls OpenAI's **TTS-1** model (default voice: `nova`, 9 voices available). The MP3 audio plays inline via the browser Audio API. Click again to stop playback.
-- **Provider selection**: `getAudioClient()` in `src/lib/audio.ts` finds the first OpenAI-compatible provider (openai → azure-openai → litellm) — Anthropic is skipped as it has no audio API.
+- **Provider selection**: `getAudioClient()` in `src/lib/audio.ts` prefers providers with `purpose = "audio"` (allowing dedicated TTS/STT deployments), then falls back to the first OpenAI-compatible provider (openai → azure-openai → litellm). Anthropic is skipped as it has no audio API. For Azure OpenAI, audio-purpose providers store separate `ttsDeployment` and `sttDeployment` config fields since the Azure deployment name is embedded in the REST URL.
 
 ### Real-Time Streaming
 

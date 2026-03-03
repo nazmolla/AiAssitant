@@ -107,6 +107,66 @@ describe("POST /api/config/llm", () => {
     expect(res.status).toBe(201);
   });
 
+  test("creates an audio-purpose OpenAI provider", async () => {
+    setMockUser({ id: adminId, email: "llm-admin@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/config/llm", {
+      method: "POST",
+      body: JSON.stringify({
+        label: "Audio Provider",
+        provider_type: "openai",
+        purpose: "audio",
+        config: { apiKey: "sk-audio-key" },
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.purpose).toBe("audio");
+  });
+
+  test("creates an audio-purpose Azure provider with TTS/STT deployments", async () => {
+    setMockUser({ id: adminId, email: "llm-admin@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/config/llm", {
+      method: "POST",
+      body: JSON.stringify({
+        label: "Azure Audio",
+        provider_type: "azure-openai",
+        purpose: "audio",
+        config: {
+          apiKey: "azure-audio-key",
+          endpoint: "https://my-resource.openai.azure.com",
+          ttsDeployment: "tts-1",
+          sttDeployment: "whisper-1",
+        },
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.purpose).toBe("audio");
+    expect(data.provider_type).toBe("azure-openai");
+  });
+
+  test("returns 400 for invalid purpose", async () => {
+    setMockUser({ id: adminId, email: "llm-admin@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/config/llm", {
+      method: "POST",
+      body: JSON.stringify({
+        label: "Bad Purpose",
+        provider_type: "openai",
+        purpose: "invalid",
+        config: { apiKey: "sk-test" },
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("purpose");
+  });
+
   test("returns 400 for Azure OpenAI without endpoint", async () => {
     setMockUser({ id: adminId, email: "llm-admin@example.com", role: "admin" });
     const req = new NextRequest("http://localhost/api/config/llm", {
@@ -128,7 +188,7 @@ describe("POST /api/config/llm", () => {
     setMockUser({ id: adminId, email: "llm-admin@example.com", role: "admin" });
     const res = await GET();
     const data = await res.json();
-    expect(data.length).toBe(2);
+    expect(data.length).toBe(4);
     data.forEach((p: any) => {
       expect(p.config.apiKey).toBe("••••••");
     });

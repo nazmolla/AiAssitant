@@ -47,6 +47,31 @@ const MOCK_AZURE_PROVIDER: LlmProviderRecord = {
   created_at: new Date().toISOString(),
 };
 
+const MOCK_AUDIO_PROVIDER: LlmProviderRecord = {
+  id: "provider-3",
+  label: "Audio Provider",
+  provider_type: "azure-openai",
+  purpose: "audio",
+  config_json: JSON.stringify({
+    apiKey: "azure-key-456",
+    endpoint: "https://audio.openai.azure.com",
+    ttsDeployment: "my-tts",
+    sttDeployment: "my-whisper",
+  }),
+  is_default: 0,
+  created_at: new Date().toISOString(),
+};
+
+const MOCK_OPENAI_AUDIO_PROVIDER: LlmProviderRecord = {
+  id: "provider-4",
+  label: "OpenAI Audio",
+  provider_type: "openai",
+  purpose: "audio",
+  config_json: JSON.stringify({ apiKey: "sk-audio-key" }),
+  is_default: 0,
+  created_at: new Date().toISOString(),
+};
+
 let mockProviders: LlmProviderRecord[] = [MOCK_OPENAI_PROVIDER];
 
 jest.mock("@/lib/db", () => ({
@@ -87,6 +112,60 @@ describe("getAudioClient", () => {
       { ...MOCK_OPENAI_PROVIDER, provider_type: "anthropic" as LlmProviderRecord["provider_type"] },
     ];
     expect(() => getAudioClient()).toThrow(/No OpenAI-compatible/);
+  });
+
+  test("prefers providers with purpose=audio over chat providers", () => {
+    mockProviders = [MOCK_OPENAI_PROVIDER, MOCK_OPENAI_AUDIO_PROVIDER];
+    const OpenAI = require("openai").default;
+    getAudioClient();
+    // The audio-purpose provider should be chosen; check the apiKey used
+    const lastCall = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
+    expect(lastCall.apiKey).toBe("sk-audio-key");
+  });
+
+  test("falls back to chat provider when no audio provider exists", () => {
+    mockProviders = [MOCK_OPENAI_PROVIDER];
+    const OpenAI = require("openai").default;
+    getAudioClient();
+    const lastCall = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
+    expect(lastCall.apiKey).toBe("test-key-123");
+  });
+
+  test("uses ttsDeployment for TTS on azure-openai audio provider", () => {
+    mockProviders = [MOCK_AUDIO_PROVIDER];
+    const OpenAI = require("openai").default;
+    getAudioClient("tts");
+    const lastCall = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
+    expect(lastCall.baseURL).toContain("/my-tts");
+  });
+
+  test("uses sttDeployment for STT on azure-openai audio provider", () => {
+    mockProviders = [MOCK_AUDIO_PROVIDER];
+    const OpenAI = require("openai").default;
+    getAudioClient("stt");
+    const lastCall = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
+    expect(lastCall.baseURL).toContain("/my-whisper");
+  });
+
+  test("uses default tts/whisper deployments when not specified", () => {
+    const providerNoDeployments: LlmProviderRecord = {
+      ...MOCK_AZURE_PROVIDER,
+      purpose: "audio" as LlmProviderRecord["purpose"],
+      config_json: JSON.stringify({
+        apiKey: "azure-key-789",
+        endpoint: "https://test.openai.azure.com",
+      }),
+    };
+    mockProviders = [providerNoDeployments];
+    const OpenAI = require("openai").default;
+    
+    getAudioClient("tts");
+    let lastCall = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
+    expect(lastCall.baseURL).toContain("/tts");
+    
+    getAudioClient("stt");
+    lastCall = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
+    expect(lastCall.baseURL).toContain("/whisper");
   });
 });
 

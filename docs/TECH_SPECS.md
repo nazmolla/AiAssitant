@@ -13,7 +13,7 @@
 | Database | SQLite | `better-sqlite3` — zero-config, single-file persistence |
 | Frontend | Next.js 14 | App Router, Material UI (MUI v7) with 7 color themes, TailwindCSS, screen sharing via getDisplayMedia, **Markdown rendering** via `react-markdown` + `remark-gfm` |
 | HTTPS | nginx + self-signed cert | Reverse proxy HTTPS:443 → Next.js:3000. Required for mic access over network. TLSv1.2/1.3, HTTP → HTTPS redirect, SSE passthrough. |
-| Audio | OpenAI Whisper + TTS-1 | Speech-to-Text (mic input, 25 MB max, webm/wav/mp3/ogg/flac) and Text-to-Speech (9 voices, MP3 output). Uses existing OpenAI SDK. |
+| Audio | OpenAI Whisper + TTS-1 | Speech-to-Text (mic input, 25 MB max, webm/wav/mp3/ogg/flac) and Text-to-Speech (9 voices, MP3 output). Supports dedicated `audio` purpose providers with separate TTS/STT deployments for Azure OpenAI. |
 | LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy. **Streaming responses** — tokens are streamed in real-time via SSE `token` events for instant perceived latency. |
 | MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports. `list_changed` auto-refresh (500 ms debounce). |
 | Discord | discord.js | Gateway bot with mentions, DMs, and slash commands |
@@ -74,7 +74,7 @@ CREATE TABLE llm_providers (
     id TEXT PRIMARY KEY,
     label TEXT NOT NULL,
     provider_type TEXT NOT NULL,         -- 'azure-openai' | 'openai' | 'anthropic'
-    purpose TEXT NOT NULL DEFAULT 'chat',-- 'chat' | 'embeddings'
+    purpose TEXT NOT NULL DEFAULT 'chat',-- 'chat' | 'embedding' | 'audio'
     config_json TEXT NOT NULL,
     is_default BOOLEAN DEFAULT 0
 );

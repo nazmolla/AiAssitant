@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "provider_type is invalid." }, { status: 400 });
   }
   if (!isPurpose(purpose)) {
-    return NextResponse.json({ error: "purpose must be 'chat' or 'embedding'." }, { status: 400 });
+    return NextResponse.json({ error: "purpose must be 'chat', 'embedding', or 'audio'." }, { status: 400 });
   }
   if (!config || typeof config !== "object") {
     return NextResponse.json({ error: "config must be an object." }, { status: 400 });
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
   let normalizedConfig: Record<string, string>;
   try {
-    normalizedConfig = buildConfig(providerType, config as Record<string, unknown>);
+    normalizedConfig = buildConfig(providerType, config as Record<string, unknown>, purpose);
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });
   }
@@ -95,7 +95,7 @@ export async function PATCH(req: NextRequest) {
 
   if (body.purpose !== undefined) {
     if (!isPurpose(body.purpose)) {
-      return NextResponse.json({ error: "purpose must be 'chat' or 'embedding'." }, { status: 400 });
+      return NextResponse.json({ error: "purpose must be 'chat', 'embedding', or 'audio'." }, { status: 400 });
     }
     updates.purpose = body.purpose;
   }
@@ -105,7 +105,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "config must be an object." }, { status: 400 });
     }
     try {
-      updates.config = buildConfig(effectiveType, body.config as Record<string, unknown>);
+      updates.config = buildConfig(effectiveType, body.config as Record<string, unknown>, updates.purpose || existing.purpose);
     } catch (err) {
       return NextResponse.json({ error: (err as Error).message }, { status: 400 });
     }
@@ -167,10 +167,10 @@ function isProviderType(value: unknown): value is LlmProviderType {
 }
 
 function isPurpose(value: unknown): value is LlmProviderPurpose {
-  return value === "chat" || value === "embedding";
+  return value === "chat" || value === "embedding" || value === "audio";
 }
 
-function buildConfig(provider: LlmProviderType, input: Record<string, unknown>): Record<string, any> {
+function buildConfig(provider: LlmProviderType, input: Record<string, unknown>, purpose: LlmProviderPurpose = "chat"): Record<string, any> {
   const read = (key: string, required = false) => {
     const raw = input[key];
     if (raw === undefined || raw === null) {
@@ -208,14 +208,28 @@ function buildConfig(provider: LlmProviderType, input: Record<string, unknown>):
     if (provider === "azure-openai") {
       const apiKey = read("apiKey", true)!;
       const endpoint = read("endpoint", true)!;
-      const deployment = read("deployment", true)!;
       const apiVersion = read("apiVersion");
-      base = {
-        apiKey,
-        endpoint,
-        deployment,
-        ...(apiVersion ? { apiVersion } : {}),
-      };
+
+      if (purpose === "audio") {
+        // Audio providers use separate TTS/STT deployments instead of a single deployment
+        const ttsDeployment = read("ttsDeployment") || "tts";
+        const sttDeployment = read("sttDeployment") || "whisper";
+        base = {
+          apiKey,
+          endpoint,
+          ttsDeployment,
+          sttDeployment,
+          ...(apiVersion ? { apiVersion } : {}),
+        };
+      } else {
+        const deployment = read("deployment", true)!;
+        base = {
+          apiKey,
+          endpoint,
+          deployment,
+          ...(apiVersion ? { apiVersion } : {}),
+        };
+      }
     } else if (provider === "openai") {
       const apiKey = read("apiKey", true)!;
       const model = read("model");

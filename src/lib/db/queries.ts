@@ -371,7 +371,7 @@ export function upsertIdentity({ email, providerId, subId, passwordHash = null }
 // â”€â”€â”€ LLM Providers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type LlmProviderType = "azure-openai" | "openai" | "anthropic" | "litellm";
-export type LlmProviderPurpose = "chat" | "embedding";
+export type LlmProviderPurpose = "chat" | "embedding" | "audio";
 
 export interface LlmProviderRecord {
   id: string;

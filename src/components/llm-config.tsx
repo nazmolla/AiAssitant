@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 type LlmProviderType = "azure-openai" | "openai" | "anthropic" | "litellm";
-type LlmProviderPurpose = "chat" | "embedding";
+type LlmProviderPurpose = "chat" | "embedding" | "audio";
 type RoutingTier = "primary" | "secondary" | "local";
 
 const PROVIDER_LABELS: Record<LlmProviderType, string> = {
@@ -57,6 +57,15 @@ const PROVIDER_FIELDS: Record<
   ],
 };
 
+// Audio-specific config fields for Azure OpenAI (TTS + STT deployments)
+const AZURE_AUDIO_FIELDS: Array<{ key: string; label: string; placeholder?: string; required?: boolean; type?: string }> = [
+  { key: "apiKey", label: "API Key", required: true, type: "password" },
+  { key: "endpoint", label: "Endpoint URL", required: true, placeholder: "https://YOUR-RESOURCE.openai.azure.com" },
+  { key: "ttsDeployment", label: "TTS Deployment", placeholder: "tts" },
+  { key: "sttDeployment", label: "STT Deployment", placeholder: "whisper" },
+  { key: "apiVersion", label: "API Version", placeholder: "2024-08-01-preview" },
+];
+
 const PROVIDER_SELECT: Array<{ label: string; value: LlmProviderType }> = (
   Object.keys(PROVIDER_LABELS) as LlmProviderType[]
 ).map((value) => ({ value, label: PROVIDER_LABELS[value] }));
@@ -64,10 +73,14 @@ const PROVIDER_SELECT: Array<{ label: string; value: LlmProviderType }> = (
 const PURPOSE_OPTIONS: Array<{ label: string; value: LlmProviderPurpose }> = [
   { value: "chat", label: "Chat (LLM)" },
   { value: "embedding", label: "Embedding" },
+  { value: "audio", label: "Audio (TTS/STT)" },
 ];
 
 // Anthropic doesn't offer an embeddings API
 const EMBEDDING_CAPABLE_PROVIDERS: Set<LlmProviderType> = new Set<LlmProviderType>(["azure-openai", "openai", "litellm"]);
+
+// Audio (TTS/STT) requires OpenAI-compatible API — Anthropic doesn't offer audio
+const AUDIO_CAPABLE_PROVIDERS: Set<LlmProviderType> = new Set<LlmProviderType>(["azure-openai", "openai", "litellm"]);
 
 interface LlmProvider {
   id: string;
@@ -82,9 +95,12 @@ interface LlmProvider {
 
 type ConfigFormState = Record<string, string>;
 
-const initialConfigState = (provider: LlmProviderType): ConfigFormState => {
+const initialConfigState = (provider: LlmProviderType, purpose: LlmProviderPurpose = "chat"): ConfigFormState => {
+  const fields = (provider === "azure-openai" && purpose === "audio")
+    ? AZURE_AUDIO_FIELDS
+    : PROVIDER_FIELDS[provider];
   const state: ConfigFormState = {};
-  for (const field of PROVIDER_FIELDS[provider]) {
+  for (const field of fields) {
     state[field.key] = "";
   }
   return state;
@@ -118,14 +134,28 @@ export function LlmConfig() {
   }, []);
 
   useEffect(() => {
-    setConfigValues(initialConfigState(providerType));
-    // Reset to chat if current provider can't do embeddings
+    setConfigValues(initialConfigState(providerType, purpose));
+    // Reset to chat if current provider can't do embeddings or audio
     if (purpose === "embedding" && !EMBEDDING_CAPABLE_PROVIDERS.has(providerType)) {
+      setPurpose("chat");
+    }
+    if (purpose === "audio" && !AUDIO_CAPABLE_PROVIDERS.has(providerType)) {
       setPurpose("chat");
     }
   }, [providerType]);
 
-  const currentFields = useMemo(() => PROVIDER_FIELDS[providerType], [providerType]);
+  // Reset config fields when purpose changes (e.g. azure-openai: deployment ↔ ttsDeployment/sttDeployment)
+  useEffect(() => {
+    setConfigValues(initialConfigState(providerType, purpose));
+  }, [purpose]);
+
+  const currentFields = useMemo(() => {
+    // Azure OpenAI audio providers use TTS/STT deployment fields instead of single deployment
+    if (providerType === "azure-openai" && purpose === "audio") {
+      return AZURE_AUDIO_FIELDS;
+    }
+    return PROVIDER_FIELDS[providerType];
+  }, [providerType, purpose]);
 
   const handleConfigChange = (key: string, value: string) => {
     setConfigValues((prev) => ({ ...prev, [key]: value }));
@@ -239,7 +269,11 @@ export function LlmConfig() {
                   onChange={(e) => setPurpose(e.target.value as LlmProviderPurpose)}
                 >
                   {PURPOSE_OPTIONS
-                    .filter((o) => o.value === "chat" || EMBEDDING_CAPABLE_PROVIDERS.has(providerType))
+                    .filter((o) =>
+                      o.value === "chat" ||
+                      (o.value === "embedding" && EMBEDDING_CAPABLE_PROVIDERS.has(providerType)) ||
+                      (o.value === "audio" && AUDIO_CAPABLE_PROVIDERS.has(providerType))
+                    )
                     .map((option) => (
                       <option key={option.value} value={option.value} className="bg-card">
                         {option.label}
@@ -342,7 +376,7 @@ export function LlmConfig() {
                         <Badge variant="secondary" className="text-[10px]">Standby</Badge>
                       )}
                       <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
-                        {provider.purpose === "embedding" ? "Embedding" : "Chat"}
+                        {provider.purpose === "embedding" ? "Embedding" : provider.purpose === "audio" ? "Audio" : "Chat"}
                       </Badge>
                       <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
                         {PROVIDER_LABELS[provider.provider_type]}
@@ -388,7 +422,7 @@ export function LlmConfig() {
                         <Badge variant="secondary" className="text-[10px]">Standby</Badge>
                       )}
                       <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
-                        {provider.purpose === "embedding" ? "Embedding" : "Chat"}
+                        {provider.purpose === "embedding" ? "Embedding" : provider.purpose === "audio" ? "Audio" : "Chat"}
                       </Badge>
                       <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
                         {PROVIDER_LABELS[provider.provider_type]}

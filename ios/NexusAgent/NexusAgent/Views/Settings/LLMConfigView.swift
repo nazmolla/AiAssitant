@@ -28,7 +28,7 @@ struct LLMConfigView: View {
 
                     HStack(spacing: 12) {
                         Label(provider.provider_type, systemImage: "gear")
-                        Label(provider.purpose, systemImage: provider.purpose == "chat" ? "bubble.left.fill" : "waveform")
+                        Label(provider.purpose, systemImage: provider.purpose == "chat" ? "bubble.left.fill" : provider.purpose == "audio" ? "speaker.wave.2.fill" : "waveform")
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -92,11 +92,13 @@ struct AddLLMProviderView: View {
     @State private var model = ""
     @State private var endpoint = ""
     @State private var deployment = ""
+    @State private var ttsDeployment = ""
+    @State private var sttDeployment = ""
     @State private var baseURL = ""
     @State private var isDefault = false
 
     let providerTypes = ["openai", "azure-openai", "anthropic", "litellm"]
-    let purposes = ["chat", "embedding"]
+    let purposes = ["chat", "embedding", "audio"]
 
     var body: some View {
         NavigationStack {
@@ -129,7 +131,12 @@ struct AddLLMProviderView: View {
 
                     if providerType == "azure-openai" {
                         TextField("Endpoint", text: $endpoint)
-                        TextField("Deployment", text: $deployment)
+                        if purpose == "audio" {
+                            TextField("TTS Deployment (default: tts)", text: $ttsDeployment)
+                            TextField("STT Deployment (default: whisper)", text: $sttDeployment)
+                        } else {
+                            TextField("Deployment", text: $deployment)
+                        }
                     }
                 }
             }
@@ -150,7 +157,9 @@ struct AddLLMProviderView: View {
                                 apiVersion: nil,
                                 baseURL: baseURL.isEmpty ? nil : baseURL,
                                 routingTier: nil,
-                                capabilities: nil
+                                capabilities: nil,
+                                ttsDeployment: ttsDeployment.isEmpty ? nil : ttsDeployment,
+                                sttDeployment: sttDeployment.isEmpty ? nil : sttDeployment
                             )
                             let req = LLMProviderCreateRequest(
                                 label: label,
