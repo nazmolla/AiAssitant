@@ -27,6 +27,10 @@ import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import BuildIcon from "@mui/icons-material/Build";
+import MicIcon from "@mui/icons-material/Mic";
+import MicOffIcon from "@mui/icons-material/MicOff";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import StopCircleIcon from "@mui/icons-material/StopCircle";
 
 interface Thread {
   id: string;
@@ -155,6 +159,16 @@ export function ChatPanel() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Audio recording state (STT)
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  // Audio playback state (TTS)
+  const [playingTtsId, setPlayingTtsId] = useState<number | null>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+
   /** Capture a single frame from the screen share video stream */
   const captureFrame = useCallback((): string | null => {
     const video = videoRef.current;
@@ -258,8 +272,114 @@ export function ChatPanel() {
     return () => {
       if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
       if (screenStream) screenStream.getTracks().forEach((t) => t.stop());
+      // Clean up audio on unmount
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current = null;
+      }
     };
   }, [screenStream]);
+
+  // ── Audio Recording (Speech-to-Text) ──────────────────────────
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (blob.size < 100) return; // too short to transcribe
+
+        setTranscribing(true);
+        try {
+          const formData = new FormData();
+          formData.append("audio", blob, `recording.${mimeType.includes("webm") ? "webm" : "mp4"}`);
+          const res = await fetch("/api/audio/transcribe", { method: "POST", body: formData });
+          if (res.ok) {
+            const { text } = await res.json();
+            if (text) setInput((prev) => (prev ? prev + " " + text : text));
+          }
+        } catch {
+          // silent — user can retry
+        } finally {
+          setTranscribing(false);
+        }
+      };
+
+      recorder.start(250); // collect data every 250ms
+      mediaRecorderRef.current = recorder;
+      setRecording(true);
+    } catch {
+      // Microphone permission denied or not available
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    mediaRecorderRef.current = null;
+    setRecording(false);
+  }
+
+  // ── Text-to-Speech ────────────────────────────────────────────
+
+  async function playTts(messageId: number, text: string) {
+    // Stop any currently playing TTS
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause();
+      ttsAudioRef.current = null;
+      if (playingTtsId === messageId) {
+        setPlayingTtsId(null);
+        return; // toggle off
+      }
+    }
+
+    setPlayingTtsId(messageId);
+    try {
+      const res = await fetch("/api/audio/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) {
+        setPlayingTtsId(null);
+        return;
+      }
+      const audioBlob = await res.blob();
+      const url = URL.createObjectURL(audioBlob);
+      const audio = new Audio(url);
+      ttsAudioRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        ttsAudioRef.current = null;
+        setPlayingTtsId(null);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        ttsAudioRef.current = null;
+        setPlayingTtsId(null);
+      };
+
+      await audio.play();
+    } catch {
+      setPlayingTtsId(null);
+    }
+  }
 
   // Fetch screen sharing preference (and re-fetch periodically to pick up settings changes)
   useEffect(() => {
@@ -922,6 +1042,22 @@ export function ChatPanel() {
                           </Typography>
                         )}
 
+                        {/* TTS — Read aloud button for assistant messages */}
+                        {msg.role === "assistant" && msg.content && msg.id !== -1 && (
+                          <IconButton
+                            size="small"
+                            onClick={() => playTts(msg.id, sanitizeAssistantContent(msg.content, false))}
+                            title={playingTtsId === msg.id ? "Stop reading" : "Read aloud"}
+                            sx={{ mt: 0.25, p: 0.5, opacity: 0.6, "&:hover": { opacity: 1 } }}
+                          >
+                            {playingTtsId === msg.id ? (
+                              <StopCircleIcon sx={{ fontSize: 16 }} />
+                            ) : (
+                              <VolumeUpIcon sx={{ fontSize: 16 }} />
+                            )}
+                          </IconButton>
+                        )}
+
                         {/* Inline approval buttons */}
                         {approvalMeta && (() => {
                           const resolved = resolvedApprovals[approvalMeta.approvalId];
@@ -1053,6 +1189,22 @@ export function ChatPanel() {
                       {screenSharing ? <StopScreenShareIcon fontSize="small" /> : <ScreenShareIcon fontSize="small" />}
                     </IconButton>
                   )}
+                  <IconButton
+                    size="small"
+                    onClick={recording ? stopRecording : startRecording}
+                    disabled={loading || transcribing || !activeThread}
+                    title={recording ? "Stop recording" : transcribing ? "Transcribing..." : "Voice input"}
+                    color={recording ? "error" : "default"}
+                    sx={recording ? { animation: "pulse 1.5s infinite", "@keyframes pulse": { "0%, 100%": { opacity: 1 }, "50%": { opacity: 0.5 } } } : {}}
+                  >
+                    {transcribing ? (
+                      <CircularProgress size={18} color="inherit" />
+                    ) : recording ? (
+                      <MicOffIcon fontSize="small" />
+                    ) : (
+                      <MicIcon fontSize="small" />
+                    )}
+                  </IconButton>
                   <TextField
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
@@ -1062,7 +1214,7 @@ export function ChatPanel() {
                         sendMessage();
                       }
                     }}
-                    placeholder="Message Nexus..."
+                    placeholder={recording ? "Listening..." : transcribing ? "Transcribing..." : "Message Nexus..."}
                     disabled={loading}
                     size="small"
                     fullWidth

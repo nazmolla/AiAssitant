@@ -12,6 +12,7 @@
 | Language | TypeScript | v5.x, Strict Mode |
 | Database | SQLite | `better-sqlite3` — zero-config, single-file persistence |
 | Frontend | Next.js 14 | App Router, Material UI (MUI v7) with 7 color themes, TailwindCSS, screen sharing via getDisplayMedia |
+| Audio | OpenAI Whisper + TTS-1 | Speech-to-Text (mic input, 25 MB max, webm/wav/mp3/ogg/flac) and Text-to-Speech (9 voices, MP3 output). Uses existing OpenAI SDK. |
 | LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy |
 | MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports. `list_changed` auto-refresh (500 ms debounce). |
 | Discord | discord.js | Gateway bot with mentions, DMs, and slash commands |
@@ -234,6 +235,8 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `POST` | `/api/attachments` | User | Upload file attachments |
 | `GET` | `/api/attachments/[...path]` | Auth | Serve uploaded files |
 | `GET/POST` | `/api/mcp/[serverId]/oauth/*` | Auth | OAuth authorize/callback for MCP servers |
+| `POST` | `/api/audio/transcribe` | User | Speech-to-Text via Whisper (multipart/form-data audio, max 25 MB) |
+| `POST` | `/api/audio/tts` | User | Text-to-Speech via TTS-1 (JSON `{text, voice?}`, returns MP3 binary) |
 | `GET` | `/api/admin/users` | Admin | List all users with permissions |
 | `PUT/DELETE` | `/api/admin/users` | Admin | Update user role/status or delete user |
 | `GET` | `/api/admin/users/me` | User | Get current user's role and permissions |
@@ -277,9 +280,9 @@ Multi-layered defense against prompt injection across all input vectors:
 |----------------|-------|
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
-| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
-| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), interest-cohort=()` |
+| `Permissions-Policy` | `camera=(), microphone=(self), geolocation=(), interest-cohort=()` |
 | `X-DNS-Prefetch-Control` | `off` |
 | `X-Powered-By` | Removed (disabled via `poweredByHeader: false`) |
 

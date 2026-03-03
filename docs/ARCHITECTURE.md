@@ -31,6 +31,7 @@ flowchart LR
         SCHED["Proactive Scheduler"]
         INBOUND["Inbound Email Classifier\nSummary + severity"]
         NOTIFY["Channel Notifier\nPer-user thresholds"]
+        AUDIO["Audio Engine\nSTT (Whisper) + TTS"]
     end
 
     subgraph T["🟧 Execution Surfaces"]
@@ -86,6 +87,11 @@ flowchart LR
     KNOW --> DB
     LOOP --> DB
 
+    WEB -->|mic| AUDIO
+    AUDIO -->|Whisper| OPENAI
+    AUDIO -->|TTS-1| OPENAI
+    AUDIO --> WEB
+
     LOOP --> GATE
     GATE -->|approved| WEBT
     GATE -->|approved| BROWSER
@@ -112,7 +118,7 @@ flowchart LR
 
     class WEB,DISCORD,WHATSAPP,WEBHOOK,EMAIL channels;
     class MW,AUTH,TRUST security;
-    class LOOP,ORCH,GATE,KNOW,SCHED,INBOUND,NOTIFY core;
+    class LOOP,ORCH,GATE,KNOW,SCHED,INBOUND,NOTIFY,AUDIO core;
     class WEBT,BROWSER,FS,CUSTOM,ALEXA,STDIO,SSE,HTTP tools;
     class AZURE,OPENAI,ANTHRO llm;
     class DB,EMBED data;
@@ -128,6 +134,14 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 1. **Sense** — Receive input from web chat, Discord, WhatsApp, webhooks, or the proactive scheduler
 2. **Think** — Retrieve relevant knowledge via semantic search, construct a context-rich prompt, and call the LLM
 3. **Act** — Execute tool calls (with HITL gating), capture new knowledge, and deliver the response
+
+### Voice Input & Output (STT / TTS)
+
+The chat interface supports **voice input** (Speech-to-Text) and **voice output** (Text-to-Speech) powered by OpenAI's audio models.
+
+- **Speech-to-Text**: Click the mic button to record audio via the browser MediaRecorder API (`audio/webm;codecs=opus`). The recording is sent to `POST /api/audio/transcribe` which forwards it to OpenAI's **Whisper** (`whisper-1`) model. The transcribed text is appended to the chat input field. Max file size: 25 MB.
+- **Text-to-Speech**: Click the speaker icon on any assistant message to hear it read aloud. The message text is sent to `POST /api/audio/tts` which calls OpenAI's **TTS-1** model (default voice: `nova`, 9 voices available). The MP3 audio plays inline via the browser Audio API. Click again to stop playback.
+- **Provider selection**: `getAudioClient()` in `src/lib/audio.ts` finds the first OpenAI-compatible provider (openai → azure-openai → litellm) — Anthropic is skipped as it has no audio API.
 
 ### Real-Time Streaming
 
@@ -172,6 +186,7 @@ The `status` events provide transparency into the agent's internal process for *
 | **User-Scoped Alerting** | Per-user notification thresholds (`low` → `disaster`) suppress or deliver channel notifications based on event severity. |
 | **Safe Email Ingestion** | Inbound email is classified, summarized, and guarded as untrusted content before reaching the agent loop. |
 | **Screen Sharing** | Share your screen with the agent via browser `getDisplayMedia()` — the agent sees what you see and can reason about it. |
+| **Voice I/O (STT/TTS)** | Mic button records audio via MediaRecorder, transcribes with Whisper. Speaker button on assistant messages plays TTS-1 audio. No extra dependencies — uses the existing OpenAI SDK. |
 | **Security Hardened** | Comprehensive prompt injection defense, security headers (CSP, X-Frame-Options, etc.), rate limiting, input validation, and path traversal protection. |
 | **Alexa Smart Home** | Native integration with Amazon Alexa — 14 tools for announcements, light control, volume, sensors, DND, and device management. Cookie-based auth with encrypted credential storage. |
 | **Analytics-Driven Observability** | Dashboard computes date-range KPIs, session outcomes, trend charts, and topic drivers with interactive drilldown to raw logs. |
@@ -242,6 +257,7 @@ src/
 │   │   ├── admin/              # User management (admin-only)
 │   │   ├── approvals/          # HITL approval inbox (user-scoped)
 │   │   ├── attachments/        # File upload/download
+│   │   ├── audio/              # Voice I/O (STT transcribe + TTS synthesis)
 │   │   ├── channels/           # Inbound webhook handlers
 │   │   ├── config/             # LLM, channels, profile config
 │   │   ├── knowledge/          # User knowledge CRUD
@@ -295,6 +311,7 @@ src/
 │   │   └── discord.ts          # Discord Gateway bot (uses channel owner resolution)
 │   ├── mcp/                    # MCP client management
 │   │   └── manager.ts          # Connect, discover, invoke, auto-refresh
+│   ├── audio.ts                # Audio utility (getAudioClient, transcribeAudio, textToSpeech)
 │   ├── scheduler/              # Proactive cron scheduler
 │   └── bootstrap.ts            # Runtime initialization
 └── middleware.ts                # Auth + rate limiting + security middleware

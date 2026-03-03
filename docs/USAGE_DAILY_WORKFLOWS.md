@@ -15,6 +15,8 @@ Use Chat for day-to-day assistant interactions.
 - Expand the "Thought for N steps" block to see the agent's reasoning process, tool calls, and results
 - Add file attachments when needed
 - Use screen sharing when enabled in your profile
+- **Voice input** — Click the mic button (🎤) to dictate a message. Audio is transcribed via Whisper and appended to the input field. The button pulses red while recording and shows a spinner while transcribing.
+- **Voice output** — Click the speaker icon (🔊) on any assistant message to hear it read aloud via TTS. Click again to stop. Requires an OpenAI-compatible LLM provider to be configured.
 
 ![Chat tab (test env)](images/usage-chat.png)
 
