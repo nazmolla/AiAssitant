@@ -31,6 +31,7 @@ import MicIcon from "@mui/icons-material/Mic";
 import MicOffIcon from "@mui/icons-material/MicOff";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
+import MarkdownMessage from "./markdown-message";
 
 interface Thread {
   id: string;
@@ -1067,18 +1068,21 @@ export function ChatPanel() {
                           </Box>
                         )}
 
-                        <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
-                          {msg.id === -1 && loading
-                            ? ""
-                            : msg.role === "tool"
-                            ? sanitizeToolContent(msg.content, attachments.length > 0)
-                            : msg.role === "assistant"
-                            ? sanitizeAssistantContent(msg.content, attachments.length > 0)
-                            : msg.role === "system" && approvalMeta
-                            ? displayContent || ""
-                            : msg.content || (attachments.length > 0 ? "" : "(no content)")}
-                        </Typography>
-                        {msg.id === -1 && loading && (
+                        {/* Message content — assistant uses markdown, others plain text */}
+                        {msg.role === "assistant" ? (
+                          msg.content ? (
+                            <MarkdownMessage content={sanitizeAssistantContent(msg.content, attachments.length > 0)} />
+                          ) : null
+                        ) : (
+                          <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+                            {msg.role === "tool"
+                              ? sanitizeToolContent(msg.content, attachments.length > 0)
+                              : msg.role === "system" && approvalMeta
+                              ? displayContent || ""
+                              : msg.content || (attachments.length > 0 ? "" : "(no content)")}
+                          </Typography>
+                        )}
+                        {msg.id === -1 && loading && !msg.content && (
                           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
                             <CircularProgress size={14} />
                             <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>

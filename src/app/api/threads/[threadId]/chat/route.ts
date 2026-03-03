@@ -138,13 +138,22 @@ export async function POST(
 
   try {
     // Stream messages via SSE as the agent loop progresses.
-    // Use TransformStream so the Response is returned immediately and data
-    // is pushed incrementally as the agent loop fires onMessage callbacks.
+    // Use ReadableStream with controller.enqueue() — this pushes data
+    // synchronously to the readable side so it flushes immediately to the
+    // HTTP response without the internal buffering that TransformStream has.
     const encoder = new TextEncoder();
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
 
-    // Fire-and-forget: run the agent loop asynchronously, writing SSE events
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        controller = c;
+        // Send an SSE comment as the first byte to force the HTTP layer
+        // to flush headers + body immediately (avoids proxy/framework buffering).
+        controller.enqueue(encoder.encode(": stream opened\n\n"));
+      },
+    });
+
+    // Fire-and-forget: run the agent loop asynchronously, pushing SSE events
     (async () => {
       try {
         const response = await runAgentLoop(
@@ -156,27 +165,27 @@ export async function POST(
           auth.user.id,
           (msg) => {
             const data = JSON.stringify(msg);
-            writer.write(encoder.encode(`event: message\ndata: ${data}\n\n`));
+            controller.enqueue(encoder.encode(`event: message\ndata: ${data}\n\n`));
           },
           (status) => {
             const data = JSON.stringify(status);
-            writer.write(encoder.encode(`event: status\ndata: ${data}\n\n`));
+            controller.enqueue(encoder.encode(`event: status\ndata: ${data}\n\n`));
           },
           async (token) => {
-            await writer.write(encoder.encode(`event: token\ndata: ${JSON.stringify(token)}\n\n`));
+            controller.enqueue(encoder.encode(`event: token\ndata: ${JSON.stringify(token)}\n\n`));
           }
         );
-        await writer.write(encoder.encode(`event: done\ndata: ${JSON.stringify(response)}\n\n`));
+        controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(response)}\n\n`));
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:[\\/][^\s]+/g, "[path]");
-        await writer.write(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: safeMsg })}\n\n`));
+        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: safeMsg })}\n\n`));
       } finally {
-        await writer.close();
+        controller.close();
       }
     })();
 
-    return new Response(readable, {
+    return new Response(stream, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",

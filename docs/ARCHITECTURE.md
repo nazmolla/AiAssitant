@@ -146,7 +146,7 @@ The chat interface supports **voice input** (Speech-to-Text) and **voice output*
 
 ### Real-Time Streaming
 
-The chat API uses **Server-Sent Events (SSE)** via a `TransformStream` to stream responses in real-time. Both OpenAI and Anthropic providers support **token-level streaming** — individual text tokens are sent to the client via `event: token` SSE events as they arrive from the LLM API, providing instant perceived response time. The full SSE event lifecycle is:
+The chat API uses **Server-Sent Events (SSE)** via a `ReadableStream` with `controller.enqueue()` to stream responses in real-time. This approach pushes data synchronously to the readable side for immediate HTTP flushing — unlike `TransformStream` which can buffer internally. Both OpenAI and Anthropic providers support **token-level streaming** — individual text tokens are sent to the client via `event: token` SSE events as they arrive from the LLM API, providing instant perceived response time. A leading SSE comment (`: stream opened`) is sent immediately to force proxies/framework to flush headers. The full SSE event lifecycle is:
 
 1. `event: token` — Individual text tokens streamed from the LLM in real-time (displayed progressively in the chat UI)
 2. `event: status` — Agent thinking steps (model selection, knowledge retrieval, tool execution)
@@ -284,7 +284,8 @@ src/
 │   ├── agent-dashboard.tsx     # Full analytics dashboard + drilldown log explorer
 │   ├── approval-inbox.tsx      # HITL approval UI
 │   ├── channels-config.tsx     # Channel management (user-scoped)
-│   ├── chat-panel.tsx          # Thread/chat with inline approvals
+│   ├── chat-panel.tsx          # Thread/chat with inline approvals, real-time token streaming
+│   ├── markdown-message.tsx    # Markdown renderer (react-markdown + remark-gfm) for assistant messages
 │   ├── user-management.tsx     # Admin user management
 │   ├── knowledge-vault.tsx     # Knowledge CRUD
 │   ├── llm-config.tsx          # LLM provider management
