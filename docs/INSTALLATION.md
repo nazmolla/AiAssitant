@@ -173,6 +173,69 @@ The agent uses a **persistent browser context** stored in `data/browser-profile/
 
 ---
 
+## Local Whisper Setup (Optional)
+
+Deploy a local Whisper STT server as a fallback when cloud speech-to-text is unavailable. Uses [whisper.cpp](https://github.com/ggerganov/whisper.cpp) with the OpenAI-compatible `/inference` endpoint.
+
+### Build from Source
+
+```bash
+git clone https://github.com/ggerganov/whisper.cpp.git
+cd whisper.cpp
+git checkout v1.5.5
+```
+
+**GCC 8 on aarch64 (Jetson Nano):** Apply the NEON intrinsic patch first — GCC 8 has a bug where `vld1q_{s8,u8}_x{2,4}` returns `int` instead of the correct struct types. Upload and run `patch-whisper.py` from the repo root to fix this automatically.
+
+```bash
+make -j$(nproc) server
+```
+
+### Download Model
+
+```bash
+bash models/download-ggml-model.sh small   # 466 MB — good balance of speed/accuracy
+# Other options: tiny (75 MB), base (142 MB), medium (1.5 GB)
+```
+
+### Run as a Service
+
+```ini
+# /etc/systemd/system/whisper.service
+[Unit]
+Description=Whisper.cpp STT Server (small model)
+After=network.target
+
+[Service]
+Type=simple
+User=<user>
+WorkingDirectory=/home/<user>/whisper.cpp
+ExecStart=/home/<user>/whisper.cpp/server -m /home/<user>/whisper.cpp/models/ggml-small.bin --host 0.0.0.0 --port 8083 -t 4
+Restart=on-failure
+RestartSec=5
+Environment=MALLOC_ARENA_MAX=2
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable whisper && sudo systemctl start whisper
+```
+
+### Configure in Nexus
+
+Go to **Settings → Local Whisper** and set:
+- **Enabled**: On
+- **URL**: `http://localhost:8083`
+- **Model**: `ggml-small`
+
+Click **Test Connection** to verify, then **Save**.
+
+Nexus will automatically fall back to the local server when the cloud STT provider fails. The fallback tries `/v1/audio/transcriptions` first (faster-whisper-server), then `/inference` (whisper.cpp).
+
+---
+
 ## Migration from Single-User
 
 If upgrading from a previous single-owner installation, the database migration runs **automatically on first startup**:

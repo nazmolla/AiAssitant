@@ -204,6 +204,7 @@ async function transcribeAudioLocal(
   }
 
   const endpoint = `${baseUrl}/v1/audio/transcriptions`;
+  const endpointFallback = `${baseUrl}/inference`;
 
   // Build multipart form data
   const formData = new FormData();
@@ -213,11 +214,24 @@ async function transcribeAudioLocal(
   formData.append("model", config.model);
   formData.append("response_format", "json");
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    body: formData,
-    signal: AbortSignal.timeout(30_000), // 30s timeout for local
-  });
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      body: formData,
+      signal: AbortSignal.timeout(60_000), // 60s timeout for local
+    });
+  } catch {
+    // If the OAI-compatible endpoint fails, try the whisper.cpp /inference endpoint
+    const fallbackForm = new FormData();
+    fallbackForm.append("file", file);
+    fallbackForm.append("response_format", "json");
+    response = await fetch(endpointFallback, {
+      method: "POST",
+      body: fallbackForm,
+      signal: AbortSignal.timeout(60_000),
+    });
+  }
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
