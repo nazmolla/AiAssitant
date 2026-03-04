@@ -89,6 +89,13 @@ export function ConversationMode() {
   const autoListenRef = useRef(true);
   const conversationHistoryRef = useRef<Array<{ role: string; content: string }>>([]); // in-memory LLM history
 
+  // Interrupt (barge-in) refs
+  const interruptVadRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const interruptStreamRef = useRef<MediaStream | null>(null);
+  const interruptCtxRef = useRef<AudioContext | null>(null);
+  const interruptAnalyserRef = useRef<AnalyserNode | null>(null);
+  const interruptedRef = useRef(false); // flag to signal processAudio to bail out
+
   // setState wrapper — sync ref immediately to avoid race conditions in async flows
   const setState = useCallback((s: ConvState) => {
     stateRef.current = s;
@@ -188,6 +195,136 @@ export function ConversationMode() {
     setAudioLevel(0);
   }
 
+  /* ─── Interrupt VAD (barge-in during thinking/speaking) ─────────── */
+
+  /**
+   * Start a lightweight VAD that monitors the mic during thinking/speaking.
+   * When speech is detected (sustained for 200ms), interrupt the current
+   * operation and switch to listening.
+   */
+  async function startInterruptVad() {
+    stopInterruptVad(); // clean any previous
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      interruptStreamRef.current = stream;
+      const ctx = new AudioContext();
+      interruptCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = ANALYSER_FFT_SIZE;
+      source.connect(analyser);
+      interruptAnalyserRef.current = analyser;
+
+      const dataArray = new Float32Array(analyser.fftSize);
+      let speechStart: number | null = null;
+      const INTERRUPT_SPEECH_MS = 200; // 200ms of speech to trigger interrupt
+
+      interruptVadRef.current = setInterval(() => {
+        const s = stateRef.current;
+        if (s !== "thinking" && s !== "speaking") {
+          // No longer in an interruptible state
+          stopInterruptVad();
+          return;
+        }
+
+        analyser.getFloatTimeDomainData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i] * dataArray[i];
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+
+        if (rms > SILENCE_THRESHOLD * 2) {
+          // Use 2x threshold to avoid false triggers from TTS bleed
+          if (!speechStart) speechStart = Date.now();
+          if (Date.now() - speechStart >= INTERRUPT_SPEECH_MS) {
+            // Interrupt!
+            interruptAndListen();
+          }
+        } else {
+          speechStart = null;
+        }
+      }, ANALYSER_POLL_MS);
+    } catch {
+      // Mic not available — no interrupt support, that's fine
+    }
+  }
+
+  function stopInterruptVad() {
+    if (interruptVadRef.current) {
+      clearInterval(interruptVadRef.current);
+      interruptVadRef.current = null;
+    }
+    if (interruptStreamRef.current) {
+      interruptStreamRef.current.getTracks().forEach((t) => t.stop());
+      interruptStreamRef.current = null;
+    }
+    if (interruptCtxRef.current) {
+      interruptCtxRef.current.close().catch(() => {});
+      interruptCtxRef.current = null;
+    }
+    interruptAnalyserRef.current = null;
+  }
+
+  /**
+   * User started speaking during thinking/speaking — interrupt everything
+   * and switch to listening mode.
+   */
+  function interruptAndListen() {
+    // Set interrupt flag so processAudio knows to bail
+    interruptedRef.current = true;
+
+    // Stop interrupt VAD (we're transitioning to main listening)
+    stopInterruptVad();
+
+    // Abort LLM request if in-flight
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+
+    // Stop TTS playback
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause();
+      ttsAudioRef.current.currentTime = 0;
+      ttsAudioRef.current = null;
+    }
+
+    // Mark the last assistant message as interrupted
+    if (currentText) {
+      // Still streaming — save partial text and mark it
+      const interruptedText = currentText.trim();
+      if (interruptedText) {
+        setTranscript((prev) => {
+          const last = prev[prev.length - 1];
+          if (last && last.role === "assistant" && last.text === interruptedText) {
+            return [...prev.slice(0, -1), { ...last, text: last.text + " ⸺" }];
+          }
+          return [...prev, { role: "assistant", text: interruptedText + " ⸺", timestamp: Date.now() }];
+        });
+      }
+      setCurrentText("");
+    } else {
+      // Not streaming (e.g. interrupted during TTS) — mark last assistant entry
+      setTranscript((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === "assistant" && !last.text.endsWith(" ⸺")) {
+          return [...prev.slice(0, -1), { ...last, text: last.text + " ⸺" }];
+        }
+        return prev;
+      });
+    }
+
+    // Transition to listening
+    setState("idle");
+    // Start listening after a tiny delay
+    setTimeout(() => {
+      if (stateRef.current === "idle") {
+        startListening();
+      }
+    }, 150);
+  }
+
   /* ─── Recording ────────────────────────────────────────────────── */
 
   async function startListening() {
@@ -279,7 +416,7 @@ export function ConversationMode() {
     };
 
     recorder.stop();
-    // Stop tracks since we'll get fresh ones on restart
+    // Stop recording tracks — fresh ones obtained on restart
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -332,6 +469,10 @@ export function ConversationMode() {
       // 2. Send to LLM via lightweight conversation endpoint (with tools)
       setState("thinking");
       setCurrentText("");
+      interruptedRef.current = false;
+
+      // Start interrupt VAD — monitors mic for barge-in during thinking/speaking
+      startInterruptVad();
 
       const abort = new AbortController();
       abortRef.current = abort;
@@ -400,6 +541,9 @@ export function ConversationMode() {
         }
       }
 
+      // Check if interrupted during LLM streaming
+      if (interruptedRef.current) return;
+
       if (!fullResponse.trim()) {
         throw new Error("Empty response from LLM");
       }
@@ -415,6 +559,9 @@ export function ConversationMode() {
       setTranscript((prev) => [...prev, { role: "assistant", text: fullResponse, timestamp: Date.now() }]);
       setCurrentText("");
 
+      // Check if interrupted before TTS
+      if (interruptedRef.current) return;
+
       // 4. TTS — speak the response (with 30s timeout)
       const ttsText = sanitizeForTts(fullResponse);
       if (ttsText) {
@@ -422,15 +569,21 @@ export function ConversationMode() {
         await playTts(ttsText);
       }
 
+      // Check if interrupted during TTS
+      if (interruptedRef.current) return;
+
       // 5. Auto-listen again (TTS finished — always leave "speaking" state)
+      stopInterruptVad();
       if (autoListenRef.current) {
         restartListening();
       } else {
         setState("idle");
       }
     } catch (err) {
-      if ((err as Error).name === "AbortError") {
-        setState("idle");
+      stopInterruptVad();
+      if ((err as Error).name === "AbortError" || interruptedRef.current) {
+        // Interrupted or user-aborted — don't show error
+        if (stateRef.current !== "listening") setState("idle");
         return;
       }
       const msg = err instanceof Error ? err.message : String(err);
@@ -521,6 +674,8 @@ export function ConversationMode() {
 
   function stopEverything() {
     stopVad();
+    stopInterruptVad();
+    interruptedRef.current = false;
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
@@ -827,6 +982,9 @@ export function ConversationMode() {
             <Typography variant="caption" color="text.secondary">
               {statusLabel[state]}
             </Typography>
+            {state === "thinking" && (
+              <MicIcon sx={{ fontSize: 14, color: "text.disabled", ml: 0.5 }} titleAccess="Listening for interrupt" />
+            )}
           </Box>
         )}
 
@@ -837,6 +995,7 @@ export function ConversationMode() {
             <Typography variant="caption" color="primary">
               Speaking...
             </Typography>
+            <MicIcon sx={{ fontSize: 14, color: "text.disabled", ml: 0.5 }} titleAccess="Listening for interrupt" />
           </Box>
         )}
 
@@ -885,7 +1044,9 @@ export function ConversationMode() {
             ? "Tap the microphone to start a conversation"
             : state === "listening"
               ? "Speak naturally — Nexus will respond when you pause"
-              : "Tap stop to end the conversation"
+              : state === "thinking" || state === "speaking"
+                ? "Start speaking to interrupt"
+                : "Tap stop to end the conversation"
           }
         </Typography>
 

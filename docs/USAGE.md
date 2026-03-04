@@ -75,6 +75,7 @@ The **Conversation** tab provides a dedicated full-screen voice conversation exp
 - **Audio level visualizer**: An animated bar graph shows microphone input levels during listening.
 - **Status indicators**: Shows current state — Listening, Transcribing, Thinking, Speaking, or Ready.
 - **Clear conversation**: After stopping, use "Clear conversation" to start fresh with a new thread.
+- **Interrupt / Barge-in**: Start speaking while Nexus is thinking or responding to immediately interrupt it. Nexus will stop what it's doing and start listening to you. Interrupted responses are marked with a "⸺" indicator in the transcript. Uses a separate mic stream with a 200 ms sustained-speech threshold (at 2× sensitivity to avoid TTS bleed).
 - **Stop button**: Tap the red stop button at any time to end the conversation immediately.
 
 ### Requirements
