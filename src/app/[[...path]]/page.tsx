@@ -95,7 +95,7 @@ export default function HomePage() {
   }, [router]);
   const [perms, setPerms] = useState<Record<string, number>>({
     chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
-    mcp_servers: 1, channels: 0, llm_config: 0, screen_sharing: 1,
+    mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1,
   });
 
   useEffect(() => {
@@ -339,11 +339,15 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
 const DRAWER_WIDTH = 200;
 
 function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavigate }: { userRole: string; perms: Record<string, number>; isUserMetaLoading: boolean; activePage?: string; onNavigate: (page: string) => void }) {
-  const visiblePages = useMemo(() => SETTINGS_PAGES.filter((p) => {
-    if (p.adminOnly && userRole !== "admin") return false;
-    if (p.permKey && !perms[p.permKey]) return false;
-    return true;
-  }), [userRole, perms]);
+  const visiblePages = useMemo(() => {
+    // While loading, show all pages to prevent premature redirects
+    if (isUserMetaLoading) return SETTINGS_PAGES;
+    return SETTINGS_PAGES.filter((p) => {
+      if (p.adminOnly && userRole !== "admin") return false;
+      if (p.permKey && !perms[p.permKey]) return false;
+      return true;
+    });
+  }, [userRole, perms, isUserMetaLoading]);
 
   /* State for immediate UI, synced from URL prop */
   const defaultPage = visiblePages[0]?.key || "profile";
@@ -353,13 +357,14 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
   /* Sync with URL changes */
   useEffect(() => { setActive(validPage); }, [validPage]);
 
-  /* Redirect to valid page if needed */
+  /* Redirect to valid page if needed — skip while permissions are loading */
   useEffect(() => {
+    if (isUserMetaLoading) return;
     if (visiblePages.length === 0) return;
     if (!activePage || !visiblePages.some((p) => p.key === activePage)) {
       onNavigate(active);
     }
-  }, [activePage, active, visiblePages, onNavigate]);
+  }, [activePage, active, visiblePages, onNavigate, isUserMetaLoading]);
 
   const handleNavigate = useCallback((key: string) => {
     setActive(key);

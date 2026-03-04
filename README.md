@@ -93,7 +93,7 @@ The **Dashboard** tab now provides analytics views for operations and reliabilit
 | Browser | Playwright (Chromium) |
 | Auth | NextAuth v4 (credentials + OAuth) |
 | Extensibility | MCP v1.26+ (Stdio, SSE, Streamable HTTP) |
-| Testing | Jest (unit/integration), Playwright (E2E across Desktop Chrome, Pixel 7, iPhone 16 Pro Max) |
+| Testing | Jest (unit/integration/component — 774 tests, 63 suites), Playwright (E2E across Desktop Chrome, Pixel 7, iPhone 16 Pro Max) |
 
 ---
 

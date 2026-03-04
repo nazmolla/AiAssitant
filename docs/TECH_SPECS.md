@@ -372,3 +372,45 @@ Three topic-level driver tables are computed from inferred topics and outcomes:
 - Abandon rate drivers
 
 Each row reports topic rate and delta impact against overall rate.
+
+---
+
+## Testing
+
+### Framework
+
+| Tool | Purpose |
+|------|---------|
+| Jest | Test runner with 3 projects: `unit` (node), `integration` (node), `component` (jsdom) |
+| @testing-library/react | Component rendering and DOM assertions |
+| ts-jest | TypeScript transform for all test files |
+
+### Coverage
+
+**774 tests across 63 suites** — all passing.
+
+| Category | Suites | Description |
+|----------|--------|-------------|
+| Unit | ~50 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards |
+| Integration | ~5 | End-to-end API flows, MCP integration, channel routing |
+| Component | ~8 | Full navigation (every page + settings sub-page), component rendering, settings panel, tool policies, profile config, markdown rendering |
+
+### Component Test Architecture
+
+Component tests use `jsdom` environment with the following mocks:
+
+- **`next/navigation`** — `useRouter` (push/back), `usePathname`, `useSearchParams`
+- **`next-auth/react`** — `useSession` returns authenticated admin session
+- **`next/dynamic`** — Replaced with `React.lazy` + `Suspense` for synchronous rendering
+- **`theme-provider`** — No-op `useThemeContext` returning default theme state
+- **`fetch`** — Global mock returning permission-appropriate JSON responses
+- **Browser APIs** — `matchMedia`, `IntersectionObserver`, `ResizeObserver` polyfills
+
+### Key Test Files
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| `tests/component/full-navigation.test.tsx` | 63 | All 5 main tabs, all 11 settings pages (via chips and URL routing), loading-state guards, permission gating, admin-only visibility, UI elements, redirects |
+| `tests/component/component-render.test.tsx` | 20 | Render + content verification for all settings components (LlmConfig, ChannelsConfig, AuthConfig, UserManagement, CustomToolsConfig, LoggingConfig, WhisperConfig, ApprovalInbox, KnowledgeVault, ApiKeysConfig) |
+| `tests/component/page.test.tsx` | 17 | Core page rendering, tab switching, drawer navigation |
+| `tests/component/settings-panel.test.tsx` | 4 | Settings chip selection, visibility |

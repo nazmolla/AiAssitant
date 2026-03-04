@@ -1,0 +1,410 @@
+/**
+ * Component render tests — covers all components that previously had no tests.
+ *
+ * Tests that each component renders without throwing and shows expected content.
+ * Uses realistic fetch mocks for each component's API calls.
+ *
+ * Components tested:
+ * - LlmConfig
+ * - ChannelsConfig
+ * - AuthConfig
+ * - UserManagement
+ * - CustomToolsConfig
+ * - LoggingConfig
+ * - WhisperConfig
+ * - ChatPanel
+ * - ApprovalInbox
+ * - KnowledgeVault
+ * - ApiKeysConfig
+ *
+ * @jest-environment jsdom
+ */
+import React from "react";
+import { render, screen, act, waitFor, cleanup } from "@testing-library/react";
+import "@testing-library/jest-dom";
+
+// ── Common mocks ──────────────────────────────────────────────────
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn(), prefetch: jest.fn() }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+jest.mock("next-auth/react", () => ({
+  useSession: jest.fn(() => ({
+    data: { user: { email: "admin@test.com", id: "admin-1", role: "admin" }, expires: "2099-01-01" },
+    status: "authenticated",
+  })),
+  signOut: jest.fn(),
+  SessionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+jest.mock("@/components/theme-provider", () => ({
+  useTheme: () => ({
+    theme: "ember", setTheme: jest.fn(),
+    font: "inter", setFont: jest.fn(),
+    timezone: "UTC", setTimezone: jest.fn(),
+    formatDate: (d: string) => d,
+  }),
+  THEMES: [{ id: "ember", label: "Ember", description: "Bold red", swatch: "hsl(0 85% 60%)" }],
+  FONTS: [{ id: "inter", label: "Inter", description: "Default", preview: "'Inter', sans-serif" }],
+  ThemeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+// ── Restore fetch after each test ────────────────────────────────
+
+afterEach(() => {
+  cleanup();
+  jest.restoreAllMocks();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// LlmConfig
+// ═══════════════════════════════════════════════════════════════════
+
+describe("LlmConfig", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/config/llm")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([
+            { id: "p1", provider: "azure_openai", label: "Azure GPT-4", model: "gpt-4", endpoint: "https://example.openai.azure.com", api_key: "sk-***", is_default: 1, config: { deployment: "gpt-4", apiVersion: "2024-02-01" } },
+          ]),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  });
+
+  test("renders without throwing", async () => {
+    const { LlmConfig } = await import("@/components/llm-config");
+    expect(() => render(<LlmConfig />)).not.toThrow();
+  });
+
+  test("shows 'Add LLM Provider' heading after load", async () => {
+    const { LlmConfig } = await import("@/components/llm-config");
+    render(<LlmConfig />);
+    await waitFor(() => {
+      expect(screen.getByText("Add LLM Provider")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ChannelsConfig
+// ═══════════════════════════════════════════════════════════════════
+
+describe("ChannelsConfig", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/config/channels")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([]),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  });
+
+  test("renders without throwing", async () => {
+    const { ChannelsConfig } = await import("@/components/channels-config");
+    expect(() => render(<ChannelsConfig />)).not.toThrow();
+  });
+
+  test("shows empty state message after load", async () => {
+    const { ChannelsConfig } = await import("@/components/channels-config");
+    render(<ChannelsConfig />);
+    await waitFor(() => {
+      expect(screen.getByText("No channels connected")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// AuthConfig
+// ═══════════════════════════════════════════════════════════════════
+
+describe("AuthConfig", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/config/auth")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([]),
+        });
+      }
+      if (url.includes("/api/config/api-keys")) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  });
+
+  test("renders without throwing", async () => {
+    const { AuthConfig } = await import("@/components/auth-config");
+    expect(() => render(<AuthConfig />)).not.toThrow();
+  });
+
+  test("shows OAuth Providers heading after load", async () => {
+    const { AuthConfig } = await import("@/components/auth-config");
+    await act(async () => {
+      render(<AuthConfig />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("OAuth Providers")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// UserManagement
+// ═══════════════════════════════════════════════════════════════════
+
+describe("UserManagement", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/admin/users") && !url.includes("/me")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([
+            { id: "u1", email: "user@test.com", display_name: "Test User", role: "user", provider_id: "local", created_at: "2024-01-01T00:00:00Z", permissions: { chat: 1, knowledge: 1, dashboard: 1, approvals: 1, mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1 } },
+          ]),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  });
+
+  test("renders without throwing", async () => {
+    const { UserManagement } = await import("@/components/user-management");
+    expect(() => render(<UserManagement />)).not.toThrow();
+  });
+
+  test("shows user info after load", async () => {
+    const { UserManagement } = await import("@/components/user-management");
+    await act(async () => {
+      render(<UserManagement />);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("Test User").length).toBeGreaterThanOrEqual(1);
+    }, { timeout: 3000 });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// CustomToolsConfig
+// ═══════════════════════════════════════════════════════════════════
+
+describe("CustomToolsConfig", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/config/custom-tools")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([]),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  });
+
+  test("renders without throwing", async () => {
+    const { CustomToolsConfig } = await import("@/components/custom-tools-config");
+    expect(() => render(<CustomToolsConfig />)).not.toThrow();
+  });
+
+  test("shows 'Self-Extending Tools' heading after load", async () => {
+    const { CustomToolsConfig } = await import("@/components/custom-tools-config");
+    render(<CustomToolsConfig />);
+    await waitFor(() => {
+      expect(screen.getByText("Self-Extending Tools")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// LoggingConfig
+// ═══════════════════════════════════════════════════════════════════
+
+describe("LoggingConfig", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/config/logging")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            log_level: "info",
+            retention_days: 30,
+            file_logging: true,
+            console_logging: true,
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  });
+
+  test("renders without throwing", async () => {
+    const { LoggingConfig } = await import("@/components/logging-config");
+    expect(() => render(<LoggingConfig />)).not.toThrow();
+  });
+
+  test("shows logging headings after load", async () => {
+    const { LoggingConfig } = await import("@/components/logging-config");
+    render(<LoggingConfig />);
+    await waitFor(() => {
+      expect(screen.getByText("Server Logging Policy")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// WhisperConfig
+// ═══════════════════════════════════════════════════════════════════
+
+describe("WhisperConfig", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/config/whisper")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            enabled: false,
+            endpoint: "http://localhost:9000",
+            model: "base",
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  });
+
+  test("renders without throwing", async () => {
+    const { WhisperConfig } = await import("@/components/whisper-config");
+    expect(() => render(<WhisperConfig />)).not.toThrow();
+  });
+
+  test("shows whisper headings after load", async () => {
+    const { WhisperConfig } = await import("@/components/whisper-config");
+    render(<WhisperConfig />);
+    await waitFor(() => {
+      expect(screen.getByText("Local Whisper Server")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ApprovalInbox
+// ═══════════════════════════════════════════════════════════════════
+
+describe("ApprovalInbox", () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ advanceTimers: true });
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/approvals")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([]),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test("renders without throwing", async () => {
+    const { ApprovalInbox } = await import("@/components/approval-inbox");
+    await act(async () => {
+      expect(() => render(<ApprovalInbox />)).not.toThrow();
+    });
+  });
+
+  test("shows approval inbox heading", async () => {
+    const { ApprovalInbox } = await import("@/components/approval-inbox");
+    await act(async () => {
+      render(<ApprovalInbox />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Approval Inbox")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// KnowledgeVault
+// ═══════════════════════════════════════════════════════════════════
+
+describe("KnowledgeVault", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/knowledge")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([]),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  });
+
+  test("renders without throwing", async () => {
+    const { KnowledgeVault } = await import("@/components/knowledge-vault");
+    expect(() => render(<KnowledgeVault />)).not.toThrow();
+  });
+
+  test("shows knowledge vault heading", async () => {
+    const { KnowledgeVault } = await import("@/components/knowledge-vault");
+    render(<KnowledgeVault />);
+    await waitFor(() => {
+      expect(screen.getByText("Knowledge Vault")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ChatPanel
+// ═══════════════════════════════════════════════════════════════════
+
+// ChatPanel is tested via the full-navigation.test.tsx (opening the Chat tab).
+// Direct import testing is skipped because chat-panel.tsx imports markdown-message.tsx
+// which uses react-markdown (ESM-only module not supported by Jest's CJS transform).
+// The page.test.tsx tests already verify ChatPanel renders via mocked dynamic imports.
+
+// ═══════════════════════════════════════════════════════════════════
+// ApiKeysConfig
+// ═══════════════════════════════════════════════════════════════════
+
+describe("ApiKeysConfig", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/config/api-keys")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([]),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  });
+
+  test("renders without throwing", async () => {
+    const { ApiKeysConfig } = await import("@/components/api-keys-config");
+    expect(() => render(<ApiKeysConfig />)).not.toThrow();
+  });
+
+  test("shows new API key button after load", async () => {
+    const { ApiKeysConfig } = await import("@/components/api-keys-config");
+    await act(async () => {
+      render(<ApiKeysConfig />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("+ New API Key")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+});

@@ -205,6 +205,50 @@ The `status` events provide transparency into the agent's internal process for *
 
 ---
 
+## Client-Side Routing
+
+The UI is a single-page app served by a Next.js **optional catch-all** route (`[[...path]]/page.tsx`). URL paths are mapped to tabs and settings pages entirely on the client.
+
+### Main Tabs
+
+| URL Path | Tab |
+|----------|-----|
+| `/` or `/chat` | Chat |
+| `/dashboard` | Dashboard |
+| `/approvals` | Approvals |
+| `/knowledge` | Knowledge |
+| `/settings/*` | Settings |
+
+### Settings Sub-Pages
+
+The Settings tab contains 11 sub-pages, each rendered as horizontally-scrollable chip-selectable panels. Sub-pages may be gated by **permissions** (e.g. `channels`, `llm_config`) or restricted to **admin-only** access.
+
+| Key | Label | Gate |
+|-----|-------|------|
+| `profile` | Profile | — |
+| `llm` | Providers | `llm_config` perm |
+| `channels` | Channels | `channels` perm |
+| `mcp` | MCP Servers | `mcp_servers` perm |
+| `policies` | Tool Policies | Admin only |
+| `alexa` | Alexa | — |
+| `whisper` | Local Whisper | — |
+| `logging` | Logging | Admin only |
+| `custom-tools` | Custom Tools | — |
+| `auth` | Authentication | Admin only |
+| `users` | User Management | Admin only |
+
+### Permission-Aware Loading
+
+Permissions are fetched asynchronously from `GET /api/admin/users/me`. During the loading phase:
+
+1. **Default permissions are permissive** — all features visible while loading.
+2. **All settings pages are shown** in the chip strip until permissions resolve.
+3. **Redirect logic is deferred** — the redirect effect that enforces page visibility is skipped until `isUserMetaLoading` becomes `false`.
+
+Once permissions resolve, hidden pages are removed from the chip strip and any invalid active page triggers a redirect to `/settings/profile`.
+
+---
+
 ## Multi-User Model
 
 ### Roles & Access
@@ -278,22 +322,33 @@ src/
 │   │   ├── policies/           # Tool policy management
 │   │   ├── config/custom-tools/ # Custom tools management
 │   │   └── threads/            # Thread + chat management
+│   ├── [[...path]]/            # Optional catch-all route (SPA routing)
+│   │   └── page.tsx            # Main dashboard SPA with tab/settings routing
 │   ├── auth/                   # Sign-in and error pages
 │   ├── globals.css             # Theme and design tokens
-│   ├── layout.tsx              # Root layout
-│   └── page.tsx                # Main dashboard SPA
+│   └── layout.tsx              # Root layout
 ├── components/                 # React UI components
 │   ├── ui/                     # MUI adapter primitives (button, card, input, badge, switch, textarea, scroll-area)
 │   ├── agent-dashboard.tsx     # Full analytics dashboard + drilldown log explorer
+│   ├── alexa-config.tsx        # Alexa Smart Home credential management
+│   ├── api-keys-config.tsx     # API key management
 │   ├── approval-inbox.tsx      # HITL approval UI
+│   ├── auth-config.tsx         # Authentication provider configuration
 │   ├── channels-config.tsx     # Channel management (user-scoped)
 │   ├── chat-panel.tsx          # Thread/chat with inline approvals, real-time token streaming
-│   ├── markdown-message.tsx    # Markdown renderer (react-markdown + remark-gfm) for assistant messages
-│   ├── user-management.tsx     # Admin user management
+│   ├── custom-tools-config.tsx # Custom tools CRUD
 │   ├── knowledge-vault.tsx     # Knowledge CRUD
 │   ├── llm-config.tsx          # LLM provider management
+│   ├── logging-config.tsx      # Logging configuration
+│   ├── markdown-message.tsx    # Markdown renderer (react-markdown + remark-gfm) for assistant messages
 │   ├── mcp-config.tsx          # MCP server management
-│   └── profile-config.tsx      # User profile editor with feature toggles│   ├── alexa-config.tsx        # Alexa Smart Home credential management├── lib/
+│   ├── profile-config.tsx      # User profile editor with feature toggles
+│   ├── providers.tsx           # NextAuth SessionProvider wrapper
+│   ├── theme-provider.tsx      # MUI theme provider (light/dark)
+│   ├── tool-policies.tsx       # Tool approval policy management
+│   ├── user-management.tsx     # Admin user management
+│   └── whisper-config.tsx      # Local Whisper STT configuration
+├── lib/
 │   ├── agent/                  # Core agent logic
 │   │   ├── loop.ts             # Sense-Think-Act agent loop
 │   │   ├── gatekeeper.ts       # HITL policy enforcement
