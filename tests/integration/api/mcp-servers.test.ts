@@ -176,6 +176,51 @@ describe("POST /api/mcp", () => {
     expect(server).toBeDefined();
     expect(server.access_token).toBe("••••••");
   });
+
+  test("upsert updates name/url and preserves existing secrets", async () => {
+    setMockUser({ id: userId, email: "user-mcp@test.com", role: "user" });
+    const id = uuid();
+
+    // Create with a token
+    const createReq = new NextRequest("http://localhost/api/mcp", {
+      method: "POST",
+      body: JSON.stringify({
+        id,
+        name: "Original Name",
+        transport_type: "sse",
+        url: "http://localhost:8080/sse",
+        auth_type: "bearer",
+        access_token: "original-secret-token",
+        scope: "user",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const createRes = await POST(createReq);
+    expect(createRes.status).toBe(201);
+
+    // Update name and url, but don't send access_token (simulates edit with blank secret)
+    const updateReq = new NextRequest("http://localhost/api/mcp", {
+      method: "POST",
+      body: JSON.stringify({
+        id,
+        name: "Updated Name",
+        transport_type: "sse",
+        url: "http://localhost:9090/sse",
+        auth_type: "bearer",
+        scope: "user",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const updateRes = await POST(updateReq);
+    expect(updateRes.status).toBe(201);
+
+    // Verify the name/url changed but the secret was preserved
+    const server = getMcpServer(id);
+    expect(server).toBeDefined();
+    expect(server!.name).toBe("Updated Name");
+    expect(server!.url).toBe("http://localhost:9090/sse");
+    expect(server!.access_token).toBe("original-secret-token");
+  });
 });
 
 describe("DELETE /api/mcp", () => {

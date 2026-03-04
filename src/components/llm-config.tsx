@@ -107,8 +107,7 @@ export function LlmConfig() {
   const [routingTier, setRoutingTier] = useState<RoutingTier | "">("");
   const [disableThinking, setDisableThinking] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [formSuccess, setFormSuccess] = useState<string | null>(null);
-
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);  const [editingId, setEditingId] = useState<string | null>(null);
   const fetchProviders = async () => {
     const res = await fetch("/api/config/llm");
     if (!res.ok) {
@@ -151,38 +150,98 @@ export function LlmConfig() {
     setRoutingTier("");
     setDisableThinking(false);
     setFormError(null);
+    setEditingId(null);
   };
 
-  const handleCreate = async (event: React.FormEvent) => {
+  const startEdit = (provider: LlmProvider) => {
+    setEditingId(provider.id);
+    setProviderType(provider.provider_type);
+    setPurpose(provider.purpose);
+    setLabel(provider.label);
+    setFormError(null);
+    setFormSuccess(null);
+
+    // Populate config fields from provider.config
+    const state: ConfigFormState = {};
+    for (const field of PROVIDER_FIELDS[provider.provider_type]) {
+      const val = provider.config[field.key];
+      // Skip masked API keys — leave blank so user can re-enter or leave unchanged
+      state[field.key] = val === "••••••" ? "" : typeof val === "string" ? val : "";
+    }
+    setConfigValues(state);
+
+    // Routing tier
+    const tier = provider.config?.routingTier;
+    setRoutingTier(typeof tier === "string" ? (tier as RoutingTier) : "");
+
+    // Disable thinking
+    setDisableThinking(provider.config?.disableThinking === true);
+
+    // Scroll form into view
+    document.getElementById("llm-provider-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoading(true);
     setFormError(null);
     setFormSuccess(null);
 
     try {
-      const payload = {
-        label,
-        provider_type: providerType,
-        purpose,
-        config: {
-          ...configValues,
-          ...(routingTier ? { routingTier } : {}),
-          ...(purpose === "chat" && (providerType === "openai" || providerType === "litellm") ? { disableThinking } : {}),
-        },
-        is_default: providers.filter((p) => p.purpose === purpose).length === 0,
-      };
-      const res = await fetch("/api/config/llm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({ error: "Failed to save" }));
-        throw new Error(error.error || "Failed to save provider");
+      const configPayload: Record<string, unknown> = { ...configValues };
+      if (routingTier) configPayload.routingTier = routingTier;
+      if (purpose === "chat" && (providerType === "openai" || providerType === "litellm")) {
+        configPayload.disableThinking = disableThinking;
       }
-      await fetchProviders();
-      resetForm();
-      setFormSuccess(`${payload.label} saved.`);
+
+      if (editingId) {
+        // --- UPDATE (PATCH) ---
+        // Strip empty config values so unchanged masked fields are not overwritten
+        const cleanConfig: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(configPayload)) {
+          if (typeof v === "string" && v === "") continue; // skip blank fields
+          cleanConfig[k] = v;
+        }
+        const res = await fetch("/api/config/llm", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: editingId,
+            label,
+            provider_type: providerType,
+            purpose,
+            config: cleanConfig,
+          }),
+        });
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({ error: "Failed to update" }));
+          throw new Error(error.error || "Failed to update provider");
+        }
+        await fetchProviders();
+        resetForm();
+        setFormSuccess(`${label} updated.`);
+      } else {
+        // --- CREATE (POST) ---
+        const payload = {
+          label,
+          provider_type: providerType,
+          purpose,
+          config: configPayload,
+          is_default: providers.filter((p) => p.purpose === purpose).length === 0,
+        };
+        const res = await fetch("/api/config/llm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({ error: "Failed to save" }));
+          throw new Error(error.error || "Failed to save provider");
+        }
+        await fetchProviders();
+        resetForm();
+        setFormSuccess(`${label} saved.`);
+      }
     } catch (err) {
       setFormError((err as Error).message);
     } finally {
@@ -224,13 +283,15 @@ export function LlmConfig() {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card id="llm-provider-form">
         <CardHeader>
-          <CardTitle className="text-base font-display">Add LLM Provider</CardTitle>
-          <CardDescription className="text-muted-foreground/60">Configure Azure OpenAI, OpenAI, Anthropic, or LiteLLM credentials.</CardDescription>
+          <CardTitle className="text-base font-display">{editingId ? "Edit LLM Provider" : "Add LLM Provider"}</CardTitle>
+          <CardDescription className="text-muted-foreground/60">
+            {editingId ? "Update the provider configuration below. Leave password fields blank to keep existing values." : "Configure Azure OpenAI, OpenAI, Anthropic, or LiteLLM credentials."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="space-y-4" onSubmit={handleCreate}>
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Display Label</label>
@@ -321,8 +382,8 @@ export function LlmConfig() {
                     type={field.type || "text"}
                     value={configValues[field.key] || ""}
                     onChange={(e) => handleConfigChange(field.key, e.target.value)}
-                    placeholder={field.placeholder}
-                    required={field.required}
+                    placeholder={editingId && field.type === "password" ? "(unchanged — leave blank to keep)" : field.placeholder}
+                    required={editingId ? false : field.required}
                   />
                 </div>
               ))}
@@ -332,11 +393,16 @@ export function LlmConfig() {
             {formSuccess && <p className="text-sm text-green-400">{formSuccess}</p>}
 
             <div className="flex justify-end gap-3">
+              {editingId && (
+                <Button type="button" variant="ghost" onClick={resetForm}>
+                  Cancel Edit
+                </Button>
+              )}
               <Button type="button" variant="outline" onClick={resetForm}>
                 Reset
               </Button>
               <Button type="submit" disabled={loading}>
-                {loading ? "Saving..." : "Save Provider"}
+                {loading ? "Saving..." : editingId ? "Update Provider" : "Save Provider"}
               </Button>
             </div>
           </form>
@@ -415,6 +481,9 @@ export function LlmConfig() {
                         Make Default
                       </Button>
                     )}
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => startEdit(provider)}>
+                      Edit
+                    </Button>
                     <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(provider.id, provider.label)}>
                       Remove
                     </Button>
@@ -464,6 +533,9 @@ export function LlmConfig() {
                         Make Default
                       </Button>
                     )}
+                    <Button size="sm" variant="outline" onClick={() => startEdit(provider)}>
+                      Edit
+                    </Button>
                     <Button size="sm" variant="destructive" onClick={() => handleDelete(provider.id, provider.label)}>
                       Remove
                     </Button>

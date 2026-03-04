@@ -239,6 +239,41 @@ describe("PATCH /api/config/llm", () => {
     const res = await PATCH(req);
     expect(res.status).toBe(404);
   });
+
+  test("preserves existing apiKey when config patch omits it", async () => {
+    setMockUser({ id: adminId, email: "llm-admin@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/config/llm", {
+      method: "PATCH",
+      body: JSON.stringify({ id: providerId, config: { model: "gpt-4o-mini" } }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await PATCH(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.config.model).toBe("gpt-4o-mini");
+    // API key should still be present (redacted but has_api_key true)
+    expect(data.has_api_key).toBe(true);
+  });
+
+  test("updates config and label together", async () => {
+    setMockUser({ id: adminId, email: "llm-admin@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/config/llm", {
+      method: "PATCH",
+      body: JSON.stringify({
+        id: providerId,
+        label: "Fully Updated Provider",
+        config: { model: "gpt-4o", routingTier: "primary" },
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await PATCH(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.label).toBe("Fully Updated Provider");
+    expect(data.config.model).toBe("gpt-4o");
+    expect(data.config.routingTier).toBe("primary");
+    expect(data.has_api_key).toBe(true);
+  });
 });
 
 describe("DELETE /api/config/llm", () => {

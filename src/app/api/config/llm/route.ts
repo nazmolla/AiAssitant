@@ -104,8 +104,20 @@ export async function PATCH(req: NextRequest) {
     if (typeof body.config !== "object" || body.config === null) {
       return NextResponse.json({ error: "config must be an object." }, { status: 400 });
     }
+
+    // Merge incoming config with existing config: keep existing values for any
+    // fields not provided (e.g. masked API keys left blank during edit).
+    const existingConfig = parseConfig(existing);
+    const merged: Record<string, unknown> = { ...existingConfig };
+    for (const [k, v] of Object.entries(body.config as Record<string, unknown>)) {
+      // Only overwrite if the new value is non-empty
+      if (v !== undefined && v !== null && v !== "") {
+        merged[k] = v;
+      }
+    }
+
     try {
-      updates.config = buildConfig(effectiveType, body.config as Record<string, unknown>, updates.purpose || existing.purpose);
+      updates.config = buildConfig(effectiveType, merged, updates.purpose || existing.purpose);
     } catch (err) {
       return NextResponse.json({ error: (err as Error).message }, { status: 400 });
     }

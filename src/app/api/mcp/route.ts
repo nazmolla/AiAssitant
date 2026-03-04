@@ -81,9 +81,10 @@ export async function POST(req: NextRequest) {
     env_vars: env_vars ? JSON.stringify(env_vars) : null,
     url: url || null,
     auth_type: auth_type || "none",
-    access_token: access_token || null,
-    client_id: client_id || null,
-    client_secret: client_secret || null,
+    // For updates: preserve existing secrets when not provided by the client
+    access_token: access_token || (existing?.access_token ?? null),
+    client_id: client_id || (existing?.client_id ?? null),
+    client_secret: client_secret || (existing?.client_secret ?? null),
     user_id: auth.user.id,
     scope: serverScope,
   });

@@ -1,24 +1,42 @@
 # Copilot Project Rules — Nexus Agent
 
-## Deployment
+## Non-Negotiable Deployment Rules
+- **NEVER deploy manually.** Always use `deploy.sh` via Git Bash: `bash deploy.sh YOUR_SERVER_IP jetson`.
+- Do **NOT** manually create tarballs, scp files, or run remote commands for production deploys.
+- `deploy.sh` is the source of truth: version bump, tests, build, tarball (DB excluded), remote DB backup, upload/extract, dependency install, restart, and health verification.
+- The production database `nexus.db` must **never** be overwritten, copied, or transferred from local.
 
-- **NEVER deploy manually.** Always use `deploy.sh` via Git Bash: `bash deploy.sh YOUR_SERVER_IP jetson`
-- Do NOT manually create tarballs, scp files, or run remote commands to deploy.
-- `deploy.sh` handles: version bump, tests, build, tarball (excluding DB), DB backup, upload, extraction, npm install, restart, and HTTP verification — in the correct safe order.
-- The production database (`nexus.db`) must NEVER be overwritten, copied, or transferred. It lives only on the Jetson and is excluded from all tarballs.
+## Local Runtime Constraints
+- Do not run local servers for deployment purposes (`next dev`, `next start`).
+- You may run local server only for development/testing, then stop it immediately.
+- Production target is only Jetson at `YOUR_SERVER_IP:3000`.
 
-## Local Server
+## Required Validation Flow
+- Before deploy, run `npx jest --forceExit`.
+- After deploy, verify HTTP 200 and inspect logs: `journalctl -u nexus-agent`.
+- Run vulnerability scan/fix pass (`npm audit`, `npm audit fix`; use `--force` only with explicit approval because of breaking upgrades).
 
-- **NEVER start a local dev server.** Do not run `next dev`, `next start`, or any server locally for deployment purposes, however, you can run it for local development and testing then make sure you stop immediately after.
-- The only production deployment target is the Jetson at `YOUR_SERVER_IP:3000`.
+## Request-End Checklist (Do Not Skip)
+- For any file change, update: tests (unit/integration/component), docs (`README`, usage docs, `INSTALLATION`, `ARCHITECTURE`, `TECH_SPECS`), and vulnerability status.
+- Then deploy via the required deployment flow above, verify service health/logs, and only then commit/push.
+- Commit/PR text must reference the issue number and clearly summarize changes + testing performed.
 
-## Testing
+## Architecture Map (Start Here)
+- Main agent loop: `src/lib/agent/loop.ts` (Sense → Think → Act, tool execution, knowledge retrieval, HITL).
+- Worker offload path: `src/lib/agent/loop-worker.ts`, `src/lib/agent/worker-manager.ts`, `scripts/agent-worker.js`.
+- Streaming chat API: `src/app/api/threads/[threadId]/chat/route.ts` (SSE `token/status/message/done/error`).
+- Voice conversation endpoint: `src/app/api/conversation/respond/route.ts` (lightweight loop, tool support, no thread persistence).
+- LLM provider/orchestration: `src/lib/llm/*` (provider selection, routing tier, OpenAI-compatible + Anthropic adapters).
+- Persistence layer: `src/lib/db/queries.ts` + `src/lib/cache.ts` (write-through cache + invalidation on mutations).
 
-- Always run `npx jest --forceExit` before deploying.
-- After deployment, verify the Jetson responds with HTTP 200 and check `journalctl -u nexus-agent` for errors.
+## Project Conventions
+- Use `@/` imports (see `jest.config.ts` and TS config alias behavior).
+- Keep SSE writes guarded (`sseSend` + cancelled-stream checks) to avoid crashes on disconnect.
+- Preserve per-user isolation checks on API routes (`requireUser` + ownership validation).
+- Follow existing dispatch pattern for tools (built-ins + custom + MCP); avoid introducing parallel tool-routing logic.
+- Prefer minimal, surgical edits; keep style and naming consistent with surrounding files.
 
-
-## Request End
-- At the end of any request that changes files, make sure to update the following: Tests (unit tests and integration tests, and UI tests), Documentation (README, USAGE, INSTALLATION, ARCHITECTURE, TECH_SPECS), Scan for code vulnerabilities and apply fixes.
--Once that is done successfully, then you can proceed to deploy using the deployment instructions above, and make sure to verify the deployment was successful by checking the HTTP response and logs as described in the Testing section above.
--Then commit and push changes with proper commit messages and PR descriptions that reference the issue number and describe the changes made, the testing performed, and any other relevant information for reviewers and future reference.
+## Test Strategy in This Repo
+- Full suite: `npx jest --forceExit`.
+- Targeted: `npm run test:unit`, `npm run test:integration`, `npx jest --selectProjects component --forceExit`.
+- Component tests run in `jsdom` with `tests/helpers/setup-jsdom.ts`; preserve existing mocks when updating UI.

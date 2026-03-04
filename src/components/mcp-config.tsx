@@ -39,6 +39,7 @@ export function McpConfig() {
   const [addingStatus, setAddingStatus] = useState<"idle" | "saving" | "connecting" | "done" | "error">("idle");
   const [statusMessage, setStatusMessage] = useState("");
   const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [editingServerId, setEditingServerId] = useState<string | null>(null);
 
   const fetchAll = useCallback(() => {
     fetch("/api/mcp").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setServers(d); }).catch(console.error);
@@ -82,38 +83,90 @@ export function McpConfig() {
     }
   }, [fetchAll]);
 
+  function resetMcpForm() {
+    setNewName(""); setNewCommand(""); setNewArgs("");
+    setNewUrl(""); setNewAuthType("none"); setNewAccessToken("");
+    setNewClientId(""); setNewClientSecret("");
+    setEditingServerId(null);
+    setNewConnectionType("remote");
+  }
+
+  function startEditServer(server: McpServer) {
+    setEditingServerId(server.id);
+    setNewName(server.name);
+
+    const isLocal = server.transport_type === "stdio";
+    setNewConnectionType(isLocal ? "local" : "remote");
+    setNewCommand(server.command || "");
+
+    // Parse args back from JSON string
+    if (server.args) {
+      try {
+        const parsed = JSON.parse(server.args);
+        setNewArgs(Array.isArray(parsed) ? parsed.join(" ") : "");
+      } catch {
+        setNewArgs("");
+      }
+    } else {
+      setNewArgs("");
+    }
+
+    setNewUrl(server.url || "");
+    setNewAuthType(server.auth_type || "none");
+    // Show masked placeholders for secrets
+    setNewAccessToken(server.access_token || "");
+    setNewClientId(server.client_id || "");
+    setNewClientSecret(server.client_secret || "");
+
+    setAddingStatus("idle");
+    setStatusMessage("");
+
+    // Scroll form into view
+    document.getElementById("mcp-server-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   async function addServer() {
     const isLocal = newConnectionType === "local";
-    const generatedId = typeof crypto.randomUUID === "function"
+    const serverId = editingServerId || (typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
           const bytes = crypto.getRandomValues(new Uint8Array(1));
           const r = bytes[0] & 0xf;
           return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
-        });
+        }));
     if (!newName) return;
     if (isLocal && !newCommand) return;
     if (!isLocal && !newUrl) return;
 
     setAddingStatus("saving");
-    setStatusMessage("Saving server configuration...");
+    setStatusMessage(editingServerId ? "Updating server configuration..." : "Saving server configuration...");
 
     try {
+      // Build the payload — for edits, keep existing secrets if user left fields blank
+      const payload: Record<string, unknown> = {
+        id: serverId,
+        name: newName,
+        transport_type: isLocal ? "stdio" : "streamablehttp",
+        command: isLocal ? newCommand : undefined,
+        args: isLocal && newArgs ? newArgs.split(" ") : [],
+        url: !isLocal ? newUrl : undefined,
+        auth_type: !isLocal ? newAuthType : "none",
+      };
+
+      // Only send secrets if user provided new values (not masked placeholders)
+      if (newAccessToken && newAccessToken !== "••••••") payload.access_token = newAccessToken;
+      else if (!editingServerId) payload.access_token = newAccessToken || undefined;
+
+      if (newClientId) payload.client_id = newClientId;
+      else if (!editingServerId) payload.client_id = newClientId || undefined;
+
+      if (newClientSecret && newClientSecret !== "••••••") payload.client_secret = newClientSecret;
+      else if (!editingServerId) payload.client_secret = newClientSecret || undefined;
+
       const res = await fetch("/api/mcp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: generatedId,
-          name: newName,
-          transport_type: isLocal ? "stdio" : "streamablehttp",
-          command: isLocal ? newCommand : undefined,
-          args: isLocal && newArgs ? newArgs.split(" ") : [],
-          url: !isLocal ? newUrl : undefined,
-          auth_type: !isLocal ? newAuthType : "none",
-          access_token: newAccessToken || undefined,
-          client_id: newClientId || undefined,
-          client_secret: newClientSecret || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -121,25 +174,29 @@ export function McpConfig() {
         throw new Error(data.error || "Failed to save server");
       }
 
-      const savedId = generatedId;
-
       // For OAuth without existing token: redirect to OAuth flow
       if (!isLocal && newAuthType === "oauth" && !newAccessToken) {
         // Reset form only for OAuth redirect (user will return via callback)
-        setNewName(""); setNewCommand(""); setNewArgs("");
-        setNewUrl(""); setNewAuthType("none"); setNewAccessToken("");
-        setNewClientId(""); setNewClientSecret("");
+        resetMcpForm();
         setAddingStatus("connecting");
         setStatusMessage("Redirecting to OAuth login...");
-        window.location.href = `/api/mcp/${savedId}/oauth/authorize`;
+        window.location.href = `/api/mcp/${serverId}/oauth/authorize`;
         return;
       }
 
-      // Auto-connect — if this fails we roll back (delete the saved server)
+      // For edits: disconnect first so we can reconnect with new config
+      if (editingServerId) {
+        const mcpManager = servers.find((s) => s.id === editingServerId);
+        if (mcpManager?.connected) {
+          await fetch(`/api/mcp/${editingServerId}/connect`, { method: "DELETE" }).catch(() => {});
+        }
+      }
+
+      // Auto-connect — if this fails for new servers, we roll back (delete the saved server)
       setAddingStatus("connecting");
       setStatusMessage("Connecting to server and discovering tools...");
 
-      const connectRes = await fetch(`/api/mcp/${savedId}/connect`, { method: "POST" });
+      const connectRes = await fetch(`/api/mcp/${serverId}/connect`, { method: "POST" });
       let connectData: { error?: string; tools?: unknown[] };
       try {
         connectData = await connectRes.json();
@@ -148,22 +205,24 @@ export function McpConfig() {
       }
 
       if (!connectRes.ok) {
-        // Connection failed — remove the server we just saved so it doesn't linger
-        await fetch(`/api/mcp?id=${savedId}`, { method: "DELETE" }).catch(() => {});
+        if (!editingServerId) {
+          // Connection failed on new server — remove the server we just saved so it doesn't linger
+          await fetch(`/api/mcp?id=${serverId}`, { method: "DELETE" }).catch(() => {});
+        }
         setAddingStatus("error");
-        setStatusMessage(connectData.error || "Connection failed. Server was not added.");
+        setStatusMessage(connectData.error || `Connection failed.${editingServerId ? " Server config was saved but could not reconnect." : " Server was not added."}`);
         fetchAll();
         // Do NOT reset form fields so the user can fix and retry
         return;
       }
 
       // Success — now clear the form
-      setNewName(""); setNewCommand(""); setNewArgs("");
-      setNewUrl(""); setNewAuthType("none"); setNewAccessToken("");
-      setNewClientId(""); setNewClientSecret("");
+      resetMcpForm();
 
       setAddingStatus("done");
-      setStatusMessage(`Connected! Discovered ${connectData.tools?.length || 0} tools.`);
+      setStatusMessage(editingServerId
+        ? `Updated and reconnected! Discovered ${connectData.tools?.length || 0} tools.`
+        : `Connected! Discovered ${connectData.tools?.length || 0} tools.`);
       fetchAll();
       setTimeout(() => { setAddingStatus("idle"); setStatusMessage(""); }, 4000);
     } catch (err) {
@@ -238,11 +297,15 @@ export function McpConfig() {
         </div>
       )}
 
-      {/* Add Server Form */}
-      <Card>
+      {/* Add/Edit Server Form */}
+      <Card id="mcp-server-form">
         <CardHeader>
-          <CardTitle className="text-base font-display">Add MCP Server</CardTitle>
-          <CardDescription className="text-muted-foreground/60">Configure a new Model Context Protocol server connection.</CardDescription>
+          <CardTitle className="text-base font-display">{editingServerId ? "Edit MCP Server" : "Add MCP Server"}</CardTitle>
+          <CardDescription className="text-muted-foreground/60">
+            {editingServerId
+              ? "Update the server configuration below. Leave password fields blank to keep existing values."
+              : "Configure a new Model Context Protocol server connection."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 gap-3">
@@ -333,7 +396,12 @@ export function McpConfig() {
               </>
             )}
           </div>
-          <div className="mt-3">
+          <div className="mt-3 flex gap-3">
+            {editingServerId && (
+              <Button type="button" variant="ghost" onClick={resetMcpForm}>
+                Cancel Edit
+              </Button>
+            )}
             <Button
               onClick={addServer}
               disabled={
@@ -342,7 +410,9 @@ export function McpConfig() {
                 (newConnectionType === "local" ? !newCommand : !newUrl)
               }
             >
-              {addingStatus === "saving" || addingStatus === "connecting" ? "Adding..." : "Add & Connect"}
+              {addingStatus === "saving" || addingStatus === "connecting"
+                ? (editingServerId ? "Updating..." : "Adding...")
+                : editingServerId ? "Update & Reconnect" : "Add & Connect"}
             </Button>
           </div>
         </CardContent>
@@ -393,6 +463,9 @@ export function McpConfig() {
                         {connectingId === server.id ? "Connecting..." : "Connect"}
                       </Button>
                     )}
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => startEditServer(server)}>
+                      Edit
+                    </Button>
                     <Button size="sm" variant="destructive" className="flex-1" onClick={() => deleteServer(server.id)}>
                       Remove
                     </Button>
@@ -433,6 +506,9 @@ export function McpConfig() {
                         {connectingId === server.id ? "Connecting..." : "Connect"}
                       </Button>
                     )}
+                    <Button size="sm" variant="outline" onClick={() => startEditServer(server)}>
+                      Edit
+                    </Button>
                     <Button size="sm" variant="destructive" onClick={() => deleteServer(server.id)}>
                       Remove
                     </Button>
