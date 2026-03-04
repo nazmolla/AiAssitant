@@ -29,6 +29,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import SchoolIcon from "@mui/icons-material/School";
 import SettingsIcon from "@mui/icons-material/Settings";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
+import HeadsetMicIcon from "@mui/icons-material/HeadsetMic";
 import { useTheme, THEMES } from "@/components/theme-provider";
 
 /* ── Lazy-loaded tab components (code-split into separate chunks) ── */
@@ -36,6 +37,7 @@ const ChatPanel = dynamic(() => import("@/components/chat-panel").then(m => ({ d
 const ApprovalInbox = dynamic(() => import("@/components/approval-inbox").then(m => ({ default: m.ApprovalInbox })), { ssr: false });
 const KnowledgeVault = dynamic(() => import("@/components/knowledge-vault").then(m => ({ default: m.KnowledgeVault })), { ssr: false });
 const AgentDashboard = dynamic(() => import("@/components/agent-dashboard").then(m => ({ default: m.AgentDashboard })), { ssr: false });
+const ConversationMode = dynamic(() => import("@/components/conversation-mode").then(m => ({ default: m.ConversationMode })), { ssr: false });
 
 /* ── Lazy-loaded settings sub-tab components ── */
 const McpConfig = dynamic(() => import("@/components/mcp-config").then(m => ({ default: m.McpConfig })), { ssr: false });
@@ -54,11 +56,13 @@ const WhisperConfig = dynamic(() => import("@/components/whisper-config").then(m
 const TAB_FROM_PATH: Record<string, string> = {
   chat: "chat", dashboard: "dashboard",
   approvals: "approvals", knowledge: "knowledge",
+  conversation: "conversation",
   settings: "config",
 };
 const PATH_FROM_TAB: Record<string, string> = {
   chat: "/chat", dashboard: "/dashboard",
   approvals: "/approvals", knowledge: "/knowledge",
+  conversation: "/conversation",
   config: "/settings",
 };
 
@@ -153,6 +157,7 @@ export default function HomePage() {
     if (perms.dashboard) items.push({ value: "dashboard", label: "Dashboard", icon: <DashboardIcon fontSize="small" /> });
     if (perms.approvals) items.push({ value: "approvals", label: "Approvals", icon: <CheckCircleIcon fontSize="small" /> });
     if (perms.knowledge) items.push({ value: "knowledge", label: "Knowledge", icon: <SchoolIcon fontSize="small" /> });
+    if (perms.chat) items.push({ value: "conversation", label: "Conversation", icon: <HeadsetMicIcon fontSize="small" /> });
     items.push({ value: "config", label: "Settings", icon: <SettingsIcon fontSize="small" /> });
     return items;
   }, [perms]);
@@ -290,6 +295,7 @@ export default function HomePage() {
             <Box sx={{ maxWidth: 1000, mx: "auto" }}><KnowledgeVault /></Box>
           </Box>
         )}
+        {activeTab === "conversation" && <ConversationMode />}
         {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} isUserMetaLoading={isUserMetaLoading} activePage={settingsPage} onNavigate={navigateToSettings} />}
       </Box>
     </Box>

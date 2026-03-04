@@ -2,7 +2,7 @@
  * Comprehensive UI navigation tests — covers EVERY page in the application.
  *
  * Tests:
- * 1. All 5 main tabs (Chat, Dashboard, Approvals, Knowledge, Settings)
+ * 1. All 6 main tabs (Chat, Dashboard, Approvals, Knowledge, Conversation, Settings)
  * 2. All 11 settings sub-pages via chip click AND via URL routing
  * 3. URL-based routing (the usePathname → tab/settings mapping)
  * 4. Loading-state guard (prevents premature redirect before permissions load)
@@ -106,6 +106,7 @@ jest.mock("@/components/custom-tools-config", () => ({ CustomToolsConfig: () => 
 jest.mock("@/components/logging-config", () => ({ LoggingConfig: () => <div data-testid="logging-config">LoggingConfig Stub</div> }));
 jest.mock("@/components/alexa-config", () => ({ AlexaConfig: () => <div data-testid="alexa-config">AlexaConfig Stub</div> }));
 jest.mock("@/components/whisper-config", () => ({ WhisperConfig: () => <div data-testid="whisper-config">WhisperConfig Stub</div> }));
+jest.mock("@/components/conversation-mode", () => ({ ConversationMode: () => <div data-testid="conversation-mode">ConversationMode Stub</div> }));
 
 import HomePage from "@/app/[[...path]]/page";
 
@@ -193,6 +194,12 @@ describe("Main Tab Navigation — open every tab via drawer", () => {
       expect(screen.getByTestId("profile-config")).toBeInTheDocument();
     }, { timeout: 2000 });
   });
+
+  test("Conversation tab renders ConversationMode", async () => {
+    await renderAndWait("/chat");
+    await clickDrawerItem("Conversation");
+    expect(screen.getByTestId("conversation-mode")).toBeInTheDocument();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -225,6 +232,11 @@ describe("URL-Based Routing — main tabs via URL path", () => {
     await waitFor(() => {
       expect(screen.getByTestId("profile-config")).toBeInTheDocument();
     }, { timeout: 2000 });
+  });
+
+  test("URL /conversation renders ConversationMode", async () => {
+    await renderAndWait("/conversation");
+    expect(screen.getByTestId("conversation-mode")).toBeInTheDocument();
   });
 });
 
