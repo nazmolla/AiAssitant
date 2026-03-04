@@ -303,6 +303,53 @@ export function selectProvider(
 }
 
 /**
+ * Select the best provider AND return its raw config for worker thread usage.
+ * The raw config contains the decrypted apiKey, model, endpoint, etc. that
+ * the worker needs to create its own SDK client instance.
+ */
+export interface WorkerProviderInfo extends OrchestratorResult {
+  providerType: string;
+  providerConfig: Record<string, unknown>;
+}
+
+export function selectProviderForWorker(
+  message: string,
+  hasImages?: boolean,
+  preferredTier?: RoutingTier
+): WorkerProviderInfo {
+  const taskType = classifyTask(message, hasImages);
+  const allProviders = listLlmProviders().filter((p) => p.purpose === "chat");
+
+  if (allProviders.length === 0) {
+    throw new Error("[Nexus] No LLM provider configured. Add one in Settings → LLM Providers.");
+  }
+
+  const scored: ScoredProvider[] = allProviders.map((record) => {
+    const { config, capabilities, tier } = parseProviderConfig(record);
+    let score = scoreProvider(capabilities, tier, taskType);
+    if (preferredTier && tier === preferredTier) score += 150;
+    if (record.is_default) score += 15;
+    return { record, config, capabilities, tier, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0];
+
+  const provider = buildProvider(best.record, best.config);
+  const reason = buildReason(best, taskType, scored.length);
+
+  return {
+    provider,
+    providerLabel: best.record.label,
+    taskType,
+    tier: best.tier,
+    reason,
+    providerType: best.record.provider_type,
+    providerConfig: best.config,
+  };
+}
+
+/**
  * Get a provider specifically for background/non-interactive tasks.
  * Prefers local models to save costs. Falls back to primary if no local available.
  */

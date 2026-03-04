@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { runAgentLoop } from "@/lib/agent";
+import { runAgentLoopWithWorker } from "@/lib/agent";
 import { getThread } from "@/lib/db";
 import type { ContentPart } from "@/lib/llm";
 import fs from "fs";
@@ -156,7 +156,7 @@ export async function POST(
     // Fire-and-forget: run the agent loop asynchronously, pushing SSE events
     (async () => {
       try {
-        const response = await runAgentLoop(
+        const response = await runAgentLoopWithWorker(
           params.threadId,
           message || "(see attached files)",
           contentParts,

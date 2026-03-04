@@ -19,6 +19,7 @@
 - **Audio Mode** — hands-free conversation with auto-listen and streaming TTS; continuous talk→transcribe→respond→speak loop
 - **Local Whisper Fallback** — optional local Whisper server (faster-whisper-server or whisper.cpp) as automatic STT backup when cloud fails
 - **Model Orchestrator** — intelligent task routing picks the best LLM (local for background, cloud for complex)
+- **Worker Thread Isolation** — LLM API calls run in a dedicated Worker Thread to keep the main event loop responsive; automatic fallback if unavailable
 - **Self-Extending Tools** — the agent can create its own tools at runtime, compiled and sandboxed
 - **Admin Notifications via Channels** — approval/proactive notices prefer IM channels, fallback to email
 - **Security Hardened** — prompt injection defense, CSP headers, rate limiting, input validation
@@ -93,7 +94,7 @@ The **Dashboard** tab now provides analytics views for operations and reliabilit
 | Browser | Playwright (Chromium) |
 | Auth | NextAuth v4 (credentials + OAuth) |
 | Extensibility | MCP v1.26+ (Stdio, SSE, Streamable HTTP) |
-| Testing | Jest (unit/integration/component — 774 tests, 63 suites), Playwright (E2E across Desktop Chrome, Pixel 7, iPhone 16 Pro Max) |
+| Testing | Jest (unit/integration/component — 813 tests, 66 suites), Playwright (E2E across Desktop Chrome, Pixel 7, iPhone 16 Pro Max) |
 
 ---
 

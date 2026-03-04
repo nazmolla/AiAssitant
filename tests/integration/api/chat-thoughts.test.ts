@@ -11,9 +11,9 @@ installAuthMocks();
 
 import type { Message } from "@/lib/db/queries";
 
-// Mock runAgentLoop to simulate tool usage — calls onMessage with realistic messages
+// Mock runAgentLoopWithWorker to simulate tool usage — calls onMessage with realistic messages
 jest.mock("@/lib/agent", () => ({
-  runAgentLoop: jest.fn(
+  runAgentLoopWithWorker: jest.fn(
     async (
       _threadId: string,
       _message: string,

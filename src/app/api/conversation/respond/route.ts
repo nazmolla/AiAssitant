@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { selectProvider } from "@/lib/llm/orchestrator";
+import { selectProvider, selectProviderForWorker } from "@/lib/llm/orchestrator";
 import type { ChatMessage, ChatResponse, ToolDefinition, ToolCall } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
 import {
@@ -12,7 +12,9 @@ import {
   BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool,
   BUILTIN_ALEXA_TOOLS, isAlexaTool, executeAlexaTool,
   isCustomTool, executeCustomTool, getCustomToolDefinitions,
+  isWorkerAvailable,
 } from "@/lib/agent";
+import { isWorkerAvailable as checkWorkerAvailable, runLlmInWorker, type WorkerToolResult } from "@/lib/agent/worker-manager";
 import { addLog, getUserById, listToolPolicies } from "@/lib/db";
 
 /**
@@ -169,14 +171,23 @@ export async function POST(req: NextRequest) {
         );
       });
 
-      const conversationPromise = runConversationLoop(
-        orchestration.provider,
-        chatMessages,
-        tools,
-        controller,
-        encoder,
-        auth.user.id
-      );
+      const conversationPromise = checkWorkerAvailable()
+        ? runConversationLoopViaWorker(
+            message,
+            chatMessages,
+            tools,
+            controller,
+            encoder,
+            auth.user.id
+          )
+        : runConversationLoop(
+            orchestration.provider,
+            chatMessages,
+            tools,
+            controller,
+            encoder,
+            auth.user.id
+          );
 
       await Promise.race([conversationPromise, timeoutPromise]);
       clearTimeout(timeoutId);
@@ -354,4 +365,89 @@ async function executeConversationTool(
     });
     return { status: "error", error: msg };
   }
+}
+
+/* ─── Worker Thread variant for conversation loop ──────────────────── */
+
+async function runConversationLoopViaWorker(
+  message: string,
+  chatMessages: ChatMessage[],
+  tools: ToolDefinition[],
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+  userId: string
+) {
+  const orchestration = selectProviderForWorker(message, false);
+
+  const { promise } = runLlmInWorker(
+    {
+      provider: {
+        providerType: orchestration.providerType,
+        apiKey: (orchestration.providerConfig.apiKey as string) || "",
+        model: orchestration.providerConfig.model as string | undefined,
+        endpoint: orchestration.providerConfig.endpoint as string | undefined,
+        deployment: orchestration.providerConfig.deployment as string | undefined,
+        apiVersion: orchestration.providerConfig.apiVersion as string | undefined,
+        baseURL: orchestration.providerConfig.baseURL as string | undefined,
+      },
+      systemPrompt: CONVERSATION_SYSTEM_PROMPT,
+      messages: chatMessages,
+      tools,
+      maxIterations: MAX_TOOL_ITERATIONS,
+    },
+    /* onToken */
+    async (token: string) => {
+      controller.enqueue(
+        encoder.encode(`event: token\ndata: ${JSON.stringify(token)}\n\n`)
+      );
+    },
+    /* onStatus — not used for conversation */
+    undefined,
+    /* onToolRequest — execute tools in main thread */
+    async (calls, _assistantContent) => {
+      // Notify client about tool calls
+      for (const tc of calls) {
+        controller.enqueue(
+          encoder.encode(
+            `event: tool_call\ndata: ${JSON.stringify({ name: tc.name, args: tc.arguments })}\n\n`
+          )
+        );
+      }
+
+      const results: WorkerToolResult[] = [];
+      for (const toolCall of calls) {
+        const result = await executeConversationTool(toolCall, userId);
+        const resultStr = JSON.stringify(result.result ?? result.error ?? "done");
+        const truncatedResult = resultStr.length > 8000
+          ? resultStr.slice(0, 8000) + "\n... [truncated]"
+          : resultStr;
+
+        controller.enqueue(
+          encoder.encode(
+            `event: tool_result\ndata: ${JSON.stringify({ name: toolCall.name, success: result.status === "executed" })}\n\n`
+          )
+        );
+
+        results.push({
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
+          content: truncatedResult,
+        });
+      }
+      return results;
+    }
+  );
+
+  const workerResult = await promise;
+
+  controller.enqueue(
+    encoder.encode(`event: done\ndata: ${JSON.stringify({ content: workerResult.content })}\n\n`)
+  );
+
+  addLog({
+    level: "info",
+    source: "conversation",
+    message: `Conversation response (worker): ${(workerResult.content || "").length} chars, ${workerResult.iterations} iteration(s)`,
+    metadata: JSON.stringify({ userId }),
+  });
 }

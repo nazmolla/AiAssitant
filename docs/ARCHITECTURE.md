@@ -26,6 +26,7 @@ flowchart LR
 
     subgraph A["🟥 Agent Core (Sense → Think → Act)"]
         LOOP["Agent Loop"]
+        WORKER["Worker Thread\nLLM API calls + streaming"]
         ORCH["Model Orchestrator\nTask classifier + scorer"]
         GATE["HITL Gatekeeper\nTool policy enforcement"]
         KNOW["Knowledge System\nCapture + retrieval"]
@@ -80,9 +81,10 @@ flowchart LR
     SCHED --> LOOP
     SCHED --> NOTIFY
 
-    LOOP --> ORCH --> AZURE
-    ORCH --> OPENAI
-    ORCH --> ANTHRO
+    LOOP --> ORCH --> WORKER
+    WORKER --> AZURE
+    WORKER --> OPENAI
+    WORKER --> ANTHRO
 
     LOOP --> KNOW --> EMBED
     KNOW --> DB
@@ -119,7 +121,7 @@ flowchart LR
 
     class WEB,DISCORD,WHATSAPP,WEBHOOK,EMAIL channels;
     class NGINX,MW,AUTH,TRUST security;
-    class LOOP,ORCH,GATE,KNOW,SCHED,INBOUND,NOTIFY,AUDIO core;
+    class LOOP,ORCH,GATE,KNOW,SCHED,INBOUND,NOTIFY,AUDIO,WORKER core;
     class WEBT,BROWSER,FS,CUSTOM,ALEXA,STDIO,SSE,HTTP tools;
     class AZURE,OPENAI,ANTHRO llm;
     class DB,EMBED data;
@@ -150,6 +152,42 @@ The chat interface supports **voice input** (Speech-to-Text) and **voice output*
 ### Real-Time Streaming
 
 The chat API uses **Server-Sent Events (SSE)** via a `ReadableStream` with `controller.enqueue()` to stream responses in real-time. This approach pushes data synchronously to the readable side for immediate HTTP flushing — unlike `TransformStream` which can buffer internally. Both OpenAI and Anthropic providers support **token-level streaming** — individual text tokens are sent to the client via `event: token` SSE events as they arrive from the LLM API, providing instant perceived response time. A leading SSE comment (`: stream opened`) is sent immediately to force proxies/framework to flush headers. The full SSE event lifecycle is:
+
+### Worker Thread Architecture
+
+LLM API calls are offloaded to a dedicated **Worker Thread** (`scripts/agent-worker.js`) to prevent long-running LLM streaming from blocking the Node.js main event loop. This ensures the server remains responsive to other HTTP requests while the agent is mid-conversation.
+
+**Separation of concerns**:
+
+| Responsibility | Thread |
+|---|---|
+| LLM API calls (OpenAI, Azure, Anthropic, LiteLLM) | **Worker** |
+| Token streaming (SDK → IPC → SSE) | **Worker** → Main |
+| Tool execution (builtins, MCP, custom tools) | **Main** |
+| Database operations (messages, knowledge, threads) | **Main** |
+| Knowledge retrieval & embedding search | **Main** |
+| HITL gatekeeper enforcement | **Main** |
+| SSE relay to client | **Main** |
+
+**IPC Protocol** (via `parentPort.postMessage` / `worker.postMessage`):
+
+| Direction | Message Type | Payload |
+|---|---|---|
+| Main → Worker | `start` | Provider config, system prompt, chat messages, tool definitions |
+| Main → Worker | `tool_result` | Executed tool results (response to `tool_request`) |
+| Main → Worker | `abort` | Cancel mid-execution |
+| Worker → Main | `token` | Streamed text token from LLM |
+| Worker → Main | `status` | Step update (e.g. "calling model…") |
+| Worker → Main | `tool_request` | LLM returned tool calls — main thread executes and replies |
+| Worker → Main | `done` | Final response text + tool call history |
+| Worker → Main | `error` | Error details |
+
+**Fallback**: If the worker script is missing or the worker process fails, the system automatically falls back to running the LLM call on the main thread via the original `runAgentLoop()` function. Continuation agent loops (follow-up tool iterations) also run on the main thread.
+
+**Files**:
+- `scripts/agent-worker.js` — Standalone worker entry point (plain JS, uses `require()`)
+- `src/lib/agent/worker-manager.ts` — Worker lifecycle management + IPC handling (120s timeout)
+- `src/lib/agent/loop-worker.ts` — Integration layer wrapping worker with knowledge, tools, DB persistence
 
 1. `event: token` — Individual text tokens streamed from the LLM in real-time (displayed progressively in the chat UI)
 2. `event: status` — Agent thinking steps (model selection, knowledge retrieval, tool execution)
@@ -216,6 +254,7 @@ This ensures other HTTP requests (including new tabs, API calls, and the convers
 | **Model Orchestrator** | Intelligent task routing classifies each message (complex/simple/background/vision) and selects the best LLM provider based on capabilities, speed, cost, and tier. |
 | **Self-Extending Tools** | The agent can create, compile, and register new tools at runtime. Custom tools run in a VM sandbox with no file system or process access. |
 | **Native SDKs** | Direct use of Azure OpenAI, OpenAI, Anthropic, LiteLLM, and MCP SDKs — no LangChain. |
+| **Worker Thread Isolation** | LLM API calls run in a dedicated Worker Thread to prevent token streaming from blocking the main event loop. Tool execution, DB access, and knowledge retrieval remain on the main thread. Automatic fallback to main thread if the worker is unavailable. |
 | **MCP Auto-Refresh** | Subscribes to `list_changed` notifications from MCP servers. When a server installs or removes tools at runtime (e.g. Forage), the tool list is refreshed automatically with a 500 ms debounce — no restart required. |
 | **Browser Automation** | Playwright-powered tools let the agent navigate pages, fill forms, take screenshots, and manage sessions. |
 | **File System Access** | Built-in tools to read, write, list, and search files — with HITL gating on destructive operations. |
@@ -361,6 +400,7 @@ src/
 │   ├── auth-config.tsx         # Authentication provider configuration
 │   ├── channels-config.tsx     # Channel management (user-scoped)
 │   ├── chat-panel.tsx          # Thread/chat with inline approvals, real-time token streaming
+│   ├── conversation-mode.tsx   # Full-screen voice conversation (VAD + TTS + worker thread)
 │   ├── custom-tools-config.tsx # Custom tools CRUD
 │   ├── knowledge-vault.tsx     # Knowledge CRUD
 │   ├── llm-config.tsx          # LLM provider management
@@ -376,6 +416,8 @@ src/
 ├── lib/
 │   ├── agent/                  # Core agent logic
 │   │   ├── loop.ts             # Sense-Think-Act agent loop
+│   │   ├── loop-worker.ts      # Worker thread integration layer (fallback to main thread)
+│   │   ├── worker-manager.ts   # Worker lifecycle, IPC handling, 120s timeout
 │   │   ├── gatekeeper.ts       # HITL policy enforcement
 │   │   ├── discovery.ts        # Tool discovery, group inference, name normalization
 │   │   ├── custom-tools.ts     # Self-extending tool system (VM sandbox)
@@ -396,7 +438,7 @@ src/
 │   │   ├── index.ts            # Ingestion pipeline
 │   │   └── retriever.ts        # Semantic + keyword search
 │   ├── llm/                    # LLM provider abstraction
-│   │   ├── orchestrator.ts     # Model routing & task classification
+│   │   ├── orchestrator.ts     # Model routing & task classification + worker config export
 │   │   ├── openai-provider.ts  # OpenAI / Azure OpenAI
 │   │   ├── anthropic-provider.ts
 │   │   ├── embeddings.ts       # Embedding generation
@@ -409,5 +451,7 @@ src/
 │   ├── cache.ts                # In-memory write-through cache (LLM providers, tool policies, users, profiles)
 │   ├── scheduler/              # Proactive cron scheduler
 │   └── bootstrap.ts            # Runtime initialization
-└── middleware.ts                # Auth + rate limiting + security middleware
+├── middleware.ts                # Auth + rate limiting + security middleware
+scripts/
+└── agent-worker.js             # Worker thread entry point for LLM API calls (plain JS, standalone)
 ```

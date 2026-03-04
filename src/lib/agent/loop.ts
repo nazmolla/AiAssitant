@@ -50,7 +50,7 @@ import { notifyAdmin } from "@/lib/channels/notify";
 /** Yield the event loop so other HTTP requests can be served between heavy operations */
 const yieldLoop = () => new Promise<void>((r) => setImmediate(r));
 
-const SYSTEM_PROMPT = `You are Nexus, a sovereign personal AI agent. You serve a single owner with deep personal knowledge and proactive intelligence.
+export const SYSTEM_PROMPT = `You are Nexus, a sovereign personal AI agent. You serve a single owner with deep personal knowledge and proactive intelligence.
 
 Your capabilities:
 - Access to external services via MCP tools (Email, GitHub, Azure, etc.)
@@ -613,7 +613,7 @@ export async function continueAgentLoop(threadId: string): Promise<AgentResponse
   return runAgentLoop(threadId, "", undefined, undefined, true, userId);
 }
 
-function dbMessagesToChat(
+export function dbMessagesToChat(
   messages: Message[],
   latestContentParts?: ContentPart[]
 ): ChatMessage[] {
@@ -845,7 +845,7 @@ async function executeToolWithPolicy(
  * Auto-generate a short descriptive thread title from the first user message + response.
  * Only updates if the thread still has the default "New Thread" title.
  */
-async function maybeUpdateThreadTitle(
+export async function maybeUpdateThreadTitle(
   threadId: string,
   userMessage: string,
   assistantResponse: string
@@ -904,7 +904,7 @@ async function maybeUpdateThreadTitle(
   }
 }
 
-async function persistKnowledgeFromTurn(
+export async function persistKnowledgeFromTurn(
   threadId: string,
   snippets: string[],
   userId?: string

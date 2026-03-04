@@ -12,7 +12,7 @@ installAuthMocks();
 
 // Mock the agent loop
 jest.mock("@/lib/agent", () => ({
-  runAgentLoop: jest.fn(async (_tid: string, msg: string, contentParts: any) => ({
+  runAgentLoopWithWorker: jest.fn(async (_tid: string, msg: string, contentParts: any) => ({
     content: `Echo: ${msg}`,
     toolsUsed: [],
     pendingApprovals: [],
@@ -27,7 +27,7 @@ import { POST as uploadAttachment } from "@/app/api/attachments/route";
 import { GET as serveAttachment } from "@/app/api/attachments/[...path]/route";
 import { POST as postChat } from "@/app/api/threads/[threadId]/chat/route";
 import { createThread } from "@/lib/db/queries";
-import { runAgentLoop } from "@/lib/agent";
+import { runAgentLoopWithWorker } from "@/lib/agent";
 import fs from "fs";
 import path from "path";
 
@@ -278,8 +278,8 @@ describe("Chat with attachments — content part building", () => {
     const thread = createThread("Attachment Chat", userId);
     threadId = thread.id;
     setMockUser({ id: userId, email: "attach@test.com", role: "user" });
-    (runAgentLoop as jest.Mock).mockClear();
-    (runAgentLoop as jest.Mock).mockImplementation(
+    (runAgentLoopWithWorker as jest.Mock).mockClear();
+    (runAgentLoopWithWorker as jest.Mock).mockImplementation(
       async (_tid: string, msg: string, contentParts: any) => ({
         content: `Echo: ${msg}`,
         toolsUsed: [],
@@ -318,8 +318,8 @@ describe("Chat with attachments — content part building", () => {
     const res = await postChat(req, { params: { threadId } });
     expect(res.status).toBe(200);
 
-    // Verify runAgentLoop was called with base64 data URI content parts
-    const call = (runAgentLoop as jest.Mock).mock.calls[0];
+    // Verify runAgentLoopWithWorker was called with base64 data URI content parts
+    const call = (runAgentLoopWithWorker as jest.Mock).mock.calls[0];
     const parts = call[2]; // contentParts argument
     expect(parts).toBeDefined();
 
@@ -362,7 +362,7 @@ describe("Chat with attachments — content part building", () => {
     const res = await postChat(req, { params: { threadId } });
     expect(res.status).toBe(200);
 
-    const call = (runAgentLoop as jest.Mock).mock.calls[0];
+    const call = (runAgentLoopWithWorker as jest.Mock).mock.calls[0];
     const parts = call[2];
     expect(parts).toBeDefined();
 
@@ -401,7 +401,7 @@ describe("Chat with attachments — content part building", () => {
     const res = await postChat(req, { params: { threadId } });
     expect(res.status).toBe(200);
 
-    const call = (runAgentLoop as jest.Mock).mock.calls[0];
+    const call = (runAgentLoopWithWorker as jest.Mock).mock.calls[0];
     const parts = call[2];
     const filePart = parts.find((p: any) => p.type === "text" && p.text.includes("data.json"));
     expect(filePart).toBeDefined();
@@ -437,7 +437,7 @@ describe("Chat with attachments — content part building", () => {
     const res = await postChat(req, { params: { threadId } });
     expect(res.status).toBe(200);
 
-    const call = (runAgentLoop as jest.Mock).mock.calls[0];
+    const call = (runAgentLoopWithWorker as jest.Mock).mock.calls[0];
     const parts = call[2];
     const filePart = parts.find((p: any) => p.type === "text" && p.text.includes("report.docx"));
     expect(filePart).toBeDefined();
@@ -471,7 +471,7 @@ describe("Chat with attachments — content part building", () => {
     const res = await postChat(req, { params: { threadId } });
     expect(res.status).toBe(200);
 
-    const call = (runAgentLoop as jest.Mock).mock.calls[0];
+    const call = (runAgentLoopWithWorker as jest.Mock).mock.calls[0];
     const parts = call[2];
     const filePart = parts.find((p: any) => p.type === "text" && p.text.includes("could not be found"));
     expect(filePart).toBeDefined();
@@ -504,7 +504,7 @@ describe("Chat with attachments — content part building", () => {
     const res = await postChat(req, { params: { threadId } });
     expect(res.status).toBe(200);
 
-    const call = (runAgentLoop as jest.Mock).mock.calls[0];
+    const call = (runAgentLoopWithWorker as jest.Mock).mock.calls[0];
     const parts = call[2];
     const filePart = parts.find((p: any) => p.type === "text" && p.text.includes("people.csv"));
     expect(filePart).toBeDefined();

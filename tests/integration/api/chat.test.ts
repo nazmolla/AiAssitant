@@ -9,7 +9,7 @@ installAuthMocks();
 
 // Mock the agent loop
 jest.mock("@/lib/agent", () => ({
-  runAgentLoop: jest.fn(async (_threadId: string, message: string, _cp: unknown, _att: unknown, _cont: unknown, _uid: unknown, _onMsg: unknown) => ({
+  runAgentLoopWithWorker: jest.fn(async (_threadId: string, message: string, _cp: unknown, _att: unknown, _cont: unknown, _uid: unknown, _onMsg: unknown) => ({
     content: `Echo: ${message}`,
     toolsUsed: [],
     pendingApprovals: [],
@@ -21,7 +21,7 @@ import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/threads/[threadId]/chat/route";
 import { createThread, updateThreadStatus } from "@/lib/db/queries";
-import { runAgentLoop } from "@/lib/agent";
+import { runAgentLoopWithWorker } from "@/lib/agent";
 
 /** Parse an SSE Response into an array of { event, data } objects */
 async function parseSSE(res: Response): Promise<Array<{ event: string; data: unknown }>> {
@@ -59,7 +59,7 @@ describe("POST /api/threads/[threadId]/chat", () => {
   beforeEach(() => {
     const thread = createThread("Chat Test Thread", userId);
     threadId = thread.id;
-    (runAgentLoop as jest.Mock).mockClear();
+    (runAgentLoopWithWorker as jest.Mock).mockClear();
   });
 
   test("returns 401 when unauthenticated", async () => {
@@ -135,8 +135,8 @@ describe("POST /api/threads/[threadId]/chat", () => {
     expect(doneEvent).toBeDefined();
     expect((doneEvent!.data as { content: string }).content).toBe("Echo: What is 2+2?");
 
-    // Verify runAgentLoop was called with correct args
-    expect(runAgentLoop).toHaveBeenCalledWith(
+    // Verify runAgentLoopWithWorker was called with correct args
+    expect(runAgentLoopWithWorker).toHaveBeenCalledWith(
       threadId,
       "What is 2+2?",
       undefined,
@@ -151,7 +151,7 @@ describe("POST /api/threads/[threadId]/chat", () => {
 
   test("streams token events via SSE when agent calls onToken", async () => {
     // Override mock to invoke the onToken callback during execution
-    (runAgentLoop as jest.Mock).mockImplementation(
+    (runAgentLoopWithWorker as jest.Mock).mockImplementation(
       async (_threadId: string, message: string, _cp: unknown, _att: unknown, _cont: unknown, _uid: unknown, _onMsg: unknown, _onStatus: unknown, onToken?: (token: string) => void) => {
         // Simulate streaming tokens
         onToken?.("Hello");
@@ -186,7 +186,7 @@ describe("POST /api/threads/[threadId]/chat", () => {
   });
 
   test("returns error event when agent loop throws", async () => {
-    (runAgentLoop as jest.Mock).mockRejectedValue(new Error("LLM connection failed"));
+    (runAgentLoopWithWorker as jest.Mock).mockRejectedValue(new Error("LLM connection failed"));
 
     setMockUser({ id: userId, email: "chat@test.com", role: "user" });
     const req = new NextRequest(`http://localhost/api/threads/${threadId}/chat`, {
@@ -220,7 +220,7 @@ describe("POST /api/threads/[threadId]/chat", () => {
     // Resolve and set back to active
     updateThreadStatus(threadId, "active");
 
-    (runAgentLoop as jest.Mock).mockResolvedValue({
+    (runAgentLoopWithWorker as jest.Mock).mockResolvedValue({
       content: "Yes, I'm here!",
       toolsUsed: [],
       pendingApprovals: [],
