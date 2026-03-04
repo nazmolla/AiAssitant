@@ -63,8 +63,8 @@ function detectBumpType() {
 
     const lines = commits.trim().split("\n").filter(Boolean);
     if (lines.length === 0) {
-      console.log("  No new commits, defaulting to patch bump");
-      return "patch";
+      console.log("  No new commits since last tag, skipping bump");
+      return null;
     }
 
     let hasMajor = false;
@@ -113,6 +113,12 @@ function bumpVersion(version, type) {
 console.log("Version bump:");
 const currentVersion = getCurrentVersion();
 const bumpType = detectBumpType();
+
+if (bumpType === null) {
+  console.log(`  Current version: ${currentVersion} (no bump needed)`);
+  process.exit(0);
+}
+
 const newVersion = bumpVersion(currentVersion, bumpType);
 
 console.log(`  ${currentVersion} → ${newVersion} (${bumpType})`);

@@ -92,6 +92,7 @@ echo ""
 echo "[6/7] Uploading and extracting..."
 scp "${TAR_NAME}" "${REMOTE}:${REMOTE_DIR}/${TAR_NAME}"
 ssh "${REMOTE}" "
+  set -e
   cd ${REMOTE_DIR}
   # Remove old build output and source dirs to avoid stale file conflicts
   rm -rf .next src/ public/
@@ -106,14 +107,25 @@ ssh "${REMOTE}" "
   if [ -f nexus.db ]; then
     chmod 664 nexus.db
   fi
-  
-  # Install deps (fail hard if install fails)
-  if [ -f package-lock.json ]; then
-    npm ci --omit=dev
-  else
-    npm install --omit=dev
+
+  # Clean stale node_modules to prevent masking install failures
+  rm -rf node_modules
+
+  # Install deps — retry with cache clean on failure
+  install_deps() {
+    if [ -f package-lock.json ]; then
+      npm ci --omit=dev --loglevel=error 2>&1
+    else
+      npm install --omit=dev --loglevel=error 2>&1
+    fi
+  }
+  if ! install_deps; then
+    echo '  ⚠ npm install failed, clearing cache and retrying...'
+    npm cache clean --force 2>/dev/null
+    install_deps
   fi
-  test -x node_modules/.bin/next
+  # Verify next binary exists
+  test -x node_modules/.bin/next || { echo '  ✗ next binary missing after install'; exit 1; }
   echo '  Extracted and installed'
 "
 echo ""
@@ -121,9 +133,10 @@ echo ""
 # ── Step 6: Start server and verify ──────────────────────────────
 echo "[7/7] Starting server and verifying..."
 ssh "${REMOTE}" "
+  set -e
   cd ${REMOTE_DIR}
   sudo systemctl restart nexus-agent
-  sleep 5
+  sleep 8
   
   # Verify HTTP 200 (via HTTPS through nginx)
   HTTP_CODE=\$(curl -sk -o /dev/null -w '%{http_code}' https://localhost)
