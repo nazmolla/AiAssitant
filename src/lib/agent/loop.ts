@@ -778,7 +778,7 @@ async function executeToolWithPolicy(
       await notifyAdmin(
         `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nReason: ${reasoning || "(not provided)"}`,
         "Nexus Approval Required",
-        { level: "medium" }
+        { level: "medium", notificationType: "approval_required" }
       );
     } catch (err) {
       addLog({

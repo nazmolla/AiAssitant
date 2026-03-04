@@ -2,7 +2,7 @@
  * Comprehensive UI navigation tests — covers EVERY page in the application.
  *
  * Tests:
- * 1. All 6 main tabs (Chat, Conversation, Dashboard, Approvals, Knowledge, Settings)
+ * 1. All 5 main tabs (Chat, Conversation, Dashboard, Knowledge, Settings)
  * 2. All 11 settings sub-pages via chip click AND via URL routing
  * 3. URL-based routing (the usePathname → tab/settings mapping)
  * 4. Loading-state guard (prevents premature redirect before permissions load)
@@ -80,7 +80,7 @@ const adminFetch = jest.fn().mockImplementation((url: string) => {
         provider_id: "local",
         permissions: {
           user_id: "admin-1",
-          chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
+          chat: 1, knowledge: 1, dashboard: 1,
           mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1,
         },
       }),
@@ -93,7 +93,7 @@ global.fetch = adminFetch;
 // Stub all lazy-loaded components with testid markers
 jest.mock("@/components/chat-panel", () => ({ ChatPanel: () => <div data-testid="chat-panel">Chat Panel</div> }));
 jest.mock("@/components/conversation-mode", () => ({ ConversationMode: () => <div data-testid="conversation-mode">Conversation Mode</div> }));
-jest.mock("@/components/approval-inbox", () => ({ ApprovalInbox: () => <div data-testid="approval-inbox">Approval Inbox</div> }));
+jest.mock("@/components/notification-bell", () => ({ NotificationBell: () => <div data-testid="notification-bell">Notification Bell</div> }));
 jest.mock("@/components/knowledge-vault", () => ({ KnowledgeVault: () => <div data-testid="knowledge-vault">Knowledge Vault</div> }));
 jest.mock("@/components/agent-dashboard", () => ({ AgentDashboard: () => <div data-testid="agent-dashboard">Agent Dashboard</div> }));
 jest.mock("@/components/mcp-config", () => ({ McpConfig: () => <div data-testid="mcp-config">MCP Config</div> }));
@@ -181,12 +181,6 @@ describe("Main Tab Navigation — open every tab via drawer", () => {
     expect(screen.getByTestId("conversation-mode")).toBeInTheDocument();
   });
 
-  test("Approvals tab renders ApprovalInbox", async () => {
-    await renderAndWait("/chat");
-    await clickDrawerItem("Approvals");
-    expect(screen.getByTestId("approval-inbox")).toBeInTheDocument();
-  });
-
   test("Knowledge tab renders KnowledgeVault", async () => {
     await renderAndWait("/chat");
     await clickDrawerItem("Knowledge");
@@ -222,11 +216,6 @@ describe("URL-Based Routing — main tabs via URL path", () => {
   test("URL /conversation renders ConversationMode", async () => {
     await renderAndWait("/conversation");
     expect(screen.getByTestId("conversation-mode")).toBeInTheDocument();
-  });
-
-  test("URL /approvals renders ApprovalInbox", async () => {
-    await renderAndWait("/approvals");
-    expect(screen.getByTestId("approval-inbox")).toBeInTheDocument();
   });
 
   test("URL /knowledge renders KnowledgeVault", async () => {
@@ -441,7 +430,7 @@ describe("Loading-State Guard — no premature redirect", () => {
               role: "admin",
               provider_id: "local",
               permissions: {
-                chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
+                chat: 1, knowledge: 1, dashboard: 1,
                 mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1,
               },
             }),
@@ -484,7 +473,7 @@ describe("Loading-State Guard — no premature redirect", () => {
               role: "admin",
               provider_id: "local",
               permissions: {
-                chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
+                chat: 1, knowledge: 1, dashboard: 1,
                 mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1,
               },
             }),
@@ -523,7 +512,7 @@ describe("Loading-State Guard — no premature redirect", () => {
               role: "admin",
               provider_id: "local",
               permissions: {
-                chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
+                chat: 1, knowledge: 1, dashboard: 1,
                 mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1,
               },
             }),
@@ -566,7 +555,7 @@ describe("Permission-Gated Settings Pages", () => {
             role: "user",
             provider_id: "local",
             permissions: {
-              chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
+              chat: 1, knowledge: 1, dashboard: 1,
               mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1,
             },
           }),
@@ -602,7 +591,7 @@ describe("Permission-Gated Settings Pages", () => {
             role: "user",
             provider_id: "local",
             permissions: {
-              chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
+              chat: 1, knowledge: 1, dashboard: 1,
               mcp_servers: 1, channels: 1, llm_config: 0, screen_sharing: 1,
             },
           }),
@@ -628,7 +617,7 @@ describe("Permission-Gated Settings Pages", () => {
             role: "user",
             provider_id: "local",
             permissions: {
-              chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
+              chat: 1, knowledge: 1, dashboard: 1,
               mcp_servers: 1, channels: 0, llm_config: 1, screen_sharing: 1,
             },
           }),
@@ -654,7 +643,7 @@ describe("Permission-Gated Settings Pages", () => {
             role: "user",
             provider_id: "local",
             permissions: {
-              chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
+              chat: 1, knowledge: 1, dashboard: 1,
               mcp_servers: 0, channels: 1, llm_config: 1, screen_sharing: 1,
             },
           }),
@@ -702,7 +691,7 @@ describe("Main Tab Permission Gating", () => {
             role: "user",
             provider_id: "local",
             permissions: {
-              chat: 1, knowledge: 1, dashboard: 0, approvals: 1,
+              chat: 1, knowledge: 1, dashboard: 0,
               mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1,
             },
           }),
@@ -734,7 +723,7 @@ describe("Main Tab Permission Gating", () => {
             role: "user",
             provider_id: "local",
             permissions: {
-              chat: 0, knowledge: 1, dashboard: 1, approvals: 1,
+              chat: 0, knowledge: 1, dashboard: 1,
               mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1,
             },
           }),
@@ -789,7 +778,6 @@ describe("UI Elements", () => {
     expect(screen.getAllByText("Chat").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Conversation").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Dashboard").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Approvals").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Knowledge").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Settings").length).toBeGreaterThanOrEqual(1);
   });

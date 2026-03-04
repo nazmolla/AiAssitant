@@ -23,7 +23,7 @@ All screenshots are captured from the **test environment**.
 | Guide | Audience | Scope |
 |------|----------|-------|
 | [Getting Started](USAGE_GETTING_STARTED.md) | Everyone | Sign-in, navigation, first successful flow |
-| [Daily Workflows](USAGE_DAILY_WORKFLOWS.md) | End users | Chat, approvals, knowledge, profile-level use |
+| [Daily Workflows](USAGE_DAILY_WORKFLOWS.md) | End users | Chat, notifications, knowledge, profile-level use |
 | [Configuration](USAGE_CONFIGURATION.md) | Operators / advanced users | LLM, MCP, tool policies, channels, Alexa |
 | [Admin Operations](USAGE_ADMIN.md) | Admins | Users, auth providers, custom tool governance |
 | [Troubleshooting](USAGE_TROUBLESHOOTING.md) | Everyone | Common issues, diagnostics, recovery steps |

@@ -254,10 +254,10 @@ This ensures other HTTP requests (including new tabs, API calls, and the convers
 | Principle | Description |
 |-----------|-------------|
 | **Multi-User Isolation** | Each user's knowledge, threads, and profile are scoped by `user_id`. No cross-user data leakage. |
-| **Proactive Intelligence** | A background scheduler polls MCP tools and uses the LLM to generate reminders or actions. Proactive approvals (no chat thread) appear in the Approval Inbox and are visible to admins. |
+| **Proactive Intelligence** | A background scheduler polls MCP tools and uses the LLM to generate reminders or actions. Proactive approvals (no chat thread) surface in the Notification Center (bell icon) and are visible to admins. |
 | **Autonomous Knowledge Capture** | Every chat turn is mined for durable facts, keeping the Knowledge Vault up to date without manual entry. |
 | **Vector-Aware Reasoning** | Semantic embedding search retrieves the most relevant knowledge before responding. |
-| **Human-in-the-Loop (HITL)** | Unified tool policy system governs ALL tools (built-in, custom, and MCP). Per-tool approval, proactive toggles, and **scope** (`global` = all users, `user` = admin only). Sensitive calls are held in an approval queue. Both thread-bound and proactive (threadless) approvals are surfaced in the Approval Inbox. Non-admin users only see tools with `scope = 'global'` in the agent loop. |
+| **Human-in-the-Loop (HITL)** | Unified tool policy system governs ALL tools (built-in, custom, and MCP). Per-tool approval, proactive toggles, and **scope** (`global` = all users, `user` = admin only). Sensitive calls are held in an approval queue. Both thread-bound and proactive (threadless) approvals are surfaced in the Notification Center bell icon. Non-admin users only see tools with `scope = 'global'` in the agent loop. |
 | **Model Orchestrator** | Intelligent task routing classifies each message (complex/simple/background/vision) and selects the best LLM provider based on capabilities, speed, cost, and tier. |
 | **Self-Extending Tools** | The agent can create, compile, and register new tools at runtime. Custom tools run in a VM sandbox with no file system or process access. |
 | **Native SDKs** | Direct use of Azure OpenAI, OpenAI, Anthropic, LiteLLM, and MCP SDKs — no LangChain. |
@@ -293,9 +293,10 @@ The UI is a single-page app served by a Next.js **optional catch-all** route (`[
 |----------|-----|
 | `/` or `/chat` | Chat |
 | `/dashboard` | Dashboard |
-| `/approvals` | Approvals |
 | `/knowledge` | Knowledge |
 | `/settings/*` | Settings |
+
+> **Note:** Approvals and system notifications are accessed via the bell icon in the header bar (Notification Center), not as a standalone tab.
 
 ### Settings Sub-Pages
 
@@ -410,7 +411,7 @@ src/
 │   ├── agent-dashboard.tsx     # Full analytics dashboard + drilldown log explorer
 │   ├── alexa-config.tsx        # Alexa Smart Home credential management
 │   ├── api-keys-config.tsx     # API key management
-│   ├── approval-inbox.tsx      # HITL approval UI
+│   ├── approval-inbox.tsx      # HITL approval UI (legacy, superseded by notification-bell)
 │   ├── auth-config.tsx         # Authentication provider configuration
 │   ├── channels-config.tsx     # Channel management (user-scoped)
 │   ├── chat-panel.tsx          # Thread/chat with inline approvals, real-time token streaming
@@ -421,6 +422,7 @@ src/
 │   ├── logging-config.tsx      # Logging configuration
 │   ├── markdown-message.tsx    # Markdown renderer (react-markdown + remark-gfm) for assistant messages
 │   ├── mcp-config.tsx          # MCP server management
+│   ├── notification-bell.tsx   # Unified notification center (bell icon popover with approvals + system alerts)
 │   ├── profile-config.tsx      # User profile editor with feature toggles
 │   ├── providers.tsx           # NextAuth SessionProvider wrapper
 │   ├── theme-provider.tsx      # MUI theme provider (light/dark)

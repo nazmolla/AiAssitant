@@ -109,7 +109,7 @@ export async function executeWithGatekeeper(
       await notifyAdmin(
         `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nReason: ${reasoning || "(not provided)"}`,
         "Nexus Approval Required",
-        { level: "medium" }
+        { level: "medium", notificationType: "approval_required" }
       );
     } catch {
       // non-blocking notification path

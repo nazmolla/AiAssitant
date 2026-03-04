@@ -168,9 +168,24 @@ CREATE TABLE approval_queue (
     status TEXT DEFAULT 'pending',       -- 'pending' | 'approved' | 'rejected'
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,                  -- 'approval_required' | 'tool_error' | 'proactive_action' | 'channel_error' | 'system_error' | 'info'
+    title TEXT NOT NULL,
+    body TEXT,
+    metadata TEXT,                       -- JSON blob for extra context
+    read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_notifications_user_read ON notifications (user_id, read);
+CREATE INDEX idx_notifications_created ON notifications (created_at);
 ```
 
-> **Proactive approvals**: When `thread_id` is `NULL`, the approval was created by the proactive scheduler (no associated chat thread). These appear in the Approval Inbox for admins and are executed directly when approved — no agent loop continuation is needed.
+> **Notifications**: The `notifications` table stores persistent in-app notifications surfaced via the bell icon in the header. Notifications are automatically created when `notifyAdmin()` is called. Types include approval requests, tool errors, proactive actions, channel errors, and system-level alerts.
+>
+> **Proactive approvals**: When `thread_id` is `NULL`, the approval was created by the proactive scheduler (no associated chat thread). These appear in the Notification Center for admins and are executed directly when approved — no agent loop continuation is needed.
 >
 > **Severity capping**: Smart home / IoT tool assessments (prefixes: `builtin.alexa_`, `builtin.smart_home_`, `builtin.iot_`, `builtin.hue_`, `builtin.nest_`, `builtin.ring_`) are automatically capped at `high` severity — they can never produce `disaster`-level events.
 

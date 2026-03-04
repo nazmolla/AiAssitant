@@ -103,6 +103,7 @@ export async function POST(
         await notifyAdmin(summary.summary, "Nexus Inbound Email Summary", {
           level: summary.level,
           userId: channelOwnerId || undefined,
+          notificationType: "info",
         });
 
         return NextResponse.json({

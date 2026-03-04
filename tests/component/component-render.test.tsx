@@ -13,7 +13,7 @@
  * - LoggingConfig
  * - WhisperConfig
  * - ChatPanel
- * - ApprovalInbox
+ * - NotificationBell
  * - KnowledgeVault
  * - ApiKeysConfig
  *
@@ -170,7 +170,7 @@ describe("UserManagement", () => {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve([
-            { id: "u1", email: "user@test.com", display_name: "Test User", role: "user", provider_id: "local", created_at: "2024-01-01T00:00:00Z", permissions: { chat: 1, knowledge: 1, dashboard: 1, approvals: 1, mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1 } },
+            { id: "u1", email: "user@test.com", display_name: "Test User", role: "user", provider_id: "local", created_at: "2024-01-01T00:00:00Z", permissions: { chat: 1, knowledge: 1, dashboard: 1, mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1 } },
           ]),
         });
       }
@@ -297,17 +297,17 @@ describe("WhisperConfig", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// ApprovalInbox
+// NotificationBell
 // ═══════════════════════════════════════════════════════════════════
 
-describe("ApprovalInbox", () => {
+describe("NotificationBell", () => {
   beforeEach(() => {
     jest.useFakeTimers({ advanceTimers: true });
     global.fetch = jest.fn().mockImplementation((url: string) => {
-      if (url.includes("/api/approvals")) {
+      if (url.includes("/api/notifications")) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve([]),
+          json: () => Promise.resolve({ notifications: [], approvals: [], unreadCount: 0 }),
         });
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -319,20 +319,10 @@ describe("ApprovalInbox", () => {
   });
 
   test("renders without throwing", async () => {
-    const { ApprovalInbox } = await import("@/components/approval-inbox");
+    const { NotificationBell } = await import("@/components/notification-bell");
     await act(async () => {
-      expect(() => render(<ApprovalInbox />)).not.toThrow();
+      expect(() => render(<NotificationBell />)).not.toThrow();
     });
-  });
-
-  test("shows approval inbox heading", async () => {
-    const { ApprovalInbox } = await import("@/components/approval-inbox");
-    await act(async () => {
-      render(<ApprovalInbox />);
-    });
-    await waitFor(() => {
-      expect(screen.getByText("Approval Inbox")).toBeInTheDocument();
-    }, { timeout: 3000 });
   });
 });
 

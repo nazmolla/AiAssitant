@@ -178,6 +178,22 @@ CREATE TABLE IF NOT EXISTS approval_queue (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ═══ Notifications ═══
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    metadata TEXT,
+    read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
+
 -- ═══ Agent Logs ═══
 
 CREATE TABLE IF NOT EXISTS agent_logs (

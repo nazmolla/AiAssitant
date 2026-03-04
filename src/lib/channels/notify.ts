@@ -5,7 +5,9 @@ import {
   addLog,
   getUserProfile,
   getUserById,
+  createNotification,
 } from "@/lib/db";
+import type { NotificationType } from "@/lib/db";
 import { sendDiscordDirectMessage } from "@/lib/channels/discord";
 import { buildThemedEmailBody, getEmailChannelConfig, sendSmtpMail } from "@/lib/channels/email-transport";
 
@@ -38,6 +40,7 @@ export function getUserNotificationLevel(userId: string): NotificationLevel {
 export interface NotifyOptions {
   level?: NotificationLevel;
   userId?: string;
+  notificationType?: NotificationType;
 }
 
 function parseConfig(configJson: string): ChannelConfig {
@@ -142,6 +145,20 @@ export async function notifyAdmin(
       metadata: JSON.stringify({ userId: targetUser.id, subject }),
     });
     return false;
+  }
+
+  // Persist an in-app notification so the bell icon shows it
+  try {
+    const nType: NotificationType = options.notificationType
+      ?? (level === "disaster" || level === "high" ? "system_error" : "info");
+    createNotification({
+      userId: targetUser.id,
+      type: nType,
+      title: subject,
+      body: message,
+    });
+  } catch {
+    // Non-critical — don't let notification persistence break delivery
   }
 
   const channels = listChannels(targetUser.id).filter((c) => !!c.enabled);

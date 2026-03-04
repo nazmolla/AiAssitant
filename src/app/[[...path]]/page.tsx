@@ -25,7 +25,6 @@ import MenuIcon from "@mui/icons-material/Menu";
 import PaletteIcon from "@mui/icons-material/Palette";
 import ChatIcon from "@mui/icons-material/Chat";
 import DashboardIcon from "@mui/icons-material/Dashboard";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import SchoolIcon from "@mui/icons-material/School";
 import SettingsIcon from "@mui/icons-material/Settings";
 import HeadsetMicIcon from "@mui/icons-material/HeadsetMic";
@@ -35,10 +34,10 @@ import { useTheme, THEMES } from "@/components/theme-provider";
 
 /* ── Lazy-loaded tab components (code-split into separate chunks) ── */
 const ChatPanel = dynamic(() => import("@/components/chat-panel").then(m => ({ default: m.ChatPanel })), { ssr: false });
-const ApprovalInbox = dynamic(() => import("@/components/approval-inbox").then(m => ({ default: m.ApprovalInbox })), { ssr: false });
 const KnowledgeVault = dynamic(() => import("@/components/knowledge-vault").then(m => ({ default: m.KnowledgeVault })), { ssr: false });
 const AgentDashboard = dynamic(() => import("@/components/agent-dashboard").then(m => ({ default: m.AgentDashboard })), { ssr: false });
 const ConversationMode = dynamic(() => import("@/components/conversation-mode").then(m => ({ default: m.ConversationMode })), { ssr: false });
+const NotificationBell = dynamic(() => import("@/components/notification-bell").then(m => ({ default: m.NotificationBell })), { ssr: false });
 
 /* ── Lazy-loaded settings sub-tab components ── */
 const McpConfig = dynamic(() => import("@/components/mcp-config").then(m => ({ default: m.McpConfig })), { ssr: false });
@@ -57,13 +56,13 @@ const WhisperConfig = dynamic(() => import("@/components/whisper-config").then(m
 const TAB_FROM_PATH: Record<string, string> = {
   chat: "chat", dashboard: "dashboard",
   conversation: "conversation",
-  approvals: "approvals", knowledge: "knowledge",
+  knowledge: "knowledge",
   settings: "config",
 };
 const PATH_FROM_TAB: Record<string, string> = {
   chat: "/chat", dashboard: "/dashboard",
   conversation: "/conversation",
-  approvals: "/approvals", knowledge: "/knowledge",
+  knowledge: "/knowledge",
   config: "/settings",
 };
 
@@ -112,7 +111,7 @@ export default function HomePage() {
     signOut({ callbackUrl: `${window.location.origin}/auth/signin` });
   }, []);
   const [perms, setPerms] = useState<Record<string, number>>({
-    chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
+    chat: 1, knowledge: 1, dashboard: 1,
     mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1,
   });
 
@@ -170,7 +169,6 @@ export default function HomePage() {
     if (perms.chat) items.push({ value: "chat", label: "Chat", icon: <ChatIcon fontSize="small" /> });
     if (perms.chat) items.push({ value: "conversation", label: "Conversation", icon: <HeadsetMicIcon fontSize="small" /> });
     if (perms.dashboard) items.push({ value: "dashboard", label: "Dashboard", icon: <DashboardIcon fontSize="small" /> });
-    if (perms.approvals) items.push({ value: "approvals", label: "Approvals", icon: <CheckCircleIcon fontSize="small" /> });
     if (perms.knowledge) items.push({ value: "knowledge", label: "Knowledge", icon: <SchoolIcon fontSize="small" /> });
     items.push({ value: "config", label: "Settings", icon: <SettingsIcon fontSize="small" /> });
     return items;
@@ -234,6 +232,7 @@ export default function HomePage() {
             </Typography>
           </Box>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <NotificationBell />
             <ThemeSwitcher />
             <FiberManualRecordIcon sx={{ fontSize: 10, color: "success.main" }} titleAccess="Online" />
             <Button
@@ -326,11 +325,6 @@ export default function HomePage() {
         {activeTab === "dashboard" && (
           <Box sx={{ flex: 1, overflow: "auto", p: { xs: 1.5, sm: 3 } }}>
             <Box sx={{ maxWidth: 1000, mx: "auto" }}><AgentDashboard /></Box>
-          </Box>
-        )}
-        {activeTab === "approvals" && (
-          <Box sx={{ flex: 1, overflow: "auto", p: { xs: 1.5, sm: 3 } }}>
-            <Box sx={{ maxWidth: 700, mx: "auto" }}><ApprovalInbox /></Box>
           </Box>
         )}
         {activeTab === "knowledge" && (

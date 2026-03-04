@@ -9,7 +9,7 @@
 - **Multi-User Isolation** — per-user knowledge, threads, channels, and profiles
 - **Proactive Intelligence** — background scheduler monitors MCP tools and generates reminders
 - **Autonomous Knowledge Capture** — every conversation is mined for durable facts
-- **Human-in-the-Loop (HITL)** — sensitive tool calls require explicit approval; proactive scheduler approvals appear in the Approval Inbox for admins; per-tool **scope** (Global or User Only) controls visibility
+- **Human-in-the-Loop (HITL)** — sensitive tool calls require explicit approval; all approvals, system errors, and proactive actions surface in the **Notification Center** (bell icon in the top bar); per-tool **scope** (Global or User Only) controls visibility
 - **Browser Automation** — Playwright-powered web navigation, form filling, and screenshots
 - **Multi-Channel** — Web chat, WhatsApp, Discord, and custom webhooks
 - **Two-Way Email Channel** — SMTP send + IMAP receive with shared inbox routing
@@ -24,7 +24,7 @@
 - **Worker Thread Isolation** — LLM API calls run in a dedicated Worker Thread to keep the main event loop responsive; automatic fallback if unavailable
 - **Self-Extending Tools** — the agent can create its own tools at runtime, compiled and sandboxed
 - **Account Dropdown** — top-right user menu provides quick **Profile** and **Sign out** actions
-- **Admin Notifications via Channels** — approval/proactive notices prefer IM channels, fallback to email
+- **Unified Notification Center** — bell icon in the header aggregates approvals, tool errors, proactive actions, channel errors and system alerts; IM channels + email fallback for external delivery
 - **Security Hardened** — prompt injection defense, CSP headers, rate limiting, input validation
 - **Email Injection Hardening** — inbound email content is handled as untrusted data and guarded before agent processing
 - **Alexa Smart Home** — native integration with 14 Alexa tools for announcements, light/volume control, sensors, and DND management
