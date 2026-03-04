@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { textToSpeech, type TtsVoice } from "@/lib/audio";
+import { textToSpeech, ttsFormatToMime, type TtsVoice, type TtsFormat } from "@/lib/audio";
 import { addLog } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -10,11 +10,14 @@ const VALID_VOICES = [
 ] as const;
 const VALID_VOICES_SET = new Set<string>(VALID_VOICES);
 
+const VALID_FORMATS = ["mp3", "opus", "aac", "flac", "wav", "pcm"] as const;
+const VALID_FORMATS_SET = new Set<string>(VALID_FORMATS);
+
 /**
  * POST /api/audio/tts
  *
- * Accepts JSON `{ text: string, voice?: TtsVoice }`.
- * Returns MP3 audio as a binary response.
+ * Accepts JSON `{ text: string, voice?: TtsVoice, format?: TtsFormat }`.
+ * Returns audio in the requested format (default MP3).
  */
 export async function POST(req: NextRequest) {
   const auth = await requireUser();
@@ -22,7 +25,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { text, voice } = body as { text?: string; voice?: string };
+    const { text, voice, format } = body as { text?: string; voice?: string; format?: string };
 
     if (!text || typeof text !== "string" || text.trim().length === 0) {
       return NextResponse.json(
@@ -38,7 +41,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const audioBuffer = await textToSpeech(text.trim(), (voice as TtsVoice) || undefined);
+    if (format && !VALID_FORMATS_SET.has(format)) {
+      return NextResponse.json(
+        { error: `Invalid format: ${format}. Valid: ${VALID_FORMATS.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const ttsFormat = (format as TtsFormat) || "mp3";
+    const audioBuffer = await textToSpeech(text.trim(), (voice as TtsVoice) || undefined, ttsFormat);
 
     addLog({
       level: "info",
@@ -50,7 +61,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse(audioBuffer, {
       status: 200,
       headers: {
-        "Content-Type": "audio/mpeg",
+        "Content-Type": ttsFormatToMime(ttsFormat),
         "Content-Length": String(audioBuffer.byteLength),
         "Cache-Control": "private, max-age=3600",
       },

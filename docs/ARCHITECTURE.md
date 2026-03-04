@@ -15,6 +15,7 @@ flowchart LR
         WHATSAPP["WhatsApp"]
         WEBHOOK["Webhooks"]
         EMAIL["Email (IMAP/SMTP)"]
+        ATOMECHO["ESP32 Atom Echo"]
     end
 
     subgraph S["🟨 Security + Auth"]
@@ -91,6 +92,7 @@ flowchart LR
     LOOP --> DB
 
     WEB -->|mic| AUDIO
+    ATOMECHO -->|WAV/SSE| AUDIO
     AUDIO -->|Whisper| OPENAI
     AUDIO -->|TTS-1| OPENAI
     AUDIO --> WEB
@@ -143,11 +145,12 @@ The system follows a **Sense-Think-Act** loop. It observes its environment throu
 The chat interface supports **voice input** (Speech-to-Text) and **voice output** (Text-to-Speech) powered by OpenAI's audio models.
 
 - **Speech-to-Text**: Click the mic button to record audio via the browser MediaRecorder API (`audio/webm;codecs=opus`). The recording is sent to `POST /api/audio/transcribe` which forwards it to OpenAI's **Whisper** (`whisper-1`) model. The transcribed text is appended to the chat input field. Max file size: 25 MB.
-- **Text-to-Speech**: Click the speaker icon on any assistant message to hear it read aloud. The message text is sent to `POST /api/audio/tts` which calls OpenAI's **TTS-1** model (default voice: `nova`, 9 voices available: alloy, ash, coral, echo, fable, onyx, nova, sage, shimmer). Users can select their preferred voice in **Settings → Profile → Preferences & Features → TTS Voice**. The choice is persisted in the user profile and synced to localStorage for instant access. The MP3 audio plays inline via the browser Audio API. Click again to stop playback.
+- **Text-to-Speech**: Click the speaker icon on any assistant message to hear it read aloud. The message text is sent to `POST /api/audio/tts` which calls OpenAI's **TTS-1** model (default voice: `nova`, 9 voices available: alloy, ash, coral, echo, fable, onyx, nova, sage, shimmer). Users can select their preferred voice in **Settings → Profile → Preferences & Features → TTS Voice**. The choice is persisted in the user profile and synced to localStorage for instant access. The MP3 audio plays inline via the browser Audio API. Click again to stop playback. The TTS endpoint supports multiple output formats via the `format` field: `mp3` (default), `wav`, `pcm`, `opus`, `aac`, `flac` — the `wav` and `pcm` formats are especially useful for embedded devices that lack an MP3 decoder.
 - **Provider selection**: `getAudioClient()` in `src/lib/audio.ts` prefers providers with `purpose = "tts"` or `purpose = "stt"` (each maps to one deployment), then falls back to the first OpenAI-compatible provider (openai → azure-openai → litellm). Anthropic is skipped as it has no audio API. Each TTS/STT provider uses the standard `deployment` config field — no special audio-specific fields needed.
 - **Audio mode**: Hands-free conversation mode is provided in the dedicated **Conversation** tab. The flow is: start mic → VAD detects end-of-speech → transcription auto-sends → TTS plays response → auto-listen resumes (when auto mode is enabled). The status banner shows current state (Listening/Transcribing/Thinking/Speaking).
 - **Conversation Mode**: A dedicated full-screen voice conversation page (`/conversation` tab) separate from the chat interface. Uses **Voice Activity Detection (VAD)** via WebAudio API's `AnalyserNode` to automatically detect the end of speech (1.2s of silence after at least 0.4s of speech). State updates use an atomic `useCallback` wrapper that synchronises both React state and a `stateRef` in a single call, preventing race conditions where async code reads a stale ref. The complete flow: Listen → Detect silence → STT transcription → Send to lightweight LLM endpoint (SSE streaming with tool support) → Accumulate response → TTS playback → Auto-listen again. **Interrupt / Barge-in** — a separate lightweight interrupt VAD (`startInterruptVad`) opens a second mic stream + AudioContext during thinking/speaking states. When sustained speech is detected (≥ 200 ms at 2× the silence threshold to avoid TTS speaker bleed), `interruptAndListen()` fires: aborts the LLM request, pauses TTS playback, marks the last assistant transcript with a "⸺" indicator, and transitions directly to listening. Features include: real-time audio level visualization, transcript display with chat bubbles, voice selector (9 voices), auto/manual listen toggle, interrupt / barge-in support, and in-memory conversation history (no thread/DB persistence). The component is at `src/components/conversation-mode.tsx` and uses a dedicated `/api/conversation/respond` endpoint that keeps full tool access (builtins + MCP + custom) while skipping the heavy overhead of the main agent loop (no knowledge retrieval, no embedding generation, no profile context, no message persistence). History is maintained in-memory on the client side (capped at 30 messages) and passed with each request.
 - **Local Whisper fallback**: Optional local Whisper server (e.g. `faster-whisper-server` or `whisper.cpp`) configured via **Settings → Local Whisper**. When enabled, if the cloud STT provider fails, `transcribeAudio()` automatically retries via the local server's OpenAI-compatible `/v1/audio/transcriptions` endpoint. Config stored in `app_config` keys: `whisper_local_enabled`, `whisper_local_url`, `whisper_local_model`. Connectivity test available via `POST /api/config/whisper`.
+- **ESP32 Atom Echo integration**: A standalone Arduino/PlatformIO firmware (`esp32/atom-echo-nexus/atom_echo_nexus.ino`) for the M5Stack Atom Echo turns it into a hands-free voice assistant. Wake-word detection runs **on-device** using **micro-wake-up** (no server wake-word check). After on-device wake detection, the command audio is sent to `/api/audio/transcribe`, the resulting text is sent to `/api/conversation/respond` (full tool support), and the response is played via `/api/audio/tts` in WAV format. See [`esp32/atom-echo-nexus/README.md`](../esp32/atom-echo-nexus/README.md) for setup instructions.
 
 ### Real-Time Streaming
 

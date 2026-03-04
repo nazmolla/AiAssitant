@@ -28,6 +28,8 @@
 - **Security Hardened** — prompt injection defense, CSP headers, rate limiting, input validation
 - **Email Injection Hardening** — inbound email content is handled as untrusted data and guarded before agent processing
 - **Alexa Smart Home** — native integration with 14 Alexa tools for announcements, light/volume control, sensors, and DND management
+- **ESP32 Atom Echo** — standalone Arduino sketch for M5Stack Atom Echo with on-device wake-word detection (micro-wake-up) and hands-free voice interaction
+- **Multi-Format TTS** — configurable TTS output format (mp3, wav, pcm, opus, aac, flac) for flexible client support
 
 ---
 
@@ -90,7 +92,7 @@ The **Dashboard** tab now provides analytics views for operations and reliabilit
 | Browser | Playwright (Chromium) |
 | Auth | NextAuth v4 (credentials + OAuth) |
 | Extensibility | MCP v1.26+ (Stdio, SSE, Streamable HTTP) |
-| Testing | Jest (unit/integration/component — 834 tests, 69 suites), Playwright (E2E across Desktop Chrome, Pixel 7, iPhone 16 Pro Max) |
+| Testing | Jest (unit/integration/component — 839 tests, 69 suites), Playwright (E2E across Desktop Chrome, Pixel 7, iPhone 16 Pro Max) |
 
 ---
 

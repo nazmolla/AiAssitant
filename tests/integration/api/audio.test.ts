@@ -10,6 +10,17 @@ installAuthMocks();
 jest.mock("@/lib/audio", () => ({
   transcribeAudio: jest.fn(async () => "Hello from Whisper"),
   textToSpeech: jest.fn(async () => new ArrayBuffer(512)),
+  ttsFormatToMime: jest.fn((fmt: string) => {
+    const map: Record<string, string> = {
+      mp3: "audio/mpeg",
+      wav: "audio/wav",
+      pcm: "audio/L16;rate=24000;channels=1",
+      opus: "audio/opus",
+      aac: "audio/aac",
+      flac: "audio/flac",
+    };
+    return map[fmt] || "audio/mpeg";
+  }),
   MAX_AUDIO_SIZE_BYTES: 25 * 1024 * 1024,
 }));
 
@@ -128,6 +139,29 @@ describe("POST /api/audio/tts", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toMatch(/invalid voice/i);
+  });
+
+  test("returns WAV content-type when format=wav", async () => {
+    setMockUser(TEST_USER);
+    const req = makeJsonRequest("http://localhost/api/audio/tts", {
+      text: "Hello",
+      format: "wav",
+    });
+    const res = await ttsPost(req);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("audio/wav");
+  });
+
+  test("returns 400 for invalid format", async () => {
+    setMockUser(TEST_USER);
+    const req = makeJsonRequest("http://localhost/api/audio/tts", {
+      text: "Hello",
+      format: "avi",
+    });
+    const res = await ttsPost(req);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/invalid format/i);
   });
 
   test("accepts valid voice parameter", async () => {

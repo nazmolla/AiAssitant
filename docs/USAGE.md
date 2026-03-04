@@ -84,3 +84,7 @@ The **Conversation** tab provides a dedicated full-screen voice conversation exp
 - A configured STT provider (OpenAI Whisper or local Whisper fallback).
 - A configured TTS provider (OpenAI TTS-1).
 - A configured LLM provider for chat responses.
+
+### ESP32 Atom Echo (Hardware Voice)
+
+For a dedicated hardware voice assistant, the M5Stack **Atom Echo** can be flashed with the Arduino sketch in `esp32/atom-echo-nexus/`. It uses **on-device micro-wake-up** for wake-word detection and connects to Nexus for STT, conversation, and TTS over HTTP. See [Installation — ESP32 Setup](INSTALLATION.md#esp32-atom-echo-setup-optional) and the [Atom Echo README](../esp32/atom-echo-nexus/README.md) for details.

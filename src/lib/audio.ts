@@ -20,6 +20,9 @@ import { listLlmProviders, getAppConfig, type LlmProviderRecord } from "@/lib/db
 /** Supported TTS voices */
 export type TtsVoice = "alloy" | "ash" | "coral" | "echo" | "fable" | "onyx" | "nova" | "sage" | "shimmer";
 
+/** Supported TTS output formats */
+export type TtsFormat = "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
+
 /** Which audio operation the client will be used for */
 export type AudioOperation = "tts" | "stt";
 
@@ -242,13 +245,31 @@ async function transcribeAudioLocal(
   return typeof result === "string" ? result : (result as { text: string }).text;
 }
 
+/** Map TTS format to MIME type */
+export function ttsFormatToMime(format: TtsFormat): string {
+  switch (format) {
+    case "mp3": return "audio/mpeg";
+    case "opus": return "audio/opus";
+    case "aac": return "audio/aac";
+    case "flac": return "audio/flac";
+    case "wav": return "audio/wav";
+    case "pcm": return "audio/L16;rate=24000;channels=1";
+    default: return "audio/mpeg";
+  }
+}
+
 /**
  * Convert text to speech using OpenAI TTS.
- * Returns an ArrayBuffer of mp3 audio data.
+ * Returns an ArrayBuffer of audio data in the requested format.
+ *
+ * @param format Output format (default "mp3"). "wav" is useful for
+ *   embedded devices that can't decode MP3.  "pcm" returns raw 16-bit
+ *   signed LE samples at 24 kHz.
  */
 export async function textToSpeech(
   text: string,
-  voice: TtsVoice = DEFAULT_TTS_VOICE
+  voice: TtsVoice = DEFAULT_TTS_VOICE,
+  format: TtsFormat = "mp3"
 ): Promise<ArrayBuffer> {
   if (!text || text.length === 0) {
     throw new Error("Text is empty.");
@@ -265,7 +286,7 @@ export async function textToSpeech(
     model,
     voice,
     input: truncated,
-    response_format: "mp3",
+    response_format: format,
   });
 
   return response.arrayBuffer();

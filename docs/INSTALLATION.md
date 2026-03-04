@@ -276,6 +276,19 @@ After setup, access the app at `https://YOUR_IP` (port 443, no port needed in UR
 
 ---
 
+## ESP32 Atom Echo Setup (Optional)
+
+The M5Stack Atom Echo can be set up as a standalone hands-free voice assistant for Nexus.
+
+1. Open `esp32/atom-echo-nexus/atom_echo_nexus.ino` in the Arduino IDE (or PlatformIO).
+2. Set your WiFi credentials, Nexus host/port, and API key in the `CONFIG` section.
+3. Install the **micro-wake-up** library and place a wake-word model in the project.
+4. Upload the sketch to the Atom Echo.
+
+See [`esp32/atom-echo-nexus/README.md`](../esp32/atom-echo-nexus/README.md) for full hardware details, pin assignments, and wake-word configuration.
+
+---
+
 ## Troubleshooting
 
 | Issue | Solution |
