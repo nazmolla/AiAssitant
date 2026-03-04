@@ -69,7 +69,6 @@ export function ConversationMode() {
   const [currentText, setCurrentText] = useState(""); // streaming LLM text
   const [errorMsg, setErrorMsg] = useState("");
   const [audioLevel, setAudioLevel] = useState(0); // 0-1 for visual feedback
-  const [threadId, setThreadId] = useState<string | null>(null);
   const [voice, setVoice] = useState<string>("nova");
   const [autoListen, setAutoListen] = useState(true);
 
@@ -88,6 +87,7 @@ export function ConversationMode() {
   const abortRef = useRef<AbortController | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const autoListenRef = useRef(true);
+  const conversationHistoryRef = useRef<Array<{ role: string; content: string }>>([]); // in-memory LLM history
 
   // Keep refs in sync with state
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -115,22 +115,6 @@ export function ConversationMode() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  /* ─── Thread management ────────────────────────────────────────── */
-
-  async function ensureThread(): Promise<string> {
-    if (threadId) return threadId;
-
-    const res = await fetch("/api/threads", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "Voice Conversation" }),
-    });
-    if (!res.ok) throw new Error("Failed to create conversation thread");
-    const data = await res.json();
-    setThreadId(data.id);
-    return data.id;
-  }
 
   /* ─── Voice Activity Detection (VAD) ───────────────────────────── */
 
@@ -302,18 +286,29 @@ export function ConversationMode() {
     analyserRef.current = null;
   }
 
-  /* ─── Process audio: STT → LLM → TTS ──────────────────────────── */
+  /* ─── Process audio: STT → LLM (with tools) → TTS ──────────────── */
 
   async function processAudio(blob: Blob, mimeType: string) {
     try {
-      // 1. Transcribe (STT)
+      // 1. Transcribe (STT) — with 30s timeout
       setState("processing");
       const ext = mimeType.includes("mp4") || mimeType.includes("m4a") ? "mp4"
         : mimeType.includes("ogg") ? "ogg" : "webm";
       const formData = new FormData();
       formData.append("audio", blob, `recording.${ext}`);
 
-      const sttRes = await fetch("/api/audio/transcribe", { method: "POST", body: formData });
+      const sttAbort = new AbortController();
+      const sttTimeout = setTimeout(() => sttAbort.abort(), 30_000);
+      let sttRes: Response;
+      try {
+        sttRes = await fetch("/api/audio/transcribe", {
+          method: "POST",
+          body: formData,
+          signal: sttAbort.signal,
+        });
+      } finally {
+        clearTimeout(sttTimeout);
+      }
       const sttData = await sttRes.json();
 
       if (!sttRes.ok || !sttData.text?.trim()) {
@@ -329,18 +324,20 @@ export function ConversationMode() {
       const userText = sttData.text.trim();
       setTranscript((prev) => [...prev, { role: "user", text: userText, timestamp: Date.now() }]);
 
-      // 2. Send to LLM
+      // 2. Send to LLM via lightweight conversation endpoint (with tools)
       setState("thinking");
       setCurrentText("");
 
-      const tid = await ensureThread();
       const abort = new AbortController();
       abortRef.current = abort;
 
-      const chatRes = await fetch(`/api/threads/${tid}/chat`, {
+      // Build history from in-memory ref (no thread/DB needed)
+      const history = conversationHistoryRef.current;
+
+      const chatRes = await fetch("/api/conversation/respond", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText }),
+        body: JSON.stringify({ message: userText, history }),
         signal: abort.signal,
       });
 
@@ -348,7 +345,7 @@ export function ConversationMode() {
         throw new Error(`LLM request failed: ${chatRes.status}`);
       }
 
-      // 3. Consume SSE stream
+      // 3. Consume SSE stream (handles token, tool_call, tool_result, done, error)
       const reader = chatRes.body?.getReader();
       if (!reader) throw new Error("No response stream");
       const decoder = new TextDecoder();
@@ -375,8 +372,17 @@ export function ConversationMode() {
                 const token = data as string;
                 fullResponse += token;
                 setCurrentText((prev) => prev + token);
+              } else if (currentEvent === "tool_call") {
+                // Tool is being called — show it as a status
+                setCurrentText((prev) => prev + (prev ? "\n" : "") + `⚙️ Using ${data.name}...`);
+              } else if (currentEvent === "tool_result") {
+                // Clear tool call indicator — LLM will process next
+                setCurrentText("");
+                fullResponse = ""; // reset — LLM will generate a new response after tool results
               } else if (currentEvent === "done") {
-                // Stream complete
+                if (data.content && !fullResponse) {
+                  fullResponse = data.content;
+                }
               } else if (currentEvent === "error") {
                 throw new Error(data.error || "LLM error");
               }
@@ -393,11 +399,18 @@ export function ConversationMode() {
         throw new Error("Empty response from LLM");
       }
 
+      // Update in-memory conversation history
+      conversationHistoryRef.current = [
+        ...history,
+        { role: "user", content: userText },
+        { role: "assistant", content: fullResponse },
+      ].slice(-30); // cap at 30 messages
+
       // Add assistant response to transcript
       setTranscript((prev) => [...prev, { role: "assistant", text: fullResponse, timestamp: Date.now() }]);
       setCurrentText("");
 
-      // 4. TTS — speak the response
+      // 4. TTS — speak the response (with 30s timeout)
       const ttsText = sanitizeForTts(fullResponse);
       if (ttsText) {
         setState("speaking");
@@ -406,7 +419,6 @@ export function ConversationMode() {
 
       // 5. Auto-listen again
       if (autoListenRef.current && stateRef.current === "speaking") {
-        // Wait a moment after TTS ends, then restart
         setTimeout(() => {
           if (autoListenRef.current && (stateRef.current === "speaking" || stateRef.current === "idle")) {
             restartListening();
@@ -859,7 +871,7 @@ export function ConversationMode() {
             color="inherit"
             onClick={() => {
               setTranscript([]);
-              setThreadId(null);
+              conversationHistoryRef.current = [];
             }}
             sx={{ fontSize: "0.7rem", opacity: 0.6 }}
           >

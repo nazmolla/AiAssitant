@@ -47,6 +47,9 @@ import path from "path";
 import crypto from "crypto";
 import { notifyAdmin } from "@/lib/channels/notify";
 
+/** Yield the event loop so other HTTP requests can be served between heavy operations */
+const yieldLoop = () => new Promise<void>((r) => setImmediate(r));
+
 const SYSTEM_PROMPT = `You are Nexus, a sovereign personal AI agent. You serve a single owner with deep personal knowledge and proactive intelligence.
 
 Your capabilities:
@@ -302,6 +305,7 @@ export async function runAgentLoop(
 
   while (iterations < MAX_TOOL_ITERATIONS) {
     iterations++;
+    await yieldLoop(); // yield event loop between iterations so other requests can be served
 
     onStatus?.({ step: "Generating response", detail: `Sending to ${orchestration.providerLabel}${iterations > 1 ? ` (iteration ${iterations})` : ""}` });
     const response: ChatResponse = await provider.chat(
@@ -336,6 +340,7 @@ export async function runAgentLoop(
 
       // Process each tool call through the unified policy gatekeeper
       for (const toolCall of response.toolCalls) {
+        await yieldLoop(); // yield between tool executions
         onStatus?.({ step: "Executing tool", detail: toolCall.name });
         const result = await executeToolWithPolicy(toolCall, threadId, response.content || undefined);
 

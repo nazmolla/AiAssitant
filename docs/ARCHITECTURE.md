@@ -144,7 +144,7 @@ The chat interface supports **voice input** (Speech-to-Text) and **voice output*
 - **Text-to-Speech**: Click the speaker icon on any assistant message to hear it read aloud. The message text is sent to `POST /api/audio/tts` which calls OpenAI's **TTS-1** model (default voice: `nova`, 9 voices available: alloy, ash, coral, echo, fable, onyx, nova, sage, shimmer). Users can select their preferred voice in **Settings → Profile → Preferences & Features → TTS Voice**. The choice is persisted in the user profile and synced to localStorage for instant access. The MP3 audio plays inline via the browser Audio API. Click again to stop playback.
 - **Provider selection**: `getAudioClient()` in `src/lib/audio.ts` prefers providers with `purpose = "tts"` or `purpose = "stt"` (each maps to one deployment), then falls back to the first OpenAI-compatible provider (openai → azure-openai → litellm). Anthropic is skipped as it has no audio API. Each TTS/STT provider uses the standard `deployment` config field — no special audio-specific fields needed.
 - **Audio mode**: Hands-free conversation mode activated via the headset button in the input bar. When enabled: (1) auto-starts recording, (2) transcription auto-sends the message, (3) TTS plays the response automatically, (4) after TTS finishes, recording auto-starts again — creating a continuous conversation loop. The status banner shows current state (Listening/Transcribing/Thinking/Speaking). Audio mode hides the manual mic button to avoid interference.
-- **Conversation Mode**: A dedicated full-screen voice conversation page (`/conversation` tab) separate from the chat interface. Uses **Voice Activity Detection (VAD)** via WebAudio API's `AnalyserNode` to automatically detect the end of speech (1.8s of silence after at least 0.5s of speech). The complete flow: Listen → Detect silence → STT transcription → Send to LLM (SSE streaming) → Accumulate response → TTS playback → Auto-listen again. Features include: real-time audio level visualization, transcript display with chat bubbles, voice selector (9 voices), auto/manual listen toggle, and per-conversation thread management. The component is at `src/components/conversation-mode.tsx` and reuses the existing `/api/audio/transcribe`, `/api/threads/{id}/chat`, and `/api/audio/tts` endpoints.
+- **Conversation Mode**: A dedicated full-screen voice conversation page (`/conversation` tab) separate from the chat interface. Uses **Voice Activity Detection (VAD)** via WebAudio API's `AnalyserNode` to automatically detect the end of speech (1.8s of silence after at least 0.5s of speech). The complete flow: Listen → Detect silence → STT transcription → Send to lightweight LLM endpoint (SSE streaming with tool support) → Accumulate response → TTS playback → Auto-listen again. Features include: real-time audio level visualization, transcript display with chat bubbles, voice selector (9 voices), auto/manual listen toggle, and in-memory conversation history (no thread/DB persistence). The component is at `src/components/conversation-mode.tsx` and uses a dedicated `/api/conversation/respond` endpoint that keeps full tool access (builtins + MCP + custom) while skipping the heavy overhead of the main agent loop (no knowledge retrieval, no embedding generation, no profile context, no message persistence). History is maintained in-memory on the client side (capped at 30 messages) and passed with each request.
 - **Local Whisper fallback**: Optional local Whisper server (e.g. `faster-whisper-server` or `whisper.cpp`) configured via **Settings → Local Whisper**. When enabled, if the cloud STT provider fails, `transcribeAudio()` automatically retries via the local server's OpenAI-compatible `/v1/audio/transcriptions` endpoint. Config stored in `app_config` keys: `whisper_local_enabled`, `whisper_local_url`, `whisper_local_model`. Connectivity test available via `POST /api/config/whisper`.
 
 ### Real-Time Streaming
@@ -169,6 +169,30 @@ The SSE stream supports three event types:
 | `error`    | Error details when the agent loop throws, sanitized to avoid leaking paths. |
 
 The `status` events provide transparency into the agent's internal process for **every** response — not just tool-using ones — so users always see what the agent is doing (selecting a model, searching the knowledge vault, generating a response).
+
+### Caching & Event Loop Protection
+
+**Application Cache** (`src/lib/cache.ts`): An in-memory write-through cache for frequently-read, rarely-changed data that was previously queried from SQLite on every single request. Two invalidation strategies work together:
+
+1. **Explicit invalidation** — mutation functions (e.g. `createLlmProvider`, `updateUserRole`, `upsertToolPolicy`) automatically call `appCache.invalidate()` when they modify data (instant, primary mechanism).
+2. **TTL expiration** — 60-second safety net in case a mutation path misses invalidation.
+
+| Cached Data | Cache Key | Invalidated By |
+|---|---|---|
+| LLM providers (decrypted) | `llm_providers` | `createLlmProvider`, `updateLlmProvider`, `deleteLlmProvider`, `setDefaultLlmProvider` |
+| Tool policies | `tool_policies` | `upsertToolPolicy` |
+| User records (role/enabled) | `user:{userId}` | `updateUserRole`, `updateUserEnabled`, `deleteUser` |
+| User profiles | `profile:{userId}` | `upsertUserProfile`, `deleteUser` |
+
+Previously, `selectProvider()` called `listLlmProviders()` (full table scan + decryption) on every request — now cached. Similarly, `getUserById()` and `listToolPolicies()` were called per-request for role checks and tool filtering — now cached.
+
+**Event Loop Yield Points**: Because `better-sqlite3` is synchronous, the agent loop uses `await yieldLoop()` (backed by `setImmediate()`) at critical points to prevent blocking the Node.js event loop:
+
+- At the top of each tool iteration loop (before calling the LLM)
+- Between each tool execution (before `executeToolWithPolicy()`)
+- Between tool executions in the conversation endpoint
+
+This ensures other HTTP requests (including new tabs, API calls, and the conversation endpoint) can be served even while a long-running agent loop with multiple tool calls is executing.
 
 ### Notification & Inbound Email Safety Path
 
@@ -382,6 +406,7 @@ src/
 │   ├── mcp/                    # MCP client management
 │   │   └── manager.ts          # Connect, discover, invoke, auto-refresh
 │   ├── audio.ts                # Audio utility (getAudioClient, transcribeAudio, textToSpeech)
+│   ├── cache.ts                # In-memory write-through cache (LLM providers, tool policies, users, profiles)
 │   ├── scheduler/              # Proactive cron scheduler
 │   └── bootstrap.ts            # Runtime initialization
 └── middleware.ts                # Auth + rate limiting + security middleware

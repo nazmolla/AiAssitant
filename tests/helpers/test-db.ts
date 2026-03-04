@@ -4,6 +4,7 @@
  */
 import Database from "better-sqlite3";
 import { SCHEMA_SQL } from "@/lib/db/schema";
+import { appCache } from "@/lib/cache";
 
 let testDb: Database.Database | null = null;
 
@@ -39,11 +40,15 @@ export function setupTestDb(): Database.Database {
   conn.getDb = () => testDb;
   conn.closeDb = () => {
     conn.clearStmtCache();
+    appCache.invalidateAll();
     if (testDb) {
       testDb.close();
       testDb = null;
     }
   };
+
+  // Flush any cached data from a previous DB instance
+  appCache.invalidateAll();
 
   return testDb;
 }

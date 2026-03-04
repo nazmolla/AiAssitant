@@ -3,6 +3,7 @@ import { v4 as uuid } from "uuid";
 import crypto from "crypto";
 import { encryptField, decryptField } from "./crypto";
 import { normalizeLogLevel, shouldKeepLog, type UnifiedLogLevel, isUnifiedLogLevel } from "@/lib/logging/levels";
+import { appCache, CACHE_KEYS } from "@/lib/cache";
 
 /** Thin wrapper that passes the (patchable) `getDb` import to the cache */
 function stmt(sql: string) { return _cachedStmt(sql, getDb); }
@@ -21,7 +22,10 @@ export interface UserRecord {
 }
 
 export function getUserById(id: string): UserRecord | undefined {
-  return stmt("SELECT * FROM users WHERE id = ?").get(id) as UserRecord | undefined;
+  return appCache.get(
+    `${CACHE_KEYS.USER_PREFIX}${id}`,
+    () => stmt("SELECT * FROM users WHERE id = ?").get(id) as UserRecord | undefined
+  );
 }
 
 export function getUserByEmail(email: string): UserRecord | undefined {
@@ -144,10 +148,12 @@ export function getUserPermissions(userId: string): UserPermissions | undefined 
 export function updateUserRole(userId: string, role: string): void {
   if (!["admin", "user"].includes(role)) throw new Error("Invalid role");
   getDb().prepare("UPDATE users SET role = ? WHERE id = ?").run(role, userId);
+  appCache.invalidate(`${CACHE_KEYS.USER_PREFIX}${userId}`);
 }
 
 export function updateUserEnabled(userId: string, enabled: boolean): void {
   getDb().prepare("UPDATE users SET enabled = ? WHERE id = ?").run(enabled ? 1 : 0, userId);
+  appCache.invalidate(`${CACHE_KEYS.USER_PREFIX}${userId}`);
 }
 
 export function updateUserPermissions(userId: string, perms: Partial<Omit<UserPermissions, "user_id">>): void {
@@ -169,6 +175,8 @@ export function updateUserPermissions(userId: string, perms: Partial<Omit<UserPe
 
 export function deleteUser(userId: string): void {
   getDb().prepare("DELETE FROM users WHERE id = ?").run(userId);
+  appCache.invalidate(`${CACHE_KEYS.USER_PREFIX}${userId}`);
+  appCache.invalidate(`${CACHE_KEYS.PROFILE_PREFIX}${userId}`);
 }
 
 export function isUserEnabled(userId: string): boolean {
@@ -218,7 +226,10 @@ export interface UserProfile {
 }
 
 export function getUserProfile(userId: string): UserProfile | undefined {
-  return stmt("SELECT * FROM user_profiles WHERE user_id = ?").get(userId) as UserProfile | undefined;
+  return appCache.get(
+    `${CACHE_KEYS.PROFILE_PREFIX}${userId}`,
+    () => stmt("SELECT * FROM user_profiles WHERE user_id = ?").get(userId) as UserProfile | undefined
+  );
 }
 
 export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProfile, "user_id" | "updated_at">>): UserProfile {
@@ -277,6 +288,7 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
       p.github, p.twitter, p.skills, p.languages, p.company,
       p.screen_sharing_enabled, p.notification_level, p.theme, p.font, p.timezone, p.tts_voice
     );
+  appCache.invalidate(`${CACHE_KEYS.PROFILE_PREFIX}${userId}`);
   return getUserProfile(userId)!;
 }
 
@@ -396,10 +408,15 @@ function decryptLlmProvider(p: LlmProviderRecord | undefined): LlmProviderRecord
 }
 
 export function listLlmProviders(): LlmProviderRecord[] {
-  const rows = getDb()
-    .prepare("SELECT * FROM llm_providers ORDER BY created_at DESC")
-    .all() as LlmProviderRecord[];
-  return rows.map((r) => decryptLlmProvider(r)!);
+  return appCache.get(
+    CACHE_KEYS.LLM_PROVIDERS,
+    () => {
+      const rows = getDb()
+        .prepare("SELECT * FROM llm_providers ORDER BY created_at DESC")
+        .all() as LlmProviderRecord[];
+      return rows.map((r) => decryptLlmProvider(r)!);
+    }
+  );
 }
 
 export function getLlmProvider(id: string): LlmProviderRecord | undefined {
@@ -437,6 +454,7 @@ export function createLlmProvider(args: {
     setDefaultLlmProvider(id);
   }
 
+  appCache.invalidate(CACHE_KEYS.LLM_PROVIDERS);
   return getLlmProvider(id)!;
 }
 
@@ -479,6 +497,7 @@ export function updateLlmProvider(args: {
     setDefaultLlmProvider(args.id);
   }
 
+  appCache.invalidate(CACHE_KEYS.LLM_PROVIDERS);
   return getLlmProvider(args.id);
 }
 
@@ -489,6 +508,7 @@ export function setDefaultLlmProvider(id: string): void {
   db.prepare(
     "UPDATE llm_providers SET is_default = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE purpose = ?"
   ).run(id, record.purpose);
+  appCache.invalidate(CACHE_KEYS.LLM_PROVIDERS);
 }
 
 export function deleteLlmProvider(id: string): void {
@@ -503,6 +523,7 @@ export function deleteLlmProvider(id: string): void {
       setDefaultLlmProvider(fallback.id);
     }
   }
+  appCache.invalidate(CACHE_KEYS.LLM_PROVIDERS);
 }
 
 // â”€â”€â”€ MCP Servers (user-scoped + global) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -823,7 +844,10 @@ export interface ToolPolicy {
 }
 
 export function listToolPolicies(): ToolPolicy[] {
-  return stmt("SELECT * FROM tool_policies").all() as ToolPolicy[];
+  return appCache.get(
+    CACHE_KEYS.TOOL_POLICIES,
+    () => stmt("SELECT * FROM tool_policies").all() as ToolPolicy[]
+  );
 }
 
 export function getToolPolicy(toolName: string): ToolPolicy | undefined {
@@ -842,6 +866,7 @@ export function upsertToolPolicy(policy: ToolPolicy): void {
          scope = excluded.scope`
     )
     .run(policy.tool_name, policy.mcp_id, policy.requires_approval, policy.is_proactive_enabled, policy.scope ?? "global");
+  appCache.invalidate(CACHE_KEYS.TOOL_POLICIES);
 }
 
 // â”€â”€â”€ Approval Queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
