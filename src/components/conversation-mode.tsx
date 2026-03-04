@@ -422,6 +422,9 @@ export function ConversationMode() {
         setTimeout(() => {
           if (autoListenRef.current && (stateRef.current === "speaking" || stateRef.current === "idle")) {
             restartListening();
+          } else {
+            // Fallback: always leave "speaking" state even if auto-listen toggled off mid-speech
+            if (stateRef.current === "speaking") setState("idle");
           }
         }, 400);
       } else {
@@ -442,6 +445,17 @@ export function ConversationMode() {
 
   async function playTts(text: string): Promise<void> {
     return new Promise<void>(async (resolve) => {
+      let resolved = false;
+      const safeResolve = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      };
+
+      // Safety timeout — never hang longer than 30s
+      const timeout = setTimeout(safeResolve, 30_000);
+
       try {
         const res = await fetch("/api/audio/tts", {
           method: "POST",
@@ -450,7 +464,8 @@ export function ConversationMode() {
         });
 
         if (!res.ok) {
-          resolve();
+          clearTimeout(timeout);
+          safeResolve();
           return;
         }
 
@@ -459,20 +474,33 @@ export function ConversationMode() {
         const audio = new Audio(url);
         ttsAudioRef.current = audio;
 
-        audio.onended = () => {
+        const cleanup = () => {
+          clearTimeout(timeout);
           URL.revokeObjectURL(url);
           ttsAudioRef.current = null;
-          resolve();
+          safeResolve();
         };
-        audio.onerror = () => {
-          URL.revokeObjectURL(url);
-          ttsAudioRef.current = null;
-          resolve();
+
+        audio.onended = cleanup;
+        audio.onerror = cleanup;
+
+        // Duration-based fallback: if onended doesn't fire,
+        // resolve after audio.duration + 2s buffer
+        audio.onloadedmetadata = () => {
+          if (audio.duration && isFinite(audio.duration)) {
+            const durationTimeout = (audio.duration + 2) * 1000;
+            setTimeout(() => {
+              if (!resolved) {
+                cleanup();
+              }
+            }, durationTimeout);
+          }
         };
 
         await audio.play();
       } catch {
-        resolve();
+        clearTimeout(timeout);
+        safeResolve();
       }
     });
   }
