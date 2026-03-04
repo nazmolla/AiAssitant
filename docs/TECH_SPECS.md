@@ -255,6 +255,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `alexa.ubid_main` | Amazon Alexa UBID_MAIN cookie | ✅ |
 | `alexa.at_main` | Amazon Alexa AT_MAIN cookie | ✅ |
 | `log_level_min` | Minimum log severity level to persist | ❌ |
+| `proactive_cron_schedule` | Cron expression for proactive scheduler interval (default: `*/15 * * * *`) | ❌ |
 
 ---
 
@@ -287,6 +288,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `POST` | `/api/audio/tts-stream` | User | Streaming-friendly TTS endpoint for audio mode (no-cache headers) |
 | `GET/PUT` | `/api/config/whisper` | Admin | Get/update local Whisper server configuration |
 | `POST` | `/api/config/whisper` | Admin | Test connectivity to local Whisper server |
+| `GET/PUT` | `/api/config/scheduler` | Admin | Get/update proactive scheduler cron schedule (stored in `app_config`) |
 | `GET` | `/api/admin/users` | Admin | List all users with permissions |
 | `PUT/DELETE` | `/api/admin/users` | Admin | Update user role/status or delete user |
 | `GET` | `/api/admin/users/me` | User | Get current user's role and permissions |

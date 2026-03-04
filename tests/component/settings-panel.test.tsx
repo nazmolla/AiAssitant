@@ -94,6 +94,8 @@ jest.mock("@/components/tool-policies", () => ({ ToolPolicies: () => <div data-t
 jest.mock("@/components/custom-tools-config", () => ({ CustomToolsConfig: () => <div data-testid="custom-tools">Custom Tools</div> }));
 jest.mock("@/components/logging-config", () => ({ LoggingConfig: () => <div data-testid="logging">Logging Config</div> }));
 jest.mock("@/components/alexa-config", () => ({ AlexaConfig: () => <div data-testid="alexa">Alexa Config</div> }));
+jest.mock("@/components/whisper-config", () => ({ WhisperConfig: () => <div data-testid="whisper">Whisper Config</div> }));
+jest.mock("@/components/scheduler-config", () => ({ SchedulerConfig: () => <div data-testid="scheduler">Scheduler Config</div> }));
 
 import HomePage from "@/app/[[...path]]/page";
 
@@ -141,7 +143,6 @@ async function renderSettingsPanel() {
 
 describe("SettingsPanel — chip navigation rendering", () => {
   const SETTINGS_LABELS = [
-    "👤 Profile",
     "🤖 Providers",
     "📡 Channels",
     "🔌 MCP Servers",
@@ -151,6 +152,7 @@ describe("SettingsPanel — chip navigation rendering", () => {
     "🔐 Authentication",
     "👥 Users",
     "🔊 Alexa",
+    "⏱️ Scheduler",
   ];
 
   test("renders all settings chips without throwing (React #310 regression)", async () => {
@@ -257,5 +259,6 @@ describe("SettingsPanel — chip navigation rendering", () => {
     expect(screen.queryByText("🔧 Custom Tools")).not.toBeInTheDocument();
     expect(screen.queryByText("🔐 Authentication")).not.toBeInTheDocument();
     expect(screen.queryByText("👥 Users")).not.toBeInTheDocument();
+    expect(screen.queryByText("⏱️ Scheduler")).not.toBeInTheDocument();
   });
 });

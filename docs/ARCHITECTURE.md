@@ -254,7 +254,7 @@ This ensures other HTTP requests (including new tabs, API calls, and the convers
 | Principle | Description |
 |-----------|-------------|
 | **Multi-User Isolation** | Each user's knowledge, threads, and profile are scoped by `user_id`. No cross-user data leakage. |
-| **Proactive Intelligence** | A background scheduler polls MCP tools, writes discovered actions into a persisted scheduled-task queue, and executes due tasks by frequency. Proactive approvals (no chat thread) surface in the Notification Center (bell icon) and are visible to admins. |
+| **Proactive Intelligence** | A background scheduler polls MCP tools, writes discovered actions into a persisted scheduled-task queue, and executes due tasks by frequency. The proactive observer LLM is aware of all available tools (builtins + MCP + custom) and can create new custom tools via `builtin.nexus_create_tool` when it identifies automation opportunities. Schedule is configurable via **Settings → Scheduler** (stored in `app_config`). Proactive approvals (no chat thread) surface in the Notification Center (bell icon) and are visible to admins. |
 | **Autonomous Knowledge Capture** | Every chat turn is mined for durable facts, keeping the Knowledge Vault up to date without manual entry. |
 | **Vector-Aware Reasoning** | Semantic embedding search retrieves the most relevant knowledge before responding. |
 | **Human-in-the-Loop (HITL)** | Unified tool policy system governs ALL tools (built-in, custom, and MCP). Per-tool approval, proactive toggles, and **scope** (`global` = all users, `user` = admin only). Sensitive calls are held in an approval queue. Both thread-bound and proactive (threadless) approvals are surfaced in the Notification Center bell icon. Non-admin users only see tools with `scope = 'global'` in the agent loop. |
@@ -300,11 +300,10 @@ The UI is a single-page app served by a Next.js **optional catch-all** route (`[
 
 ### Settings Sub-Pages
 
-The Settings tab contains 11 sub-pages, each rendered as horizontally-scrollable chip-selectable panels. Sub-pages may be gated by **permissions** (e.g. `channels`, `llm_config`) or restricted to **admin-only** access.
+The Settings tab contains 11 sub-pages, each rendered as horizontally-scrollable chip-selectable panels. Sub-pages may be gated by **permissions** (e.g. `channels`, `llm_config`) or restricted to **admin-only** access. The Profile page is not shown in the chip navigation but remains accessible from the account menu (top-right).
 
 | Key | Label | Gate |
 |-----|-------|------|
-| `profile` | Profile | — |
 | `llm` | Providers | `llm_config` perm |
 | `channels` | Channels | `channels` perm |
 | `mcp` | MCP Servers | `mcp_servers` perm |
@@ -315,6 +314,7 @@ The Settings tab contains 11 sub-pages, each rendered as horizontally-scrollable
 | `custom-tools` | Custom Tools | — |
 | `auth` | Authentication | Admin only |
 | `users` | User Management | Admin only |
+| `scheduler` | Scheduler | Admin only |
 
 ### Permission-Aware Loading
 

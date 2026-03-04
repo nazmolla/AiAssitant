@@ -107,6 +107,7 @@ jest.mock("@/components/custom-tools-config", () => ({ CustomToolsConfig: () => 
 jest.mock("@/components/logging-config", () => ({ LoggingConfig: () => <div data-testid="logging-config">LoggingConfig Stub</div> }));
 jest.mock("@/components/alexa-config", () => ({ AlexaConfig: () => <div data-testid="alexa-config">AlexaConfig Stub</div> }));
 jest.mock("@/components/whisper-config", () => ({ WhisperConfig: () => <div data-testid="whisper-config">WhisperConfig Stub</div> }));
+jest.mock("@/components/scheduler-config", () => ({ SchedulerConfig: () => <div data-testid="scheduler-config">SchedulerConfig Stub</div> }));
 
 
 import HomePage from "@/app/[[...path]]/page";
@@ -187,12 +188,12 @@ describe("Main Tab Navigation — open every tab via drawer", () => {
     expect(screen.getByTestId("knowledge-vault")).toBeInTheDocument();
   });
 
-  test("Settings tab renders SettingsPanel with Profile default", async () => {
+  test("Settings tab renders SettingsPanel with Providers default", async () => {
     await renderAndWait("/chat");
     await clickDrawerItem("Settings");
-    // Profile is the default settings sub-page
+    // Providers (LLM) is the default settings sub-page
     await waitFor(() => {
-      expect(screen.getByTestId("profile-config")).toBeInTheDocument();
+      expect(screen.getByTestId("llm-config")).toBeInTheDocument();
     }, { timeout: 2000 });
   });
 
@@ -226,7 +227,7 @@ describe("URL-Based Routing — main tabs via URL path", () => {
   test("URL /settings renders SettingsPanel", async () => {
     await renderAndWait("/settings");
     await waitFor(() => {
-      expect(screen.getByTestId("profile-config")).toBeInTheDocument();
+      expect(screen.getByTestId("llm-config")).toBeInTheDocument();
     }, { timeout: 2000 });
   });
 
@@ -241,14 +242,15 @@ describe("Settings Sub-Pages — open every page via chip click", () => {
     await renderAndWait("/settings");
     // Wait for permissions to load and chips to appear
     await waitFor(() => {
-      expect(screen.getByText("👤 Profile")).toBeInTheDocument();
+      expect(screen.getByText("🤖 Providers")).toBeInTheDocument();
     }, { timeout: 2000 });
   }
 
-  test("Profile page renders ProfileConfig", async () => {
-    await navigateToSettings();
-    await clickSettingsChip("👤 Profile");
-    expect(screen.getByTestId("profile-config")).toBeInTheDocument();
+  test("Profile page renders ProfileConfig via URL (hidden from chips)", async () => {
+    await renderAndWait("/settings/profile");
+    await waitFor(() => {
+      expect(screen.getByTestId("profile-config")).toBeInTheDocument();
+    }, { timeout: 2000 });
     expect(screen.getByText("Owner Profile")).toBeInTheDocument();
   });
 
@@ -321,6 +323,13 @@ describe("Settings Sub-Pages — open every page via chip click", () => {
     expect(screen.getByTestId("user-management")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "User Management" })).toBeInTheDocument();
   });
+
+  test("Scheduler page renders SchedulerConfig (admin only)", async () => {
+    await navigateToSettings();
+    await clickSettingsChip("⏱️ Scheduler");
+    expect(screen.getByTestId("scheduler-config")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Proactive Scheduler" })).toBeInTheDocument();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -329,7 +338,7 @@ describe("Settings Sub-Pages — open every page via chip click", () => {
 // ═══════════════════════════════════════════════════════════════════
 
 describe("Settings URL-Based Routing — open every settings page directly via URL", () => {
-  test("URL /settings/profile loads Profile page", async () => {
+  test("URL /settings/profile loads Profile page (hidden from chips)", async () => {
     await renderAndWait("/settings/profile");
     await waitFor(() => {
       expect(screen.getByTestId("profile-config")).toBeInTheDocument();
@@ -405,6 +414,13 @@ describe("Settings URL-Based Routing — open every settings page directly via U
     await renderAndWait("/settings/users");
     await waitFor(() => {
       expect(screen.getByTestId("user-management")).toBeInTheDocument();
+    }, { timeout: 2000 });
+  });
+
+  test("URL /settings/scheduler loads Scheduler page (admin)", async () => {
+    await renderAndWait("/settings/scheduler");
+    await waitFor(() => {
+      expect(screen.getByTestId("scheduler-config")).toBeInTheDocument();
     }, { timeout: 2000 });
   });
 });
@@ -574,7 +590,6 @@ describe("Permission-Gated Settings Pages", () => {
     expect(screen.queryByText("🎤 Local Whisper")).not.toBeInTheDocument();
 
     // Non-admin pages SHOULD be visible
-    expect(screen.getByText("👤 Profile")).toBeInTheDocument();
     expect(screen.getByText("🤖 Providers")).toBeInTheDocument();
     expect(screen.getByText("📡 Channels")).toBeInTheDocument();
   });
@@ -662,9 +677,9 @@ describe("Permission-Gated Settings Pages", () => {
     await renderAndWait("/settings");
 
     const allChips = [
-      "👤 Profile", "🤖 Providers", "📡 Channels", "🔌 MCP Servers",
+      "🤖 Providers", "📡 Channels", "🔌 MCP Servers",
       "🛡️ Tool Policies", "🔊 Alexa", "🎤 Local Whisper", "🧾 Logging",
-      "🔧 Custom Tools", "🔐 Authentication", "👥 Users",
+      "🔧 Custom Tools", "🔐 Authentication", "👥 Users", "⏱️ Scheduler",
     ];
     for (const chipLabel of allChips) {
       await waitFor(() => {
@@ -835,7 +850,6 @@ describe("URL Redirects", () => {
 
 describe("Settings Page Headers", () => {
   const headersToCheck = [
-    { chip: "👤 Profile", title: "Owner Profile", subtitle: "Your identity" },
     { chip: "🤖 Providers", title: "LLM Providers", subtitle: "Centralize Azure OpenAI" },
     { chip: "📡 Channels", title: "Communication Channels", subtitle: "Connect messaging" },
     { chip: "🔌 MCP Servers", title: "MCP Servers", subtitle: "Manage Model Context" },
@@ -846,6 +860,7 @@ describe("Settings Page Headers", () => {
     { chip: "🔧 Custom Tools", title: "Custom Tools", subtitle: "Agent-created tools" },
     { chip: "🔐 Authentication", title: "Authentication", subtitle: "Configure OAuth" },
     { chip: "👥 Users", title: "User Management", subtitle: "Manage user access" },
+    { chip: "⏱️ Scheduler", title: "Proactive Scheduler", subtitle: "Configure how often" },
   ];
 
   test.each(headersToCheck)(

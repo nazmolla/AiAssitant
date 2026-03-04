@@ -59,6 +59,7 @@ import {
   getDb,
   getChannelImapState,
   updateChannelImapState,
+  getAppConfig,
 } from "@/lib/db";
 import { ingestKnowledgeFromText } from "@/lib/knowledge";
 import { retrieveKnowledge } from "@/lib/knowledge/retriever";
@@ -76,9 +77,11 @@ import { getUserNotificationLevel } from "@/lib/channels/notify";
 import type { NotificationLevel } from "@/lib/channels/notify";
 import type { ToolDefinition } from "@/lib/llm";
 
-const PROACTIVE_SYSTEM_PROMPT = `You are the Nexus proactive observer. You have been given data polled from external services.
+const PROACTIVE_SYSTEM_PROMPT = `You are the Nexus proactive observer — an intelligent home and environment automation agent. You have been given data polled from external services.
 
-Your job:
+Your mission: Make the owner's home smarter every day by discovering the environment, learning patterns, and taking proactive actions.
+
+## Core Rules
 1. Analyze the data for anything noteworthy, urgent, or requiring the owner's attention.
 2. Always include a severity field with one of: "low", "medium", "high", "disaster".
 3. If a concrete action can be taken now, you MUST respond with a JSON object: { "action_needed": true, "severity": "low|medium|high|disaster", "tool": "tool_name", "args": {}, "reasoning": "why" }
@@ -91,6 +94,25 @@ Your job:
 10. Do NOT propose notification-channel tools (Discord/WhatsApp/Email/etc.) as remediation for transient tool/service failures. For failure-only signals, prefer no action_needed and summarize.
 11. Do NOT mention assumed delivery channels/platform choices in reasoning unless explicitly provided by trusted context.
 
+## Smart Home & Environment Intelligence
+- Discover devices, services, and environmental data from all available MCP servers and built-in tools.
+- Learn from polled data to identify patterns (e.g. daily routines, energy usage trends, temperature patterns).
+- Suggest and execute automations: adjust lighting by time of day, set thermostats based on occupancy, announce reminders, manage devices proactively.
+- Use available Alexa tools for announcements, light control, volume, sensors, and DND management.
+- Combine data from multiple sources to make cross-service decisions (e.g. weather data + thermostat + schedule).
+
+## Self-Improvement via Custom Tool Creation
+You can create new custom tools when you identify a recurring need or automation opportunity that no existing tool covers. To do this, respond with:
+{ "action_needed": true, "severity": "low", "tool": "builtin.nexus_create_tool", "args": { "toolName": "descriptive_snake_case_name", "description": "What this tool does and when to use it", "inputSchema": { "type": "object", "properties": { ... }, "required": [...] }, "implementation": "async function body using args; can use fetch(), JSON, Math, Date, etc." }, "reasoning": "Why this new tool will improve automation" }
+
+Create new tools when:
+- You see a pattern that could be automated (e.g. a daily check that requires specific logic).
+- An external API could be polled or queried to enrich decisions.
+- A calculation or transformation is needed repeatedly across scans.
+- The owner's environment would benefit from a specialized monitoring tool.
+
+Do NOT create tools that duplicate existing capabilities listed in [Available Tools].
+
 Always respond with valid JSON only.`;
 
 let _cronJob: CronJob | null = null;
@@ -100,6 +122,7 @@ const _proactivePollArgWarned = new Set<string>();
 
 const MAX_POLLED_DATA_CHARS = 6000;
 const MAX_KNOWLEDGE_CONTEXT_CHARS = 2000;
+const MAX_TOOLS_CATALOG_CHARS = 3000;
 
 interface ProactiveAssessment {
   action_needed?: boolean;
@@ -426,6 +449,24 @@ function normalizeAssessmentLevel(
     return "high";
   }
   return raw;
+}
+
+function buildAvailableToolsCatalog(mcpManager: ReturnType<typeof getMcpManager>): string {
+  const builtinDefs: ToolDefinition[] = [
+    ...BUILTIN_WEB_TOOLS,
+    ...BUILTIN_BROWSER_TOOLS,
+    ...BUILTIN_FS_TOOLS,
+    ...BUILTIN_NETWORK_TOOLS,
+    ...BUILTIN_EMAIL_TOOLS,
+    ...BUILTIN_FILE_TOOLS,
+    ...BUILTIN_TOOLMAKER_TOOLS,
+    ...BUILTIN_ALEXA_TOOLS,
+    ...getCustomToolDefinitions(),
+  ];
+  const mcpDefs = mcpManager.getAllTools();
+  const allDefs = [...builtinDefs, ...mcpDefs];
+  const lines = allDefs.map((t) => `- ${t.name}: ${(t.description || "").slice(0, 120)}`);
+  return truncateText(lines.join("\n"), MAX_TOOLS_CATALOG_CHARS);
 }
 
 async function buildProactiveWebQuery(): Promise<string> {
@@ -1016,12 +1057,13 @@ export async function runProactiveScan(): Promise<void> {
         .map((k) => `- ${k.entity} / ${k.attribute}: ${k.value}`)
         .join("\n");
       const knowledgeContext = truncateText(knowledgeContextRaw, MAX_KNOWLEDGE_CONTEXT_CHARS);
+      const toolsCatalog = buildAvailableToolsCatalog(mcpManager);
 
       const response = await provider.chat(
         [
           {
             role: "user",
-            content: `[Polled Data from ${policy.tool_name}]\n${polledData}\n\n[User Knowledge Context]\n${knowledgeContext || "(none)"}`,
+            content: `[Polled Data from ${policy.tool_name}]\n${polledData}\n\n[User Knowledge Context]\n${knowledgeContext || "(none)"}\n\n[Available Tools]\n${toolsCatalog}`,
           },
         ],
         undefined,
@@ -1167,7 +1209,8 @@ export function startScheduler(): void {
     _cronJob.stop();
   }
 
-  const schedule = process.env.PROACTIVE_CRON_SCHEDULE || "*/15 * * * *";
+  const dbSchedule = getAppConfig("proactive_cron_schedule");
+  const schedule = dbSchedule || process.env.PROACTIVE_CRON_SCHEDULE || "*/15 * * * *";
 
   _cronJob = new CronJob(schedule, async () => {
     try {
@@ -1206,4 +1249,12 @@ export function stopScheduler(): void {
       metadata: JSON.stringify({ stoppedAt: new Date().toISOString() }),
     });
   }
+}
+
+/**
+ * Restart the scheduler with a new schedule (from DB or fallback).
+ */
+export function restartScheduler(): void {
+  stopScheduler();
+  startScheduler();
 }

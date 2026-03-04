@@ -51,6 +51,7 @@ const CustomToolsConfig = dynamic(() => import("@/components/custom-tools-config
 const LoggingConfig = dynamic(() => import("@/components/logging-config").then(m => ({ default: m.LoggingConfig })), { ssr: false });
 const AlexaConfig = dynamic(() => import("@/components/alexa-config").then(m => ({ default: m.AlexaConfig })), { ssr: false });
 const WhisperConfig = dynamic(() => import("@/components/whisper-config").then(m => ({ default: m.WhisperConfig })), { ssr: false });
+const SchedulerConfig = dynamic(() => import("@/components/scheduler-config").then(m => ({ default: m.SchedulerConfig })), { ssr: false });
 
 /* ── URL ↔ tab mapping (module-level for stable references) ── */
 const TAB_FROM_PATH: Record<string, string> = {
@@ -351,7 +352,6 @@ interface SettingsPage {
 }
 
 const SETTINGS_PAGES: SettingsPage[] = [
-  { key: "profile", label: "Profile", icon: "👤" },
   { key: "llm", label: "Providers", icon: "🤖", permKey: "llm_config" },
   { key: "channels", label: "Channels", icon: "📡", permKey: "channels" },
   { key: "mcp", label: "MCP Servers", icon: "🔌", permKey: "mcp_servers" },
@@ -362,10 +362,12 @@ const SETTINGS_PAGES: SettingsPage[] = [
   { key: "custom-tools", label: "Custom Tools", icon: "🔧", adminOnly: true },
   { key: "auth", label: "Authentication", icon: "🔐", adminOnly: true },
   { key: "users", label: "Users", icon: "👥", adminOnly: true },
+  { key: "scheduler", label: "Scheduler", icon: "⏱️", adminOnly: true },
 ];
 
 const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
   profile: { title: "Owner Profile", subtitle: "Your identity, skills, and contact info. Nexus uses this to personalize responses." },
+  scheduler: { title: "Proactive Scheduler", subtitle: "Configure how often Nexus proactively scans for updates and takes automated actions." },
   llm: { title: "LLM Providers", subtitle: "Centralize Azure OpenAI, OpenAI, and Anthropic credentials." },
   channels: { title: "Communication Channels", subtitle: "Connect messaging platforms so Nexus can chat with you anywhere." },
   mcp: { title: "MCP Servers", subtitle: "Manage Model Context Protocol server connections." },
@@ -392,8 +394,9 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
   }, [userRole, perms, isUserMetaLoading]);
 
   /* State for immediate UI, synced from URL prop */
-  const defaultPage = visiblePages[0]?.key || "profile";
-  const validPage = activePage && visiblePages.some((p) => p.key === activePage) ? activePage : defaultPage;
+  const defaultPage = visiblePages[0]?.key || "llm";
+  /* Allow "profile" even though it's not in the chip list (accessible via account menu) */
+  const validPage = activePage === "profile" || (activePage && visiblePages.some((p) => p.key === activePage)) ? activePage : defaultPage;
   const [active, setActive] = useState(validPage);
 
   /* Sync with URL changes */
@@ -403,7 +406,7 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
   useEffect(() => {
     if (isUserMetaLoading) return;
     if (visiblePages.length === 0) return;
-    if (!activePage || !visiblePages.some((p) => p.key === activePage)) {
+    if (!activePage || (activePage !== "profile" && !visiblePages.some((p) => p.key === activePage))) {
       onNavigate(active);
     }
   }, [activePage, active, visiblePages, onNavigate, isUserMetaLoading]);
@@ -492,6 +495,7 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
           {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
           {active === "auth" && userRole === "admin" && <AuthConfig />}
           {active === "users" && userRole === "admin" && <UserManagement />}
+          {active === "scheduler" && userRole === "admin" && <SchedulerConfig />}
             </>
           )}
         </Box>
