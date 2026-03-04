@@ -159,9 +159,9 @@ describe("HomePage", () => {
     expect(chip).toBeInTheDocument();
   });
 
-  test("renders sign-out button", () => {
+  test("renders account menu trigger", () => {
     render(<HomePage />);
-    expect(screen.getByTitle("Sign out")).toBeInTheDocument();
+    expect(screen.getByTitle("Account menu")).toBeInTheDocument();
   });
 });
 

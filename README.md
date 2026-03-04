@@ -17,10 +17,13 @@
 - **Full Analytics Dashboard** — date-range KPIs, sessions graph, outcomes trends, and chart drilldown to detailed logs
 - **Screen Sharing** — share your screen with the agent for visual reasoning
 - **Audio Mode** — hands-free conversation with auto-listen and streaming TTS; continuous talk→transcribe→respond→speak loop
+- **Conversation Tab (Voice-First)** — dedicated voice workflow with VAD auto-stop, interrupt/barge-in, and streamed responses
 - **Local Whisper Fallback** — optional local Whisper server (faster-whisper-server or whisper.cpp) as automatic STT backup when cloud fails
 - **Model Orchestrator** — intelligent task routing picks the best LLM (local for background, cloud for complex)
+- **No-Thinking Provider Option** — OpenAI-compatible chat providers (OpenAI/LiteLLM) can force `think=false` for faster responses when supported
 - **Worker Thread Isolation** — LLM API calls run in a dedicated Worker Thread to keep the main event loop responsive; automatic fallback if unavailable
 - **Self-Extending Tools** — the agent can create its own tools at runtime, compiled and sandboxed
+- **Account Dropdown** — top-right user menu provides quick **Profile** and **Sign out** actions
 - **Admin Notifications via Channels** — approval/proactive notices prefer IM channels, fallback to email
 - **Security Hardened** — prompt injection defense, CSP headers, rate limiting, input validation
 - **Email Injection Hardening** — inbound email content is handled as untrusted data and guarded before agent processing
@@ -45,20 +48,13 @@ Open [http://localhost:3000](http://localhost:3000). The first user to sign in b
 
 ## Deployment
 
-```bash
-npm run build
-npm start                         # local production
-```
-
-For remote hosts:
+Production deployment is performed via the project deployment script:
 
 ```bash
-tar -cf deploy.tar --exclude=node_modules --exclude=.git --exclude='*.db' .
-scp deploy.tar user@host:/path/to/app/
-# On remote: tar -xf deploy.tar && npm install --production && npx next start -p 3000
+bash deploy.sh <host> <user>
 ```
 
-> **Important:** Exclude `*.db` files to avoid overwriting the remote database. See [Installation Guide](docs/INSTALLATION.md#remote-deployment) for details.
+The script handles tests, build, safe packaging, remote DB backup, install, restart, and HTTPS verification. It also excludes `*.db` files so the production database is never overwritten.
 
 ---
 
@@ -94,7 +90,7 @@ The **Dashboard** tab now provides analytics views for operations and reliabilit
 | Browser | Playwright (Chromium) |
 | Auth | NextAuth v4 (credentials + OAuth) |
 | Extensibility | MCP v1.26+ (Stdio, SSE, Streamable HTTP) |
-| Testing | Jest (unit/integration/component — 813 tests, 66 suites), Playwright (E2E across Desktop Chrome, Pixel 7, iPhone 16 Pro Max) |
+| Testing | Jest (unit/integration/component — 834 tests, 69 suites), Playwright (E2E across Desktop Chrome, Pixel 7, iPhone 16 Pro Max) |
 
 ---
 

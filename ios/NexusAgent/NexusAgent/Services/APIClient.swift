@@ -5,7 +5,7 @@ import Foundation
 final class APIClient {
     static let shared = APIClient()
 
-    /// The base URL of the Nexus Agent server (e.g. "http://YOUR_SERVER_IP:3000")
+    /// The base URL of the Nexus Agent server (e.g. "http://localhost:3000")
     var baseURL: URL {
         get {
             if let cached = _baseURL { return cached }

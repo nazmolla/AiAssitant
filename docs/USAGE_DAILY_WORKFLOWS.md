@@ -45,7 +45,7 @@ The knowledge vault stores user-scoped memory.
 
 ## Profile Workflow
 
-From **Settings → Profile**:
+From **Account menu (top-right) → Profile** or **Settings → Profile**:
 
 - Update personal metadata
 - Set notification threshold (`low`, `medium`, `high`, `disaster`)

@@ -215,13 +215,15 @@ function buildProvider(record: LlmProviderRecord, config: Record<string, unknown
       const endpoint = config.endpoint as string;
       const deployment = config.deployment as string;
       const apiVersion = config.apiVersion as string | undefined;
-      return new OpenAIChatProvider({ variant: "azure", apiKey, endpoint, deployment, apiVersion });
+      const disableThinking = config.disableThinking === true;
+      return new OpenAIChatProvider({ variant: "azure", apiKey, endpoint, deployment, apiVersion, disableThinking });
     }
     case "openai": {
       const apiKey = config.apiKey as string;
       const model = config.model as string | undefined;
       const baseURL = config.baseURL as string | undefined;
-      return new OpenAIChatProvider({ variant: "openai", apiKey, model, baseURL });
+      const disableThinking = config.disableThinking === true;
+      return new OpenAIChatProvider({ variant: "openai", apiKey, model, baseURL, disableThinking });
     }
     case "anthropic": {
       const apiKey = config.apiKey as string;
@@ -232,7 +234,8 @@ function buildProvider(record: LlmProviderRecord, config: Record<string, unknown
       const apiKey = (config.apiKey as string) || "no-key-required";
       const model = config.model as string | undefined;
       const baseURL = config.baseURL as string | undefined;
-      return new OpenAIChatProvider({ variant: "openai", apiKey, model, baseURL });
+      const disableThinking = config.disableThinking === true;
+      return new OpenAIChatProvider({ variant: "openai", apiKey, model, baseURL, disableThinking });
     }
     default:
       throw new Error(`Unknown provider type: ${record.provider_type}`);

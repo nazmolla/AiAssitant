@@ -279,6 +279,7 @@ async function _runViaWorker(
         deployment: orchestration.providerConfig.deployment as string | undefined,
         apiVersion: orchestration.providerConfig.apiVersion as string | undefined,
         baseURL: orchestration.providerConfig.baseURL as string | undefined,
+        disableThinking: orchestration.providerConfig.disableThinking === true,
       },
       systemPrompt,
       messages: chatMessages,

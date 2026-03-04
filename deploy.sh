@@ -93,8 +93,8 @@ echo "[6/7] Uploading and extracting..."
 scp "${TAR_NAME}" "${REMOTE}:${REMOTE_DIR}/${TAR_NAME}"
 ssh "${REMOTE}" "
   cd ${REMOTE_DIR}
-  # Remove old build output to avoid stale chunk collisions
-  rm -rf .next
+  # Remove old build output and source dirs to avoid stale file conflicts
+  rm -rf .next src/ public/
   # Safeguard: protect DB files before extraction (belt + suspenders)
   if [ -f nexus.db ]; then
     chmod 444 nexus.db
@@ -107,8 +107,13 @@ ssh "${REMOTE}" "
     chmod 664 nexus.db
   fi
   
-  # Install deps if package.json changed
-  npm install --production 2>&1 | tail -3
+  # Install deps (fail hard if install fails)
+  if [ -f package-lock.json ]; then
+    npm ci --omit=dev
+  else
+    npm install --omit=dev
+  fi
+  test -x node_modules/.bin/next
   echo '  Extracted and installed'
 "
 echo ""

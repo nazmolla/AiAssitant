@@ -24,6 +24,8 @@ Nexus runs as a single-page command center with tab navigation in the left drawe
 | **Knowledge** | Manage remembered facts |
 | **Settings** | Configure providers, tools, channels, and account/admin features |
 
+Top-right account name opens an **Account menu** with quick access to **Profile** and **Sign out**.
+
 ## 3) Complete Your First Successful Flow
 
 1. Go to **Chat**

@@ -37,11 +37,16 @@ export interface ChatResponse {
   finishReason: string;
 }
 
+export interface ChatRequestOptions {
+  disableThinking?: boolean;
+}
+
 export interface ChatProvider {
   chat(
     messages: ChatMessage[],
     tools?: ToolDefinition[],
     systemPrompt?: string,
-    onToken?: (token: string) => void | Promise<void>
+    onToken?: (token: string) => void | Promise<void>,
+    requestOptions?: ChatRequestOptions
   ): Promise<ChatResponse>;
 }

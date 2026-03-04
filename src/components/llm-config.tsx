@@ -81,7 +81,7 @@ interface LlmProvider {
   label: string;
   provider_type: LlmProviderType;
   purpose: LlmProviderPurpose;
-  config: Record<string, string>;
+  config: Record<string, unknown>;
   is_default: boolean;
   created_at: string;
   has_api_key: boolean;
@@ -105,6 +105,7 @@ export function LlmConfig() {
   const [label, setLabel] = useState("");
   const [configValues, setConfigValues] = useState<ConfigFormState>(initialConfigState("azure-openai"));
   const [routingTier, setRoutingTier] = useState<RoutingTier | "">("");
+  const [disableThinking, setDisableThinking] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
@@ -126,6 +127,7 @@ export function LlmConfig() {
 
   useEffect(() => {
     setConfigValues(initialConfigState(providerType));
+    setDisableThinking(false);
     // Reset to chat if current provider can't do embeddings or audio
     if (purpose === "embedding" && !EMBEDDING_CAPABLE_PROVIDERS.has(providerType)) {
       setPurpose("chat");
@@ -147,6 +149,7 @@ export function LlmConfig() {
     setLabel("");
     setConfigValues(initialConfigState(providerType));
     setRoutingTier("");
+    setDisableThinking(false);
     setFormError(null);
   };
 
@@ -161,7 +164,11 @@ export function LlmConfig() {
         label,
         provider_type: providerType,
         purpose,
-        config: { ...configValues, ...(routingTier ? { routingTier } : {}) },
+        config: {
+          ...configValues,
+          ...(routingTier ? { routingTier } : {}),
+          ...(purpose === "chat" && (providerType === "openai" || providerType === "litellm") ? { disableThinking } : {}),
+        },
         is_default: providers.filter((p) => p.purpose === purpose).length === 0,
       };
       const res = await fetch("/api/config/llm", {
@@ -286,6 +293,23 @@ export function LlmConfig() {
               </div>
             )}
 
+            {purpose === "chat" && (providerType === "openai" || providerType === "litellm") && (
+              <label className="flex items-start gap-3 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3.5 py-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={disableThinking}
+                  onChange={(e) => setDisableThinking(e.target.checked)}
+                />
+                <span className="text-sm">
+                  <span className="font-medium">Disable Thinking (faster)</span>
+                  <span className="block text-[11px] text-muted-foreground/60">
+                    Sends <code>think=false</code> to OpenAI-compatible providers where supported (useful for Ollama/Qwen).
+                  </span>
+                </span>
+              </label>
+            )}
+
             <div className="grid gap-4 md:grid-cols-2">
               {currentFields.map((field) => (
                 <div key={field.key} className="space-y-1.5">
@@ -363,7 +387,10 @@ export function LlmConfig() {
                       <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
                         {PROVIDER_LABELS[provider.provider_type]}
                       </Badge>
-                      {provider.config?.routingTier && (
+                      {provider.config?.disableThinking === true && (
+                        <Badge variant="outline" className="uppercase tracking-wide text-[10px]">No Think</Badge>
+                      )}
+                      {typeof provider.config?.routingTier === "string" && provider.config.routingTier && (
                         <span className={cn(
                           "px-1.5 py-0.5 rounded-full text-[10px] font-medium border",
                           TIER_BADGE_COLORS[provider.config.routingTier] || "bg-white/5 text-muted-foreground border-white/10"
@@ -409,7 +436,10 @@ export function LlmConfig() {
                       <Badge variant="outline" className="uppercase tracking-wide text-[10px]">
                         {PROVIDER_LABELS[provider.provider_type]}
                       </Badge>
-                      {provider.config?.routingTier && (
+                      {provider.config?.disableThinking === true && (
+                        <Badge variant="outline" className="uppercase tracking-wide text-[10px]">No Think</Badge>
+                      )}
+                      {typeof provider.config?.routingTier === "string" && provider.config.routingTier && (
                         <span className={cn(
                           "px-1.5 py-0.5 rounded-full text-[10px] font-medium border",
                           TIER_BADGE_COLORS[provider.config.routingTier] || "bg-white/5 text-muted-foreground border-white/10"

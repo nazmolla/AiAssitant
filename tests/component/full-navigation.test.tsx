@@ -2,7 +2,7 @@
  * Comprehensive UI navigation tests — covers EVERY page in the application.
  *
  * Tests:
- * 1. All 6 main tabs (Chat, Dashboard, Approvals, Knowledge, Conversation, Settings)
+ * 1. All 6 main tabs (Chat, Conversation, Dashboard, Approvals, Knowledge, Settings)
  * 2. All 11 settings sub-pages via chip click AND via URL routing
  * 3. URL-based routing (the usePathname → tab/settings mapping)
  * 4. Loading-state guard (prevents premature redirect before permissions load)
@@ -92,6 +92,7 @@ global.fetch = adminFetch;
 
 // Stub all lazy-loaded components with testid markers
 jest.mock("@/components/chat-panel", () => ({ ChatPanel: () => <div data-testid="chat-panel">Chat Panel</div> }));
+jest.mock("@/components/conversation-mode", () => ({ ConversationMode: () => <div data-testid="conversation-mode">Conversation Mode</div> }));
 jest.mock("@/components/approval-inbox", () => ({ ApprovalInbox: () => <div data-testid="approval-inbox">Approval Inbox</div> }));
 jest.mock("@/components/knowledge-vault", () => ({ KnowledgeVault: () => <div data-testid="knowledge-vault">Knowledge Vault</div> }));
 jest.mock("@/components/agent-dashboard", () => ({ AgentDashboard: () => <div data-testid="agent-dashboard">Agent Dashboard</div> }));
@@ -106,7 +107,7 @@ jest.mock("@/components/custom-tools-config", () => ({ CustomToolsConfig: () => 
 jest.mock("@/components/logging-config", () => ({ LoggingConfig: () => <div data-testid="logging-config">LoggingConfig Stub</div> }));
 jest.mock("@/components/alexa-config", () => ({ AlexaConfig: () => <div data-testid="alexa-config">AlexaConfig Stub</div> }));
 jest.mock("@/components/whisper-config", () => ({ WhisperConfig: () => <div data-testid="whisper-config">WhisperConfig Stub</div> }));
-jest.mock("@/components/conversation-mode", () => ({ ConversationMode: () => <div data-testid="conversation-mode">ConversationMode Stub</div> }));
+
 
 import HomePage from "@/app/[[...path]]/page";
 
@@ -174,6 +175,12 @@ describe("Main Tab Navigation — open every tab via drawer", () => {
     expect(screen.getByTestId("agent-dashboard")).toBeInTheDocument();
   });
 
+  test("Conversation tab renders ConversationMode", async () => {
+    await renderAndWait("/chat");
+    await clickDrawerItem("Conversation");
+    expect(screen.getByTestId("conversation-mode")).toBeInTheDocument();
+  });
+
   test("Approvals tab renders ApprovalInbox", async () => {
     await renderAndWait("/chat");
     await clickDrawerItem("Approvals");
@@ -195,11 +202,6 @@ describe("Main Tab Navigation — open every tab via drawer", () => {
     }, { timeout: 2000 });
   });
 
-  test("Conversation tab renders ConversationMode", async () => {
-    await renderAndWait("/chat");
-    await clickDrawerItem("Conversation");
-    expect(screen.getByTestId("conversation-mode")).toBeInTheDocument();
-  });
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -215,6 +217,11 @@ describe("URL-Based Routing — main tabs via URL path", () => {
   test("URL /dashboard renders AgentDashboard", async () => {
     await renderAndWait("/dashboard");
     expect(screen.getByTestId("agent-dashboard")).toBeInTheDocument();
+  });
+
+  test("URL /conversation renders ConversationMode", async () => {
+    await renderAndWait("/conversation");
+    expect(screen.getByTestId("conversation-mode")).toBeInTheDocument();
   });
 
   test("URL /approvals renders ApprovalInbox", async () => {
@@ -234,10 +241,6 @@ describe("URL-Based Routing — main tabs via URL path", () => {
     }, { timeout: 2000 });
   });
 
-  test("URL /conversation renders ConversationMode", async () => {
-    await renderAndWait("/conversation");
-    expect(screen.getByTestId("conversation-mode")).toBeInTheDocument();
-  });
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -768,12 +771,14 @@ describe("UI Elements", () => {
     });
   });
 
-  test("Sign out button is rendered and clickable", async () => {
+  test("Account menu shows sign out and it is clickable", async () => {
     const { signOut } = jest.requireMock("next-auth/react");
     await renderAndWait("/chat");
-    const signOutBtn = screen.getByTitle("Sign out");
-    expect(signOutBtn).toBeInTheDocument();
-    fireEvent.click(signOutBtn);
+    fireEvent.click(screen.getByTitle("Account menu"));
+    await waitFor(() => {
+      expect(screen.getByText("Sign out")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Sign out"));
     expect(signOut).toHaveBeenCalled();
   });
 
@@ -782,6 +787,7 @@ describe("UI Elements", () => {
     await openDrawer();
     // All main tabs should be visible in the drawer (some may also appear in chip)
     expect(screen.getAllByText("Chat").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Conversation").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Dashboard").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Approvals").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Knowledge").length).toBeGreaterThanOrEqual(1);
@@ -799,9 +805,15 @@ describe("UI Elements", () => {
     expect(screen.getByText("Nexus")).toBeInTheDocument();
   });
 
-  test("Header shows display name from API", async () => {
+  test("Header account menu opens profile navigation", async () => {
     await renderAndWait("/chat");
     expect(screen.getByText("Admin")).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Account menu"));
+    await waitFor(() => {
+      expect(screen.getByText("Profile")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Profile"));
+    expect(mockPush).toHaveBeenCalledWith("/settings/profile");
   });
 
   test("Header shows online indicator", async () => {

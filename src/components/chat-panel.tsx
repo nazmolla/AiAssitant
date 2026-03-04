@@ -31,7 +31,6 @@ import MicIcon from "@mui/icons-material/Mic";
 import MicOffIcon from "@mui/icons-material/MicOff";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
-import HeadsetMicIcon from "@mui/icons-material/HeadsetMic";
 import MarkdownMessage from "./markdown-message";
 
 interface Thread {
@@ -1349,7 +1348,7 @@ export function ChatPanel() {
                 {audioMode && (
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, px: 1.5, py: 1, borderRadius: 2, bgcolor: "primary.main", color: "primary.contrastText", opacity: 0.9 }}>
                     <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "white", animation: "pulse 1.5s infinite" }} />
-                    <HeadsetMicIcon sx={{ fontSize: 16 }} />
+                    <MicIcon sx={{ fontSize: 16 }} />
                     <Typography variant="caption" sx={{ fontWeight: 500 }}>
                       {audioModeSpeaking ? "Speaking..." : recording ? "Listening..." : transcribing ? "Transcribing..." : loading ? "Thinking..." : "Audio mode active"}
                     </Typography>
@@ -1415,27 +1414,6 @@ export function ChatPanel() {
                       {screenSharing ? <StopScreenShareIcon fontSize="small" /> : <ScreenShareIcon fontSize="small" />}
                     </IconButton>
                   )}
-                  <IconButton
-                    size="small"
-                    onClick={() => {
-                      toggleAudioMode();
-                      if (!audioMode && !recording) {
-                        setTimeout(() => startRecording(), 150);
-                      }
-                    }}
-                    disabled={loading || !activeThread}
-                    title={audioMode ? "Turn off audio mode" : "Turn on audio mode (hands-free conversation)"}
-                    color={audioMode ? "primary" : "default"}
-                    sx={audioMode ? {
-                      bgcolor: "primary.main",
-                      color: "primary.contrastText",
-                      "&:hover": { bgcolor: "primary.dark" },
-                      animation: "pulse 2s infinite",
-                      "@keyframes pulse": { "0%, 100%": { opacity: 1 }, "50%": { opacity: 0.7 } },
-                    } : {}}
-                  >
-                    <HeadsetMicIcon fontSize="small" />
-                  </IconButton>
                   {!audioMode && (
                   <IconButton
                     size="small"

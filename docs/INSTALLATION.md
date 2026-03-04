@@ -88,35 +88,15 @@ npx next start -p 8080
 
 ## Remote Deployment
 
-For deploying to a remote host (ARM64 or x86):
+Use the project deployment script for production releases:
 
 ```bash
-# 1. Build locally
-npm run build
-
-# 2. Package — IMPORTANT: exclude database files to avoid overwriting remote data
-tar -cf deploy.tar \
-  --exclude=node_modules \
-  --exclude=.git \
-  --exclude=data \
-  --exclude=.next/cache \
-  --exclude='*.db' \
-  --exclude='*.db-wal' \
-  --exclude='*.db-shm' \
-  .
-
-# 3. Transfer to remote host
-scp deploy.tar user@host:/path/to/app/
-
-# 4. On the remote host — extract, install, and start
-ssh user@host
-cd /path/to/app
-tar -xf deploy.tar
-npm install --production
-NODE_OPTIONS='--max-old-space-size=256' npx next start -p 3000
+bash deploy.sh <host> <user>
 ```
 
-> **Critical:** The deploy tar **must exclude `*.db` files** to prevent overwriting the remote database with the local development copy. The remote host maintains its own `nexus.db` with user-configured LLMs, MCP servers, channels, and knowledge data.
+The script performs version bump, Jest run, build, safe tar packaging (excluding DB/data), remote DB backup, upload/extract, dependency install, service restart, and HTTPS health verification.
+
+> **Critical:** Do not manually package/copy/deploy app files for production. The production database (`nexus.db`) must never be overwritten.
 
 ### Memory-Constrained Devices
 
@@ -251,7 +231,7 @@ No manual steps required — the migration is **idempotent** and safe to run mul
 
 ## HTTPS Setup (Required for Voice Input)
 
-The browser's `getUserMedia` API (microphone access) requires a **secure context** — HTTPS or localhost. For network access (e.g., `YOUR_SERVER_IP`), you must serve over HTTPS.
+The browser's `getUserMedia` API (microphone access) requires a **secure context** — HTTPS or localhost. For network access (e.g., `https://<host>`), you must serve over HTTPS.
 
 The recommended approach uses **nginx** as an HTTPS reverse proxy in front of Next.js.
 

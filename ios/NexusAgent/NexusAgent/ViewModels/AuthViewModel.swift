@@ -15,7 +15,7 @@ final class AuthViewModel: ObservableObject {
     private let keychain = KeychainService.shared
 
     init() {
-        serverURL = keychain.load(.serverURL) ?? "http://YOUR_SERVER_IP:3000"
+        serverURL = keychain.load(.serverURL) ?? "http://localhost:3000"
     }
 
     // MARK: - Server Configuration

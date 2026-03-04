@@ -8,7 +8,7 @@ Native SwiftUI companion app for [Nexus Agent](../../README.md) with full featur
 
 - **Xcode 15+** (macOS Sonoma or later recommended)
 - **iOS 17.0+** deployment target
-- **Nexus Agent server** running on the local network (e.g. `http://YOUR_SERVER_IP:3000`)
+- **Nexus Agent server** running on the local network (e.g. `http://<host>:3000`)
 
 ## Setup in Xcode
 
@@ -66,7 +66,7 @@ The app uses **cookie-based auth** via NextAuth's credential flow — no backend
 On launch, the app auto-discovers the Nexus Agent server:
 
 1. Probes any **saved URL** from Keychain
-2. Tries the **default address** (`http://YOUR_SERVER_IP:3000`)
+2. Tries a **default local address** (`http://<host>:3000`)
 3. **Scans subnets** (192.168.0-2.x, 192.168.10.x, 10.0.0-1.x) on ports 3000, 80, 8080, 443
 4. Uses concurrent `TaskGroup` batches (20 IPs at a time) with 2-second timeout
 5. Verifies by checking `/api/auth/csrf` returns a valid CSRF token

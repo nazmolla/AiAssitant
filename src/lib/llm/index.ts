@@ -30,6 +30,7 @@ function buildProviderFromRecord(record: LlmProviderRecord): ChatProvider {
       const endpoint = config.endpoint as string | undefined;
       const deployment = config.deployment as string | undefined;
       const apiVersion = config.apiVersion as string | undefined;
+      const disableThinking = config.disableThinking === true;
       assertConfig(apiKey && endpoint && deployment, `Azure OpenAI config for ${record.label} is incomplete.`);
       return new OpenAIChatProvider({
         variant: "azure",
@@ -37,18 +38,21 @@ function buildProviderFromRecord(record: LlmProviderRecord): ChatProvider {
         endpoint,
         deployment,
         apiVersion,
+        disableThinking,
       });
     }
     case "openai": {
       const apiKey = config.apiKey as string | undefined;
       const model = config.model as string | undefined;
       const baseURL = config.baseURL as string | undefined;
+      const disableThinking = config.disableThinking === true;
       assertConfig(apiKey, `OpenAI config for ${record.label} is missing an API key.`);
       return new OpenAIChatProvider({
         variant: "openai",
         apiKey,
         model,
         baseURL,
+        disableThinking,
       });
     }
     case "anthropic": {
@@ -61,6 +65,7 @@ function buildProviderFromRecord(record: LlmProviderRecord): ChatProvider {
       const apiKey = (config.apiKey as string | undefined) || "no-key-required";
       const model = config.model as string | undefined;
       const baseURL = config.baseURL as string | undefined;
+      const disableThinking = config.disableThinking === true;
       assertConfig(baseURL, `LiteLLM config for ${record.label} is missing a Base URL.`);
       assertConfig(model, `LiteLLM config for ${record.label} is missing a Model name.`);
       return new OpenAIChatProvider({
@@ -68,6 +73,7 @@ function buildProviderFromRecord(record: LlmProviderRecord): ChatProvider {
         apiKey,
         model,
         baseURL,
+        disableThinking,
       });
     }
     default:

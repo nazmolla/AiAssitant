@@ -75,7 +75,7 @@ describe("POST /api/config/llm", () => {
         label: "GPT-4o",
         provider_type: "openai",
         purpose: "chat",
-        config: { apiKey: "sk-test-key-12345", model: "gpt-4o" },
+        config: { apiKey: "sk-test-key-12345", model: "gpt-4o", disableThinking: true },
         is_default: true,
       }),
       headers: { "Content-Type": "application/json" },
@@ -86,6 +86,7 @@ describe("POST /api/config/llm", () => {
     expect(data.label).toBe("GPT-4o");
     expect(data.provider_type).toBe("openai");
     expect(data.is_default).toBe(true);
+    expect(data.config.disableThinking).toBe(true);
     // API key should be redacted
     expect(data.config.apiKey).toBe("••••••");
     expect(data.has_api_key).toBe(true);

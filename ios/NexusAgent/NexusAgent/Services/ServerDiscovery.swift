@@ -37,8 +37,8 @@ final class ServerDiscovery: ObservableObject {
             }
         }
 
-        // 2. Try the well-known default
-        let defaultURL = "http://YOUR_SERVER_IP:3000"
+        // 2. Try the well-known local default
+        let defaultURL = "http://localhost:3000"
         if savedURL != defaultURL {
             state = .scanning(progress: 0.05, detail: "Trying default address...")
             if await probe(defaultURL) {

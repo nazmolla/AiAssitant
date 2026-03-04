@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
 /* ─── Conversation loop with tool support ──────────────────────────── */
 
 async function runConversationLoop(
-  provider: { chat: (messages: ChatMessage[], tools?: ToolDefinition[], systemPrompt?: string, onToken?: (token: string) => void | Promise<void>) => Promise<ChatResponse> },
+  provider: { chat: (messages: ChatMessage[], tools?: ToolDefinition[], systemPrompt?: string, onToken?: (token: string) => void | Promise<void>, requestOptions?: { disableThinking?: boolean }) => Promise<ChatResponse> },
   chatMessages: ChatMessage[],
   tools: ToolDefinition[],
   sseSend: (text: string) => void,
@@ -250,7 +250,8 @@ async function runConversationLoop(
       CONVERSATION_SYSTEM_PROMPT,
       async (token: string) => {
         sseSend(`event: token\ndata: ${JSON.stringify(token)}\n\n`);
-      }
+      },
+      { disableThinking: true }
     );
 
     // If LLM wants to call tools — execute them and loop back
@@ -386,6 +387,7 @@ async function runConversationLoopViaWorker(
         deployment: orchestration.providerConfig.deployment as string | undefined,
         apiVersion: orchestration.providerConfig.apiVersion as string | undefined,
         baseURL: orchestration.providerConfig.baseURL as string | undefined,
+        disableThinking: true,
       },
       systemPrompt: CONVERSATION_SYSTEM_PROMPT,
       messages: chatMessages,

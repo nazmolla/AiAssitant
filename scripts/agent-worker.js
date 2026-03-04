@@ -73,6 +73,7 @@ async function handleStart(config) {
     deployment,
     apiVersion,
     baseURL,
+    disableThinking,
     systemPrompt,
     messages,
     tools,
@@ -111,6 +112,7 @@ async function handleStart(config) {
     systemPrompt,
     messages,
     tools,
+    disableThinking: !!disableThinking,
     maxIterations: maxIterations || 25,
   });
 }
@@ -118,7 +120,7 @@ async function handleStart(config) {
 /* ── LLM Loop ────────────────────────────────────────────────────── */
 
 async function runLoop(client, isAnthropic, model, config) {
-  const { systemPrompt, tools, maxIterations } = config;
+  const { systemPrompt, tools, maxIterations, disableThinking } = config;
   const chatMessages = config.messages.map((m) => ({ ...m })); // shallow copy
   let iterations = 0;
   const toolsUsed = [];
@@ -143,7 +145,7 @@ async function runLoop(client, isAnthropic, model, config) {
     try {
       response = isAnthropic
         ? await callAnthropic(client, model, systemPrompt, chatMessages, tools)
-        : await callOpenAI(client, model, systemPrompt, chatMessages, tools);
+        : await callOpenAI(client, model, systemPrompt, chatMessages, tools, disableThinking);
     } catch (err) {
       parentPort.postMessage({
         type: 'error',
@@ -211,7 +213,7 @@ async function runLoop(client, isAnthropic, model, config) {
 
 /* ── OpenAI / Azure / LiteLLM Streaming ──────────────────────────── */
 
-async function callOpenAI(client, model, systemPrompt, messages, tools) {
+async function callOpenAI(client, model, systemPrompt, messages, tools, disableThinking) {
   const oaiMessages = [];
 
   if (systemPrompt) {
@@ -254,6 +256,10 @@ async function callOpenAI(client, model, systemPrompt, messages, tools) {
     stream: true,
   };
 
+  if (disableThinking) {
+    params.think = false;
+  }
+
   if (tools && tools.length > 0) {
     params.tools = tools.map((t) => ({
       type: 'function',
@@ -266,7 +272,21 @@ async function callOpenAI(client, model, systemPrompt, messages, tools) {
     params.tool_choice = 'auto';
   }
 
-  const stream = await client.chat.completions.create(params);
+  let stream;
+  try {
+    stream = await client.chat.completions.create(params);
+  } catch (err) {
+    const msg = (err && err.message ? String(err.message) : String(err)).toLowerCase();
+    const unsupportedThink = disableThinking && (
+      (msg.includes('unknown') && msg.includes('think')) ||
+      (msg.includes('invalid') && msg.includes('think')) ||
+      (msg.includes('unsupported') && msg.includes('think'))
+    );
+    if (!unsupportedThink) throw err;
+    const retryParams = { ...params };
+    delete retryParams.think;
+    stream = await client.chat.completions.create(retryParams);
+  }
 
   let content = '';
   const toolCallsMap = new Map();

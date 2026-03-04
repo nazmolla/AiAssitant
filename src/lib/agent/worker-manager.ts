@@ -25,6 +25,7 @@ export interface WorkerProviderConfig {
   deployment?: string;
   apiVersion?: string;
   baseURL?: string;
+  disableThinking?: boolean;
 }
 
 export interface WorkerStartConfig {
@@ -226,6 +227,7 @@ export function runLlmInWorker(
         deployment: config.provider.deployment,
         apiVersion: config.provider.apiVersion,
         baseURL: config.provider.baseURL,
+        disableThinking: config.provider.disableThinking,
         systemPrompt: config.systemPrompt,
         messages: config.messages,
         tools: config.tools,

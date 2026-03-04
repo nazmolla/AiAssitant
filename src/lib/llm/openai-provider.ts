@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ContentPart } from "./types";
+import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ContentPart, ChatRequestOptions } from "./types";
 
 export type OpenAIProviderOptions =
   | {
@@ -8,12 +8,14 @@ export type OpenAIProviderOptions =
       endpoint: string;
       deployment: string;
       apiVersion?: string;
+      disableThinking?: boolean;
     }
   | {
       variant: "openai";
       apiKey: string;
       model?: string;
       baseURL?: string;
+      disableThinking?: boolean;
     };
 
 /**
@@ -22,11 +24,13 @@ export type OpenAIProviderOptions =
 export class OpenAIChatProvider implements ChatProvider {
   private client: OpenAI;
   private model: string;
+  private disableThinkingByDefault: boolean;
 
   constructor(options: OpenAIProviderOptions) {
     const configured = this.fromOptions(options);
     this.client = configured.client;
     this.model = configured.model;
+    this.disableThinkingByDefault = !!options.disableThinking;
   }
 
   private fromOptions(options: OpenAIProviderOptions): { client: OpenAI; model: string } {
@@ -54,7 +58,8 @@ export class OpenAIChatProvider implements ChatProvider {
     messages: ChatMessage[],
     tools?: ToolDefinition[],
     systemPrompt?: string,
-    onToken?: (token: string) => void | Promise<void>
+    onToken?: (token: string) => void | Promise<void>,
+    requestOptions?: ChatRequestOptions
   ): Promise<ChatResponse> {
     const oaiMessages: OpenAI.ChatCompletionMessageParam[] = [];
 
@@ -106,15 +111,31 @@ export class OpenAIChatProvider implements ChatProvider {
       },
     }));
 
+    const disableThinking = this.disableThinkingByDefault || !!requestOptions?.disableThinking;
+
     // Streaming mode: yield tokens as they arrive for real-time display
     if (onToken) {
-      const stream = await this.client.chat.completions.create({
+      const streamParams: Record<string, unknown> = {
         model: this.model,
         messages: oaiMessages,
         tools: oaiTools,
         tool_choice: tools && tools.length > 0 ? "auto" : undefined,
         stream: true,
-      });
+      };
+      if (disableThinking) streamParams.think = false;
+
+      let stream;
+      try {
+        stream = await this.client.chat.completions.create(streamParams as unknown as OpenAI.ChatCompletionCreateParamsStreaming);
+      } catch (err) {
+        if (disableThinking && isUnsupportedThinkParamError(err)) {
+          const retryParams = { ...streamParams };
+          delete retryParams.think;
+          stream = await this.client.chat.completions.create(retryParams as unknown as OpenAI.ChatCompletionCreateParamsStreaming);
+        } else {
+          throw err;
+        }
+      }
 
       let content = "";
       const toolCallsMap = new Map<number, { id: string; name: string; arguments: string }>();
@@ -165,12 +186,26 @@ export class OpenAIChatProvider implements ChatProvider {
     }
 
     // Non-streaming mode (fallback)
-    const response = await this.client.chat.completions.create({
+    const requestParams: Record<string, unknown> = {
       model: this.model,
       messages: oaiMessages,
       tools: oaiTools,
       tool_choice: tools && tools.length > 0 ? "auto" : undefined,
-    });
+    };
+    if (disableThinking) requestParams.think = false;
+
+    let response;
+    try {
+      response = await this.client.chat.completions.create(requestParams as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming);
+    } catch (err) {
+      if (disableThinking && isUnsupportedThinkParamError(err)) {
+        const retryParams = { ...requestParams };
+        delete retryParams.think;
+        response = await this.client.chat.completions.create(retryParams as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming);
+      } else {
+        throw err;
+      }
+    }
 
     const choice = response.choices[0];
     const toolCalls =
@@ -186,6 +221,15 @@ export class OpenAIChatProvider implements ChatProvider {
       finishReason: choice.finish_reason || "stop",
     };
   }
+}
+
+function isUnsupportedThinkParamError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return (
+    msg.includes("unknown") && msg.includes("think") ||
+    msg.includes("invalid") && msg.includes("think") ||
+    msg.includes("unsupported") && msg.includes("think")
+  );
 }
 
 function toOpenAIPart(part: ContentPart): OpenAI.ChatCompletionContentPart {

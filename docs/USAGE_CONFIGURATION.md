@@ -18,6 +18,8 @@ Configure chat and embedding providers and select defaults.
 | OpenAI | API key, model |
 | Anthropic | API key, model |
 
+OpenAI-compatible chat providers (OpenAI and LiteLLM) also support **Disable Thinking (faster)**, which sends `think=false` when supported by the upstream model gateway.
+
 Nexus routes tasks via the orchestrator (complex/simple/background/vision) based on capability and tier.
 
 ---
@@ -102,15 +104,16 @@ The local Whisper server must expose an OpenAI-compatible `/v1/audio/transcripti
 
 ---
 
-## Audio Mode (Chat)
+## Audio Mode (Conversation Tab)
 
 Hands-free conversation mode — talk to Nexus without clicking buttons.
 
 Activation:
-1. Click the **headset icon** (🎧) in the chat input bar
-2. Recording starts automatically
-3. After you stop speaking, Nexus transcribes, processes, and speaks the response
-4. After the response finishes playing, recording auto-starts again
-5. Click the headset icon again (or the "Stop" button in the status banner) to exit
+1. Open the **Conversation** tab
+2. Click the **microphone** button to start
+3. Recording starts and VAD detects end-of-speech automatically
+4. Nexus transcribes, processes, and speaks the response
+5. Auto mode resumes listening after playback; use **Manual/Auto** toggle as needed
+6. Click **Stop** to end the session
 
 The status banner shows the current phase: Listening → Transcribing → Thinking → Speaking.

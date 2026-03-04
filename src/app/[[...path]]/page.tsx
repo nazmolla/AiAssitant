@@ -28,8 +28,9 @@ import DashboardIcon from "@mui/icons-material/Dashboard";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import SchoolIcon from "@mui/icons-material/School";
 import SettingsIcon from "@mui/icons-material/Settings";
-import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import HeadsetMicIcon from "@mui/icons-material/HeadsetMic";
+import PersonIcon from "@mui/icons-material/Person";
+import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import { useTheme, THEMES } from "@/components/theme-provider";
 
 /* ── Lazy-loaded tab components (code-split into separate chunks) ── */
@@ -55,14 +56,14 @@ const WhisperConfig = dynamic(() => import("@/components/whisper-config").then(m
 /* ── URL ↔ tab mapping (module-level for stable references) ── */
 const TAB_FROM_PATH: Record<string, string> = {
   chat: "chat", dashboard: "dashboard",
-  approvals: "approvals", knowledge: "knowledge",
   conversation: "conversation",
+  approvals: "approvals", knowledge: "knowledge",
   settings: "config",
 };
 const PATH_FROM_TAB: Record<string, string> = {
   chat: "/chat", dashboard: "/dashboard",
-  approvals: "/approvals", knowledge: "/knowledge",
   conversation: "/conversation",
+  approvals: "/approvals", knowledge: "/knowledge",
   config: "/settings",
 };
 
@@ -74,6 +75,7 @@ export default function HomePage() {
   const [isUserMetaLoading, setIsUserMetaLoading] = useState(true);
   const pathname = usePathname();
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
+  const [accountMenuAnchor, setAccountMenuAnchor] = useState<null | HTMLElement>(null);
 
   /* Derive initial tab + settings sub-page from the current URL */
   const pathSegments = pathname.split("/").filter(Boolean);
@@ -97,6 +99,18 @@ export default function HomePage() {
     setSettingsPage(page);
     router.push(`/settings/${page}`);
   }, [router]);
+
+  const openProfileFromMenu = useCallback(() => {
+    setAccountMenuAnchor(null);
+    setActiveTab("config");
+    setSettingsPage("profile");
+    router.push("/settings/profile");
+  }, [router]);
+
+  const signOutFromMenu = useCallback(() => {
+    setAccountMenuAnchor(null);
+    signOut({ callbackUrl: `${window.location.origin}/auth/signin` });
+  }, []);
   const [perms, setPerms] = useState<Record<string, number>>({
     chat: 1, knowledge: 1, dashboard: 1, approvals: 1,
     mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1,
@@ -154,10 +168,10 @@ export default function HomePage() {
   const tabItems = useMemo(() => {
     const items: { value: string; label: string; icon: React.ReactElement }[] = [];
     if (perms.chat) items.push({ value: "chat", label: "Chat", icon: <ChatIcon fontSize="small" /> });
+    if (perms.chat) items.push({ value: "conversation", label: "Conversation", icon: <HeadsetMicIcon fontSize="small" /> });
     if (perms.dashboard) items.push({ value: "dashboard", label: "Dashboard", icon: <DashboardIcon fontSize="small" /> });
     if (perms.approvals) items.push({ value: "approvals", label: "Approvals", icon: <CheckCircleIcon fontSize="small" /> });
     if (perms.knowledge) items.push({ value: "knowledge", label: "Knowledge", icon: <SchoolIcon fontSize="small" /> });
-    if (perms.chat) items.push({ value: "conversation", label: "Conversation", icon: <HeadsetMicIcon fontSize="small" /> });
     items.push({ value: "config", label: "Settings", icon: <SettingsIcon fontSize="small" /> });
     return items;
   }, [perms]);
@@ -222,12 +236,40 @@ export default function HomePage() {
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <ThemeSwitcher />
             <FiberManualRecordIcon sx={{ fontSize: 10, color: "success.main" }} titleAccess="Online" />
-            <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "inline" }, maxWidth: 180 }} noWrap>
+            <Button
+              size="small"
+              variant="text"
+              title="Account menu"
+              onClick={(e) => setAccountMenuAnchor(e.currentTarget)}
+              sx={{
+                textTransform: "none",
+                minWidth: 0,
+                px: 1,
+                color: "text.secondary",
+                maxWidth: 220,
+              }}
+            >
               {displayName || session.user?.email}
-            </Typography>
-            <IconButton size="small" onClick={() => signOut({ callbackUrl: `${window.location.origin}/auth/signin` })} title="Sign out" color="error">
-              <LogoutIcon fontSize="small" />
-            </IconButton>
+            </Button>
+            <Menu
+              anchorEl={accountMenuAnchor}
+              open={!!accountMenuAnchor}
+              onClose={() => setAccountMenuAnchor(null)}
+              slotProps={{ paper: { sx: { minWidth: 200, mt: 1 } } }}
+            >
+              <MenuItem onClick={openProfileFromMenu}>
+                <ListItemIcon>
+                  <PersonIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText primary="Profile" />
+              </MenuItem>
+              <MenuItem onClick={signOutFromMenu}>
+                <ListItemIcon>
+                  <LogoutIcon fontSize="small" color="error" />
+                </ListItemIcon>
+                <ListItemText primary="Sign out" />
+              </MenuItem>
+            </Menu>
           </Box>
         </Toolbar>
       </AppBar>
@@ -280,6 +322,7 @@ export default function HomePage() {
       {/* Content */}
       <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {activeTab === "chat" && <ChatPanel />}
+        {activeTab === "conversation" && <ConversationMode />}
         {activeTab === "dashboard" && (
           <Box sx={{ flex: 1, overflow: "auto", p: { xs: 1.5, sm: 3 } }}>
             <Box sx={{ maxWidth: 1000, mx: "auto" }}><AgentDashboard /></Box>
@@ -295,7 +338,6 @@ export default function HomePage() {
             <Box sx={{ maxWidth: 1000, mx: "auto" }}><KnowledgeVault /></Box>
           </Box>
         )}
-        {activeTab === "conversation" && <ConversationMode />}
         {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} isUserMetaLoading={isUserMetaLoading} activePage={settingsPage} onNavigate={navigateToSettings} />}
       </Box>
     </Box>

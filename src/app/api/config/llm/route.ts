@@ -187,6 +187,18 @@ function buildConfig(provider: LlmProviderType, input: Record<string, unknown>, 
     return value;
   };
 
+  const readBool = (key: string): boolean | undefined => {
+    const raw = input[key];
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw === "boolean") return raw;
+    if (typeof raw === "string") {
+      const v = raw.trim().toLowerCase();
+      if (v === "true") return true;
+      if (v === "false") return false;
+    }
+    throw new Error(`${key} must be a boolean`);
+  };
+
   // Read orchestrator metadata (optional for all providers)
   const routingTier = read("routingTier");
   const VALID_TIERS = ["primary", "secondary", "local"];
@@ -202,6 +214,10 @@ function buildConfig(provider: LlmProviderType, input: Record<string, unknown>, 
   const orchestratorFields: Record<string, unknown> = {};
   if (routingTier) orchestratorFields.routingTier = routingTier;
   if (capabilities) orchestratorFields.capabilities = capabilities;
+  const disableThinking = readBool("disableThinking");
+  if (purpose === "chat" && disableThinking !== undefined) {
+    orchestratorFields.disableThinking = disableThinking;
+  }
 
   try {
     let base: Record<string, string>;

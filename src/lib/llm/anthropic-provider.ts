@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ContentPart } from "./types";
+import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ContentPart, ChatRequestOptions } from "./types";
 
 export interface AnthropicProviderOptions {
   apiKey?: string;
@@ -27,7 +27,8 @@ export class AnthropicChatProvider implements ChatProvider {
     messages: ChatMessage[],
     tools?: ToolDefinition[],
     systemPrompt?: string,
-    onToken?: (token: string) => void | Promise<void>
+    onToken?: (token: string) => void | Promise<void>,
+    _requestOptions?: ChatRequestOptions
   ): Promise<ChatResponse> {
     const anthropicMessages: Anthropic.MessageParam[] = [];
 

@@ -241,7 +241,7 @@ struct LoginView: View {
         HStack {
             Image(systemName: "server.rack")
                 .foregroundStyle(.secondary)
-            TextField("http://YOUR_SERVER_IP:3000", text: $authVM.serverURL)
+            TextField("http://localhost:3000", text: $authVM.serverURL)
                 .keyboardType(.URL)
                 .autocapitalization(.none)
                 .autocorrectionDisabled()
