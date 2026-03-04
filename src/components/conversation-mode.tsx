@@ -38,8 +38,8 @@ interface TranscriptEntry {
 /* ─── Constants ─────────────────────────────────────────────────────── */
 
 const SILENCE_THRESHOLD = 0.015; // RMS amplitude below which we consider silence
-const SILENCE_DURATION_MS = 1800; // 1.8s of continuous silence = end of speech
-const MIN_SPEECH_DURATION_MS = 500; // need at least 0.5s of speech to trigger processing
+const SILENCE_DURATION_MS = 1200; // 1.2s of continuous silence = end of speech
+const MIN_SPEECH_DURATION_MS = 400; // need at least 0.4s of speech to trigger processing
 const ANALYSER_FFT_SIZE = 2048;
 const ANALYSER_POLL_MS = 100; // check audio levels every 100ms
 const TTS_VOICES = ["alloy", "ash", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"] as const;
@@ -64,7 +64,7 @@ function sanitizeForTts(text: string): string {
 
 export function ConversationMode() {
   /* ─── State ────────────────────────────────────────────────────── */
-  const [state, setState] = useState<ConvState>("idle");
+  const [state, _setState] = useState<ConvState>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [currentText, setCurrentText] = useState(""); // streaming LLM text
   const [errorMsg, setErrorMsg] = useState("");
@@ -89,8 +89,13 @@ export function ConversationMode() {
   const autoListenRef = useRef(true);
   const conversationHistoryRef = useRef<Array<{ role: string; content: string }>>([]); // in-memory LLM history
 
-  // Keep refs in sync with state
-  useEffect(() => { stateRef.current = state; }, [state]);
+  // setState wrapper — sync ref immediately to avoid race conditions in async flows
+  const setState = useCallback((s: ConvState) => {
+    stateRef.current = s;
+    _setState(s);
+  }, []);
+
+  // Keep autoListen ref in sync
   useEffect(() => { autoListenRef.current = autoListen; }, [autoListen]);
 
   // Load voice preference
@@ -417,16 +422,9 @@ export function ConversationMode() {
         await playTts(ttsText);
       }
 
-      // 5. Auto-listen again
-      if (autoListenRef.current && stateRef.current === "speaking") {
-        setTimeout(() => {
-          if (autoListenRef.current && (stateRef.current === "speaking" || stateRef.current === "idle")) {
-            restartListening();
-          } else {
-            // Fallback: always leave "speaking" state even if auto-listen toggled off mid-speech
-            if (stateRef.current === "speaking") setState("idle");
-          }
-        }, 400);
+      // 5. Auto-listen again (TTS finished — always leave "speaking" state)
+      if (autoListenRef.current) {
+        restartListening();
       } else {
         setState("idle");
       }
@@ -509,14 +507,14 @@ export function ConversationMode() {
 
   function restartListening() {
     cleanupAudio();
+    // Reset to idle immediately so startListening's guard passes
+    setState("idle");
     // Short delay before restarting to prevent audio feedback
     setTimeout(() => {
-      if (autoListenRef.current) {
+      if (autoListenRef.current && stateRef.current === "idle") {
         startListening();
-      } else {
-        setState("idle");
       }
-    }, 200);
+    }, 300);
   }
 
   /* ─── Stop everything ──────────────────────────────────────────── */

@@ -4,6 +4,13 @@
  */
 import "@testing-library/jest-dom";
 
+// jsdom does not provide TextEncoder/TextDecoder or other Web API globals.
+// Import them from Node.js built-ins and expose them globally.
+import { TextEncoder, TextDecoder } from "util";
+if (typeof globalThis.TextEncoder === "undefined") {
+  Object.assign(globalThis, { TextEncoder, TextDecoder });
+}
+
 // Mock window.matchMedia for MUI responsive components
 Object.defineProperty(window, "matchMedia", {
   writable: true,

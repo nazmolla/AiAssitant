@@ -151,12 +151,27 @@ export async function POST(req: NextRequest) {
   // Stream response via SSE
   const encoder = new TextEncoder();
   let controller!: ReadableStreamDefaultController<Uint8Array>;
+  let streamCancelled = false;
+
+  /** Safely write to the SSE stream — no-ops if the client has disconnected */
+  const sseSend = (text: string): void => {
+    if (streamCancelled) return;
+    try {
+      controller.enqueue(encoder.encode(text));
+    } catch {
+      streamCancelled = true;
+    }
+  };
 
   const stream = new ReadableStream<Uint8Array>({
     start(c) {
       controller = c;
       // Flush an SSE comment immediately to prevent proxy/framework buffering
-      controller.enqueue(encoder.encode(": stream opened\n\n"));
+      sseSend(": stream opened\n\n");
+    },
+    cancel() {
+      // Client disconnected (tab closed, navigated away, new instance opened)
+      streamCancelled = true;
     },
   });
 
@@ -176,16 +191,14 @@ export async function POST(req: NextRequest) {
             message,
             chatMessages,
             tools,
-            controller,
-            encoder,
+            sseSend,
             auth.user.id
           )
         : runConversationLoop(
             orchestration.provider,
             chatMessages,
             tools,
-            controller,
-            encoder,
+            sseSend,
             auth.user.id
           );
 
@@ -194,11 +207,7 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       clearTimeout(timeoutId);
       const msg = err instanceof Error ? err.message : String(err);
-      try {
-        controller.enqueue(
-          encoder.encode(`event: error\ndata: ${JSON.stringify({ error: msg })}\n\n`)
-        );
-      } catch { /* controller may be closed */ }
+      sseSend(`event: error\ndata: ${JSON.stringify({ error: msg })}\n\n`);
       addLog({
         level: "error",
         source: "conversation",
@@ -226,8 +235,7 @@ async function runConversationLoop(
   provider: { chat: (messages: ChatMessage[], tools?: ToolDefinition[], systemPrompt?: string, onToken?: (token: string) => void | Promise<void>) => Promise<ChatResponse> },
   chatMessages: ChatMessage[],
   tools: ToolDefinition[],
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  encoder: TextEncoder,
+  sseSend: (text: string) => void,
   userId: string
 ) {
   let iterations = 0;
@@ -241,9 +249,7 @@ async function runConversationLoop(
       tools.length > 0 ? tools : undefined,
       CONVERSATION_SYSTEM_PROMPT,
       async (token: string) => {
-        controller.enqueue(
-          encoder.encode(`event: token\ndata: ${JSON.stringify(token)}\n\n`)
-        );
+        sseSend(`event: token\ndata: ${JSON.stringify(token)}\n\n`);
       }
     );
 
@@ -251,10 +257,8 @@ async function runConversationLoop(
     if (response.toolCalls.length > 0) {
       // Notify client about tool calls
       for (const tc of response.toolCalls) {
-        controller.enqueue(
-          encoder.encode(
-            `event: tool_call\ndata: ${JSON.stringify({ name: tc.name, args: tc.arguments })}\n\n`
-          )
+        sseSend(
+          `event: tool_call\ndata: ${JSON.stringify({ name: tc.name, args: tc.arguments })}\n\n`
         );
       }
 
@@ -275,10 +279,8 @@ async function runConversationLoop(
           ? resultStr.slice(0, 8000) + "\n... [truncated]"
           : resultStr;
 
-        controller.enqueue(
-          encoder.encode(
-            `event: tool_result\ndata: ${JSON.stringify({ name: toolCall.name, success: result.status === "executed" })}\n\n`
-          )
+        sseSend(
+          `event: tool_result\ndata: ${JSON.stringify({ name: toolCall.name, success: result.status === "executed" })}\n\n`
         );
 
         chatMessages.push({
@@ -292,9 +294,7 @@ async function runConversationLoop(
     }
 
     // No tool calls — final response
-    controller.enqueue(
-      encoder.encode(`event: done\ndata: ${JSON.stringify({ content: response.content })}\n\n`)
-    );
+    sseSend(`event: done\ndata: ${JSON.stringify({ content: response.content })}\n\n`);
 
     addLog({
       level: "info",
@@ -306,10 +306,8 @@ async function runConversationLoop(
   }
 
   // Max iterations reached
-  controller.enqueue(
-    encoder.encode(
-      `event: done\ndata: ${JSON.stringify({ content: "I've reached the maximum number of tool iterations for this turn." })}\n\n`
-    )
+  sseSend(
+    `event: done\ndata: ${JSON.stringify({ content: "I've reached the maximum number of tool iterations for this turn." })}\n\n`
   );
 }
 
@@ -373,8 +371,7 @@ async function runConversationLoopViaWorker(
   message: string,
   chatMessages: ChatMessage[],
   tools: ToolDefinition[],
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  encoder: TextEncoder,
+  sseSend: (text: string) => void,
   userId: string
 ) {
   const orchestration = selectProviderForWorker(message, false);
@@ -397,9 +394,7 @@ async function runConversationLoopViaWorker(
     },
     /* onToken */
     async (token: string) => {
-      controller.enqueue(
-        encoder.encode(`event: token\ndata: ${JSON.stringify(token)}\n\n`)
-      );
+      sseSend(`event: token\ndata: ${JSON.stringify(token)}\n\n`);
     },
     /* onStatus — not used for conversation */
     undefined,
@@ -407,10 +402,8 @@ async function runConversationLoopViaWorker(
     async (calls, _assistantContent) => {
       // Notify client about tool calls
       for (const tc of calls) {
-        controller.enqueue(
-          encoder.encode(
-            `event: tool_call\ndata: ${JSON.stringify({ name: tc.name, args: tc.arguments })}\n\n`
-          )
+        sseSend(
+          `event: tool_call\ndata: ${JSON.stringify({ name: tc.name, args: tc.arguments })}\n\n`
         );
       }
 
@@ -422,10 +415,8 @@ async function runConversationLoopViaWorker(
           ? resultStr.slice(0, 8000) + "\n... [truncated]"
           : resultStr;
 
-        controller.enqueue(
-          encoder.encode(
-            `event: tool_result\ndata: ${JSON.stringify({ name: toolCall.name, success: result.status === "executed" })}\n\n`
-          )
+        sseSend(
+          `event: tool_result\ndata: ${JSON.stringify({ name: toolCall.name, success: result.status === "executed" })}\n\n`
         );
 
         results.push({
@@ -440,9 +431,7 @@ async function runConversationLoopViaWorker(
 
   const workerResult = await promise;
 
-  controller.enqueue(
-    encoder.encode(`event: done\ndata: ${JSON.stringify({ content: workerResult.content })}\n\n`)
-  );
+  sseSend(`event: done\ndata: ${JSON.stringify({ content: workerResult.content })}\n\n`);
 
   addLog({
     level: "info",

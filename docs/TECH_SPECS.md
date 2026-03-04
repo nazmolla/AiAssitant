@@ -13,8 +13,8 @@
 | Database | SQLite | `better-sqlite3` — zero-config, single-file persistence. **Application cache** (`src/lib/cache.ts`) — in-memory write-through cache with 60s TTL and explicit invalidation for LLM providers, tool policies, user records, and profiles to avoid redundant synchronous DB queries on every request. |
 | Frontend | Next.js 14 | App Router, Material UI (MUI v7) with 7 color themes, TailwindCSS, screen sharing via getDisplayMedia, **Markdown rendering** via `react-markdown` + `remark-gfm` |
 | HTTPS | nginx + self-signed cert | Reverse proxy HTTPS:443 → Next.js:3000. Required for mic access over network. TLSv1.2/1.3, HTTP → HTTPS redirect, SSE passthrough. |
-| Audio | OpenAI Whisper + TTS-1 | Speech-to-Text (mic input, 25 MB max, webm/wav/mp3/ogg/flac) and Text-to-Speech (9 voices, MP3 output). Supports dedicated `tts` and `stt` purpose providers with standard deployment field for Azure OpenAI. **Local Whisper fallback** — optional local Whisper server (faster-whisper-server or whisper.cpp) as automatic backup when cloud STT fails. **Audio mode** — hands-free conversation with auto-listen and streaming TTS. **Conversation Mode** — dedicated `/conversation` tab with VAD-based automatic speech endpoint detection (WebAudio AnalyserNode), lightweight `/api/conversation/respond` endpoint (full tool support, no knowledge/profile/DB overhead), in-memory client-side history (30 msg cap), real-time audio level visualization, and auto-listen after response. |
-| LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy. **Streaming responses** — tokens are streamed in real-time via SSE `token` events for instant perceived latency. **Worker Thread isolation** — LLM API calls run in a dedicated Node.js Worker Thread (`scripts/agent-worker.js`) to prevent token streaming from blocking the main event loop. Tool execution, DB access, and knowledge retrieval remain on the main thread with IPC-based coordination. Automatic fallback to main thread if worker is unavailable. |
+| Audio | OpenAI Whisper + TTS-1 | Speech-to-Text (mic input, 25 MB max, webm/wav/mp3/ogg/flac) and Text-to-Speech (9 voices, MP3 output). Supports dedicated `tts` and `stt` purpose providers with standard deployment field for Azure OpenAI. **Local Whisper fallback** — optional local Whisper server (faster-whisper-server or whisper.cpp) as automatic backup when cloud STT fails. **Audio mode** — hands-free conversation with auto-listen and streaming TTS. **Conversation Mode** — dedicated `/conversation` tab with VAD-based automatic speech endpoint detection (WebAudio AnalyserNode, 1.2 s silence / 0.4 s min speech), lightweight `/api/conversation/respond` endpoint (full tool support, no knowledge/profile/DB overhead), in-memory client-side history (30 msg cap), real-time audio level visualization, atomic `stateRef` sync via `useCallback`, and auto-listen after response. |
+| LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy. **Streaming responses** — tokens are streamed in real-time via SSE `token` events for instant perceived latency. SSE writes use a `sseSend()` safety wrapper with `streamCancelled` flag to prevent crashes when clients disconnect mid-stream. **Worker Thread isolation** — LLM API calls run in a dedicated Node.js Worker Thread (`scripts/agent-worker.js`) to prevent token streaming from blocking the main event loop. Tool execution, DB access, and knowledge retrieval remain on the main thread with IPC-based coordination. Automatic fallback to main thread if worker is unavailable. |
 | MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports. `list_changed` auto-refresh (500 ms debounce). |
 | Discord | discord.js | Gateway bot with mentions, DMs, and slash commands |
 | Auth | NextAuth v4 | Credentials (email + password) and OAuth (Azure AD, Google) |
@@ -388,13 +388,13 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**813 tests across 66 suites** — all passing.
+**826 tests across 68 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|
 | Unit | ~50 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards |
-| Integration | ~5 | End-to-end API flows, MCP integration, channel routing |
-| Component | ~8 | Full navigation (every page + settings sub-page), component rendering, settings panel, tool policies, profile config, markdown rendering |
+| Integration | ~6 | End-to-end API flows, MCP integration, channel routing, SSE concurrency & disconnect safety |
+| Component | ~9 | Full navigation (every page + settings sub-page), component rendering, settings panel, tool policies, profile config, markdown rendering, TTS-to-listening transitions |
 
 ### Component Test Architecture
 
@@ -405,7 +405,7 @@ Component tests use `jsdom` environment with the following mocks:
 - **`next/dynamic`** — Replaced with `React.lazy` + `Suspense` for synchronous rendering
 - **`theme-provider`** — No-op `useThemeContext` returning default theme state
 - **`fetch`** — Global mock returning permission-appropriate JSON responses
-- **Browser APIs** — `matchMedia`, `IntersectionObserver`, `ResizeObserver` polyfills
+- **Browser APIs** — `matchMedia`, `IntersectionObserver`, `ResizeObserver` polyfills, `TextEncoder`/`TextDecoder` from Node `util`
 
 ### Key Test Files
 
@@ -415,3 +415,5 @@ Component tests use `jsdom` environment with the following mocks:
 | `tests/component/component-render.test.tsx` | 20 | Render + content verification for all settings components (LlmConfig, ChannelsConfig, AuthConfig, UserManagement, CustomToolsConfig, LoggingConfig, WhisperConfig, ApprovalInbox, KnowledgeVault, ApiKeysConfig) |
 | `tests/component/page.test.tsx` | 17 | Core page rendering, tab switching, drawer navigation |
 | `tests/component/settings-panel.test.tsx` | 4 | Settings chip selection, visibility |
+| `tests/component/conversation-tts-transition.test.tsx` | 6 | TTS → listening/idle transition, auto-listen toggle, no stuck speaking state, TTS error recovery, timing |
+| `tests/integration/api/sse-concurrency.test.ts` | 7 | Concurrent SSE requests, stream cancellation mid-flight, post-disconnect token safety, independent stream isolation |

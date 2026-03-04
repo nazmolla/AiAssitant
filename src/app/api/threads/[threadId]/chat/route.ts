@@ -143,13 +143,28 @@ export async function POST(
     // HTTP response without the internal buffering that TransformStream has.
     const encoder = new TextEncoder();
     let controller!: ReadableStreamDefaultController<Uint8Array>;
+    let streamCancelled = false;
+
+    /** Safely write to the SSE stream — no-ops if the client has disconnected */
+    const sseSend = (text: string): void => {
+      if (streamCancelled) return;
+      try {
+        controller.enqueue(encoder.encode(text));
+      } catch {
+        streamCancelled = true;
+      }
+    };
 
     const stream = new ReadableStream<Uint8Array>({
       start(c) {
         controller = c;
         // Send an SSE comment as the first byte to force the HTTP layer
         // to flush headers + body immediately (avoids proxy/framework buffering).
-        controller.enqueue(encoder.encode(": stream opened\n\n"));
+        sseSend(": stream opened\n\n");
+      },
+      cancel() {
+        // Client disconnected (tab closed, navigated away, new instance opened)
+        streamCancelled = true;
       },
     });
 
@@ -164,24 +179,22 @@ export async function POST(
           undefined,
           auth.user.id,
           (msg) => {
-            const data = JSON.stringify(msg);
-            controller.enqueue(encoder.encode(`event: message\ndata: ${data}\n\n`));
+            sseSend(`event: message\ndata: ${JSON.stringify(msg)}\n\n`);
           },
           (status) => {
-            const data = JSON.stringify(status);
-            controller.enqueue(encoder.encode(`event: status\ndata: ${data}\n\n`));
+            sseSend(`event: status\ndata: ${JSON.stringify(status)}\n\n`);
           },
           async (token) => {
-            controller.enqueue(encoder.encode(`event: token\ndata: ${JSON.stringify(token)}\n\n`));
+            sseSend(`event: token\ndata: ${JSON.stringify(token)}\n\n`);
           }
         );
-        controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(response)}\n\n`));
+        sseSend(`event: done\ndata: ${JSON.stringify(response)}\n\n`);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         const safeMsg = errorMsg.split("\n")[0].replace(/\/home\/[^\s]+/g, "[path]").replace(/[A-Z]:[\\/][^\s]+/g, "[path]");
-        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: safeMsg })}\n\n`));
+        sseSend(`event: error\ndata: ${JSON.stringify({ error: safeMsg })}\n\n`);
       } finally {
-        controller.close();
+        try { controller.close(); } catch { /* already closed */ }
       }
     })();
 

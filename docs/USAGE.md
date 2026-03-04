@@ -63,7 +63,7 @@ The **Conversation** tab provides a dedicated full-screen voice conversation exp
 
 1. Navigate to the **Conversation** tab from the sidebar.
 2. Tap the **microphone button** to start a voice conversation.
-3. **Speak naturally** — Nexus uses Voice Activity Detection (VAD) to automatically detect when you finish speaking (1.8s of silence after speech).
+3. **Speak naturally** — Nexus uses Voice Activity Detection (VAD) to automatically detect when you finish speaking (1.2s of silence after at least 0.4s of speech).
 4. Your speech is transcribed, sent to the LLM, and the response is spoken back to you.
 5. After Nexus finishes speaking, it automatically starts listening again for your next input.
 
