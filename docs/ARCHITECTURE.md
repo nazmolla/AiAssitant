@@ -254,7 +254,7 @@ This ensures other HTTP requests (including new tabs, API calls, and the convers
 | Principle | Description |
 |-----------|-------------|
 | **Multi-User Isolation** | Each user's knowledge, threads, and profile are scoped by `user_id`. No cross-user data leakage. |
-| **Proactive Intelligence** | A background scheduler polls MCP tools and uses the LLM to generate reminders or actions. Proactive approvals (no chat thread) surface in the Notification Center (bell icon) and are visible to admins. |
+| **Proactive Intelligence** | A background scheduler polls MCP tools, writes discovered actions into a persisted scheduled-task queue, and executes due tasks by frequency. Proactive approvals (no chat thread) surface in the Notification Center (bell icon) and are visible to admins. |
 | **Autonomous Knowledge Capture** | Every chat turn is mined for durable facts, keeping the Knowledge Vault up to date without manual entry. |
 | **Vector-Aware Reasoning** | Semantic embedding search retrieves the most relevant knowledge before responding. |
 | **Human-in-the-Loop (HITL)** | Unified tool policy system governs ALL tools (built-in, custom, and MCP). Per-tool approval, proactive toggles, and **scope** (`global` = all users, `user` = admin only). Sensitive calls are held in an approval queue. Both thread-bound and proactive (threadless) approvals are surfaced in the Notification Center bell icon. Non-admin users only see tools with `scope = 'global'` in the agent loop. |

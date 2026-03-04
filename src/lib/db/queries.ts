@@ -1503,3 +1503,101 @@ export function deleteOldNotifications(daysOld = 30): number {
     .run(`-${daysOld} days`);
   return result.changes;
 }
+
+export type ScheduledTaskFrequency = "once" | "hourly" | "daily" | "weekly" | "monthly";
+export type ScheduledTaskScope = "user" | "global";
+export type ScheduledTaskSource = "user_request" | "proactive";
+export type ScheduledTaskStatus = "active" | "paused" | "completed" | "failed";
+
+export interface ScheduledTaskRecord {
+  id: string;
+  user_id: string | null;
+  thread_id: string | null;
+  task_name: string;
+  frequency: ScheduledTaskFrequency;
+  interval_value: number;
+  next_run_at: string;
+  last_run_at: string | null;
+  run_count: number;
+  scope: ScheduledTaskScope;
+  source: ScheduledTaskSource;
+  task_payload: string;
+  status: ScheduledTaskStatus;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function createScheduledTask(task: {
+  userId?: string | null;
+  threadId?: string | null;
+  taskName: string;
+  frequency?: ScheduledTaskFrequency;
+  intervalValue?: number;
+  nextRunAt: string;
+  scope?: ScheduledTaskScope;
+  source?: ScheduledTaskSource;
+  taskPayload: string;
+  status?: ScheduledTaskStatus;
+}): ScheduledTaskRecord {
+  const id = uuid();
+  return getDb().prepare(
+    `INSERT INTO scheduled_tasks (
+      id, user_id, thread_id, task_name, frequency, interval_value,
+      next_run_at, scope, source, task_payload, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    RETURNING *`
+  ).get(
+    id,
+    task.userId ?? null,
+    task.threadId ?? null,
+    task.taskName,
+    task.frequency ?? "once",
+    Math.max(1, task.intervalValue ?? 1),
+    task.nextRunAt,
+    task.scope ?? "user",
+    task.source ?? "user_request",
+    task.taskPayload,
+    task.status ?? "active"
+  ) as ScheduledTaskRecord;
+}
+
+export function listDueScheduledTasks(limit = 50): ScheduledTaskRecord[] {
+  return stmt(
+    `SELECT *
+     FROM scheduled_tasks
+     WHERE status = 'active'
+       AND datetime(next_run_at) <= datetime('now')
+     ORDER BY next_run_at ASC
+     LIMIT ?`
+  ).all(limit) as ScheduledTaskRecord[];
+}
+
+export function updateScheduledTaskAfterRun(taskId: string, args: {
+  status: ScheduledTaskStatus;
+  nextRunAt?: string | null;
+  threadId?: string | null;
+  lastError?: string | null;
+}): void {
+  getDb().prepare(
+    `UPDATE scheduled_tasks
+     SET status = ?,
+         next_run_at = COALESCE(?, next_run_at),
+         thread_id = COALESCE(?, thread_id),
+         last_run_at = CURRENT_TIMESTAMP,
+         run_count = run_count + 1,
+         last_error = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run(args.status, args.nextRunAt ?? null, args.threadId ?? null, args.lastError ?? null, taskId);
+}
+
+export function markScheduledTaskFailed(taskId: string, error: string): void {
+  getDb().prepare(
+    `UPDATE scheduled_tasks
+     SET status = 'failed',
+         last_error = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run(error, taskId);
+}

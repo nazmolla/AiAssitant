@@ -8,6 +8,7 @@
 
 - **Multi-User Isolation** — per-user knowledge, threads, channels, and profiles
 - **Proactive Intelligence** — background scheduler monitors MCP tools and generates reminders
+- **Scheduled Task Queue** — future and recurring tasks are persisted with frequency, next run, last run, source, and scope; executed automatically by the background scheduler
 - **Autonomous Knowledge Capture** — every conversation is mined for durable facts
 - **Human-in-the-Loop (HITL)** — sensitive tool calls require explicit approval; all approvals, system errors, and proactive actions surface in the **Notification Center** (bell icon in the top bar); per-tool **scope** (Global or User Only) controls visibility
 - **Browser Automation** — Playwright-powered web navigation, form filling, and screenshots

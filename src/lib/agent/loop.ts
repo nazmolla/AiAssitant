@@ -37,6 +37,7 @@ import {
   getUserProfile,
   getUserById,
   listToolPolicies,
+  createScheduledTask,
   type Message,
   type AttachmentMeta,
 } from "@/lib/db";
@@ -46,6 +47,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { notifyAdmin } from "@/lib/channels/notify";
+import { parseScheduledTasksFromUserMessage } from "@/lib/scheduler/task-parser";
 
 /** Yield the event loop so other HTTP requests can be served between heavy operations */
 const yieldLoop = () => new Promise<void>((r) => setImmediate(r));
@@ -212,6 +214,36 @@ export async function runAgentLoop(
           size_bytes: att.sizeBytes,
           storage_path: att.storagePath,
         });
+      }
+    }
+
+    // Persist user-requested future/recurring tasks into scheduler queue.
+    if (userId) {
+      const parsedTasks = parseScheduledTasksFromUserMessage(userMessage);
+      for (const task of parsedTasks) {
+        try {
+          createScheduledTask({
+            userId,
+            threadId,
+            taskName: task.taskName,
+            frequency: task.schedule.frequency,
+            intervalValue: task.schedule.intervalValue,
+            nextRunAt: task.schedule.nextRunAt.toISOString(),
+            scope: "user",
+            source: "user_request",
+            taskPayload: JSON.stringify({
+              kind: "agent_prompt",
+              prompt: `Scheduled task: ${task.taskName}`,
+            }),
+          });
+        } catch (err) {
+          addLog({
+            level: "warning",
+            source: "scheduler",
+            message: `Failed to persist user scheduled task: ${err}`,
+            metadata: JSON.stringify({ threadId, userId, taskName: task.taskName }),
+          });
+        }
       }
     }
   }

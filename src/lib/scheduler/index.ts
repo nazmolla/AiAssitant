@@ -51,6 +51,11 @@ import {
   getUserById,
   getUserByEmail,
   isUserEnabled,
+  createScheduledTask,
+  listDueScheduledTasks,
+  updateScheduledTaskAfterRun,
+  markScheduledTaskFailed,
+  type ScheduledTaskRecord,
   getDb,
   getChannelImapState,
   updateChannelImapState,
@@ -254,6 +259,43 @@ function getToolServerId(qualifiedToolName: string): string | null {
   const dotIndex = qualifiedToolName.indexOf(".");
   if (dotIndex === -1) return null;
   return qualifiedToolName.substring(0, dotIndex);
+}
+
+type ScheduledTaskPayload =
+  | { kind: "agent_prompt"; prompt: string }
+  | { kind: "tool_call"; tool: string; args?: Record<string, unknown>; reasoning?: string; severity?: NotificationLevel };
+
+function addFrequency(date: Date, frequency: ScheduledTaskRecord["frequency"], intervalValue: number): Date | null {
+  const interval = Math.max(1, intervalValue || 1);
+  const next = new Date(date);
+  switch (frequency) {
+    case "once":
+      return null;
+    case "hourly":
+      next.setHours(next.getHours() + interval);
+      return next;
+    case "daily":
+      next.setDate(next.getDate() + interval);
+      return next;
+    case "weekly":
+      next.setDate(next.getDate() + interval * 7);
+      return next;
+    case "monthly":
+      next.setMonth(next.getMonth() + interval);
+      return next;
+    default:
+      return null;
+  }
+}
+
+function parseScheduledTaskPayload(raw: string): ScheduledTaskPayload | null {
+  try {
+    const parsed = JSON.parse(raw) as ScheduledTaskPayload;
+    if (!parsed || typeof parsed !== "object" || !("kind" in parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 type SchedulerToolExecution =
@@ -786,6 +828,85 @@ export async function executeProactiveApprovedTool(
   return execution.result;
 }
 
+async function runDueScheduledTasks(
+  digestByUser: Map<string, SchedulerDigestItem[]>,
+  defaultAdminUserId: string | undefined,
+  mcpManager: ReturnType<typeof getMcpManager>
+): Promise<void> {
+  const dueTasks = listDueScheduledTasks(100);
+  if (dueTasks.length === 0) return;
+
+  for (const task of dueTasks) {
+    const payload = parseScheduledTaskPayload(task.task_payload);
+    if (!payload) {
+      markScheduledTaskFailed(task.id, "Invalid task payload JSON.");
+      continue;
+    }
+
+    try {
+      let resultingThreadId: string | null = task.thread_id;
+
+      if (payload.kind === "agent_prompt") {
+        if (!task.user_id) {
+          throw new Error("Scheduled agent_prompt task requires user_id.");
+        }
+        const thread = task.thread_id
+          ? { id: task.thread_id }
+          : createThread(`[scheduled] ${task.task_name}`, task.user_id);
+        resultingThreadId = thread.id;
+        await runAgentLoop(thread.id, payload.prompt, undefined, undefined, undefined, task.user_id);
+      } else if (payload.kind === "tool_call") {
+        const actionTool = payload.tool;
+        const actionArgs = payload.args || {};
+        const actionPolicy = getToolPolicy(actionTool);
+        const requiresApproval = actionPolicy ? actionPolicy.requires_approval !== 0 : true;
+
+        if (requiresApproval) {
+          const approval = createApprovalRequest({
+            thread_id: null,
+            tool_name: actionTool,
+            args: JSON.stringify(actionArgs),
+            reasoning: payload.reasoning || `Scheduled task execution for: ${task.task_name}`,
+          });
+          enqueueDigestItem(digestByUser, defaultAdminUserId, {
+            level: payload.severity || "medium",
+            issue: `${actionTool} requires approval from scheduled task.`,
+            requiredAction: `Review approval ${approval.id} and approve or reject execution.`,
+            actionLocation: "Nexus Command Center → Notifications (Approvals)",
+          });
+        } else {
+          const execution = await executeSchedulerTool(actionTool, actionArgs, mcpManager);
+          if (!execution.skipped) {
+            addLog({
+              level: "info",
+              source: "scheduler",
+              message: `Scheduled tool task executed: ${actionTool}`,
+              metadata: JSON.stringify({ taskId: task.id, toolName: actionTool }),
+            });
+          }
+        }
+      }
+
+      const next = addFrequency(new Date(), task.frequency, task.interval_value);
+      updateScheduledTaskAfterRun(task.id, {
+        status: next ? "active" : "completed",
+        nextRunAt: next ? next.toISOString() : null,
+        threadId: resultingThreadId,
+        lastError: null,
+      });
+    } catch (err) {
+      const errorText = err instanceof Error ? err.message : String(err);
+      markScheduledTaskFailed(task.id, errorText);
+      addLog({
+        level: "error",
+        source: "scheduler",
+        message: `Scheduled task failed: ${task.task_name}`,
+        metadata: JSON.stringify({ taskId: task.id, error: errorText }),
+      });
+    }
+  }
+}
+
 /**
  * Run a single proactive scan cycle.
  */
@@ -812,6 +933,18 @@ export async function runProactiveScan(): Promise<void> {
   }
 
   const mcpManager = getMcpManager();
+
+  try {
+    await runDueScheduledTasks(digestByUser, defaultAdminUserId, mcpManager);
+  } catch (err) {
+    addLog({
+      level: "error",
+      source: "scheduler",
+      message: `Scheduled task run failed: ${err}`,
+      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+    });
+  }
+
   const policies = listToolPolicies().filter((p) => p.is_proactive_enabled);
   const proactiveWebState: ProactiveWebState = {
     context: null,
@@ -919,11 +1052,6 @@ export async function runProactiveScan(): Promise<void> {
 
         if (assessment.action_needed) {
           const actionTool = assessment.tool && assessment.tool.trim() ? assessment.tool : policy.tool_name;
-          const actionPolicy =
-            actionTool === policy.tool_name ? policy : getToolPolicy(actionTool);
-          const requiresApproval = actionPolicy
-            ? actionPolicy.requires_approval !== 0
-            : true;
           const actionArgs = assessment.args || {};
           const reasoning = assessment.reasoning || "Proactive observer requested an action.";
           const eventLevel = normalizeAssessmentLevel(assessment, actionTool);
@@ -951,52 +1079,29 @@ export async function runProactiveScan(): Promise<void> {
             }),
           });
 
-          if (requiresApproval) {
-            const approval = createApprovalRequest({
-              thread_id: null,
-              tool_name: actionTool,
-              args: JSON.stringify(actionArgs),
+          const queuedTask = createScheduledTask({
+            userId: defaultAdminUserId,
+            taskName: `Proactive: ${actionTool}`,
+            frequency: "once",
+            intervalValue: 1,
+            nextRunAt: new Date().toISOString(),
+            scope: defaultAdminUserId ? "user" : "global",
+            source: "proactive",
+            taskPayload: JSON.stringify({
+              kind: "tool_call",
+              tool: actionTool,
+              args: actionArgs,
               reasoning,
-            });
+              severity: eventLevel,
+            }),
+          });
 
-            addLog({
-              level: "info",
-              source: "scheduler",
-              message: `Proactive approval created [id=${approval.id}] for "${actionTool}" (severity=${eventLevel}).`,
-              metadata: JSON.stringify({ approvalId: approval.id, tool: actionTool, severity: eventLevel, reasoning }),
-            });
-
-            enqueueDigestItem(digestByUser, defaultAdminUserId, {
-              level: eventLevel,
-              issue: `${actionTool} requires proactive approval (${eventLevel}).`,
-              requiredAction: `Review approval ${approval.id} and approve or reject the action.`,
-              actionLocation: "Nexus Command Center → Approvals",
-            });
-          } else {
-            try {
-              const execution = await executeSchedulerTool(actionTool, actionArgs, mcpManager);
-              if (execution.skipped) {
-                continue;
-              }
-              const executionResult = execution.result;
-
-              addLog({
-                level: "info",
-                source: "scheduler",
-                message: `Proactive tool "${actionTool}" executed automatically.`,
-                metadata: JSON.stringify({
-                  resultPreview: JSON.stringify(executionResult).substring(0, 200),
-                }),
-              });
-            } catch (executionError) {
-              addLog({
-                level: "error",
-                source: "scheduler",
-                message: `Auto-executed tool "${actionTool}" failed: ${executionError}`,
-                metadata: JSON.stringify({ tool: actionTool, args: actionArgs, error: executionError instanceof Error ? executionError.message : String(executionError) }),
-              });
-            }
-          }
+          addLog({
+            level: "info",
+            source: "scheduler",
+            message: `Queued proactive action as scheduled task [id=${queuedTask.id}] for "${actionTool}".`,
+            metadata: JSON.stringify({ taskId: queuedTask.id, tool: actionTool, severity: eventLevel, reasoning }),
+          });
         } else {
           addLog({
             level: "info",
@@ -1021,6 +1126,18 @@ export async function runProactiveScan(): Promise<void> {
         metadata: JSON.stringify({ toolName: policy.tool_name, error: err instanceof Error ? err.message : String(err) }),
       });
     }
+  }
+
+  // Process any immediate tasks queued by proactive assessments in this same cycle.
+  try {
+    await runDueScheduledTasks(digestByUser, defaultAdminUserId, mcpManager);
+  } catch (err) {
+    addLog({
+      level: "error",
+      source: "scheduler",
+      message: `Scheduled task follow-up run failed: ${err}`,
+      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+    });
   }
 
   try {

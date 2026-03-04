@@ -25,13 +25,34 @@ Use Chat for day-to-day assistant interactions.
 When a tool action requires approval:
 
 1. Assistant pauses execution
-2. Request appears inline and in Approvals
+2. Request appears inline and in the **Notification Center** (bell icon)
 3. You approve or reject
 4. Assistant continues based on decision
 
-**Proactive approvals** — The background scheduler can also create approval requests for actions it detects (e.g. a smart home device anomaly). These appear in the Approvals tab with a "Proactive" badge and are visible to admins. When approved, the tool is executed directly without needing a chat thread.
+**Proactive approvals** — The background scheduler can also create approval requests for actions it detects (e.g. a smart home device anomaly). These appear in the Notification Center with a "Proactive" badge and are visible to admins. When approved, the tool is executed directly without needing a chat thread.
 
 ![Approvals tab (test env)](images/usage-approvals.png)
+
+## Scheduled Tasks
+
+The agent supports **future and recurring tasks** that are persisted and executed automatically by the background scheduler.
+
+### How tasks are created
+
+- **User request** — Ask the agent to do something later or on a schedule (e.g. "Remind me tomorrow to check the server logs", "Every day review pending approvals").
+- **Proactive discovery** — The background scheduler can detect tasks during its scan cycle and queue them for execution.
+
+### Supported frequencies
+
+| Keyword | Frequency |
+|---------|-----------|
+| `in N hours/days`, `tomorrow`, `next week` | One-time |
+| `every hour`, `hourly` | Hourly |
+| `every day`, `daily` | Daily |
+| `every week`, `weekly` | Weekly |
+| `every month`, `monthly` | Monthly |
+
+Tasks are picked up automatically when their `next_run_at` time arrives. Recurring tasks recalculate the next run after each execution.
 
 ## Knowledge Workflow
 

@@ -194,6 +194,33 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read);
 CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
 
+-- ═══ Scheduled Tasks / Todo Queue ═══
+
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    thread_id TEXT REFERENCES threads(id) ON DELETE SET NULL,
+    task_name TEXT NOT NULL,
+    frequency TEXT NOT NULL DEFAULT 'once', -- once | hourly | daily | weekly | monthly
+    interval_value INTEGER NOT NULL DEFAULT 1,
+    next_run_at DATETIME NOT NULL,
+    last_run_at DATETIME,
+    run_count INTEGER NOT NULL DEFAULT 0,
+    scope TEXT NOT NULL DEFAULT 'user',     -- user | global
+    source TEXT NOT NULL DEFAULT 'user_request', -- user_request | proactive
+    task_payload TEXT NOT NULL,             -- JSON payload for execution
+    status TEXT NOT NULL DEFAULT 'active',  -- active | paused | completed | failed
+    last_error TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_due
+ON scheduled_tasks(status, next_run_at);
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_user
+ON scheduled_tasks(user_id, scope, status);
+
 -- ═══ Agent Logs ═══
 
 CREATE TABLE IF NOT EXISTS agent_logs (
