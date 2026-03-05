@@ -26,7 +26,6 @@ describe("Tool Policies", () => {
       tool_name: "web_search",
       mcp_id: null,
       requires_approval: 0,
-      is_proactive_enabled: 0,
     });
     const policy = getToolPolicy("web_search");
     expect(policy).toBeDefined();
@@ -38,11 +37,9 @@ describe("Tool Policies", () => {
       tool_name: "web_search",
       mcp_id: null,
       requires_approval: 1,
-      is_proactive_enabled: 1,
     });
     const policy = getToolPolicy("web_search");
     expect(policy!.requires_approval).toBe(1);
-    expect(policy!.is_proactive_enabled).toBe(1);
   });
 
   test("getToolPolicy returns undefined for unknown tool", () => {
@@ -54,7 +51,6 @@ describe("Tool Policies", () => {
       tool_name: "file_write",
       mcp_id: null,
       requires_approval: 1,
-      is_proactive_enabled: 0,
     });
     const policies = listToolPolicies();
     expect(policies.length).toBeGreaterThanOrEqual(2);
@@ -65,7 +61,6 @@ describe("Tool Policies", () => {
       tool_name: "scope_default_tool",
       mcp_id: null,
       requires_approval: 0,
-      is_proactive_enabled: 0,
     });
     const policy = getToolPolicy("scope_default_tool");
     expect(policy).toBeDefined();
@@ -77,7 +72,6 @@ describe("Tool Policies", () => {
       tool_name: "user_only_tool",
       mcp_id: null,
       requires_approval: 1,
-      is_proactive_enabled: 0,
       scope: "user",
     });
     const policy = getToolPolicy("user_only_tool");
@@ -90,7 +84,6 @@ describe("Tool Policies", () => {
       tool_name: "scope_update_tool",
       mcp_id: null,
       requires_approval: 0,
-      is_proactive_enabled: 0,
       scope: "global",
     });
     expect(getToolPolicy("scope_update_tool")!.scope).toBe("global");
@@ -99,7 +92,6 @@ describe("Tool Policies", () => {
       tool_name: "scope_update_tool",
       mcp_id: null,
       requires_approval: 0,
-      is_proactive_enabled: 0,
       scope: "user",
     });
     expect(getToolPolicy("scope_update_tool")!.scope).toBe("user");

@@ -248,8 +248,8 @@ const TOOLS_REQUIRING_APPROVAL = new Set([
 function seedAllBuiltinToolPolicies(): void {
   const db = getDb();
   const stmt = db.prepare(
-    `INSERT OR IGNORE INTO tool_policies (tool_name, mcp_id, requires_approval, is_proactive_enabled, scope)
-     VALUES (?, NULL, ?, 0, 'global')`
+    `INSERT OR IGNORE INTO tool_policies (tool_name, mcp_id, requires_approval, scope)
+     VALUES (?, NULL, ?, 'global')`
   );
 
   const allBuiltinTools = [
@@ -295,6 +295,30 @@ function ensureToolPolicyScopeColumn(): void {
   if (!cols.has("scope")) {
     db.prepare("ALTER TABLE tool_policies ADD COLUMN scope TEXT DEFAULT 'global'").run();
   }
+}
+
+/**
+ * Drop the legacy `is_proactive_enabled` column from tool_policies.
+ * The proactive agent now has access to all tools — only `requires_approval` gates execution.
+ */
+function dropToolPolicyProactiveColumn(): void {
+  const db = getDb();
+  if (!tableExists("tool_policies")) return;
+  const cols = getColumns("tool_policies");
+  if (!cols.has("is_proactive_enabled")) return;
+
+  db.exec(`
+    CREATE TABLE tool_policies_new (
+      tool_name TEXT PRIMARY KEY,
+      mcp_id TEXT REFERENCES mcp_servers(id),
+      requires_approval BOOLEAN DEFAULT 1,
+      scope TEXT DEFAULT 'global'
+    );
+    INSERT INTO tool_policies_new (tool_name, mcp_id, requires_approval, scope)
+      SELECT tool_name, mcp_id, requires_approval, COALESCE(scope, 'global') FROM tool_policies;
+    DROP TABLE tool_policies;
+    ALTER TABLE tool_policies_new RENAME TO tool_policies;
+  `);
 }
 
 /**
@@ -502,6 +526,7 @@ export function initializeDatabase(): void {
   ensureMcpServerNewColumns();
   ensureScreenSharingColumn();
   ensureToolPolicyScopeColumn();
+  dropToolPolicyProactiveColumn();
   migrateToMultiUser();
   ensureChannelUserId();
   ensureChannelImapUidColumns();

@@ -41,7 +41,6 @@ import {
 } from "@/lib/agent";
 import { normalizeToolName } from "@/lib/agent/discovery";
 import {
-  listToolPolicies,
   getToolPolicy,
   addLog,
   createApprovalRequest,
@@ -77,7 +76,7 @@ import { getUserNotificationLevel } from "@/lib/channels/notify";
 import type { NotificationLevel } from "@/lib/channels/notify";
 import type { ToolDefinition } from "@/lib/llm";
 
-const PROACTIVE_SYSTEM_PROMPT = `You are the Nexus proactive observer — an intelligent home and environment automation agent. You have been given data polled from external services.
+const PROACTIVE_SYSTEM_PROMPT = `You are the Nexus proactive observer — an intelligent home and environment automation agent. You have access to all available tools and the owner's knowledge context.
 
 Your mission: Make the owner's home smarter every day by discovering the environment, learning patterns, and taking proactive actions.
 
@@ -119,9 +118,7 @@ Always respond with valid JSON only.`;
 let _cronJob: CronJob | null = null;
 const _proactiveSkipWarned = new Set<string>();
 const _emailConfigWarned = new Set<string>();
-const _proactivePollArgWarned = new Set<string>();
 
-const MAX_POLLED_DATA_CHARS = 6000;
 const MAX_KNOWLEDGE_CONTEXT_CHARS = 2000;
 const MAX_TOOLS_CATALOG_CHARS = 3000;
 
@@ -132,17 +129,6 @@ interface ProactiveAssessment {
   args?: Record<string, unknown>;
   reasoning?: string;
   summary?: string;
-}
-
-interface ProactiveWebContext {
-  query: string;
-  results: Array<{ url: string; title: string; snippet?: string }>;
-  nextResultIndex: number;
-}
-
-interface ProactiveWebState {
-  context: ProactiveWebContext | null;
-  initAttempted: boolean;
 }
 
 interface SchedulerDigestItem {
@@ -468,111 +454,6 @@ function buildAvailableToolsCatalog(mcpManager: ReturnType<typeof getMcpManager>
   const allDefs = [...builtinDefs, ...mcpDefs];
   const lines = allDefs.map((t) => `- ${t.name}: ${(t.description || "").slice(0, 120)}`);
   return truncateText(lines.join("\n"), MAX_TOOLS_CATALOG_CHARS);
-}
-
-async function buildProactiveWebQuery(): Promise<string> {
-  const facts = await retrieveKnowledge("owner priorities projects interests watchlist alerts", 8);
-  const tokens = facts
-    .map((f) => `${f.entity} ${f.attribute} ${f.value}`)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!tokens) {
-    return "important updates and alerts relevant to user projects and priorities";
-  }
-  return truncateText(`important updates and alerts for: ${tokens}`, 240);
-}
-
-function toWebResultList(result: unknown): Array<{ url: string; title: string; snippet?: string }> {
-  if (!result || typeof result !== "object") return [];
-  const raw = (result as { results?: unknown }).results;
-  if (!Array.isArray(raw)) return [];
-  const cleaned: Array<{ url: string; title: string; snippet?: string }> = [];
-  for (const item of raw) {
-    if (!item || typeof item !== "object") continue;
-    const rec = item as Record<string, unknown>;
-    if (typeof rec.url !== "string" || !rec.url.startsWith("http")) continue;
-    cleaned.push({
-      url: rec.url,
-      title: typeof rec.title === "string" ? rec.title : rec.url,
-      snippet: typeof rec.snippet === "string" ? rec.snippet : undefined,
-    });
-  }
-  return cleaned;
-}
-
-async function ensureProactiveWebContext(
-  state: ProactiveWebState,
-  mcpManager: ReturnType<typeof getMcpManager>
-): Promise<void> {
-  if (state.context || state.initAttempted) return;
-  state.initAttempted = true;
-
-  const query = await buildProactiveWebQuery();
-  const search = await executeSchedulerTool("builtin.web_search", { query, maxResults: 6 }, mcpManager);
-  if (search.skipped) return;
-
-  const results = toWebResultList(search.result);
-  if (results.length === 0) return;
-
-  state.context = {
-    query,
-    results,
-    nextResultIndex: 0,
-  };
-}
-
-async function getProactivePollArgs(
-  toolName: string,
-  mcpManager: ReturnType<typeof getMcpManager>,
-  webState: ProactiveWebState
-): Promise<Record<string, unknown> | null> {
-  if (!toolRequiresArguments(toolName, mcpManager)) return {};
-
-  if (toolName === "builtin.web_search") {
-    const query = await buildProactiveWebQuery();
-    return { query, maxResults: 6 };
-  }
-
-  if (toolName === "builtin.web_fetch" || toolName === "builtin.web_extract") {
-    await ensureProactiveWebContext(webState, mcpManager);
-    const context = webState.context;
-    if (!context || context.results.length === 0) return null;
-
-    const result = context.results[context.nextResultIndex % context.results.length];
-    context.nextResultIndex += 1;
-
-    if (toolName === "builtin.web_fetch") {
-      return { url: result.url };
-    }
-
-    return {
-      url: result.url,
-      query: context.query,
-    };
-  }
-
-  return null;
-}
-
-function toolRequiresArguments(toolName: string, mcpManager: ReturnType<typeof getMcpManager>): boolean {
-  const builtinDefs: ToolDefinition[] = [
-    ...BUILTIN_WEB_TOOLS,
-    ...BUILTIN_BROWSER_TOOLS,
-    ...BUILTIN_FS_TOOLS,
-    ...BUILTIN_NETWORK_TOOLS,
-    ...BUILTIN_EMAIL_TOOLS,
-    ...BUILTIN_FILE_TOOLS,
-    ...BUILTIN_TOOLMAKER_TOOLS,
-    ...BUILTIN_ALEXA_TOOLS,
-    ...getCustomToolDefinitions(),
-  ];
-
-  const allDefs = [...builtinDefs, ...mcpManager.getAllTools()];
-  const def = allDefs.find((tool) => tool.name === toolName);
-  const schema = (def?.inputSchema || {}) as Record<string, unknown>;
-  const required = Array.isArray(schema.required) ? schema.required : [];
-  return required.length > 0;
 }
 
 async function pollEmailChannels(
@@ -991,114 +872,44 @@ export async function runProactiveScan(): Promise<void> {
     });
   }
 
-  const policies = listToolPolicies().filter((p) => p.is_proactive_enabled);
-  const proactiveWebState: ProactiveWebState = {
-    context: null,
-    initAttempted: false,
-  };
+  // ── Phase: LLM-driven proactive planning ──────────────────────
+  // Instead of iterating pre-selected tools, give the LLM all available tools
+  // and context so it can plan which actions to take intelligently.
+  const toolsCatalog = buildAvailableToolsCatalog(mcpManager);
+  const knowledgeFacts = await retrieveKnowledge(
+    "proactive monitoring environment devices status priorities interests",
+    10
+  );
+  const knowledgeContext = truncateText(
+    knowledgeFacts.map((k) => `- ${k.entity} / ${k.attribute}: ${k.value}`).join("\n"),
+    MAX_KNOWLEDGE_CONTEXT_CHARS
+  );
 
-  if (policies.length === 0) {
-    addLog({
-      level: "info",
-      source: "scheduler",
-      message: "No proactive-enabled tools configured. Skipping scan.",
-      metadata: JSON.stringify({ totalPolicies: listToolPolicies().length }),
-    });
-    return;
-  }
+  try {
+    const provider = createChatProvider();
+    const response = await provider.chat(
+      [
+        {
+          role: "user",
+          content: `[User Knowledge Context]\n${knowledgeContext || "(none)"}\n\n[Available Tools]\n${toolsCatalog}\n\nBased on the environment context and available tools, assess what proactive actions should be taken. Consider smart home devices, scheduled tasks, user preferences, and any patterns you can identify.`,
+        },
+      ],
+      undefined,
+      PROACTIVE_SYSTEM_PROMPT
+    );
 
-  for (const policy of policies) {
-    try {
-      const pollArgs = await getProactivePollArgs(policy.tool_name, mcpManager, proactiveWebState);
-      if (pollArgs === null) {
-        if (!_proactivePollArgWarned.has(policy.tool_name)) {
-          addLog({
-            level: "verbose",
-            source: "scheduler",
-            message: `Skipping proactive poll for "${policy.tool_name}": required input arguments are unavailable in current proactive context.`,
-            metadata: JSON.stringify({ toolName: policy.tool_name }),
-          });
-          _proactivePollArgWarned.add(policy.tool_name);
-        }
-        continue;
-      }
-      _proactivePollArgWarned.delete(policy.tool_name);
-
-      // Poll the tool for data (assuming list/read-type tools)
-      const poll = await executeSchedulerTool(policy.tool_name, pollArgs, mcpManager);
-      if (poll.skipped) continue;
-      const result = poll.result;
-      if (policy.tool_name === "builtin.web_search") {
-        const query = typeof pollArgs.query === "string" ? pollArgs.query : "web updates";
-        const results = toWebResultList(result);
-        if (results.length > 0) {
-          proactiveWebState.context = {
-            query,
-            results,
-            nextResultIndex: 0,
-          };
-        }
-      }
-      const polledDataRaw = JSON.stringify(result);
-      const polledData = truncateText(polledDataRaw, MAX_POLLED_DATA_CHARS);
-
+    if (response.content) {
       await ingestKnowledgeFromText({
-        source: `mcp:${policy.tool_name}:poll`,
-        text: `[Polled Data from ${policy.tool_name}]\n${polledData}`,
-        contextHint: "Extract durable facts about the owner discovered via proactive scanning.",
+        source: "proactive:assessment",
+        text: response.content,
       });
-
-      addLog({
-        level: "info",
-        source: "scheduler",
-        message: `Polled data from "${policy.tool_name}".`,
-        metadata: JSON.stringify({ dataPreview: polledData.substring(0, 200) }),
-      });
-
-      // Ask the LLM to assess
-      const provider = createChatProvider();
-      const knowledgeFacts = await retrieveKnowledge(polledData, 6);
-      const knowledgeContextRaw = knowledgeFacts
-        .map((k) => `- ${k.entity} / ${k.attribute}: ${k.value}`)
-        .join("\n");
-      const knowledgeContext = truncateText(knowledgeContextRaw, MAX_KNOWLEDGE_CONTEXT_CHARS);
-      const toolsCatalog = buildAvailableToolsCatalog(mcpManager);
-
-      const response = await provider.chat(
-        [
-          {
-            role: "user",
-            content: `[Polled Data from ${policy.tool_name}]\n${polledData}\n\n[User Knowledge Context]\n${knowledgeContext || "(none)"}\n\n[Available Tools]\n${toolsCatalog}`,
-          },
-        ],
-        undefined,
-        PROACTIVE_SYSTEM_PROMPT
-      );
-
-      if (!response.content) continue;
 
       const assessmentRaw = parseAssessmentJson(response.content);
-      if (!assessmentRaw) {
-        addLog({
-          level: "warn",
-          source: "scheduler",
-          message: `Failed to parse LLM assessment for "${policy.tool_name}".`,
-          metadata: JSON.stringify({ rawResponse: truncateText(response.content, 1000) }),
-        });
-        continue;
-      }
-
-      const assessment = toProactiveAssessment(assessmentRaw);
-
-      try {
-
-        await ingestKnowledgeFromText({
-          source: `mcp:${policy.tool_name}:assessment`,
-          text: response.content,
-        });
+      if (assessmentRaw) {
+        const assessment = toProactiveAssessment(assessmentRaw);
 
         if (assessment.action_needed) {
-          const actionTool = assessment.tool && assessment.tool.trim() ? assessment.tool : policy.tool_name;
+          const actionTool = assessment.tool?.trim() || "unknown";
           const actionArgs = assessment.args || {};
           const reasoning = assessment.reasoning || "Proactive observer requested an action.";
           const eventLevel = normalizeAssessmentLevel(assessment, actionTool);
@@ -1110,69 +921,68 @@ export async function runProactiveScan(): Promise<void> {
               message: `Suppressed failure-driven proactive notification for "${actionTool}"; recorded in logs only.`,
               metadata: JSON.stringify({ tool: actionTool, reasoning }),
             });
-            continue;
-          }
+          } else {
+            addLog({
+              level: "info",
+              source: "scheduler",
+              message: `Proactive action triggered [severity=${eventLevel}${eventLevel !== assessment.severity ? ` (capped from ${assessment.severity})` : ""}]: ${reasoning}`,
+              metadata: JSON.stringify({
+                ...assessment,
+                effectiveLevel: eventLevel,
+                capped: eventLevel !== assessment.severity,
+                tool: actionTool,
+                source: "proactive",
+              }),
+            });
 
-          addLog({
-            level: "info",
-            source: "scheduler",
-            message: `Proactive action triggered [severity=${eventLevel}${eventLevel !== assessment.severity ? ` (capped from ${assessment.severity})` : ""}]: ${reasoning}`,
-            metadata: JSON.stringify({
-              ...assessment,
-              effectiveLevel: eventLevel,
-              capped: eventLevel !== assessment.severity,
-              tool: actionTool,
+            const queuedTask = createScheduledTask({
+              userId: defaultAdminUserId,
+              taskName: `Proactive: ${actionTool}`,
+              frequency: "once",
+              intervalValue: 1,
+              nextRunAt: new Date().toISOString(),
+              scope: defaultAdminUserId ? "user" : "global",
               source: "proactive",
-            }),
-          });
+              taskPayload: JSON.stringify({
+                kind: "tool_call",
+                tool: actionTool,
+                args: actionArgs,
+                reasoning,
+                severity: eventLevel,
+              }),
+            });
 
-          const queuedTask = createScheduledTask({
-            userId: defaultAdminUserId,
-            taskName: `Proactive: ${actionTool}`,
-            frequency: "once",
-            intervalValue: 1,
-            nextRunAt: new Date().toISOString(),
-            scope: defaultAdminUserId ? "user" : "global",
-            source: "proactive",
-            taskPayload: JSON.stringify({
-              kind: "tool_call",
-              tool: actionTool,
-              args: actionArgs,
-              reasoning,
-              severity: eventLevel,
-            }),
-          });
-
-          addLog({
-            level: "info",
-            source: "scheduler",
-            message: `Queued proactive action as scheduled task [id=${queuedTask.id}] for "${actionTool}".`,
-            metadata: JSON.stringify({ taskId: queuedTask.id, tool: actionTool, severity: eventLevel, reasoning }),
-          });
+            addLog({
+              level: "info",
+              source: "scheduler",
+              message: `Queued proactive action as scheduled task [id=${queuedTask.id}] for "${actionTool}".`,
+              metadata: JSON.stringify({ taskId: queuedTask.id, tool: actionTool, severity: eventLevel, reasoning }),
+            });
+          }
         } else {
           addLog({
             level: "info",
             source: "scheduler",
-            message: `No action needed for "${policy.tool_name}": ${assessment.summary || "(no summary provided)"}`,
-            metadata: JSON.stringify({ toolName: policy.tool_name, assessment }),
+            message: `No proactive action needed: ${assessment.summary || "(no summary provided)"}`,
+            metadata: JSON.stringify({ assessment }),
           });
         }
-      } catch {
+      } else {
         addLog({
           level: "warn",
           source: "scheduler",
-          message: `Failed to parse LLM assessment for "${policy.tool_name}".`,
+          message: "Failed to parse LLM proactive assessment.",
           metadata: JSON.stringify({ rawResponse: truncateText(response.content, 1000) }),
         });
       }
-    } catch (err) {
-      addLog({
-        level: "error",
-        source: "scheduler",
-        message: `Error polling "${policy.tool_name}": ${err}`,
-        metadata: JSON.stringify({ toolName: policy.tool_name, error: err instanceof Error ? err.message : String(err) }),
-      });
     }
+  } catch (err) {
+    addLog({
+      level: "error",
+      source: "scheduler",
+      message: `Proactive planning failed: ${err}`,
+      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+    });
   }
 
   // Process any immediate tasks queued by proactive assessments in this same cycle.
@@ -1202,7 +1012,7 @@ export async function runProactiveScan(): Promise<void> {
     level: "info",
     source: "scheduler",
     message: "Proactive scan completed.",
-    metadata: JSON.stringify({ policiesScanned: policies.length, digestUserCount: digestByUser.size }),
+    metadata: JSON.stringify({ digestUserCount: digestByUser.size }),
   });
 }
 

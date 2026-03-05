@@ -66,7 +66,6 @@ describe("executeWithGatekeeper — default-deny for MCP tools", () => {
       tool_name: "mcp_sensitive_tool",
       mcp_id: null,
       requires_approval: 1,
-      is_proactive_enabled: 0,
     });
 
     const result = await executeWithGatekeeper(
@@ -84,7 +83,6 @@ describe("executeWithGatekeeper — default-deny for MCP tools", () => {
       tool_name: "mcp_safe_tool",
       mcp_id: null,
       requires_approval: 0,
-      is_proactive_enabled: 0,
     });
 
     const result = await executeWithGatekeeper(

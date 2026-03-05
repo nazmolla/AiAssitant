@@ -1,12 +1,12 @@
 /**
- * Component tests for ToolPolicies — tool approval / proactive toggles.
+ * Component tests for ToolPolicies — tool approval toggles.
  *
  * Covers:
  * - Server names displayed (not GUIDs) when /api/mcp returns valid server list (Bug #4)
  * - Falls back to server ID when /api/mcp returns error (graceful degradation)
  * - Empty state when no tools discovered
  * - Tool grouping (builtin vs MCP)
- * - Toggle approval / proactive switches
+ * - Toggle approval switches
  *
  * @jest-environment jsdom
  */
@@ -32,11 +32,11 @@ const MOCK_TOOLS = [
 ];
 
 const MOCK_POLICIES = [
-  { tool_name: "web_search", mcp_id: null, requires_approval: 1, is_proactive_enabled: 0, scope: "global" },
-  { tool_name: "read_file", mcp_id: null, requires_approval: 0, is_proactive_enabled: 0, scope: "global" },
-  { tool_name: "a1b2c3d4-e5f6-7890-abcd-ef1234567890.turn_on_light", mcp_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", requires_approval: 1, is_proactive_enabled: 0, scope: "global" },
-  { tool_name: "a1b2c3d4-e5f6-7890-abcd-ef1234567890.get_temperature", mcp_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", requires_approval: 0, is_proactive_enabled: 1, scope: "user" },
-  { tool_name: "f9e8d7c6-b5a4-3210-fedc-ba0987654321.create_issue", mcp_id: "f9e8d7c6-b5a4-3210-fedc-ba0987654321", requires_approval: 1, is_proactive_enabled: 0, scope: "global" },
+  { tool_name: "web_search", mcp_id: null, requires_approval: 1, scope: "global" },
+  { tool_name: "read_file", mcp_id: null, requires_approval: 0, scope: "global" },
+  { tool_name: "a1b2c3d4-e5f6-7890-abcd-ef1234567890.turn_on_light", mcp_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", requires_approval: 1, scope: "global" },
+  { tool_name: "a1b2c3d4-e5f6-7890-abcd-ef1234567890.get_temperature", mcp_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", requires_approval: 0, scope: "user" },
+  { tool_name: "f9e8d7c6-b5a4-3210-fedc-ba0987654321.create_issue", mcp_id: "f9e8d7c6-b5a4-3210-fedc-ba0987654321", requires_approval: 1, scope: "global" },
 ];
 
 // ── Fetch Mock ───────────────────────────────────────────────────
@@ -211,7 +211,7 @@ describe("ToolPolicies — tool grouping & display", () => {
     expect(screen.getByText("create_issue")).toBeInTheDocument();
   });
 
-  test("shows summary counts (tools, groups, requiring approval, proactive)", async () => {
+  test("shows summary counts (tools, groups, requiring approval)", async () => {
     render(<ToolPolicies />);
 
     await waitFor(() => {
@@ -220,7 +220,6 @@ describe("ToolPolicies — tool grouping & display", () => {
 
     expect(screen.getByText(/4 groups/)).toBeInTheDocument();
     expect(screen.getByText(/3 requiring approval/)).toBeInTheDocument();
-    expect(screen.getByText(/1 proactive/)).toBeInTheDocument();
     expect(screen.getByText(/1 user-only/)).toBeInTheDocument();
   });
 

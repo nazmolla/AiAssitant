@@ -8,7 +8,6 @@ interface ToolPolicy {
   tool_name: string;
   mcp_id: string | null;
   requires_approval: number;
-  is_proactive_enabled: number;
   scope: "global" | "user";
 }
 
@@ -138,7 +137,6 @@ export function ToolPolicies() {
   }, [grouped]);
 
   const approvalCount = useMemo(() => policies.filter((p) => p.requires_approval).length, [policies]);
-  const proactiveCount = useMemo(() => policies.filter((p) => p.is_proactive_enabled).length, [policies]);
   const userOnlyCount = useMemo(() => policies.filter((p) => p.scope === "user").length, [policies]);
 
   const setAllCollapsed = useCallback((value: boolean) => {
@@ -149,13 +147,12 @@ export function ToolPolicies() {
     setCollapsed(next);
   }, [groupKeys]);
 
-  async function togglePolicy(toolName: string, field: "requires_approval" | "is_proactive_enabled" | "scope", value: boolean | string) {
+  async function togglePolicy(toolName: string, field: "requires_approval" | "scope", value: boolean | string) {
     const existing = policyMap.get(toolName);
     const nextPolicy: ToolPolicy = {
       tool_name: toolName,
       mcp_id: existing?.mcp_id || null,
       requires_approval: field === "requires_approval" ? (value ? 1 : 0) : existing?.requires_approval ?? 1,
-      is_proactive_enabled: field === "is_proactive_enabled" ? (value ? 1 : 0) : existing?.is_proactive_enabled ?? 0,
       scope: field === "scope" ? (value as "global" | "user") : existing?.scope ?? "global",
     };
 
@@ -178,14 +175,13 @@ export function ToolPolicies() {
     }
   }
 
-  async function toggleGroupPolicies(groupTools: ToolDef[], field: "requires_approval" | "is_proactive_enabled", value: boolean) {
+  async function toggleGroupPolicies(groupTools: ToolDef[], field: "requires_approval", value: boolean) {
     const updates = groupTools.map((tool) => {
       const existing = policyMap.get(tool.name);
       return {
         tool_name: tool.name,
         mcp_id: existing?.mcp_id || null,
-        requires_approval: field === "requires_approval" ? (value ? 1 : 0) : existing?.requires_approval ?? 1,
-        is_proactive_enabled: field === "is_proactive_enabled" ? (value ? 1 : 0) : existing?.is_proactive_enabled ?? 0,
+        requires_approval: value ? 1 : 0,
         scope: existing?.scope ?? "global",
       } as ToolPolicy;
     });
@@ -246,8 +242,6 @@ export function ToolPolicies() {
           <span className="text-muted-foreground/30">•</span>
           <span>{approvalCount} requiring approval</span>
           <span className="text-muted-foreground/30">•</span>
-          <span>{proactiveCount} proactive</span>
-          <span className="text-muted-foreground/30">•</span>
           <span>{userOnlyCount} user-only</span>
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -295,12 +289,6 @@ export function ToolPolicies() {
                       <span className="text-muted-foreground/30">|</span>
                       <button onClick={() => toggleGroupPolicies(group.tools, "requires_approval", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-muted-foreground/40 uppercase tracking-wider">Proactive:</span>
-                      <button onClick={() => toggleGroupPolicies(group.tools, "is_proactive_enabled", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
-                      <span className="text-muted-foreground/30">|</span>
-                      <button onClick={() => toggleGroupPolicies(group.tools, "is_proactive_enabled", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
-                    </div>
                   </div>
                 )}
               </div>
@@ -315,12 +303,6 @@ export function ToolPolicies() {
                         <button onClick={() => toggleGroupPolicies(group.tools, "requires_approval", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
                         <span className="text-muted-foreground/30">|</span>
                         <button onClick={() => toggleGroupPolicies(group.tools, "requires_approval", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-muted-foreground/40 uppercase tracking-wider">Proactive:</span>
-                        <button onClick={() => toggleGroupPolicies(group.tools, "is_proactive_enabled", true)} className="text-primary/70 hover:text-primary transition-colors px-0.5">All</button>
-                        <span className="text-muted-foreground/30">|</span>
-                        <button onClick={() => toggleGroupPolicies(group.tools, "is_proactive_enabled", false)} className="text-muted-foreground/50 hover:text-primary transition-colors px-0.5">None</button>
                       </div>
                     </div>
 
@@ -337,13 +319,6 @@ export function ToolPolicies() {
                             <Switch
                               checked={policy?.requires_approval !== 0}
                               onCheckedChange={(v) => togglePolicy(tool.name, "requires_approval", v)}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <div className="text-[11px] text-muted-foreground/70">Proactive</div>
-                            <Switch
-                              checked={policy?.is_proactive_enabled === 1}
-                              onCheckedChange={(v) => togglePolicy(tool.name, "is_proactive_enabled", v)}
                             />
                           </div>
                           <div className="flex items-center justify-between">
@@ -371,7 +346,6 @@ export function ToolPolicies() {
                           <th className="px-4 py-2 font-medium">Tool</th>
                           <th className="px-4 py-2 font-medium">Description</th>
                           <th className="px-4 py-2 text-center font-medium">Approval</th>
-                          <th className="px-4 py-2 text-center font-medium">Proactive</th>
                           <th className="px-4 py-2 text-center font-medium">Scope</th>
                         </tr>
                       </thead>
@@ -391,12 +365,6 @@ export function ToolPolicies() {
                                 <Switch
                                   checked={policy?.requires_approval !== 0}
                                   onCheckedChange={(v) => togglePolicy(tool.name, "requires_approval", v)}
-                                />
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <Switch
-                                  checked={policy?.is_proactive_enabled === 1}
-                                  onCheckedChange={(v) => togglePolicy(tool.name, "is_proactive_enabled", v)}
                                 />
                               </td>
                               <td className="px-4 py-3 text-center">

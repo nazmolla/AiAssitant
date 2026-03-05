@@ -116,7 +116,6 @@ describe("executeCustomTool", () => {
     expect(policy).toBeDefined();
     expect(policy!.tool_name).toBe("custom.my_adder");
     expect(policy!.requires_approval).toBe(0);
-    expect(policy!.is_proactive_enabled).toBe(0);
   });
 
   test("create tool rejects duplicates with guidance to use update", async () => {

@@ -839,7 +839,6 @@ export interface ToolPolicy {
   tool_name: string;
   mcp_id: string | null;
   requires_approval: number;
-  is_proactive_enabled: number;
   scope: "global" | "user";
 }
 
@@ -857,15 +856,14 @@ export function getToolPolicy(toolName: string): ToolPolicy | undefined {
 export function upsertToolPolicy(policy: ToolPolicy): void {
   getDb()
     .prepare(
-      `INSERT INTO tool_policies (tool_name, mcp_id, requires_approval, is_proactive_enabled, scope)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO tool_policies (tool_name, mcp_id, requires_approval, scope)
+       VALUES (?, ?, ?, ?)
        ON CONFLICT(tool_name) DO UPDATE SET
          mcp_id = excluded.mcp_id,
          requires_approval = excluded.requires_approval,
-         is_proactive_enabled = excluded.is_proactive_enabled,
          scope = excluded.scope`
     )
-    .run(policy.tool_name, policy.mcp_id, policy.requires_approval, policy.is_proactive_enabled, policy.scope ?? "global");
+    .run(policy.tool_name, policy.mcp_id, policy.requires_approval, policy.scope ?? "global");
   appCache.invalidate(CACHE_KEYS.TOOL_POLICIES);
 }
 

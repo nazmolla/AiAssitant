@@ -305,7 +305,6 @@ describe("DELETE /api/mcp", () => {
       tool_name: "test_tool_on_server",
       mcp_id: srvId,
       requires_approval: 1,
-      is_proactive_enabled: 0,
     });
 
     // Delete should succeed despite FK reference

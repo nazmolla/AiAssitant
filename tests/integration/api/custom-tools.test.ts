@@ -125,7 +125,6 @@ describe("POST /api/config/custom-tools", () => {
     expect(policy).toBeDefined();
     expect(policy!.tool_name).toBe("custom.api_test_tool");
     expect(policy!.requires_approval).toBe(0);
-    expect(policy!.is_proactive_enabled).toBe(0);
   });
 
   test("returns 409 for duplicate", async () => {

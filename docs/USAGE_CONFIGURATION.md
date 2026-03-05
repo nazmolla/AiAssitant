@@ -46,13 +46,14 @@ Scopes:
 
 ## Tool Policies (HITL + Proactive)
 
-Each discovered tool has three key controls:
+Each discovered tool has two key controls:
 
 - `requires_approval` — whether the tool needs human approval before execution
-- `is_proactive_enabled` — whether the proactive scheduler can invoke this tool
 - `scope` — **Global** (available to all users) or **User Only** (admin-only, hidden from non-admin users)
 
-Includes global **Expand all / Collapse all** controls. Summary bar shows tool count, groups, approval count, proactive count, and user-only count.
+The proactive scheduler can use any tool — only `requires_approval` gates whether human approval is needed before execution.
+
+Includes global **Expand all / Collapse all** controls. Summary bar shows tool count, groups, approval count, and user-only count.
 
 ![Tool Policies settings (test env)](images/usage-settings-tool-policies.png)
 

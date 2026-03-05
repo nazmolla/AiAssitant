@@ -22,7 +22,7 @@ export async function POST(
     const mcpManager = getMcpManager();
     const connection = await mcpManager.connect(server);
 
-    // Auto-create tool policies for discovered tools (default: requires approval, not proactive)
+    // Auto-create tool policies for discovered tools (default: requires approval)
     for (const tool of connection.tools) {
       const existing = getToolPolicy(tool.name);
       if (!existing) {
@@ -30,7 +30,6 @@ export async function POST(
           tool_name: tool.name,
           mcp_id: server.id,
           requires_approval: 1,
-          is_proactive_enabled: 0,
           scope: "global",
         });
       }

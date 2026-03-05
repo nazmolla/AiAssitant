@@ -74,7 +74,6 @@ describe("POST /api/policies", () => {
       body: JSON.stringify({
         tool_name: "file_write",
         requires_approval: true,
-        is_proactive_enabled: false,
       }),
       headers: { "Content-Type": "application/json" },
     });
@@ -98,7 +97,6 @@ describe("POST /api/policies", () => {
       body: JSON.stringify({
         tool_name: "file_write",
         requires_approval: false,
-        is_proactive_enabled: true,
       }),
       headers: { "Content-Type": "application/json" },
     });
@@ -110,7 +108,6 @@ describe("POST /api/policies", () => {
     const updated = data.find((p: any) => p.tool_name === "file_write");
     expect(updated).toBeDefined();
     expect(updated.requires_approval).toBe(0);
-    expect(updated.is_proactive_enabled).toBe(1);
   });
 
   test("creates policy with scope=user", async () => {

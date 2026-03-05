@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Tool policies management — approval requirements and proactive mode.
+/// Tool policies management — approval requirements.
 struct PoliciesView: View {
     @StateObject private var vm = SettingsViewModel()
 
@@ -30,23 +30,7 @@ struct PoliciesView: View {
                                 let req = PolicyCreateRequest(
                                     tool_name: policy.tool_name,
                                     mcp_id: policy.mcp_id,
-                                    requires_approval: newValue ? 1 : 0,
-                                    is_proactive_enabled: policy.is_proactive_enabled
-                                )
-                                _ = await vm.savePolicy(req)
-                            }
-                        }
-                    ))
-
-                    Toggle("Proactive Mode", isOn: Binding(
-                        get: { policy.isProactiveEnabled },
-                        set: { newValue in
-                            Task {
-                                let req = PolicyCreateRequest(
-                                    tool_name: policy.tool_name,
-                                    mcp_id: policy.mcp_id,
-                                    requires_approval: policy.requires_approval,
-                                    is_proactive_enabled: newValue ? 1 : 0
+                                    requires_approval: newValue ? 1 : 0
                                 )
                                 _ = await vm.savePolicy(req)
                             }

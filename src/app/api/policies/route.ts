@@ -16,7 +16,6 @@ export async function GET() {
       tool_name: tool.name,
       mcp_id: tool.source === "mcp" ? tool.name.split(".")[0] || null : null,
       requires_approval: defaultRequiresApproval(tool.name, tool.source),
-      is_proactive_enabled: 0,
       scope: "global",
     });
   }
@@ -30,7 +29,7 @@ export async function POST(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
-  const { tool_name, mcp_id, requires_approval, is_proactive_enabled, scope } = body;
+  const { tool_name, mcp_id, requires_approval, scope } = body;
 
   if (!tool_name) {
     return NextResponse.json({ error: "tool_name is required." }, { status: 400 });
@@ -43,7 +42,6 @@ export async function POST(req: NextRequest) {
     tool_name,
     mcp_id: mcp_id || null,
     requires_approval: requires_approval !== undefined ? (requires_approval ? 1 : 0) : 1,
-    is_proactive_enabled: is_proactive_enabled ? 1 : 0,
     scope: resolvedScope,
   });
 
