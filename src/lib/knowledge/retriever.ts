@@ -51,6 +51,12 @@ export function invalidateEmbeddingCache(): void {
   _embeddingCache = null;
 }
 
+/** Fast check: does this user have any knowledge embeddings? (uses cache, no API call) */
+export function hasKnowledgeEntries(userId?: string): boolean {
+  if (!userId) return false;
+  return getCachedEmbeddings(userId).size > 0;
+}
+
 export async function retrieveKnowledge(query: string, limit = 6, userId?: string): Promise<KnowledgeEntry[]> {
   if (!userId) return [];
 
@@ -66,17 +72,20 @@ export async function retrieveKnowledge(query: string, limit = 6, userId?: strin
   return merged;
 }
 
-async function semanticSearch(query: string, limit: number, userId?: string): Promise<KnowledgeEntry[]> {
-  const embedding = await generateEmbedding(query);
-  if (embedding.length === 0) return [];
+const MIN_SIMILARITY = 0.25;
 
+async function semanticSearch(query: string, limit: number, userId?: string): Promise<KnowledgeEntry[]> {
+  // Check cached embeddings FIRST to avoid an expensive API call when vault is empty
   const vectors = getCachedEmbeddings(userId);
   if (vectors.size === 0) return [];
+
+  const embedding = await generateEmbedding(query);
+  if (embedding.length === 0) return [];
 
   const matches: SemanticMatch[] = [];
   vectors.forEach((vector, knowledgeId) => {
     const score = cosineSimilarity(embedding, vector);
-    if (Number.isFinite(score)) {
+    if (Number.isFinite(score) && score >= MIN_SIMILARITY) {
       matches.push({ id: knowledgeId, score });
     }
   });
