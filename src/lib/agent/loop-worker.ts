@@ -38,7 +38,7 @@ import {
   type Message,
   type AttachmentMeta,
 } from "@/lib/db";
-import { retrieveKnowledge, hasKnowledgeEntries } from "@/lib/knowledge/retriever";
+import { retrieveKnowledge, hasKnowledgeEntries, needsKnowledgeRetrieval } from "@/lib/knowledge/retriever";
 import {
   isWorkerAvailable,
   runLlmInWorker,
@@ -174,11 +174,14 @@ async function _runViaWorker(
   const mcpTools = mcpManager.getAllTools();
   const { getCustomToolDefinitions } = await import("./custom-tools");
   const customTools = getCustomToolDefinitions();
-  const allTools = [
+  const builtinAndCustomTools = [
     ...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS,
     ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...BUILTIN_FILE_TOOLS,
-    ...BUILTIN_ALEXA_TOOLS, ...customTools, ...mcpTools,
+    ...BUILTIN_ALEXA_TOOLS, ...customTools,
   ];
+  // Cap total tools at 128 — builtin/custom take priority, then MCP fills remaining slots
+  const mcpSlots = Math.max(0, 128 - builtinAndCustomTools.length);
+  const allTools = [...builtinAndCustomTools, ...mcpTools.slice(0, mcpSlots)];
 
   const isAdmin = userId ? (getUserById(userId)?.role === "admin") : true;
   const tools = isAdmin
@@ -227,9 +230,10 @@ async function _runViaWorker(
     }
   }
 
-  /* ── 4. Build context (knowledge + profile) — skip retrieval if vault is empty ── */
+  /* ── 4. Build context (knowledge + profile) ── */
+  /* Skip retrieval if vault is empty OR if the message clearly doesn't need knowledge */
   let knowledgeContext = "";
-  if (hasKnowledgeEntries(userId)) {
+  if (hasKnowledgeEntries(userId) && needsKnowledgeRetrieval(userMessage)) {
     onStatus?.({ step: "Retrieving knowledge", detail: "Searching knowledge vault\u2026" });
     const relevantKnowledge = await retrieveKnowledge(userMessage, 8, userId);
     onStatus?.({ step: "Retrieving knowledge", detail: `Found ${relevantKnowledge.length} relevant ${relevantKnowledge.length === 1 ? "entry" : "entries"}` });

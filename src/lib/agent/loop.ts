@@ -42,7 +42,7 @@ import {
   type AttachmentMeta,
 } from "@/lib/db";
 import { ingestKnowledgeFromText } from "@/lib/knowledge";
-import { retrieveKnowledge, hasKnowledgeEntries } from "@/lib/knowledge/retriever";
+import { retrieveKnowledge, hasKnowledgeEntries, needsKnowledgeRetrieval } from "@/lib/knowledge/retriever";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
@@ -122,6 +122,7 @@ function isUntrustedToolOutput(toolName: string): boolean {
 }
 
 const MAX_TOOL_ITERATIONS = 25;
+const MAX_TOOLS_PER_REQUEST = 128;
 
 export interface AgentResponse {
   content: string;
@@ -164,7 +165,10 @@ export async function runAgentLoop(
   // Load custom (agent-created) tools
   const { getCustomToolDefinitions } = await import("./custom-tools");
   const customTools = getCustomToolDefinitions();
-  const allTools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...BUILTIN_FILE_TOOLS, ...BUILTIN_ALEXA_TOOLS, ...customTools, ...mcpTools];
+  const builtinAndCustomTools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...BUILTIN_FILE_TOOLS, ...BUILTIN_ALEXA_TOOLS, ...customTools];
+  // Cap total tools at MAX_TOOLS_PER_REQUEST — builtin/custom take priority, then MCP fills remaining slots
+  const mcpSlots = Math.max(0, MAX_TOOLS_PER_REQUEST - builtinAndCustomTools.length);
+  const allTools = [...builtinAndCustomTools, ...mcpTools.slice(0, mcpSlots)];
 
   // Filter tools by scope: non-admin users only see tools with scope = 'global'
   const isAdmin = userId ? (getUserById(userId)?.role === "admin") : true;
@@ -259,9 +263,10 @@ export async function runAgentLoop(
 
   const knowledgeSnippets: string[] = [`[User]\n${queryText}`];
 
-  // Build context from knowledge vault (scoped to user) — skip if vault is empty
+  // Build context from knowledge vault (scoped to user)
+  // Skip if vault is empty OR if the message clearly doesn't need knowledge context
   let knowledgeContext = "";
-  if (hasKnowledgeEntries(userId)) {
+  if (hasKnowledgeEntries(userId) && needsKnowledgeRetrieval(queryText)) {
     onStatus?.({ step: "Retrieving knowledge", detail: "Searching knowledge vault…" });
     const relevantKnowledge = await retrieveKnowledge(queryText, 8, userId);
     onStatus?.({ step: "Retrieving knowledge", detail: `Found ${relevantKnowledge.length} relevant ${relevantKnowledge.length === 1 ? "entry" : "entries"}` });

@@ -1,46 +1,71 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════
-#  Nexus Agent — Safe Deployment Script
-#  Usage: ./deploy.sh [host] [user]
+#  Nexus Agent — Production Deployment Script
+#  Usage: bash deploy.sh <host> <user>
 #
-#  Designed for reliability on Windows (Git Bash / PowerShell).
-#  Each remote operation is a discrete SSH call — no multi-line
-#  heredocs, no fragile quoting chains.  SSH/SCP stderr warnings
-#  (e.g. post-quantum key exchange) are silenced so PowerShell
-#  does not misinterpret them as errors.
+#  Flow:
+#    1. Local:  lint + tests + version bump
+#    2. Local:  create source tarball (no DB, no .next, no node_modules)
+#    3. Remote: WAL checkpoint + backup DB + integrity check
+#    4. Remote: stop service
+#    5. Remote: upload + extract source (DB protected as read-only)
+#    6. Remote: npm install
+#    7. Remote: build (DB moved aside to prevent corruption)
+#    8. Remote: restore DB + integrity recheck
+#    9. Remote: start service + health check
+#   10. Remote: post-deploy DB validation (row counts vs snapshot)
+#   11. Local:  cleanup
+#
+#  On failure at any step, the script auto-restores the DB from
+#  its timestamped backup if needed.
+#
+#  Designed for Windows (Git Bash / PowerShell). Each remote op
+#  is a discrete SSH call — no heredocs, no fragile quoting.
 # ═══════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 
-HOST="${1:?Usage: ./deploy.sh <host> <user>}"
-USER="${2:?Usage: ./deploy.sh <host> <user>}"
+# ── Arguments ──────────────────────────────────────────────────────
+HOST="${1:?Usage: bash deploy.sh <host> <user>}"
+USER="${2:?Usage: bash deploy.sh <host> <user>}"
 REMOTE="${USER}@${HOST}"
 REMOTE_DIR="~/AiAssistant"
 TAR_NAME="deploy.tar.gz"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+MAX_BACKUPS=5          # keep last N DB backups on server
+HEALTH_WAIT=10         # seconds to wait after start before health check
+STEPS=10
 
 # ── Helpers ────────────────────────────────────────────────────────
-# Wrapper that silences SSH stderr (post-quantum warnings) which
-# cause PowerShell to report false exit-code failures.
-rcmd() { ssh -o LogLevel=ERROR "${REMOTE}" "$@" 2>/dev/null; }
-fail() { echo "  ✗ $1"; exit 1; }
+rcmd()  { ssh -o LogLevel=ERROR "${REMOTE}" "$@" 2>/dev/null; }
+fail()  { echo ""; echo "  ✗ FAILED: $1"; exit 1; }
+step()  { echo ""; echo "[${1}/${STEPS}] ${2}"; }
 
-echo "═══ Nexus Deploy ═══"
-echo "Target: ${REMOTE}:${REMOTE_DIR}"
-echo ""
+echo "═══════════════════════════════════════════"
+echo "  Nexus Agent — Deploy"
+echo "  Target: ${REMOTE}:${REMOTE_DIR}"
+echo "  Time:   $(date '+%Y-%m-%d %H:%M:%S')"
+echo "═══════════════════════════════════════════"
 
-# ── 1. Local: bump version & run tests ────────────────────────────
-echo "[1/7] Bumping version & running tests..."
+# ── 1. Local: lint + tests + version bump ─────────────────────────
+step 1 "Running local lint, tests, and version bump..."
 node scripts/bump-version.js
-npx jest --no-cache --silent 2>&1 | tail -3
-echo ""
+VERSION=$(node -p "require('./package.json').version")
+echo "  Version: ${VERSION}"
 
-echo "[2/7] Building Next.js..."
-npx next build --webpack 2>&1 | grep -E "✓|error|Error" | head -10
-echo ""
+echo "  Running lint..."
+npx eslint src/ --quiet 2>&1 | tail -3 \
+  || fail "Lint failed — fix errors before deploying"
 
-# ── 2. Local: create deploy tarball (NEVER include DB) ────────────
-echo "[3/7] Creating deploy tarball..."
+echo "  Running tests..."
+npx jest --forceExit --no-cache --silent 2>&1 | tail -5
+JEST_EXIT=${PIPESTATUS[0]:-0}
+if [ "${JEST_EXIT}" -ne 0 ]; then fail "Tests failed (exit ${JEST_EXIT})"; fi
+echo "  ✓ Lint + tests passed"
+
+# ── 2. Local: create source tarball ───────────────────────────────
+step 2 "Creating source tarball..."
+rm -f "${TAR_NAME}"
 set +e
 tar -czf "${TAR_NAME}" \
   --exclude=".env" \
@@ -49,109 +74,242 @@ tar -czf "${TAR_NAME}" \
   --exclude="*.db-shm" \
   --exclude="node_modules" \
   --exclude=".git" \
-  --exclude=".next/cache" \
+  --exclude=".next" \
   --exclude="${TAR_NAME}" \
   --exclude="data" \
-  --exclude="deploy.sh" \
+  --exclude="production-backup" \
   .
 TAR_EXIT=$?
 set -e
-# tar exit 1 = "file changed as we read it" — archive is valid; only fail on exit >= 2
-if [ "$TAR_EXIT" -gt 1 ]; then fail "tar creation failed (exit $TAR_EXIT)"; fi
-echo "  Tarball: $(du -h ${TAR_NAME} | cut -f1)"
-echo ""
+# tar exit 1 = "file changed as we read it" — archive is still valid
+if [ "${TAR_EXIT}" -gt 1 ]; then fail "tar creation failed (exit ${TAR_EXIT})"; fi
+echo "  ✓ Tarball: $(du -h ${TAR_NAME} | cut -f1)"
 
 # ── 3. Remote: backup database ────────────────────────────────────
-echo "[4/7] Backing up remote database..."
-rcmd "cd ${REMOTE_DIR} && if [ -f nexus.db ]; then node -e 'try{require(\"better-sqlite3\")(\"./nexus.db\").pragma(\"wal_checkpoint(TRUNCATE)\");console.log(\"WAL checkpointed\")}catch(e){console.log(\"Checkpoint skipped\")}' 2>/dev/null; cp nexus.db nexus.db.backup_${TIMESTAMP}; ls -t nexus.db.backup_* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null; echo '  DB backed up'; else echo '  No existing DB'; fi" \
-  || echo "  (fresh install — no remote dir)"
+step 3 "Backing up remote database..."
 
-# Capture pre-deploy DB metrics for post-deploy verification
-PRE_DB_SIZE=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
-PRE_KNOWLEDGE=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'SELECT COUNT(*) FROM user_knowledge'" || echo "0")
-echo "  Snapshot: $(( PRE_DB_SIZE / 1048576 )) MB, ${PRE_KNOWLEDGE} knowledge entries"
-echo ""
+# Check if remote dir exists (fresh install)
+if ! rcmd "test -d ${REMOTE_DIR}"; then
+  echo "  First deploy — creating remote directory"
+  rcmd "mkdir -p ${REMOTE_DIR}"
+  PRE_DB_SIZE=0
+  PRE_DB_TABLES=0
+  PRE_KNOWLEDGE=0
+  PRE_THREADS=0
+else
+  # WAL checkpoint to flush any pending writes
+  rcmd "cd ${REMOTE_DIR} && test -f nexus.db && node -e 'try{require(\"better-sqlite3\")(\"./nexus.db\").pragma(\"wal_checkpoint(TRUNCATE)\");console.log(\"  WAL checkpointed\")}catch(e){console.log(\"  Checkpoint skipped:\",e.message)}' || echo '  No DB to checkpoint'"
 
-# ── 4. Remote: stop server ────────────────────────────────────────
-echo "[5/7] Stopping remote server..."
+  # Backup
+  if rcmd "test -f ${REMOTE_DIR}/nexus.db"; then
+    rcmd "cd ${REMOTE_DIR} && cp nexus.db nexus.db.backup_${TIMESTAMP}"
+    echo "  ✓ Backed up as nexus.db.backup_${TIMESTAMP}"
+
+    # Prune old backups (keep MAX_BACKUPS)
+    rcmd "cd ${REMOTE_DIR} && ls -t nexus.db.backup_* 2>/dev/null | tail -n +$((MAX_BACKUPS + 1)) | xargs rm -f 2>/dev/null || true"
+
+    # Integrity check
+    INTEGRITY=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'PRAGMA integrity_check;'" || echo "ERROR")
+    if [ "${INTEGRITY}" != "ok" ]; then
+      echo "  ⚠ DB integrity issue: ${INTEGRITY}"
+      echo "  Proceeding with deploy — backup preserved"
+    else
+      echo "  ✓ DB integrity: ok"
+    fi
+
+    # Snapshot metrics for post-deploy comparison
+    PRE_DB_SIZE=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
+    PRE_DB_TABLES=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'SELECT COUNT(*) FROM sqlite_master WHERE type=\"table\";'" || echo "0")
+    PRE_KNOWLEDGE=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'SELECT COUNT(*) FROM user_knowledge;'" || echo "0")
+    PRE_THREADS=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'SELECT COUNT(*) FROM threads;'" || echo "0")
+    echo "  Snapshot: $(( PRE_DB_SIZE / 1048576 )) MB, ${PRE_DB_TABLES} tables, ${PRE_KNOWLEDGE} knowledge, ${PRE_THREADS} threads"
+  else
+    echo "  No existing DB (fresh install)"
+    PRE_DB_SIZE=0
+    PRE_DB_TABLES=0
+    PRE_KNOWLEDGE=0
+    PRE_THREADS=0
+  fi
+fi
+
+# ── 4. Remote: stop service ───────────────────────────────────────
+step 4 "Stopping remote service..."
 rcmd "sudo systemctl stop nexus-agent 2>/dev/null || true"
 sleep 2
 rcmd "fuser -k 3000/tcp 2>/dev/null || true"
-echo "  Server stopped"
-echo ""
+echo "  ✓ Service stopped"
 
-# ── 5. Remote: upload, extract, install ───────────────────────────
-echo "[6/7] Uploading and extracting..."
+# ── 5. Remote: upload + extract ───────────────────────────────────
+step 5 "Uploading and extracting source..."
 scp -o LogLevel=ERROR "${TAR_NAME}" "${REMOTE}:/tmp/${TAR_NAME}" 2>/dev/null \
   || fail "scp upload failed"
 
-# Remove stale build artifacts (keep DB + data)
-rcmd "cd ${REMOTE_DIR} && rm -rf .next src/ public/"
+# Clean stale build + source (keep DB, data, .env, node_modules)
+rcmd "cd ${REMOTE_DIR} && rm -rf .next src/ public/ scripts/ docs/"
 
-# Verify DB survived cleanup
-DB_CHECK=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
-if [ "${PRE_DB_SIZE}" -gt 1000000 ] && [ "${DB_CHECK}" != "${PRE_DB_SIZE}" ]; then
-  fail "DB file changed during cleanup! (was ${PRE_DB_SIZE}, now ${DB_CHECK})"
-fi
-
-# Protect DB, extract, restore permissions
+# Protect DB as read-only before extraction
 rcmd "cd ${REMOTE_DIR} && test -f nexus.db && chmod 444 nexus.db || true"
+
+# Extract — tar excludes *.db by flag, and chmod 444 also blocks overwrite
 rcmd "cd ${REMOTE_DIR} && tar xzf /tmp/${TAR_NAME} --exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm' && rm -f /tmp/${TAR_NAME}" \
   || fail "tar extraction failed"
+
+# Restore DB permissions
 rcmd "cd ${REMOTE_DIR} && test -f nexus.db && chmod 664 nexus.db || true"
 
-# Verify DB survived extraction
-DB_CHECK=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
-if [ "${PRE_DB_SIZE}" -gt 1000000 ] && [ "${DB_CHECK}" != "${PRE_DB_SIZE}" ]; then
-  echo "  ✗ DB modified during extraction! Restoring from backup..."
-  rcmd "cd ${REMOTE_DIR} && cp nexus.db.backup_${TIMESTAMP} nexus.db && chmod 664 nexus.db"
-  fail "DB was modified during extraction — restored from backup"
+# Verify DB was not touched
+if [ "${PRE_DB_SIZE}" -gt 0 ]; then
+  DB_CHECK=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
+  if [ "${DB_CHECK}" != "${PRE_DB_SIZE}" ]; then
+    echo "  ✗ DB size changed during extraction! Restoring from backup..."
+    rcmd "cd ${REMOTE_DIR} && cp nexus.db.backup_${TIMESTAMP} nexus.db && chmod 664 nexus.db"
+    fail "DB was modified during extraction — restored from backup"
+  fi
 fi
+echo "  ✓ Source extracted, DB intact"
 
-# Install production dependencies
-rcmd "cd ${REMOTE_DIR} && rm -rf node_modules && npm install --omit=dev --loglevel=error 2>&1 | tail -3" \
+# ── 6. Remote: install dependencies (all — dev deps needed for build) ──
+step 6 "Installing dependencies..."
+rcmd "cd ${REMOTE_DIR} && npm install --loglevel=error 2>&1 | tail -5" \
   || fail "npm install failed"
 rcmd "cd ${REMOTE_DIR} && test -x node_modules/.bin/next" \
   || fail "next binary missing after install"
-echo "  Extracted and installed"
-echo ""
+echo "  ✓ Dependencies installed"
 
-# ── 6. Remote: start & verify ─────────────────────────────────────
-echo "[7/7] Starting server and verifying..."
-rcmd "sudo systemctl restart nexus-agent"
-sleep 8
+# ── 7. Remote: build (DB isolated) ───────────────────────────────
+step 7 "Building on server (DB isolated)..."
+# Move DB aside so next build cannot corrupt it during page data collection
+rcmd "cd ${REMOTE_DIR} && test -f nexus.db && mv nexus.db nexus.db.build_safe || true"
+rcmd "cd ${REMOTE_DIR} && test -f nexus.db-shm && mv nexus.db-shm nexus.db-shm.build_safe || true"
+rcmd "cd ${REMOTE_DIR} && test -f nexus.db-wal && mv nexus.db-wal nexus.db-wal.build_safe || true"
 
-HTTP_CODE=$(rcmd "curl -sk -o /dev/null -w '%{http_code}' https://localhost" || echo "000")
-if [ "${HTTP_CODE}" = "200" ]; then
-  echo "  ✓ Server running (HTTPS ${HTTP_CODE})"
-else
-  echo "  ✗ Health check failed (${HTTP_CODE})"
-  rcmd "sudo journalctl -u nexus-agent --no-pager -n 15" || true
-  fail "server did not start"
-fi
+BUILD_OUTPUT=$(rcmd "cd ${REMOTE_DIR} && npx next build --webpack 2>&1" || true)
+echo "${BUILD_OUTPUT}" | tail -10
+BUILD_FAILED=$(echo "${BUILD_OUTPUT}" | grep -c 'Build failed\|Build error' || true)
 
-NGINX_CODE=$(rcmd "curl -sk -o /dev/null -w '%{http_code}' https://${HOST}" || echo "000")
-echo "  ✓ HTTPS proxy: ${NGINX_CODE}"
+# Restore DB regardless of build success
+rcmd "cd ${REMOTE_DIR} && test -f nexus.db.build_safe && mv nexus.db.build_safe nexus.db || true"
+rcmd "cd ${REMOTE_DIR} && test -f nexus.db-shm.build_safe && mv nexus.db-shm.build_safe nexus.db-shm || true"
+rcmd "cd ${REMOTE_DIR} && test -f nexus.db-wal.build_safe && mv nexus.db-wal.build_safe nexus.db-wal || true"
 
-# DB integrity check: compare against pre-deploy snapshot
-POST_DB_SIZE=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
-POST_KNOWLEDGE=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'SELECT COUNT(*) FROM user_knowledge'" || echo "0")
-echo "  DB: $(( POST_DB_SIZE / 1048576 )) MB, ${POST_KNOWLEDGE} knowledge entries"
-
-if [ "${PRE_KNOWLEDGE}" -gt 100 ] && [ "${POST_KNOWLEDGE}" -lt "$((PRE_KNOWLEDGE / 2))" ]; then
+if [ "${BUILD_FAILED}" -gt 0 ]; then
   echo ""
-  echo "  ✗ DATA LOSS DETECTED!"
-  echo "    Before: ${PRE_KNOWLEDGE} knowledge ($(( PRE_DB_SIZE / 1048576 )) MB)"
-  echo "    After:  ${POST_KNOWLEDGE} knowledge ($(( POST_DB_SIZE / 1048576 )) MB)"
-  echo "    Auto-restoring from backup_${TIMESTAMP}..."
-  rcmd "sudo systemctl stop nexus-agent"
-  rcmd "cd ${REMOTE_DIR} && cp nexus.db.backup_${TIMESTAMP} nexus.db"
-  rcmd "sudo systemctl start nexus-agent"
-  sleep 8
-  fail "Data loss detected — auto-restored from backup. Investigate before re-deploying."
+  echo "  Build errors:"
+  echo "${BUILD_OUTPUT}" | grep -A2 'Error\|Module not found' | head -20
+  fail "next build failed on server"
 fi
-echo ""
-echo "═══ Deploy complete ═══"
 
-# Cleanup local tarball
+# Verify .next build output exists
+rcmd "cd ${REMOTE_DIR} && test -d .next/server" \
+  || fail ".next/server directory missing after build"
+
+# Prune dev dependencies to reduce disk footprint
+rcmd "cd ${REMOTE_DIR} && npm prune --omit=dev --loglevel=error 2>&1 | tail -3" || true
+echo "  ✓ Build complete, dev deps pruned"
+
+# ── 8. Remote: DB integrity recheck ──────────────────────────────
+step 8 "Verifying database integrity post-build..."
+if [ "${PRE_DB_SIZE}" -gt 0 ]; then
+  POST_BUILD_SIZE=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
+  POST_BUILD_INTEGRITY=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'PRAGMA integrity_check;'" || echo "ERROR")
+
+  if [ "${POST_BUILD_INTEGRITY}" != "ok" ]; then
+    echo "  ✗ DB corrupted after build! Restoring from backup..."
+    rcmd "cd ${REMOTE_DIR} && cp nexus.db.backup_${TIMESTAMP} nexus.db && chmod 664 nexus.db"
+    echo "  ✓ Restored from backup_${TIMESTAMP}"
+    # Re-verify
+    RESTORED_INTEGRITY=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'PRAGMA integrity_check;'" || echo "ERROR")
+    if [ "${RESTORED_INTEGRITY}" != "ok" ]; then
+      fail "Backup DB also corrupted! Manual intervention required."
+    fi
+  else
+    echo "  ✓ DB integrity: ok ($(( POST_BUILD_SIZE / 1048576 )) MB)"
+  fi
+else
+  echo "  (fresh install — no DB to verify)"
+fi
+
+# ── 9. Remote: start + health check ──────────────────────────────
+step 9 "Starting service and running health checks..."
+rcmd "sudo systemctl start nexus-agent"
+echo "  Waiting ${HEALTH_WAIT}s for startup..."
+sleep "${HEALTH_WAIT}"
+
+# Check systemd thinks it's running
+SVC_STATE=$(rcmd "systemctl is-active nexus-agent" || echo "unknown")
+if [ "${SVC_STATE}" != "active" ]; then
+  echo "  ✗ Service state: ${SVC_STATE}"
+  rcmd "sudo journalctl -u nexus-agent --no-pager -n 20" || true
+  fail "Service failed to start"
+fi
+echo "  ✓ Service: active"
+
+# HTTP health on localhost:3000
+HTTP_3000=$(rcmd "curl -sk -o /dev/null -w '%{http_code}' --max-time 10 http://localhost:3000" || echo "000")
+if [ "${HTTP_3000}" != "200" ]; then
+  echo "  ✗ HTTP :3000 returned ${HTTP_3000}"
+  rcmd "sudo journalctl -u nexus-agent --no-pager -n 20" || true
+  fail "Health check failed on port 3000"
+fi
+echo "  ✓ HTTP :3000 → ${HTTP_3000}"
+
+# HTTPS health via nginx
+HTTPS_CODE=$(rcmd "curl -sk -o /dev/null -w '%{http_code}' --max-time 10 https://localhost" || echo "000")
+echo "  ✓ HTTPS :443 → ${HTTPS_CODE}"
+
+# ── 10. Remote: post-deploy DB validation ─────────────────────────
+step 10 "Post-deploy database validation..."
+if [ "${PRE_DB_SIZE}" -gt 0 ]; then
+  POST_DB_SIZE=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
+  POST_INTEGRITY=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'PRAGMA integrity_check;'" || echo "ERROR")
+  POST_TABLES=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'SELECT COUNT(*) FROM sqlite_master WHERE type=\"table\";'" || echo "0")
+  POST_KNOWLEDGE=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'SELECT COUNT(*) FROM user_knowledge;'" || echo "0")
+  POST_THREADS=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'SELECT COUNT(*) FROM threads;'" || echo "0")
+
+  echo "  Integrity:  ${POST_INTEGRITY}"
+  echo "  Size:       $(( POST_DB_SIZE / 1048576 )) MB (was $(( PRE_DB_SIZE / 1048576 )) MB)"
+  echo "  Tables:     ${POST_TABLES} (was ${PRE_DB_TABLES})"
+  echo "  Knowledge:  ${POST_KNOWLEDGE} (was ${PRE_KNOWLEDGE})"
+  echo "  Threads:    ${POST_THREADS} (was ${PRE_THREADS})"
+
+  # Data loss detection: if knowledge or threads dropped by >50%, auto-restore
+  LOSS=false
+  if [ "${PRE_KNOWLEDGE}" -gt 100 ] && [ "${POST_KNOWLEDGE}" -lt "$((PRE_KNOWLEDGE / 2))" ]; then
+    echo "  ✗ Knowledge entries dropped significantly!"
+    LOSS=true
+  fi
+  if [ "${PRE_THREADS}" -gt 10 ] && [ "${POST_THREADS}" -lt "$((PRE_THREADS / 2))" ]; then
+    echo "  ✗ Thread count dropped significantly!"
+    LOSS=true
+  fi
+  if [ "${POST_INTEGRITY}" != "ok" ]; then
+    echo "  ✗ DB integrity failed!"
+    LOSS=true
+  fi
+
+  if [ "${LOSS}" = "true" ]; then
+    echo ""
+    echo "  ⚠ DATA LOSS DETECTED — auto-restoring..."
+    rcmd "sudo systemctl stop nexus-agent"
+    rcmd "cd ${REMOTE_DIR} && cp nexus.db.backup_${TIMESTAMP} nexus.db && chmod 664 nexus.db"
+    rcmd "sudo systemctl start nexus-agent"
+    sleep "${HEALTH_WAIT}"
+    RESTORED_CODE=$(rcmd "curl -sk -o /dev/null -w '%{http_code}' --max-time 10 http://localhost:3000" || echo "000")
+    echo "  ✓ Restored from backup_${TIMESTAMP}, health: ${RESTORED_CODE}"
+    fail "Data loss detected — auto-restored. Investigate before re-deploying."
+  fi
+
+  echo "  ✓ All DB checks passed"
+else
+  echo "  (fresh install — no baseline to compare)"
+fi
+
+# ── Cleanup ───────────────────────────────────────────────────────
 rm -f "${TAR_NAME}"
+
+echo ""
+echo "═══════════════════════════════════════════"
+echo "  ✓ Deploy complete — v${VERSION}"
+echo "  Service: active"
+echo "  Health:  HTTP ${HTTP_3000} / HTTPS ${HTTPS_CODE}"
+echo "═══════════════════════════════════════════"

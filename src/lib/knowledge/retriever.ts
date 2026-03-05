@@ -57,6 +57,38 @@ export function hasKnowledgeEntries(userId?: string): boolean {
   return getCachedEmbeddings(userId).size > 0;
 }
 
+// ─── Knowledge Relevance Filter ─────────────────────────────
+// Skip knowledge retrieval for messages that clearly don't need it
+// (greetings, chitchat, acknowledgments, meta-questions, etc.)
+
+const NO_KNOWLEDGE_SIGNALS = [
+  // Greetings
+  /^\s*(h(i|ello|ey|owdy|ola)|yo|sup|what'?s\s*up|good\s*(morning|afternoon|evening|night)|g'?day|ahlan|marhaba|salam)\s*[!.?]*\s*$/i,
+  // Acknowledgments
+  /^\s*(ok(ay)?|sure|thanks?|thank\s*you|thx|ty|got\s*it|understood|roger|cool|nice|great|awesome|perfect|alright|np|no\s*problem|you'?re\s*welcome|cheers)\s*[!.?]*\s*$/i,
+  // Farewell
+  /^\s*(bye|goodbye|good\s*bye|see\s*y(a|ou)|later|take\s*care|cya|peace|night|gn)\s*[!.?]*\s*$/i,
+  // Meta questions about the agent itself
+  /^\s*(who|what)\s+(are|r)\s+(you|u)\s*[!.?]*$/i,
+  /^\s*what\s+(can|do)\s+you\s+do\s*[!.?]*$/i,
+  /^\s*how\s+(are|r)\s+(you|u)(\s+doing)?\s*[!.?]*$/i,
+  // Simple pleasantries / empty
+  /^\s*[!.?]*\s*$/,
+  /^\s*(lol|haha|hehe|lmao|rofl|xd|😂|😄|👋|🙏)\s*$/i,
+  // Yes/no answers with no substance
+  /^\s*(yes|no|yep|nope|yeah|nah|yea|nay)\s*[!.?]*\s*$/i,
+];
+
+/**
+ * Determine whether a user message warrants searching the knowledge vault.
+ * Returns false for greetings, chitchat, and other messages that clearly
+ * don't benefit from knowledge context — avoids a wasted embedding API call.
+ */
+export function needsKnowledgeRetrieval(message: string): boolean {
+  if (!message || message.trim().length === 0) return false;
+  return !NO_KNOWLEDGE_SIGNALS.some((r) => r.test(message));
+}
+
 export async function retrieveKnowledge(query: string, limit = 6, userId?: string): Promise<KnowledgeEntry[]> {
   if (!userId) return [];
 
