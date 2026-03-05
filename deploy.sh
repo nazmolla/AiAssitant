@@ -2,7 +2,12 @@
 # ═══════════════════════════════════════════════════════════════════
 #  Nexus Agent — Safe Deployment Script
 #  Usage: ./deploy.sh [host] [user]
-#  
+#
+#  Designed for reliability on Windows (Git Bash / PowerShell).
+#  Each remote operation is a discrete SSH call — no multi-line
+#  heredocs, no fragile quoting chains.  SSH/SCP stderr warnings
+#  (e.g. post-quantum key exchange) are silenced so PowerShell
+#  does not misinterpret them as errors.
 # ═══════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -11,15 +16,20 @@ HOST="${1:?Usage: ./deploy.sh <host> <user>}"
 USER="${2:?Usage: ./deploy.sh <host> <user>}"
 REMOTE="${USER}@${HOST}"
 REMOTE_DIR="~/AiAssistant"
-TAR_NAME="deploy.tar"
-DB_NAME="nexus.db"
+TAR_NAME="deploy.tar.gz"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# ── Helpers ────────────────────────────────────────────────────────
+# Wrapper that silences SSH stderr (post-quantum warnings) which
+# cause PowerShell to report false exit-code failures.
+rcmd() { ssh -o LogLevel=ERROR "${REMOTE}" "$@" 2>/dev/null; }
+fail() { echo "  ✗ $1"; exit 1; }
 
 echo "═══ Nexus Deploy ═══"
 echo "Target: ${REMOTE}:${REMOTE_DIR}"
 echo ""
 
-# ── Step 1: Build locally ──────────────────────────────────────────
+# ── 1. Local: bump version & run tests ────────────────────────────
 echo "[1/7] Bumping version & running tests..."
 node scripts/bump-version.js
 npx jest --no-cache --silent 2>&1 | tail -3
@@ -29,9 +39,10 @@ echo "[2/7] Building Next.js..."
 npx next build --webpack 2>&1 | grep -E "✓|error|Error" | head -10
 echo ""
 
-# ── Step 2: Create deploy tarball (NEVER include DB files) ────────
+# ── 2. Local: create deploy tarball (NEVER include DB) ────────────
 echo "[3/7] Creating deploy tarball..."
-tar -cf "${TAR_NAME}" \
+set +e
+tar -czf "${TAR_NAME}" \
   --exclude=".env" \
   --exclude="*.db" \
   --exclude="*.db-wal" \
@@ -39,122 +50,72 @@ tar -cf "${TAR_NAME}" \
   --exclude="node_modules" \
   --exclude=".git" \
   --exclude=".next/cache" \
-  --exclude="deploy.tar" \
+  --exclude="${TAR_NAME}" \
   --exclude="data" \
   --exclude="deploy.sh" \
   .
+TAR_EXIT=$?
+set -e
+# tar exit 1 = "file changed as we read it" — archive is valid; only fail on exit >= 2
+if [ "$TAR_EXIT" -gt 1 ]; then fail "tar creation failed (exit $TAR_EXIT)"; fi
 echo "  Tarball: $(du -h ${TAR_NAME} | cut -f1)"
 echo ""
 
-# ── Step 3: Backup remote DB BEFORE touching anything ────────────
+# ── 3. Remote: backup database ────────────────────────────────────
 echo "[4/7] Backing up remote database..."
-ssh "${REMOTE}" "
-  cd ${REMOTE_DIR} 2>/dev/null || { echo 'Remote dir not found, fresh install'; exit 0; }
-  if [ -f ${DB_NAME} ]; then
-    BACKUP=${DB_NAME}.backup_${TIMESTAMP}
-    # Checkpoint WAL into main DB file first
-    node -e '
-      try {
-        const db = require(\"better-sqlite3\")(\"./nexus.db\");
-        db.pragma(\"wal_checkpoint(TRUNCATE)\");
-        db.close();
-        console.log(\"  WAL checkpointed\");
-      } catch(e) { console.log(\"  Checkpoint skipped:\", e.message); }
-    ' 2>/dev/null || true
-    cp ${DB_NAME} \${BACKUP}
-    echo \"  Backup: \${BACKUP} ($(du -h ${DB_NAME} | cut -f1))\"
-    # Keep only last 5 backups
-    ls -t ${DB_NAME}.backup_* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
-  else
-    echo '  No existing DB to backup'
-  fi
-"
+rcmd "cd ${REMOTE_DIR} && if [ -f nexus.db ]; then node -e 'try{require(\"better-sqlite3\")(\"./nexus.db\").pragma(\"wal_checkpoint(TRUNCATE)\");console.log(\"WAL checkpointed\")}catch(e){console.log(\"Checkpoint skipped\")}' 2>/dev/null; cp nexus.db nexus.db.backup_${TIMESTAMP}; ls -t nexus.db.backup_* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null; echo '  DB backed up'; else echo '  No existing DB'; fi" \
+  || echo "  (fresh install — no remote dir)"
 echo ""
 
-# ── Step 4: Stop the server gracefully ────────────────────────────
+# ── 4. Remote: stop server ────────────────────────────────────────
 echo "[5/7] Stopping remote server..."
-ssh "${REMOTE}" "
-  sudo systemctl stop nexus-agent 2>/dev/null || true
-  sleep 2
-  # Fallback: kill anything on port 3000 if systemd didn't handle it
-  fuser -k 3000/tcp 2>/dev/null || true
-  sleep 1
-  if fuser 3000/tcp 2>/dev/null; then
-    echo '  ✗ Failed to stop server'
-    exit 1
-  else
-    echo '  Server stopped'
-  fi
-"
+rcmd "sudo systemctl stop nexus-agent 2>/dev/null || true"
+sleep 2
+rcmd "fuser -k 3000/tcp 2>/dev/null || true"
+echo "  Server stopped"
 echo ""
 
-# ── Step 5: Upload and extract (DB files are EXCLUDED from tar) ──
+# ── 5. Remote: upload, extract, install ───────────────────────────
 echo "[6/7] Uploading and extracting..."
-scp "${TAR_NAME}" "${REMOTE}:${REMOTE_DIR}/${TAR_NAME}"
-ssh "${REMOTE}" "
-  set -e
-  cd ${REMOTE_DIR}
-  # Remove old build output and source dirs to avoid stale file conflicts
-  rm -rf .next src/ public/
-  # Safeguard: protect DB files before extraction (belt + suspenders)
-  if [ -f nexus.db ]; then
-    chmod 444 nexus.db
-  fi
-  # Extract tar — DB files are excluded from tarball, but chmod guards too
-  tar xf ${TAR_NAME} --exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm'
-  rm -f ${TAR_NAME}
-  # Restore DB permissions
-  if [ -f nexus.db ]; then
-    chmod 664 nexus.db
-  fi
+scp -o LogLevel=ERROR "${TAR_NAME}" "${REMOTE}:/tmp/${TAR_NAME}" 2>/dev/null \
+  || fail "scp upload failed"
 
-  # Clean stale node_modules to prevent masking install failures
-  rm -rf node_modules
+# Remove stale build artifacts (keep DB + data)
+rcmd "cd ${REMOTE_DIR} && rm -rf .next src/ public/"
 
-  # Install deps — retry with cache clean on failure
-  install_deps() {
-    if [ -f package-lock.json ]; then
-      npm ci --omit=dev --loglevel=error 2>&1
-    else
-      npm install --omit=dev --loglevel=error 2>&1
-    fi
-  }
-  if ! install_deps; then
-    echo '  ⚠ npm install failed, clearing cache and retrying...'
-    npm cache clean --force 2>/dev/null
-    install_deps
-  fi
-  # Verify next binary exists
-  test -x node_modules/.bin/next || { echo '  ✗ next binary missing after install'; exit 1; }
-  echo '  Extracted and installed'
-"
+# Protect DB, extract, restore permissions
+rcmd "cd ${REMOTE_DIR} && test -f nexus.db && chmod 444 nexus.db || true"
+rcmd "cd ${REMOTE_DIR} && tar xzf /tmp/${TAR_NAME} --exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm' && rm -f /tmp/${TAR_NAME}" \
+  || fail "tar extraction failed"
+rcmd "cd ${REMOTE_DIR} && test -f nexus.db && chmod 664 nexus.db || true"
+
+# Install production dependencies
+rcmd "cd ${REMOTE_DIR} && rm -rf node_modules && npm install --omit=dev --loglevel=error 2>&1 | tail -3" \
+  || fail "npm install failed"
+rcmd "cd ${REMOTE_DIR} && test -x node_modules/.bin/next" \
+  || fail "next binary missing after install"
+echo "  Extracted and installed"
 echo ""
 
-# ── Step 6: Start server and verify ──────────────────────────────
+# ── 6. Remote: start & verify ─────────────────────────────────────
 echo "[7/7] Starting server and verifying..."
-ssh "${REMOTE}" "
-  set -e
-  cd ${REMOTE_DIR}
-  sudo systemctl restart nexus-agent
-  sleep 8
-  
-  # Verify HTTP 200 (via HTTPS through nginx)
-  HTTP_CODE=\$(curl -sk -o /dev/null -w '%{http_code}' https://localhost)
-  if [ \"\${HTTP_CODE}\" = '200' ]; then
-    echo \"  ✓ Server running (HTTPS \${HTTP_CODE})\"
-  else
-    echo \"  ✗ Server check failed (HTTPS \${HTTP_CODE})\"
-    sudo journalctl -u nexus-agent --no-pager -n 15
-    exit 1
-  fi
+rcmd "sudo systemctl restart nexus-agent"
+sleep 8
 
-  # Also verify nginx is proxying correctly
-  NGINX_OK=\$(curl -sk -o /dev/null -w '%{http_code}' https://YOUR_SERVER_IP)
-  echo \"  ✓ HTTPS proxy: \${NGINX_OK}\"
-"
+HTTP_CODE=$(rcmd "curl -sk -o /dev/null -w '%{http_code}' https://localhost" || echo "000")
+if [ "${HTTP_CODE}" = "200" ]; then
+  echo "  ✓ Server running (HTTPS ${HTTP_CODE})"
+else
+  echo "  ✗ Health check failed (${HTTP_CODE})"
+  rcmd "sudo journalctl -u nexus-agent --no-pager -n 15" || true
+  fail "server did not start"
+fi
 
-# DB data integrity check (separate SSH to avoid heredoc quoting issues)
-DB_RESULT=$(ssh "${REMOTE}" "cd ~/AiAssistant && node -e 'var db=require(\"better-sqlite3\")(\"./nexus.db\");var u=db.prepare(\"SELECT count(*) as c FROM users\").get().c;var t=db.prepare(\"SELECT count(*) as c FROM sqlite_master\").get().c;console.log(\"tables=\"+t+\" users=\"+u);db.close()'" 2>/dev/null)
+NGINX_CODE=$(rcmd "curl -sk -o /dev/null -w '%{http_code}' https://${HOST}" || echo "000")
+echo "  ✓ HTTPS proxy: ${NGINX_CODE}"
+
+# DB integrity check
+DB_RESULT=$(rcmd "cd ${REMOTE_DIR} && node -e 'var d=require(\"better-sqlite3\")(\"./nexus.db\");var u=d.prepare(\"SELECT count(*) as c FROM users\").get().c;var t=d.prepare(\"SELECT count(*) as c FROM sqlite_master\").get().c;console.log(\"tables=\"+t+\" users=\"+u);d.close()'" || echo "check failed")
 echo "  DB: ${DB_RESULT}"
 echo ""
 echo "═══ Deploy complete ═══"

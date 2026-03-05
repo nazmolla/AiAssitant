@@ -71,8 +71,8 @@ Then open the **Dashboard** tab and verify:
 ## Production Build
 
 ```bash
-# Build the optimized production bundle
-npm run build
+# Build the optimized production bundle (Turbopack not supported — use webpack)
+npx next build --webpack
 
 # Start the production server
 npm start
@@ -81,7 +81,7 @@ npm start
 By default, the server listens on port `3000`. Override with `-p`:
 
 ```bash
-npx next start -p 8080
+npx next start -p 3000
 ```
 
 ---
@@ -91,12 +91,21 @@ npx next start -p 8080
 Use the project deployment script for production releases:
 
 ```bash
+# From Git Bash on Windows (required — PowerShell SSH causes false failures)
 bash deploy.sh <host> <user>
+
+# Example
+bash deploy.sh YOUR_SERVER_IP jetson
 ```
 
-The script performs version bump, Jest run, build, safe tar packaging (excluding DB/data), remote DB backup, upload/extract, dependency install, service restart, and HTTPS health verification.
+The script performs: version bump → Jest tests → webpack build → gzip tarball (excluding DB/data) → remote DB backup → scp upload → extract → npm install → service restart → HTTPS health verification → DB integrity check.
 
-> **Critical:** Do not manually package/copy/deploy app files for production. The production database (`nexus.db`) must never be overwritten.
+**Deploy script design notes:**
+- All remote commands use discrete SSH calls with `-o LogLevel=ERROR` to suppress post-quantum key-exchange warnings that cause false exit codes on Windows
+- The production database `nexus.db` is **never** overwritten — it is excluded from the tarball and protected during extraction
+- Tarball is uploaded to `/tmp/` then extracted to minimize downtime
+
+> **Critical:** Do not manually package/copy/deploy app files for production. Always use `deploy.sh` via Git Bash. The production database (`nexus.db`) must never be overwritten.
 
 ### Memory-Constrained Devices
 

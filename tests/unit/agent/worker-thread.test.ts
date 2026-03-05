@@ -91,6 +91,7 @@ jest.mock("@/lib/db", () => ({
 // Mock knowledge
 jest.mock("@/lib/knowledge/retriever", () => ({
   retrieveKnowledge: jest.fn(async () => []),
+  hasKnowledgeEntries: jest.fn(() => false),
 }));
 jest.mock("@/lib/knowledge", () => ({
   ingestKnowledgeFromText: jest.fn(async () => {}),

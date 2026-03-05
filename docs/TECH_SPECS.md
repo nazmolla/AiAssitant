@@ -11,7 +11,7 @@
 | Runtime | Node.js | v20+ (LTS). Tested on x86-64 and ARM64. |
 | Language | TypeScript | v5.x, Strict Mode |
 | Database | SQLite | `better-sqlite3` — zero-config, single-file persistence. **Application cache** (`src/lib/cache.ts`) — in-memory write-through cache with 60s TTL and explicit invalidation for LLM providers, tool policies, user records, and profiles to avoid redundant synchronous DB queries on every request. |
-| Frontend | Next.js 14 | App Router, Material UI (MUI v7) with 7 color themes, TailwindCSS, screen sharing via getDisplayMedia, **Markdown rendering** via `react-markdown` + `remark-gfm`, header account dropdown with quick Profile and Sign out actions |
+| Frontend | Next.js 16 | App Router, Material UI (MUI v7) with 7 color themes, TailwindCSS, screen sharing via getDisplayMedia, **Markdown rendering** via `react-markdown` + `remark-gfm`, header account dropdown with quick Profile and Sign out actions. **Middleware proxy** limit set to `50 MB` (`proxyClientMaxBodySize`) for large file uploads. Build requires `--webpack` flag (Turbopack unsupported). |
 | HTTPS | nginx + self-signed cert | Reverse proxy HTTPS:443 → Next.js:3000. Required for mic access over network. TLSv1.2/1.3, HTTP → HTTPS redirect, SSE passthrough. |
 | Audio | OpenAI Whisper + TTS-1 | Speech-to-Text (mic input, 25 MB max, webm/wav/mp3/ogg/flac) and Text-to-Speech (9 voices, configurable output format: mp3/wav/pcm/opus/aac/flac). Supports dedicated `tts` and `stt` purpose providers with standard deployment field for Azure OpenAI. **Local Whisper fallback** — optional local Whisper server (faster-whisper-server or whisper.cpp) as automatic backup when cloud STT fails. **Audio mode** — hands-free conversation with auto-listen and streaming TTS. **Conversation Mode** — dedicated `/conversation` tab with VAD-based automatic speech endpoint detection (WebAudio AnalyserNode, 1.2 s silence / 0.4 s min speech), lightweight `/api/conversation/respond` endpoint (full tool support, no knowledge/profile/DB overhead), in-memory client-side history (30 msg cap), real-time audio level visualization, atomic `stateRef` sync via `useCallback`, auto-listen after response, and **interrupt / barge-in** (separate interrupt VAD with 200 ms sustained speech at 2× threshold triggers abort of LLM + TTS, marks transcript with ⸺, transitions to listening). **ESP32 Atom Echo** — standalone Arduino sketch for M5Stack Atom Echo with on-device wake-word detection via micro-wake-up, WAV-format TTS, full tool support via `/api/conversation/respond`. |
 | LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy. **Streaming responses** — tokens are streamed in real-time via SSE `token` events for instant perceived latency. SSE writes use a `sseSend()` safety wrapper with `streamCancelled` flag to prevent crashes when clients disconnect mid-stream. **Worker Thread isolation** — LLM API calls run in a dedicated Node.js Worker Thread (`scripts/agent-worker.js`) to prevent token streaming from blocking the main event loop. Tool execution, DB access, and knowledge retrieval remain on the main thread with IPC-based coordination. Automatic fallback to main thread if worker is unavailable. **No-thinking control** — chat providers can persist `disableThinking` in provider config; OpenAI-compatible paths send `think=false` with fallback retry when unsupported. |
@@ -393,6 +393,53 @@ Routes **not** in the matcher (use their own auth):
 
 ---
 
+## Attachment Processing & OOM Prevention
+
+Large file attachments are size-gated before being passed to the LLM to prevent heap exhaustion on memory-constrained devices (e.g. Jetson with ~1 GB available heap).
+
+| Guard | Threshold | Behavior |
+|-------|-----------|----------|
+| Text inline limit | `MAX_INLINE_TEXT_BYTES` = **512 KB** | Files ≤ 512 KB are fully inlined. Larger files get a **2 KB preview** (read via file descriptor, not full `readFileSync`) plus a path reference for the agent's `fs_read_file` tool. |
+| Image inline limit | `MAX_INLINE_IMAGE_BYTES` = **5 MB** | Images ≤ 5 MB are base64-inlined. Larger images are referenced by path only. |
+| Middleware proxy | `proxyClientMaxBodySize` = **50 MB** | Next.js middleware body size limit raised from the default 10 MB to support large file uploads. |
+| Text MIME types | `TEXT_MIME_TYPES` set | `text/plain`, `text/csv`, `text/markdown`, `text/html`, `text/xml`, `application/json`, `application/xml`, `image/svg+xml` |
+
+**Files**: `src/app/api/threads/[threadId]/chat/route.ts`, `next.config.mjs`
+
+---
+
+## Knowledge Retrieval Optimization
+
+Knowledge retrieval is gated to avoid unnecessary API calls and latency:
+
+1. **Empty vault skip** — `hasKnowledgeEntries(userId)` checks the in-memory embedding cache (30s TTL, SQLite-backed). If the user has no knowledge entries, retrieval is skipped entirely — no status event, no embedding API call.
+2. **Cache-first semantic search** — `semanticSearch()` loads cached embeddings **before** calling `generateEmbedding()`. If the cache is empty, the expensive embedding API call is skipped.
+3. **Minimum similarity threshold** — `MIN_SIMILARITY = 0.25` filters out low-relevance matches (e.g. "hello" vs. random knowledge entries).
+4. **Keyword fallback** — If semantic search returns fewer than the requested limit, keyword-based `LIKE` search fills the remaining slots.
+
+**Files**: `src/lib/knowledge/retriever.ts`, `src/lib/agent/loop.ts`, `src/lib/agent/loop-worker.ts`
+
+---
+
+## Deployment
+
+Production deployment targets a Jetson Nano at `YOUR_SERVER_IP`.
+
+| Step | Command | Details |
+|------|---------|---------|
+| Build | `npx next build --webpack` | Turbopack is not supported (fails with `worker_threads` error). Webpack bundler required. |
+| Deploy | `bash deploy.sh YOUR_SERVER_IP jetson` | Automated: version bump → tests → build → tarball (DB excluded) → remote DB backup → upload → extract → npm install → restart → health check |
+| Verify | `curl -sk https://YOUR_SERVER_IP` | HTTP 200 confirms service is running |
+| Logs | `journalctl -u nexus-agent` | systemd service logs |
+
+**Deploy script design** (`deploy.sh`):
+- Each remote operation is a **discrete SSH call** (no multi-line heredocs) for Windows PowerShell compatibility
+- SSH stderr warnings (post-quantum key exchange) are silenced via `-o LogLevel=ERROR` + `2>/dev/null`
+- Tarball is gzip-compressed and uploaded to `/tmp/` then extracted
+- Production database `nexus.db` is **never** overwritten — excluded from tarball and protected via `chmod 444` guard during extraction
+
+---
+
 ## Dashboard Analytics Computation
 
 The analytics dashboard (`src/components/agent-dashboard.tsx`) computes operational metrics from `/api/logs` data entirely in the client layer.
@@ -442,11 +489,11 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**839 tests across 69 suites** — all passing.
+**932 tests across 77 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|
-| Unit | ~50 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards |
+| Unit | ~55 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards, knowledge retrieval, inbound email classification, attachment size guards |
 | Integration | ~6 | End-to-end API flows, MCP integration, channel routing, SSE concurrency & disconnect safety |
 | Component | ~10 | Full navigation (every page + settings sub-page), component rendering, settings panel, tool policies, profile config, markdown rendering, TTS-to-listening transitions, interrupt / barge-in |
 
@@ -472,3 +519,5 @@ Component tests use `jsdom` environment with the following mocks:
 | `tests/component/conversation-tts-transition.test.tsx` | 6 | TTS → listening/idle transition, auto-listen toggle, no stuck speaking state, TTS error recovery, timing |
 | `tests/component/conversation-interrupt.test.tsx` | 8 | Interrupt during speaking/thinking, ⸺ transcript marker, brief-noise rejection, no interrupt in idle/listening, stopEverything cleanup, full cycle after interrupt |
 | `tests/integration/api/sse-concurrency.test.ts` | 7 | Concurrent SSE requests, stream cancellation mid-flight, post-disconnect token safety, independent stream isolation |
+| `tests/unit/api/chat-attachments.test.ts` | 16 | OOM-prevention size guards: MAX_INLINE_TEXT (512 KB), MAX_INLINE_IMAGE (5 MB), TEXT_MIME_TYPES coverage, preview size validation |
+| `tests/unit/channels/inbound-email.test.ts` | 5 | System sender classification priority over security keywords, severity assignment, summary content |

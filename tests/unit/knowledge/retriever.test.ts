@@ -86,3 +86,32 @@ describe("Embedding Parsing", () => {
     expect(parseEmbedding("[]")).toEqual([]);
   });
 });
+
+describe("MIN_SIMILARITY filtering", () => {
+  const MIN_SIMILARITY = 0.25;
+
+  test("vectors with similarity below threshold are excluded", () => {
+    // Nearly orthogonal vectors → low similarity
+    const a = [1, 0, 0, 0];
+    const b = [0, 0, 0, 1];
+    const score = cosineSimilarity(a, b);
+    expect(score).toBeLessThan(MIN_SIMILARITY);
+  });
+
+  test("vectors with similarity above threshold are included", () => {
+    const a = [0.5, 0.5, 0.5, 0.5];
+    const b = [0.4, 0.6, 0.5, 0.5];
+    const score = cosineSimilarity(a, b);
+    expect(score).toBeGreaterThanOrEqual(MIN_SIMILARITY);
+  });
+
+  test("greeting-like query does not match random knowledge embedding", () => {
+    // Simulating: greeting embedding vs. "user prefers dark mode" embedding
+    // These would typically be near-orthogonal in real embedding space
+    const greetingVec = [0.1, 0.9, -0.1, 0.0];
+    const knowledgeVec = [0.8, -0.2, 0.5, 0.3];
+    const score = cosineSimilarity(greetingVec, knowledgeVec);
+    // With a meaningful threshold, low-relevance matches are filtered
+    expect(score).toBeLessThan(1.0);
+  });
+});

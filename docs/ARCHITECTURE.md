@@ -137,7 +137,7 @@ flowchart LR
 The system follows a **Sense-Think-Act** loop. It observes its environment through MCP servers, built-in web/browser/file-system tools, and communication channels — then acts autonomously grounded in per-user knowledge.
 
 1. **Sense** — Receive input from web chat, Discord, WhatsApp, webhooks, or the proactive scheduler
-2. **Think** — Retrieve relevant knowledge via semantic search, construct a context-rich prompt, and call the LLM
+2. **Think** — Retrieve relevant knowledge via cache-first semantic search (skipped entirely if the user's knowledge vault is empty), construct a context-rich prompt, and call the LLM
 3. **Act** — Execute tool calls (with HITL gating), capture new knowledge, and deliver the response
 
 ### Voice Input & Output (STT / TTS)
@@ -172,7 +172,7 @@ LLM API calls are offloaded to a dedicated **Worker Thread** (`scripts/agent-wor
 | Token streaming (SDK → IPC → SSE) | **Worker** → Main |
 | Tool execution (builtins, MCP, custom tools) | **Main** |
 | Database operations (messages, knowledge, threads) | **Main** |
-| Knowledge retrieval & embedding search | **Main** |
+| Knowledge retrieval & embedding search (gated on vault having entries) | **Main** |
 | HITL gatekeeper enforcement | **Main** |
 | SSE relay to client | **Main** |
 
@@ -244,7 +244,9 @@ This ensures other HTTP requests (including new tabs, API calls, and the convers
 - **Per-user thresholds** — Channel notifications are filtered by each user profile's `notification_level` (`low`, `medium`, `high`, `disaster`).
 - **Severity capping** — Smart home / IoT tools (Alexa, Hue, Nest, Ring, etc.) are automatically capped at `high` severity — they can never emit `disaster`-level events, regardless of LLM assessment. This prevents false critical alerts for routine device state changes.
 - **Channel-first alerts** — Proactive/admin/unknown-sender notices are delivered through configured communication channels instead of posting into chat threads.
+- **System sender priority** — Inbound emails from system addresses (`no-reply@`, `noreply@`, `mailer-daemon@`, etc.) are automatically classified as `system` category with `low` severity before any LLM classification, preventing false security alerts from automated senders.
 - **Unknown sender summaries** — Inbound IMAP messages from unknown senders are summarized and severity-classified before notification routing.
+- **Per-message UID persistence** — Each processed IMAP message updates the channel's last-seen UID immediately (in a `finally` block), so a crash mid-batch does not cause re-processing of already-handled messages.
 - **Injection boundary** — Inbound email bodies are treated as untrusted external content and wrapped/sanitized before any LLM prompt ingestion.
 
 ---
