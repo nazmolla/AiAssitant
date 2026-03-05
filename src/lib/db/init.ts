@@ -39,43 +39,36 @@ function getColumns(table: string): Set<string> {
   return new Set(cols.map((c) => c.name));
 }
 
-function ensureIdentityPasswordColumn(): void {
+// ─── Helper: idempotent ALTER TABLE ADD COLUMN ────────────────
+// Gracefully handles "duplicate column name" from concurrent init calls
+function addColumnIfMissing(table: string, column: string, definition: string): void {
   const db = getDb();
-  if (!tableExists("identity_config")) return;
-  const cols = getColumns("identity_config");
-  if (!cols.has("password_hash")) {
-    db.prepare("ALTER TABLE identity_config ADD COLUMN password_hash TEXT").run();
+  try {
+    db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes("duplicate column name")) throw err;
   }
+}
+
+function ensureIdentityPasswordColumn(): void {
+  if (!tableExists("identity_config")) return;
+  addColumnIfMissing("identity_config", "password_hash", "TEXT");
 }
 
 function ensureLlmProviderPurposeColumn(): void {
-  const db = getDb();
   if (!tableExists("llm_providers")) return;
-  const cols = getColumns("llm_providers");
-  if (!cols.has("purpose")) {
-    db.prepare("ALTER TABLE llm_providers ADD COLUMN purpose TEXT NOT NULL DEFAULT 'chat'").run();
-  }
+  addColumnIfMissing("llm_providers", "purpose", "TEXT NOT NULL DEFAULT 'chat'");
 }
 
 function ensureMessageAttachmentsColumn(): void {
-  const db = getDb();
   if (!tableExists("messages")) return;
-  const cols = getColumns("messages");
-  if (!cols.has("attachments")) {
-    db.prepare("ALTER TABLE messages ADD COLUMN attachments TEXT").run();
-  }
+  addColumnIfMissing("messages", "attachments", "TEXT");
 }
 
 function ensureMessageCreatedAtColumn(): void {
-  const db = getDb();
   if (!tableExists("messages")) return;
-  const cols = getColumns("messages");
-  if (!cols.has("created_at")) {
-    // SQLite doesn't allow CURRENT_TIMESTAMP as default in ALTER TABLE ADD COLUMN
-    // (non-constant default). Column is nullable; new inserts get the default
-    // from the CREATE TABLE schema. Existing rows will have NULL.
-    db.prepare("ALTER TABLE messages ADD COLUMN created_at DATETIME").run();
-  }
+  addColumnIfMissing("messages", "created_at", "DATETIME");
 }
 
 function ensureMcpServerNewColumns(): void {
@@ -113,18 +106,18 @@ function ensureMcpServerNewColumns(): void {
 
   // Otherwise just add any missing columns
   const migrations: [string, string][] = [
-    ["url", "ALTER TABLE mcp_servers ADD COLUMN url TEXT"],
-    ["auth_type", "ALTER TABLE mcp_servers ADD COLUMN auth_type TEXT DEFAULT 'none'"],
-    ["access_token", "ALTER TABLE mcp_servers ADD COLUMN access_token TEXT"],
-    ["client_id", "ALTER TABLE mcp_servers ADD COLUMN client_id TEXT"],
-    ["client_secret", "ALTER TABLE mcp_servers ADD COLUMN client_secret TEXT"],
-    ["user_id", "ALTER TABLE mcp_servers ADD COLUMN user_id TEXT"],
-    ["scope", "ALTER TABLE mcp_servers ADD COLUMN scope TEXT DEFAULT 'global'"],
+    ["url", "TEXT"],
+    ["auth_type", "TEXT DEFAULT 'none'"],
+    ["access_token", "TEXT"],
+    ["client_id", "TEXT"],
+    ["client_secret", "TEXT"],
+    ["user_id", "TEXT"],
+    ["scope", "TEXT DEFAULT 'global'"],
   ];
 
-  for (const [col, sql] of migrations) {
+  for (const [col, def] of migrations) {
     if (!colNames.has(col)) {
-      db.prepare(sql).run();
+      addColumnIfMissing("mcp_servers", col, def);
     }
   }
 }
@@ -210,13 +203,12 @@ function migrateToMultiUser(): void {
  * Add user_id column to existing tables that don't have it yet.
  */
 function ensureUserIdColumns(): void {
-  const db = getDb();
-
   // user_knowledge.user_id
   if (tableExists("user_knowledge") && !getColumns("user_knowledge").has("user_id")) {
-    db.prepare("ALTER TABLE user_knowledge ADD COLUMN user_id TEXT").run();
+    addColumnIfMissing("user_knowledge", "user_id", "TEXT");
     // Recreate unique index to include user_id
     try {
+      const db = getDb();
       db.exec("DROP INDEX IF EXISTS idx_user_knowledge_unique");
       db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_knowledge_unique ON user_knowledge(user_id, entity, attribute, value)");
     } catch {}
@@ -224,7 +216,7 @@ function ensureUserIdColumns(): void {
 
   // threads.user_id
   if (tableExists("threads") && !getColumns("threads").has("user_id")) {
-    db.prepare("ALTER TABLE threads ADD COLUMN user_id TEXT").run();
+    addColumnIfMissing("threads", "user_id", "TEXT");
   }
 }
 
@@ -280,23 +272,15 @@ function ensureEmailToolPolicyDefaults(): void {
 }
 
 function ensureScreenSharingColumn(): void {
-  const db = getDb();
   for (const table of ["owner_profile", "user_profiles"] as const) {
     if (!tableExists(table)) continue;
-    const cols = getColumns(table);
-    if (!cols.has("screen_sharing_enabled")) {
-      db.prepare(`ALTER TABLE ${table} ADD COLUMN screen_sharing_enabled INTEGER DEFAULT 1`).run();
-    }
+    addColumnIfMissing(table, "screen_sharing_enabled", "INTEGER DEFAULT 1");
   }
 }
 
 function ensureToolPolicyScopeColumn(): void {
-  const db = getDb();
   if (!tableExists("tool_policies")) return;
-  const cols = getColumns("tool_policies");
-  if (!cols.has("scope")) {
-    db.prepare("ALTER TABLE tool_policies ADD COLUMN scope TEXT DEFAULT 'global'").run();
-  }
+  addColumnIfMissing("tool_policies", "scope", "TEXT DEFAULT 'global'");
 }
 
 /**
@@ -332,7 +316,7 @@ function dropToolPolicyProactiveColumn(): void {
 function ensureChannelUserId(): void {
   const db = getDb();
   if (tableExists("channels") && !getColumns("channels").has("user_id")) {
-    db.prepare("ALTER TABLE channels ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE").run();
+    addColumnIfMissing("channels", "user_id", "TEXT REFERENCES users(id) ON DELETE CASCADE");
   }
   // Back-fill: assign orphan channels to the first admin user
   if (tableExists("channels") && tableExists("users")) {
@@ -351,7 +335,7 @@ function ensureUserAccessManagement(): void {
   const db = getDb();
   // Add enabled column to users table
   if (tableExists("users") && !getColumns("users").has("enabled")) {
-    db.prepare("ALTER TABLE users ADD COLUMN enabled INTEGER DEFAULT 1").run();
+    addColumnIfMissing("users", "enabled", "INTEGER DEFAULT 1");
   }
   // Auto-create permissions rows for users that don't have one yet
   if (tableExists("users") && tableExists("user_permissions")) {
@@ -371,25 +355,13 @@ function ensureUserAccessManagement(): void {
 }
 
 function ensureProfilePreferencesColumns(): void {
-  const db = getDb();
   for (const table of ["owner_profile", "user_profiles"] as const) {
     if (!tableExists(table)) continue;
-    const cols = getColumns(table);
-    if (!cols.has("theme")) {
-      db.prepare(`ALTER TABLE ${table} ADD COLUMN theme TEXT DEFAULT 'ember'`).run();
-    }
-    if (!cols.has("font")) {
-      db.prepare(`ALTER TABLE ${table} ADD COLUMN font TEXT DEFAULT 'inter'`).run();
-    }
-    if (!cols.has("timezone")) {
-      db.prepare(`ALTER TABLE ${table} ADD COLUMN timezone TEXT DEFAULT ''`).run();
-    }
-    if (!cols.has("notification_level")) {
-      db.prepare(`ALTER TABLE ${table} ADD COLUMN notification_level TEXT DEFAULT 'disaster'`).run();
-    }
-    if (!cols.has("tts_voice")) {
-      db.prepare(`ALTER TABLE ${table} ADD COLUMN tts_voice TEXT DEFAULT 'nova'`).run();
-    }
+    addColumnIfMissing(table, "theme", "TEXT DEFAULT 'ember'");
+    addColumnIfMissing(table, "font", "TEXT DEFAULT 'inter'");
+    addColumnIfMissing(table, "timezone", "TEXT DEFAULT ''");
+    addColumnIfMissing(table, "notification_level", "TEXT DEFAULT 'disaster'");
+    addColumnIfMissing(table, "tts_voice", "TEXT DEFAULT 'nova'");
   }
 }
 
@@ -503,15 +475,9 @@ function encryptExistingSecrets(): void {
 }
 
 function ensureChannelImapUidColumns(): void {
-  const db = getDb();
   if (!tableExists("channels")) return;
-  const cols = getColumns("channels");
-  if (!cols.has("last_imap_uid")) {
-    db.prepare("ALTER TABLE channels ADD COLUMN last_imap_uid INTEGER DEFAULT 0").run();
-  }
-  if (!cols.has("last_imap_uidvalidity")) {
-    db.prepare("ALTER TABLE channels ADD COLUMN last_imap_uidvalidity INTEGER DEFAULT 0").run();
-  }
+  addColumnIfMissing("channels", "last_imap_uid", "INTEGER DEFAULT 0");
+  addColumnIfMissing("channels", "last_imap_uidvalidity", "INTEGER DEFAULT 0");
 }
 
 let _dbInitialized = false;

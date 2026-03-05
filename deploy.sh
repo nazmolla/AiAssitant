@@ -38,8 +38,21 @@ STEPS=10
 
 # ── Helpers ────────────────────────────────────────────────────────
 rcmd()  { ssh -o LogLevel=ERROR "${REMOTE}" "$@" 2>/dev/null; }
+rcmd_long() { ssh -o LogLevel=ERROR -o ServerAliveInterval=15 -o ServerAliveCountMax=10 "${REMOTE}" "$@" 2>/dev/null; }
 fail()  { echo ""; echo "  ✗ FAILED: $1"; exit 1; }
 step()  { echo ""; echo "[${1}/${STEPS}] ${2}"; }
+
+# DB safety: if script exits while DB is in .build_safe, restore it
+DB_IN_BUILD_SAFE=false
+cleanup_db() {
+  if [ "${DB_IN_BUILD_SAFE}" = "true" ]; then
+    echo ""
+    echo "  ⚠ Script exiting with DB in .build_safe — restoring..."
+    ssh -o LogLevel=ERROR -o ConnectTimeout=10 "${REMOTE}" \
+      "cd ${REMOTE_DIR} && rm -f nexus.db nexus.db-shm nexus.db-wal 2>/dev/null; test -f nexus.db.build_safe && mv nexus.db.build_safe nexus.db && mv nexus.db-shm.build_safe nexus.db-shm 2>/dev/null; mv nexus.db-wal.build_safe nexus.db-wal 2>/dev/null; echo '  ✓ DB restored from .build_safe'" 2>/dev/null || echo "  ✗ FAILED to restore DB — manually run: mv nexus.db.build_safe nexus.db"
+  fi
+}
+trap cleanup_db EXIT
 
 echo "═══════════════════════════════════════════"
 echo "  Nexus Agent — Deploy"
@@ -182,15 +195,35 @@ step 7 "Building on server (DB isolated)..."
 rcmd "cd ${REMOTE_DIR} && test -f nexus.db && mv nexus.db nexus.db.build_safe || true"
 rcmd "cd ${REMOTE_DIR} && test -f nexus.db-shm && mv nexus.db-shm nexus.db-shm.build_safe || true"
 rcmd "cd ${REMOTE_DIR} && test -f nexus.db-wal && mv nexus.db-wal nexus.db-wal.build_safe || true"
+DB_IN_BUILD_SAFE=true
 
-BUILD_OUTPUT=$(rcmd "cd ${REMOTE_DIR} && npx next build --webpack 2>&1" || true)
+# Use long-lived SSH with keepalive — build can take minutes
+BUILD_OUTPUT=$(rcmd_long "cd ${REMOTE_DIR} && npx next build --webpack 2>&1" || true)
 echo "${BUILD_OUTPUT}" | tail -10
 BUILD_FAILED=$(echo "${BUILD_OUTPUT}" | grep -c 'Build failed\|Build error' || true)
 
-# Restore DB regardless of build success
-rcmd "cd ${REMOTE_DIR} && test -f nexus.db.build_safe && mv nexus.db.build_safe nexus.db || true"
-rcmd "cd ${REMOTE_DIR} && test -f nexus.db-shm.build_safe && mv nexus.db-shm.build_safe nexus.db-shm || true"
-rcmd "cd ${REMOTE_DIR} && test -f nexus.db-wal.build_safe && mv nexus.db-wal.build_safe nexus.db-wal || true"
+# Restore DB: remove any fresh DB created during build, then restore original
+rcmd "cd ${REMOTE_DIR} && rm -f nexus.db nexus.db-shm nexus.db-wal 2>/dev/null; true"
+rcmd "cd ${REMOTE_DIR} && test -f nexus.db.build_safe && mv nexus.db.build_safe nexus.db" \
+  || fail "Failed to restore DB from .build_safe after build"
+rcmd "cd ${REMOTE_DIR} && test -f nexus.db-shm.build_safe && mv nexus.db-shm.build_safe nexus.db-shm 2>/dev/null; true"
+rcmd "cd ${REMOTE_DIR} && test -f nexus.db-wal.build_safe && mv nexus.db-wal.build_safe nexus.db-wal 2>/dev/null; true"
+DB_IN_BUILD_SAFE=false
+
+# Verify DB restore actually worked (size must match pre-deploy)
+if [ "${PRE_DB_SIZE}" -gt 0 ]; then
+  RESTORED_SIZE=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
+  if [ "${RESTORED_SIZE}" != "${PRE_DB_SIZE}" ]; then
+    echo "  ✗ DB size mismatch after restore: ${RESTORED_SIZE} vs ${PRE_DB_SIZE}"
+    echo "  Restoring from timestamped backup..."
+    rcmd "cd ${REMOTE_DIR} && cp nexus.db.backup_${TIMESTAMP} nexus.db && chmod 664 nexus.db"
+    RESTORED_SIZE=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
+    if [ "${RESTORED_SIZE}" != "${PRE_DB_SIZE}" ]; then
+      fail "DB restore failed — manual intervention required"
+    fi
+  fi
+  echo "  ✓ DB restored: $(( RESTORED_SIZE / 1048576 )) MB"
+fi
 
 if [ "${BUILD_FAILED}" -gt 0 ]; then
   echo ""

@@ -233,8 +233,12 @@ function buildProvider(record: LlmProviderRecord, config: Record<string, unknown
     case "litellm": {
       const apiKey = (config.apiKey as string) || "no-key-required";
       const model = config.model as string | undefined;
-      const baseURL = config.baseURL as string | undefined;
+      let baseURL = config.baseURL as string | undefined;
       const disableThinking = config.disableThinking === true;
+      // Ollama serves OpenAI-compatible API at /v1 — normalize if not present
+      if (baseURL && !baseURL.endsWith("/v1") && !baseURL.endsWith("/v1/")) {
+        baseURL = baseURL.replace(/\/$/, "") + "/v1";
+      }
       return new OpenAIChatProvider({ variant: "openai", apiKey, model, baseURL, disableThinking });
     }
     default:

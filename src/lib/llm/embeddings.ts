@@ -58,10 +58,13 @@ function generateFromRecord(
 
   if (record.provider_type === "litellm") {
     const apiKey = (config.apiKey as string) || "no-key-required";
-    const baseURL = config.baseURL as string;
+    let baseURL = config.baseURL as string;
     const model = (config.model as string) || "text-embedding-3-large";
     if (!baseURL) {
       throw new Error(`[Nexus] LiteLLM embedding config for "${record.label}" is missing a Base URL.`);
+    }
+    if (!baseURL.endsWith("/v1") && !baseURL.endsWith("/v1/")) {
+      baseURL = baseURL.replace(/\/$/, "") + "/v1";
     }
     const client = new OpenAI({ apiKey, baseURL });
     return client.embeddings

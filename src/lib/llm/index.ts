@@ -64,10 +64,14 @@ function buildProviderFromRecord(record: LlmProviderRecord): ChatProvider {
     case "litellm": {
       const apiKey = (config.apiKey as string | undefined) || "no-key-required";
       const model = config.model as string | undefined;
-      const baseURL = config.baseURL as string | undefined;
+      let baseURL = config.baseURL as string | undefined;
       const disableThinking = config.disableThinking === true;
       assertConfig(baseURL, `LiteLLM config for ${record.label} is missing a Base URL.`);
       assertConfig(model, `LiteLLM config for ${record.label} is missing a Model name.`);
+      // Ollama serves OpenAI-compatible API at /v1 — normalize if not present
+      if (baseURL && !baseURL.endsWith("/v1") && !baseURL.endsWith("/v1/")) {
+        baseURL = baseURL.replace(/\/$/, "") + "/v1";
+      }
       return new OpenAIChatProvider({
         variant: "openai",
         apiKey,
