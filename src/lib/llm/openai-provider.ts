@@ -209,11 +209,13 @@ export class OpenAIChatProvider implements ChatProvider {
 
     const choice = response.choices[0];
     const toolCalls =
-      choice.message.tool_calls?.map((tc) => ({
-        id: tc.id,
-        name: tc.function.name,
-        arguments: JSON.parse(tc.function.arguments || "{}"),
-      })) || [];
+      choice.message.tool_calls
+        ?.filter((tc): tc is OpenAI.ChatCompletionMessageFunctionToolCall => tc.type === "function")
+        .map((tc) => ({
+          id: tc.id,
+          name: tc.function.name,
+          arguments: JSON.parse(tc.function.arguments || "{}"),
+        })) || [];
 
     return {
       content: choice.message.content,
