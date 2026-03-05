@@ -272,6 +272,7 @@ This ensures other HTTP requests (including new tabs, API calls, and the convers
 - Profile is still available under **Settings → Profile**, but quick access is intentionally provided from the account dropdown.
 | **Worker Thread Isolation** | LLM API calls run in a dedicated Worker Thread to prevent token streaming from blocking the main event loop. Tool execution, DB access, and knowledge retrieval remain on the main thread. Automatic fallback to main thread if the worker is unavailable. |
 | **MCP Auto-Refresh** | Subscribes to `list_changed` notifications from MCP servers. When a server installs or removes tools at runtime (e.g. Forage), the tool list is refreshed automatically with a 500 ms debounce — no restart required. |
+| **MCP Tool Name Qualification** | MCP tool names are qualified as `serverId.toolName` and automatically truncated to fit the OpenAI 64-character limit. A reverse map resolves truncated names back to originals for MCP server calls. |
 | **Browser Automation** | Playwright-powered tools let the agent navigate pages, fill forms, take screenshots, and manage sessions. |
 | **File System Access** | Built-in tools to read, write, list, and search files — with HITL gating on destructive operations. |
 | **Multi-Channel Comms** | WhatsApp, Discord, webhooks, and web chat — each channel resolves senders to internal users. |

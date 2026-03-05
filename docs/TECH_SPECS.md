@@ -301,6 +301,8 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 
 All built-in tools use the `builtin.` prefix (e.g. `builtin.alexa_announce`, `builtin.browser_navigate`). MCP tools use `serverId.toolName` format.
 
+**Tool name length enforcement**: The OpenAI API enforces a maximum of **64 characters** for tool `function.name`. MCP tool names are qualified as `serverId.toolName` where `serverId` is a UUID (36 chars) + dot = 37-char prefix, leaving 27 characters for the tool name. The `qualifyToolName()` function in `manager.ts` truncates the tool-name portion when the combined name exceeds 64 characters, and maintains a `toolNameMap` reverse mapping so `callTool()` can resolve the truncated name back to the original MCP tool name. Custom tools enforce the same 2–64 character limit at creation time.
+
 **Dispatch chain** (identical in `loop.ts`, `gatekeeper.ts`, `scheduler/index.ts`):
 
 `isBuiltinWebTool → isBrowserTool → isFsTool → isFileTool → isNetworkTool → isEmailTool → isAlexaTool → isCustomTool → MCP fallback`
