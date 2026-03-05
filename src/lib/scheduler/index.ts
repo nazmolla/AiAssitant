@@ -76,6 +76,11 @@ import { getUserNotificationLevel } from "@/lib/channels/notify";
 import type { NotificationLevel } from "@/lib/channels/notify";
 import type { ToolDefinition } from "@/lib/llm";
 
+/* ── Quiet Hours (no audio-producing tools) ────────────────────── */
+
+const QUIET_HOURS_START = 22; // 10 PM
+const QUIET_HOURS_END = 8;   // 8 AM
+
 const PROACTIVE_SYSTEM_PROMPT = `You are the Nexus proactive observer — an intelligent home and environment automation agent. You have access to all available tools and the owner's knowledge context.
 
 Your mission: Make the owner's home smarter every day by discovering the environment, learning patterns, and taking proactive actions.
@@ -100,6 +105,13 @@ Your mission: Make the owner's home smarter every day by discovering the environ
 - Use available Alexa tools for announcements, light control, volume, sensors, and DND management.
 - Combine data from multiple sources to make cross-service decisions (e.g. weather data + thermostat + schedule).
 
+## Quiet Hours (${QUIET_HOURS_START}:00–${QUIET_HOURS_END}:00)
+During quiet hours, ALL audio-producing actions are blocked. This includes:
+- Announcements and text-to-speech
+- Playing media or music
+- Increasing device volume
+Do NOT propose these actions at night. Volume decreases and muting are still allowed. Read-only queries (sensor data, device status, music status) are fine.
+
 ## Self-Improvement via Custom Tool Creation
 You can create new custom tools when you identify a recurring need or automation opportunity that no existing tool covers. To do this, respond with:
 { "action_needed": true, "severity": "low", "tool": "builtin.nexus_create_tool", "args": { "toolName": "descriptive_snake_case_name", "description": "What this tool does and when to use it", "inputSchema": { "type": "object", "properties": { ... }, "required": [...] }, "implementation": "async function body using args; can use fetch(), JSON, Math, Date, etc." }, "reasoning": "Why this new tool will improve automation" }
@@ -121,6 +133,35 @@ const _emailConfigWarned = new Set<string>();
 
 const MAX_KNOWLEDGE_CONTEXT_CHARS = 2000;
 const MAX_TOOLS_CATALOG_CHARS = 3000;
+
+const NOISY_BUILTIN_TOOLS = new Set([
+  "builtin.alexa_announce",
+  "builtin.alexa_set_device_volume",
+  "builtin.alexa_adjust_device_volume",
+]);
+
+const NOISY_TOOL_PATTERNS = /\b(announce|play_media|play_music|play_sound|play_audio|speak|tts|text_to_speech|media_play)\b/i;
+
+export function isQuietHours(): boolean {
+  const hour = new Date().getHours();
+  return hour >= QUIET_HOURS_START || hour < QUIET_HOURS_END;
+}
+
+export function isNoisyTool(toolName: string, args?: Record<string, unknown>): boolean {
+  if (NOISY_BUILTIN_TOOLS.has(toolName)) {
+    // Volume tools are only noisy when increasing volume
+    if (toolName === "builtin.alexa_set_device_volume") {
+      const volume = typeof args?.volume === "number" ? args.volume : -1;
+      return volume > 0; // setting to 0 (mute) is fine
+    }
+    if (toolName === "builtin.alexa_adjust_device_volume") {
+      const amount = typeof args?.amount === "number" ? args.amount : 0;
+      return amount > 0; // decreasing volume is fine
+    }
+    return true;
+  }
+  return NOISY_TOOL_PATTERNS.test(toolName);
+}
 
 interface ProactiveAssessment {
   action_needed?: boolean;
@@ -693,6 +734,17 @@ async function executeSchedulerTool(
 ): Promise<SchedulerToolExecution> {
   // Normalize tool name — restore "builtin." prefix if stripped
   toolName = normalizeToolName(toolName);
+
+  // Quiet hours: block audio-producing tools at night
+  if (isQuietHours() && isNoisyTool(toolName, args)) {
+    addLog({
+      level: "info",
+      source: "scheduler",
+      message: `Blocked "${toolName}" during quiet hours (${QUIET_HOURS_START}:00–${QUIET_HOURS_END}:00).`,
+      metadata: JSON.stringify({ toolName, args }),
+    });
+    return { skipped: true };
+  }
 
   if (isBuiltinWebTool(toolName)) {
     return { skipped: false, result: await executeBuiltinWebTool(toolName, args) };

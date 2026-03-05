@@ -278,7 +278,7 @@ export const BUILTIN_ALEXA_TOOLS: ToolDefinition[] = [
     name: "builtin.alexa_announce",
     description:
       "Make an announcement on Alexa devices. Sends a text-to-speech message to the specified Echo device or all devices ('everywhere'). " +
-      "At night (10pm-10am), announcements are suppressed if all lights are off.",
+      "Blocked during quiet hours (10 PM–8 AM) when called by the scheduler.",
     inputSchema: {
       type: "object",
       properties: {

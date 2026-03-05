@@ -209,6 +209,8 @@ CREATE INDEX idx_scheduled_tasks_due ON scheduled_tasks (status, next_run_at);
 > **Scheduled Tasks**: User future/recurring requests and proactive-discovered actions are persisted in `scheduled_tasks`. During each background scheduler cycle, due tasks (`next_run_at <= now`) are executed, `last_run_at` / `run_count` are updated, and `next_run_at` is recalculated from `frequency` + `interval_value`.
 >
 > **Severity capping**: Smart home / IoT tool assessments (prefixes: `builtin.alexa_`, `builtin.smart_home_`, `builtin.iot_`, `builtin.hue_`, `builtin.nest_`, `builtin.ring_`) are automatically capped at `high` severity — they can never produce `disaster`-level events.
+>
+> **Quiet hours** (10 PM – 8 AM): Audio-producing tools are blocked during nighttime. This includes announcements, media playback, TTS, and volume increases. Volume decreases/muting and read-only queries remain allowed. The enforcement is in `executeSchedulerTool()` and applies to all scheduler-initiated actions (proactive and scheduled tasks).
 
 ### E. Custom Tools (Self-Extending)
 
