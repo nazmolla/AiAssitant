@@ -539,6 +539,8 @@ async function pollEmailChannels(
 
     for (const secure of getImapSecureCandidatesForConfig(config)) {
       const client = createImapClient(config, secure);
+      // Prevent ImapFlow socket errors from becoming uncaught exceptions
+      client.on('error', () => {});
       try {
         await client.connect();
         connected = true;
@@ -576,7 +578,7 @@ async function pollEmailChannels(
             searchCriteria.uid = `${lastUid + 1}:*`;
           }
 
-          const unseenRaw = await client.search(searchCriteria);
+          const unseenRaw = await client.search(searchCriteria, { uid: true });
           const unseen = (Array.isArray(unseenRaw) ? unseenRaw : []).filter(
             (uid: number) => uid > lastUid
           );
@@ -590,7 +592,7 @@ async function pollEmailChannels(
 
           let highestUid = lastUid;
 
-          for await (const msg of client.fetch(unseen, { uid: true, envelope: true, source: true })) {
+          for await (const msg of client.fetch(unseen, { uid: true, envelope: true, source: true }, { uid: true })) {
             try {
               // Track the highest UID we process
               if (msg.uid > highestUid) highestUid = msg.uid;
@@ -603,7 +605,7 @@ async function pollEmailChannels(
               const textBody = (parsed.text || parsed.html || "").toString().trim();
 
               if (!fromAddress) {
-                await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
+                await client.messageFlagsAdd(msg.uid, ["\\Seen"], { uid: true });
                 continue;
               }
 
@@ -643,7 +645,7 @@ async function pollEmailChannels(
                     }),
                   });
                 }
-                await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
+                await client.messageFlagsAdd(msg.uid, ["\\Seen"], { uid: true });
                 continue;
               }
 
@@ -679,7 +681,7 @@ async function pollEmailChannels(
                 });
               }
 
-              await client.messageFlagsAdd(msg.uid, ["\\Seen"]);
+              await client.messageFlagsAdd(msg.uid, ["\\Seen"], { uid: true });
             } catch (messageErr) {
               addLog({
                 level: "error",
@@ -701,15 +703,8 @@ async function pollEmailChannels(
         lastConnectErr = err;
       } finally {
         try {
-          await client.logout();
-        } catch (logoutErr) {
-          addLog({
-            level: "verbose",
-            source: "email",
-            message: "IMAP logout failed during cleanup.",
-            metadata: JSON.stringify({ channelId: channel.id, error: logoutErr instanceof Error ? logoutErr.message : String(logoutErr) }),
-          });
-        }
+          if (client.usable) await client.logout();
+        } catch { /* connection already closed */ }
       }
 
       if (connected) break;
