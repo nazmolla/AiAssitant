@@ -131,6 +131,7 @@ Begin your proactive scan now. Start by calling discovery tools on each connecte
 }
 
 let _cronJob: CronJob | null = null;
+let _scanRunning = false; // Mutex: prevent overlapping proactive scans
 const _proactiveSkipWarned = new Set<string>();
 const _emailConfigWarned = new Set<string>();
 
@@ -675,7 +676,12 @@ async function executeSchedulerTool(
 
   // Connected now: allow future disconnected warning if it drops again
   _proactiveSkipWarned.delete(toolName);
-  return { skipped: false, result: await mcpManager.callTool(toolName, args) };
+  const mcpPromise = mcpManager.callTool(toolName, args);
+  // Timeout MCP tool calls to prevent the scan from hanging forever
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`MCP tool "${toolName}" timed out after 60s`)), 60_000)
+  );
+  return { skipped: false, result: await Promise.race([mcpPromise, timeoutPromise]) };
 }
 
 /**
@@ -778,6 +784,26 @@ async function runDueScheduledTasks(
  * Run a single proactive scan cycle.
  */
 export async function runProactiveScan(): Promise<void> {
+  // ── Mutex: skip if a previous scan is still running ────────
+  if (_scanRunning) {
+    addLog({
+      level: "info",
+      source: "scheduler",
+      message: "Skipping proactive scan — previous scan still running.",
+      metadata: null,
+    });
+    return;
+  }
+  _scanRunning = true;
+
+  try {
+    await _runProactiveScanInner();
+  } finally {
+    _scanRunning = false;
+  }
+}
+
+async function _runProactiveScanInner(): Promise<void> {
   const digestByUser = new Map<string, SchedulerDigestItem[]>();
   const defaultAdminUserId = getDefaultAdminUserId();
 

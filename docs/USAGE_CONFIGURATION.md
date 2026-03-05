@@ -100,7 +100,7 @@ Setup:
 6. Click **Save Configuration**
 
 The local Whisper server must expose an OpenAI-compatible `/v1/audio/transcriptions` endpoint. Recommended servers:
-- **faster-whisper-server** — Python, CTranslate2 + CUDA, ideal for Jetson
+- **faster-whisper-server** — Python, CTranslate2 + CUDA, ideal for GPU devices
 - **whisper.cpp** — C++, CUDA support, lightweight
 
 ---

@@ -120,13 +120,13 @@ export function runLlmInWorker(
       fn();
     };
 
-    // Hard timeout: 120 seconds per LLM session
+    // Hard timeout: 300 seconds per LLM session (complex multi-tool conversations can be long)
     const timeout = setTimeout(() => {
       settle(() => {
         worker?.terminate();
-        reject(new Error("Agent worker timed out after 120s"));
+        reject(new Error("Agent worker timed out after 300s"));
       });
-    }, 120_000);
+    }, 300_000);
 
     worker.on("message", async (msg: {
       type: string;

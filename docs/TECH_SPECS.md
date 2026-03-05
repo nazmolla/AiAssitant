@@ -395,7 +395,7 @@ Routes **not** in the matcher (use their own auth):
 
 ## Attachment Processing & OOM Prevention
 
-Large file attachments are size-gated before being passed to the LLM to prevent heap exhaustion on memory-constrained devices (e.g. Jetson with ~1 GB available heap).
+Large file attachments are size-gated before being passed to the LLM to prevent heap exhaustion on memory-constrained devices (e.g. ARM SBCs with ~1 GB available heap).
 
 | Guard | Threshold | Behavior |
 |-------|-----------|----------|
@@ -423,13 +423,13 @@ Knowledge retrieval is gated to avoid unnecessary API calls and latency:
 
 ## Deployment
 
-Production deployment targets a Jetson Nano at `YOUR_SERVER_IP`.
+Production deployment targets a remote Linux host via SSH.
 
 | Step | Command | Details |
-|------|---------|---------|
+|------|---------|--------|
 | Build | `npx next build --webpack` | Turbopack is not supported (fails with `worker_threads` error). Webpack bundler required. |
-| Deploy | `bash deploy.sh YOUR_SERVER_IP jetson` | Automated: version bump → tests → build → tarball (DB excluded) → remote DB backup → upload → extract → npm install → restart → health check |
-| Verify | `curl -sk https://YOUR_SERVER_IP` | HTTP 200 confirms service is running |
+| Deploy | `bash deploy.sh <host> <user>` | Automated: version bump → tests → build → tarball (DB excluded) → remote DB backup → upload → extract → npm install → restart → health check |
+| Verify | `curl -sk https://<host>` | HTTP 200 confirms service is running |
 | Logs | `journalctl -u nexus-agent` | systemd service logs |
 
 **Deploy script design** (`deploy.sh`):

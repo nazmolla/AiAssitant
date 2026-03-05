@@ -11,6 +11,8 @@ declare global {
   var __nexus_bootstrapped: boolean | undefined;
    
   var __nexus_bgServicesPromise: Promise<void> | undefined;
+
+  var __nexus_errorHandlersInstalled: boolean | undefined;
 }
 
 async function connectConfiguredMcpServers(): Promise<void> {
@@ -94,6 +96,39 @@ export async function bootstrapRuntime(): Promise<void> {
 
   if (!globalThis.__nexus_bootstrapPromise) {
     globalThis.__nexus_bootstrapPromise = (async () => {
+      // ── Global error handlers ─────────────────────────────────
+      // Prevent unhandled errors from crashing the Node.js process.
+      // These fire from background tasks (cron, IMAP, MCP, workers).
+      if (!globalThis.__nexus_errorHandlersInstalled) {
+        process.on("uncaughtException", (err) => {
+          console.error("[Nexus] Uncaught exception (process survived):", err);
+          try {
+            addLog({
+              level: "error",
+              source: "process",
+              message: `Uncaught exception: ${err?.message || String(err)}`,
+              metadata: JSON.stringify({ stack: err?.stack }),
+            });
+          } catch { /* DB may be unavailable */ }
+        });
+
+        process.on("unhandledRejection", (reason) => {
+          const msg = reason instanceof Error ? reason.message : String(reason);
+          const stack = reason instanceof Error ? reason.stack : undefined;
+          console.error("[Nexus] Unhandled promise rejection (process survived):", reason);
+          try {
+            addLog({
+              level: "error",
+              source: "process",
+              message: `Unhandled promise rejection: ${msg}`,
+              metadata: JSON.stringify({ stack }),
+            });
+          } catch { /* DB may be unavailable */ }
+        });
+
+        globalThis.__nexus_errorHandlersInstalled = true;
+      }
+
       // Critical path: DB + scheduler only — fast, no network I/O
       initializeDatabase();
       startScheduler();

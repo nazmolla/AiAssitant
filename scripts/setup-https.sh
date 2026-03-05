@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════
 #  Nexus Agent — HTTPS Setup (nginx reverse proxy)
-#  Run on the Jetson: bash setup-https.sh
+#  Run on the server: bash setup-https.sh
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -14,8 +14,8 @@ sudo openssl req -x509 -nodes -days 3650 \
   -newkey rsa:2048 \
   -keyout /etc/nginx/ssl/nexus.key \
   -out /etc/nginx/ssl/nexus.crt \
-  -subj '/CN=YOUR_SERVER_IP/O=Nexus Agent/C=US' \
-  -addext 'subjectAltName=IP:YOUR_SERVER_IP'
+  -subj "/CN=$(hostname -I | awk '{print $1}')/O=Nexus Agent/C=US" \
+  -addext "subjectAltName=IP:$(hostname -I | awk '{print $1}')"
 echo "  Certificate: /etc/nginx/ssl/nexus.crt (10-year validity)"
 
 # 2. Write nginx config
@@ -83,7 +83,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 echo ""
 echo "=== HTTPS Setup Complete ==="
-echo "Access: https://YOUR_SERVER_IP"
+echo "Access: https://$(hostname -I | awk '{print $1}')"
 echo ""
 echo "NOTE: The certificate is self-signed. Browsers will show a warning."
 echo "Accept the certificate once to enable mic access (getUserMedia)."

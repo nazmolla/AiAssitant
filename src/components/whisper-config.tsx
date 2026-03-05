@@ -195,13 +195,13 @@ export function WhisperConfig() {
         <CardHeader>
           <CardTitle>Deployment Guide</CardTitle>
           <CardDescription>
-            How to set up a local Whisper server on your Jetson or Linux machine.
+            How to set up a local Whisper server on your Linux machine.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div style={{ fontSize: 14, lineHeight: 1.7 }}>
             <p style={{ marginBottom: 12 }}>
-              <strong>Option 1: faster-whisper-server (recommended for Jetson)</strong>
+              <strong>Option 1: faster-whisper-server (recommended for GPU devices)</strong>
             </p>
             <pre style={{
               background: "#1e1e1e",
@@ -264,7 +264,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=<user>
+User=<your-user>
 ExecStart=/usr/local/bin/faster-whisper-server \\
   --model large-v3 --host 0.0.0.0 --port 8083
 Restart=always

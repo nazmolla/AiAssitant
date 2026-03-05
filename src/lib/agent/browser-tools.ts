@@ -328,6 +328,21 @@ class BrowserSession {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private _page: Page | null = null;
+  private _lock: Promise<void> = Promise.resolve();
+
+  /** Serialize access to the browser session to prevent concurrent page mutations */
+  async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    let release: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const prev = this._lock;
+    this._lock = gate;
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release!();
+    }
+  }
 
   async getPage(): Promise<Page> {
     if (!this.browser || !this._page || this._page.isClosed()) {
@@ -518,6 +533,15 @@ export async function executeBrowserTool(
 ): Promise<unknown> {
   const session = getSession();
 
+  // Serialize browser operations to prevent concurrent page mutations
+  return session.withLock(() => _executeBrowserToolInner(session, name, args));
+}
+
+async function _executeBrowserToolInner(
+  session: BrowserSession,
+  name: string,
+  args: Record<string, unknown>
+): Promise<unknown> {
   switch (name) {
     // ── Navigate ────────────────────────────────────────────
     case "builtin.browser_navigate": {

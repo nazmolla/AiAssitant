@@ -47,7 +47,7 @@ Register the MCP server via the Nexus API or UI:
 
 - **Transport**: `stdio`
 - **Command**: `node`
-- **Args**: `["/home/<user>/AiAssistant/scripts/mcp-servers/youtube/index.js"]`
+- **Args**: `["<install-path>/scripts/mcp-servers/youtube/index.js"]`
 - **Env vars**:
   ```json
   {
@@ -60,14 +60,14 @@ Register the MCP server via the Nexus API or UI:
 Or via curl:
 
 ```bash
-curl -X POST http://YOUR_SERVER_IP:3000/api/mcp \
+curl -X POST http://<host>:3000/api/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "id": "youtube",
     "name": "YouTube",
     "transport": "stdio",
     "command": "node",
-    "args": ["/home/<user>/AiAssistant/scripts/mcp-servers/youtube/index.js"],
+    "args": ["<install-path>/scripts/mcp-servers/youtube/index.js"],
     "env_vars": {
       "YOUTUBE_CLIENT_ID": "...",
       "YOUTUBE_CLIENT_SECRET": "...",

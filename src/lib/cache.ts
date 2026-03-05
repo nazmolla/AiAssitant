@@ -11,7 +11,7 @@
  *     invalidation (default 60 seconds).
  *
  * This is NOT a distributed cache — it lives in the Node.js process memory.
- * That's fine for Nexus (single-process on Jetson Nano).
+ * That's fine for Nexus (single-process deployment).
  */
 
 export interface CacheEntry<T> {

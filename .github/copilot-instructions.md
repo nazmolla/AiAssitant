@@ -1,7 +1,16 @@
 # Copilot Project Rules — Nexus Agent
 
+## Credential & Secret Safety (ABSOLUTE — No Exceptions)
+- **NEVER read, display, print, log, or reference actual credential values** from `.env`, `production-backup/`, or any secret store. If a task requires checking that a secret exists, only confirm its presence — never show the value.
+- **NEVER write actual secrets** (API keys, tokens, passwords, encryption keys, DB secrets, NEXTAUTH_SECRET values, endpoints that reveal resource names) into documentation, code comments, commit messages, PR descriptions, logs, or any tracked file.
+- When documenting environment variables, use only placeholder values (e.g., `your-secret-here`, `<your-api-key>`, `***`).
+- If you accidentally read a secret file, do NOT repeat the values in your response. Acknowledge the file exists and move on.
+- The `production-backup/` directory contains live production secrets — treat it as read-forbidden unless explicitly asked to verify file existence only.
+- **NEVER hardcode server IPs, hostnames, or usernames** in documentation, code, or scripts. Always use generic placeholders (`<host>`, `<user>`, `YOUR_SERVER_IP`).
+- When running remote commands (SSH/SCP), never echo or log secrets. Use `--quiet` flags and redirect output away from secrets.
+
 ## Non-Negotiable Deployment Rules
-- **NEVER deploy manually.** Always use `deploy.sh` via Git Bash: `bash deploy.sh YOUR_SERVER_IP jetson`.
+- **NEVER deploy manually.** Always use `deploy.sh` via Git Bash: `bash deploy.sh <host> <user>`.
 - Do **NOT** manually create tarballs, scp files, or run remote commands for production deploys.
 - `deploy.sh` is the source of truth: version bump, tests, build, tarball (DB excluded), remote DB backup, upload/extract, dependency install, restart, and health verification.
 - The production database `nexus.db` must **never** be overwritten, copied, or transferred from local.
@@ -9,7 +18,7 @@
 ## Local Runtime Constraints
 - Do not run local servers for deployment purposes (`next dev`, `next start`).
 - You may run local server only for development/testing, then stop it immediately.
-- Production target is only Jetson at `YOUR_SERVER_IP:3000`.
+- Production target is the configured deploy host (see `deploy.sh` arguments).
 
 ## Required Validation Flow
 - Before deploy, run `npx jest --forceExit`.

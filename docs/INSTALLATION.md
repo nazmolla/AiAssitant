@@ -95,7 +95,7 @@ Use the project deployment script for production releases:
 bash deploy.sh <host> <user>
 
 # Example
-bash deploy.sh YOUR_SERVER_IP jetson
+bash deploy.sh <host> <user>
 ```
 
 The script performs: version bump → Jest tests → webpack build → gzip tarball (excluding DB/data) → remote DB backup → scp upload → extract → npm install → service restart → HTTPS health verification → DB integrity check.
@@ -174,7 +174,7 @@ cd whisper.cpp
 git checkout v1.5.5
 ```
 
-**GCC 8 on aarch64 (Jetson Nano):** Apply the NEON intrinsic patch first — GCC 8 has a bug where `vld1q_{s8,u8}_x{2,4}` returns `int` instead of the correct struct types. Upload and run `patch-whisper.py` from the repo root to fix this automatically.
+**GCC 8 on aarch64:** Apply the NEON intrinsic patch first — GCC 8 has a bug where `vld1q_{s8,u8}_x{2,4}` returns `int` instead of the correct struct types. Upload and run `patch-whisper.py` from the repo root to fix this automatically.
 
 ```bash
 make -j$(nproc) server

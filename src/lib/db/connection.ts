@@ -41,6 +41,7 @@ export function getDb(): Database.Database {
     _db = new Database(DB_PATH);
     _db.pragma("journal_mode = WAL");
     _db.pragma("foreign_keys = ON");
+    _db.pragma("busy_timeout = 5000");     // Wait up to 5s on DB lock instead of throwing SQLITE_BUSY
     // Performance pragmas
     _db.pragma("synchronous = NORMAL");   // Safe with WAL; avoids fsync per tx
     _db.pragma("cache_size = -64000");     // 64 MB page cache (default is 2 MB)

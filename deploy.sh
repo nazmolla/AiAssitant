@@ -65,6 +65,11 @@ echo ""
 echo "[4/7] Backing up remote database..."
 rcmd "cd ${REMOTE_DIR} && if [ -f nexus.db ]; then node -e 'try{require(\"better-sqlite3\")(\"./nexus.db\").pragma(\"wal_checkpoint(TRUNCATE)\");console.log(\"WAL checkpointed\")}catch(e){console.log(\"Checkpoint skipped\")}' 2>/dev/null; cp nexus.db nexus.db.backup_${TIMESTAMP}; ls -t nexus.db.backup_* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null; echo '  DB backed up'; else echo '  No existing DB'; fi" \
   || echo "  (fresh install — no remote dir)"
+
+# Capture pre-deploy DB metrics for post-deploy verification
+PRE_DB_SIZE=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
+PRE_KNOWLEDGE=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'SELECT COUNT(*) FROM user_knowledge'" || echo "0")
+echo "  Snapshot: $(( PRE_DB_SIZE / 1048576 )) MB, ${PRE_KNOWLEDGE} knowledge entries"
 echo ""
 
 # ── 4. Remote: stop server ────────────────────────────────────────
@@ -83,11 +88,25 @@ scp -o LogLevel=ERROR "${TAR_NAME}" "${REMOTE}:/tmp/${TAR_NAME}" 2>/dev/null \
 # Remove stale build artifacts (keep DB + data)
 rcmd "cd ${REMOTE_DIR} && rm -rf .next src/ public/"
 
+# Verify DB survived cleanup
+DB_CHECK=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
+if [ "${PRE_DB_SIZE}" -gt 1000000 ] && [ "${DB_CHECK}" != "${PRE_DB_SIZE}" ]; then
+  fail "DB file changed during cleanup! (was ${PRE_DB_SIZE}, now ${DB_CHECK})"
+fi
+
 # Protect DB, extract, restore permissions
 rcmd "cd ${REMOTE_DIR} && test -f nexus.db && chmod 444 nexus.db || true"
 rcmd "cd ${REMOTE_DIR} && tar xzf /tmp/${TAR_NAME} --exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm' && rm -f /tmp/${TAR_NAME}" \
   || fail "tar extraction failed"
 rcmd "cd ${REMOTE_DIR} && test -f nexus.db && chmod 664 nexus.db || true"
+
+# Verify DB survived extraction
+DB_CHECK=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
+if [ "${PRE_DB_SIZE}" -gt 1000000 ] && [ "${DB_CHECK}" != "${PRE_DB_SIZE}" ]; then
+  echo "  ✗ DB modified during extraction! Restoring from backup..."
+  rcmd "cd ${REMOTE_DIR} && cp nexus.db.backup_${TIMESTAMP} nexus.db && chmod 664 nexus.db"
+  fail "DB was modified during extraction — restored from backup"
+fi
 
 # Install production dependencies
 rcmd "cd ${REMOTE_DIR} && rm -rf node_modules && npm install --omit=dev --loglevel=error 2>&1 | tail -3" \
@@ -114,9 +133,23 @@ fi
 NGINX_CODE=$(rcmd "curl -sk -o /dev/null -w '%{http_code}' https://${HOST}" || echo "000")
 echo "  ✓ HTTPS proxy: ${NGINX_CODE}"
 
-# DB integrity check
-DB_RESULT=$(rcmd "cd ${REMOTE_DIR} && node -e 'var d=require(\"better-sqlite3\")(\"./nexus.db\");var u=d.prepare(\"SELECT count(*) as c FROM users\").get().c;var t=d.prepare(\"SELECT count(*) as c FROM sqlite_master\").get().c;console.log(\"tables=\"+t+\" users=\"+u);d.close()'" || echo "check failed")
-echo "  DB: ${DB_RESULT}"
+# DB integrity check: compare against pre-deploy snapshot
+POST_DB_SIZE=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
+POST_KNOWLEDGE=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'SELECT COUNT(*) FROM user_knowledge'" || echo "0")
+echo "  DB: $(( POST_DB_SIZE / 1048576 )) MB, ${POST_KNOWLEDGE} knowledge entries"
+
+if [ "${PRE_KNOWLEDGE}" -gt 100 ] && [ "${POST_KNOWLEDGE}" -lt "$((PRE_KNOWLEDGE / 2))" ]; then
+  echo ""
+  echo "  ✗ DATA LOSS DETECTED!"
+  echo "    Before: ${PRE_KNOWLEDGE} knowledge ($(( PRE_DB_SIZE / 1048576 )) MB)"
+  echo "    After:  ${POST_KNOWLEDGE} knowledge ($(( POST_DB_SIZE / 1048576 )) MB)"
+  echo "    Auto-restoring from backup_${TIMESTAMP}..."
+  rcmd "sudo systemctl stop nexus-agent"
+  rcmd "cd ${REMOTE_DIR} && cp nexus.db.backup_${TIMESTAMP} nexus.db"
+  rcmd "sudo systemctl start nexus-agent"
+  sleep 8
+  fail "Data loss detected — auto-restored from backup. Investigate before re-deploying."
+fi
 echo ""
 echo "═══ Deploy complete ═══"
 

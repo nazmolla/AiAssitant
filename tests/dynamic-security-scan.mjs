@@ -1,7 +1,7 @@
 /**
  * Dynamic Security Scan — API Key Authentication
  * 
- * Tests the production server at YOUR_SERVER_IP:3000 for security vulnerabilities
+ * Tests the production server for security vulnerabilities
  * in the new API key authentication system.
  * 
  * Run: node tests/dynamic-security-scan.mjs

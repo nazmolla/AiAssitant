@@ -1,6 +1,8 @@
 import { getDb } from "./connection";
 import { SCHEMA_SQL } from "./schema";
 import { encryptField, isEncrypted } from "./crypto";
+import fs from "fs";
+import path from "path";
 import { BUILTIN_WEB_TOOLS } from "@/lib/agent/web-tools";
 import { BUILTIN_BROWSER_TOOLS } from "@/lib/agent/browser-tools";
 import { BUILTIN_FS_TOOLS, FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
@@ -538,8 +540,36 @@ export function initializeDatabase(): void {
   ensureEmailToolPolicyDefaults();
   encryptExistingSecrets();
   revokeExpiredKeys();
+  warnIfDbShrunk();
   _dbInitialized = true;
   console.log("[Nexus DB] Schema initialized successfully.");
+}
+
+/**
+ * Compare current DB size against backups.
+ * If the DB is dramatically smaller than the largest backup,
+ * it may have been re-created from scratch — log a critical warning.
+ */
+function warnIfDbShrunk(): void {
+  try {
+    const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), "nexus.db");
+    const dbSize = fs.statSync(dbPath).size;
+    const dir = path.dirname(dbPath);
+    const base = path.basename(dbPath);
+    const backupSizes = fs.readdirSync(dir)
+      .filter(f => f.startsWith(`${base}.backup_`))
+      .map(f => { try { return fs.statSync(path.join(dir, f)).size; } catch { return 0; } })
+      .filter(s => s > 0);
+    if (backupSizes.length > 0) {
+      const largest = Math.max(...backupSizes);
+      if (largest > 50 * 1024 * 1024 && dbSize < largest * 0.1) {
+        console.error(
+          `[Nexus DB] ⚠ CRITICAL: DB is ${(dbSize / 1e6).toFixed(1)} MB ` +
+          `but largest backup is ${(largest / 1e6).toFixed(1)} MB — possible data loss!`
+        );
+      }
+    }
+  } catch { /* non-critical — don't block startup */ }
 }
 
 /** Clean up any API keys that have passed their expiry date. */
