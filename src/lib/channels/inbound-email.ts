@@ -59,12 +59,14 @@ export function summarizeInboundUnknownEmail(
   const securitySignal = detectSecuritySignal(joined);
   const systemSender = detectSystemSender(fromAddress);
 
-  const category: InboundUnknownEmailSummary["category"] = securitySignal
-    ? "security"
-    : systemSender
-      ? "system"
+  // System senders (no-reply@, noreply@, etc.) send automated notifications,
+  // not real threats — keep them low-priority even with security keywords.
+  const category: InboundUnknownEmailSummary["category"] = systemSender
+    ? "system"
+    : securitySignal
+      ? "security"
       : "general";
-  const level: NotificationLevel = securitySignal ? "high" : systemSender ? "low" : "medium";
+  const level: NotificationLevel = systemSender ? "low" : securitySignal ? "high" : "medium";
 
   const headline =
     category === "security"
