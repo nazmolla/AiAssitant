@@ -66,13 +66,7 @@ interface PendingFile {
   uploaded?: AttachmentMeta;
 }
 
-const ALLOWED_EXTENSIONS = [
-  ".jpg", ".jpeg", ".jfif", ".png", ".gif", ".webp", ".svg", ".heic", ".heif", ".avif", ".bmp", ".tif", ".tiff", ".dng", ".raw",
-  ".pdf", ".txt", ".csv", ".md", ".json", ".doc", ".docx", ".xls", ".xlsx",
-  ".mp4", ".webm", ".mov",
-];
-
-const ACCEPT_STRING = ALLOWED_EXTENSIONS.join(",");
+const ACCEPT_STRING = "*/*";
 
 /** Sanitize tool message content: hide raw screenshot paths when attachments are present */
 function sanitizeToolContent(content: string | null, hasAttachments: boolean): string {

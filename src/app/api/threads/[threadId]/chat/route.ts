@@ -16,7 +16,10 @@ const TEXT_MIME_TYPES = new Set([
   "text/plain",
   "text/csv",
   "text/markdown",
+  "text/html",
+  "text/xml",
   "application/json",
+  "application/xml",
   "image/svg+xml",
 ]);
 

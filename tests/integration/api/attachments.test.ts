@@ -108,9 +108,9 @@ describe("POST /api/attachments — upload", () => {
     expect(res.status).toBe(400);
   });
 
-  test("returns 400 for unsupported mime type", async () => {
+  test("accepts any mime type", async () => {
     const form = new FormData();
-    form.append("file", new Blob(["data"], { type: "application/x-executable" }), "malware.exe");
+    form.append("file", new Blob(["data"], { type: "application/x-executable" }), "test.bin");
     form.append("threadId", threadId);
 
     const req = new NextRequest("http://localhost/api/attachments", {
@@ -118,9 +118,9 @@ describe("POST /api/attachments — upload", () => {
       body: form,
     });
     const res = await uploadAttachment(req);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.error).toContain("Unsupported");
+    expect(data.filename).toBe("test.bin");
   });
 
   test("uploads a text file successfully", async () => {
