@@ -10,34 +10,24 @@
 
 import { CronJob } from "cron";
 import { getMcpManager } from "@/lib/mcp";
-import { createChatProvider } from "@/lib/llm";
 import { runAgentLoop } from "@/lib/agent";
 import {
   isBuiltinWebTool,
   executeBuiltinWebTool,
-  BUILTIN_WEB_TOOLS,
   isBrowserTool,
   executeBrowserTool,
-  BUILTIN_BROWSER_TOOLS,
   isFsTool,
   executeBuiltinFsTool,
-  BUILTIN_FS_TOOLS,
   isNetworkTool,
   executeBuiltinNetworkTool,
-  BUILTIN_NETWORK_TOOLS,
   isEmailTool,
   executeBuiltinEmailTool,
-  BUILTIN_EMAIL_TOOLS,
   isFileTool,
   executeBuiltinFileTool,
-  BUILTIN_FILE_TOOLS,
   isCustomTool,
   executeCustomTool,
-  getCustomToolDefinitions,
-  BUILTIN_TOOLMAKER_TOOLS,
   isAlexaTool,
   executeAlexaTool,
-  BUILTIN_ALEXA_TOOLS,
 } from "@/lib/agent";
 import { normalizeToolName } from "@/lib/agent/discovery";
 import {
@@ -60,8 +50,6 @@ import {
   updateChannelImapState,
   getAppConfig,
 } from "@/lib/db";
-import { ingestKnowledgeFromText } from "@/lib/knowledge";
-import { retrieveKnowledge } from "@/lib/knowledge/retriever";
 import { simpleParser } from "mailparser";
 import {
   buildThemedEmailBody,
@@ -74,65 +62,60 @@ import {
 import { summarizeInboundUnknownEmail } from "@/lib/channels/inbound-email";
 import { getUserNotificationLevel } from "@/lib/channels/notify";
 import type { NotificationLevel } from "@/lib/channels/notify";
-import type { ToolDefinition } from "@/lib/llm";
 
 /* ── Quiet Hours (no audio-producing tools) ────────────────────── */
 
 const QUIET_HOURS_START = 22; // 10 PM
 const QUIET_HOURS_END = 8;   // 8 AM
 
-const PROACTIVE_SYSTEM_PROMPT = `You are the Nexus proactive observer — an intelligent home and environment automation agent. You have access to all available tools and the owner's knowledge context.
+/**
+ * Build the proactive scan user message.
+ * This message is fed to the agent loop so the LLM can use tools in
+ * a multi-round conversation: discover → gather data → decide → act.
+ */
+function buildProactiveScanMessage(): string {
+  const now = new Date();
+  const quiet = isQuietHours();
+  const quietNote = quiet
+    ? `\n\n**QUIET HOURS ACTIVE (${QUIET_HOURS_START}:00–${QUIET_HOURS_END}:00)** — Do NOT use any audio-producing tools (announcements, TTS, playing media, increasing volume). Read-only queries and muting/lowering volume are fine.`
+    : "";
 
-Your mission: Make the owner's home smarter every day by discovering the environment, learning patterns, and taking proactive actions.
+  return `[Proactive Scan — ${now.toISOString()}]
 
-## Core Rules
-1. Analyze the data for anything noteworthy, urgent, or requiring the owner's attention.
-2. Always include a severity field with one of: "low", "medium", "high", "disaster".
-3. If a concrete action can be taken now, you MUST respond with a JSON object: { "action_needed": true, "severity": "low|medium|high|disaster", "tool": "tool_name", "args": {}, "reasoning": "why" }
-4. Use "disaster" ONLY for incidents that represent an IMMEDIATE THREAT to safety, security, or critical infrastructure — examples: security breach, gas leak, fire alarm, major service outage with data loss, critical system failure.
-5. Use "low|medium|high" for routine hiccups, missing data, transient API issues, temporary no-device states, or non-critical anomalies.
-6. CRITICAL — Smart home / IoT device events (lights, fans, thermostats, locks, speakers, plugs, sensors, cameras, etc.) are NEVER "disaster". Use "low" for routine state changes and status checks, "medium" for unexpected states or minor anomalies, "high" only when a device failure could have safety implications (e.g. a smoke detector going offline).
-7. Do NOT return "action needed" as narrative text without tool+args. Prefer executable actions over summaries.
-8. Only respond with { "action_needed": false, "severity": "low|medium|high|disaster", "summary": "brief note" } when there is truly no concrete action to execute.
-9. Consider the user's known preferences and context.
-10. Do NOT propose notification-channel tools (Discord/WhatsApp/Email/etc.) as remediation for transient tool/service failures. For failure-only signals, prefer no action_needed and summarize.
-11. Do NOT mention assumed delivery channels/platform choices in reasoning unless explicitly provided by trusted context.
+You are running as the Nexus proactive observer. This is an autonomous background scan — no human is in this conversation. Your job is to actively discover, monitor, and improve the owner's smart home and environment.
 
-## Smart Home & Environment Intelligence
-- Discover devices, services, and environmental data from all available MCP servers and built-in tools.
-- Learn from polled data to identify patterns (e.g. daily routines, energy usage trends, temperature patterns).
-- Suggest and execute automations: adjust lighting by time of day, set thermostats based on occupancy, announce reminders, manage devices proactively.
-- Use available Alexa tools for announcements, light control, volume, sensors, and DND management.
-- Combine data from multiple sources to make cross-service decisions (e.g. weather data + thermostat + schedule).
+## Your approach — Multi-round discovery
+Do NOT just look at your tools list and guess what's happening. You must ACTIVELY USE tools to gather real data:
 
-## Quiet Hours (${QUIET_HOURS_START}:00–${QUIET_HOURS_END}:00)
-During quiet hours, ALL audio-producing actions are blocked. This includes:
-- Announcements and text-to-speech
-- Playing media or music
-- Increasing device volume
-Do NOT propose these actions at night. Volume decreases and muting are still allowed. Read-only queries (sensor data, device status, music status) are fine.
+1. **Discover**: Call tools to list devices, get states, check sensors, query services. Start with broad discovery tools (e.g. list all devices, get entity states, check what's available in each connected service).
+2. **Gather**: Based on discovery results, call more specific tools to get detailed status, readings, or metrics that look interesting or need attention.
+3. **Analyze**: Compare what you found against the owner's known preferences, time of day, patterns, and common sense.
+4. **Act**: If something needs action — do it (or create an approval request for destructive actions). Examples: adjust thermostat, turn off forgotten lights, announce a reminder, send a notification.
+5. **Learn**: If you discover a recurring pattern that could benefit from a custom tool, create one using nexus_create_tool. If an existing custom tool has issues, update it with nexus_update_tool.
 
-## Self-Improvement via Custom Tool Creation
-You can create new custom tools when you identify a recurring need or automation opportunity that no existing tool covers. To do this, respond with:
-{ "action_needed": true, "severity": "low", "tool": "builtin.nexus_create_tool", "args": { "toolName": "descriptive_snake_case_name", "description": "What this tool does and when to use it", "inputSchema": { "type": "object", "properties": { ... }, "required": [...] }, "implementation": "async function body using args; can use fetch(), JSON, Math, Date, etc." }, "reasoning": "Why this new tool will improve automation" }
+## What to look for
+- Smart home device states (lights left on, thermostat settings, door/window sensors, media players)
+- Environmental data (temperature, humidity, weather, air quality)
+- Service health (MCP server connectivity, device online/offline status)
+- Opportunities for automation (time-based routines, energy savings, comfort optimization)
+- Anomalies or unexpected states (devices in wrong state for time of day, unusual readings)
+- Media server status, recently added content, playback state
+- Network device status
 
-Create new tools when:
-- You see a pattern that could be automated (e.g. a daily check that requires specific logic).
-- An external API could be polled or queried to enrich decisions.
-- A calculation or transformation is needed repeatedly across scans.
-- The owner's environment would benefit from a specialized monitoring tool.
+## Rules
+- Start by calling discovery/listing tools to see what's actually available — don't assume
+- If a tool fails or a service is disconnected, note it and move on — don't treat transient failures as disasters
+- Smart home / IoT events are NEVER "disaster" severity
+- Do NOT send notifications about tool failures or service hiccups
+- Combine data from multiple sources for cross-service intelligence (e.g. weather + thermostat + time of day)
+- If you find nothing actionable after gathering data, that's fine — just summarize what you checked${quietNote}
 
-Do NOT create tools that duplicate existing capabilities listed in [Available Tools].
-If a tool you previously created has bugs or needs improvements, use "builtin.nexus_update_tool" to fix its implementation instead of creating a new one.
-
-Always respond with valid JSON only.`;
+Begin your proactive scan now. Start by discovering what's available.`;
+}
 
 let _cronJob: CronJob | null = null;
 const _proactiveSkipWarned = new Set<string>();
 const _emailConfigWarned = new Set<string>();
-
-const MAX_KNOWLEDGE_CONTEXT_CHARS = 2000;
-const MAX_TOOLS_CATALOG_CHARS = 3000;
 
 const NOISY_BUILTIN_TOOLS = new Set([
   "builtin.alexa_announce",
@@ -161,15 +144,6 @@ export function isNoisyTool(toolName: string, args?: Record<string, unknown>): b
     return true;
   }
   return NOISY_TOOL_PATTERNS.test(toolName);
-}
-
-interface ProactiveAssessment {
-  action_needed?: boolean;
-  severity?: "low" | "medium" | "high" | "disaster";
-  tool?: string;
-  args?: Record<string, unknown>;
-  reasoning?: string;
-  summary?: string;
 }
 
 interface SchedulerDigestItem {
@@ -289,23 +263,6 @@ async function flushSchedulerDigestEmails(digestByUser: Map<string, SchedulerDig
   }
 }
 
-function isFailureDrivenAssessment(assessment: ProactiveAssessment): boolean {
-  const text = `${assessment.reasoning || ""} ${assessment.summary || ""}`.toLowerCase();
-  const failureSignals = [
-    "failed",
-    "failure",
-    "internal error",
-    "timeout",
-    "timed out",
-    "not connected",
-    "unavailable",
-    "connection refused",
-    "error",
-    "exception",
-  ];
-  return failureSignals.some((signal) => text.includes(signal));
-}
-
 function getToolServerId(qualifiedToolName: string): string | null {
   const dotIndex = qualifiedToolName.indexOf(".");
   if (dotIndex === -1) return null;
@@ -400,101 +357,6 @@ function buildGuardedInboundEmailPrompt(fromAddress: string, subject: string, bo
     safeBody || "(empty)",
     "<<<UNTRUSTED_EMAIL_BODY_END>>>",
   ].join("\n");
-}
-
-function parseAssessmentJson(raw: string): Record<string, unknown> | null {
-  const trimmed = raw.trim();
-  try {
-    return JSON.parse(trimmed) as Record<string, unknown>;
-  } catch {
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    if (fenced?.[1]) {
-      try {
-        return JSON.parse(fenced[1]) as Record<string, unknown>;
-      } catch {
-        // continue to object extraction
-      }
-    }
-    const first = trimmed.indexOf("{");
-    const last = trimmed.lastIndexOf("}");
-    if (first >= 0 && last > first) {
-      try {
-        return JSON.parse(trimmed.slice(first, last + 1)) as Record<string, unknown>;
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
-}
-
-function toProactiveAssessment(value: Record<string, unknown>): ProactiveAssessment {
-  const args =
-    value.args && typeof value.args === "object" && !Array.isArray(value.args)
-      ? (value.args as Record<string, unknown>)
-      : undefined;
-  const rawSeverity = typeof value.severity === "string" ? value.severity.toLowerCase() : "";
-  const severity: ProactiveAssessment["severity"] =
-    rawSeverity === "low" || rawSeverity === "medium" || rawSeverity === "high" || rawSeverity === "disaster"
-      ? rawSeverity
-      : undefined;
-
-  return {
-    action_needed: value.action_needed === true,
-    severity,
-    tool: typeof value.tool === "string" ? value.tool : undefined,
-    args,
-    reasoning: typeof value.reasoning === "string" ? value.reasoning : undefined,
-    summary: typeof value.summary === "string" ? value.summary : undefined,
-  };
-}
-
-/**
- * Tool-name prefixes for known low-risk categories (smart home, IoT).
- * Assessments for these tools are capped at "high" — never "disaster".
- */
-const LOW_RISK_TOOL_PREFIXES = [
-  "builtin.alexa_",
-  "builtin.smart_home_",
-  "builtin.iot_",
-  "builtin.hue_",
-  "builtin.nest_",
-  "builtin.ring_",
-];
-
-function isLowRiskTool(toolName: string): boolean {
-  const lower = toolName.toLowerCase();
-  return LOW_RISK_TOOL_PREFIXES.some((prefix) => lower.startsWith(prefix));
-}
-
-function normalizeAssessmentLevel(
-  assessment: ProactiveAssessment,
-  toolName?: string,
-): NotificationLevel {
-  const raw = assessment.severity || "high";
-  // Cap known low-risk tools (smart home / IoT) — they should never be "disaster"
-  if (raw === "disaster" && toolName && isLowRiskTool(toolName)) {
-    return "high";
-  }
-  return raw;
-}
-
-function buildAvailableToolsCatalog(mcpManager: ReturnType<typeof getMcpManager>): string {
-  const builtinDefs: ToolDefinition[] = [
-    ...BUILTIN_WEB_TOOLS,
-    ...BUILTIN_BROWSER_TOOLS,
-    ...BUILTIN_FS_TOOLS,
-    ...BUILTIN_NETWORK_TOOLS,
-    ...BUILTIN_EMAIL_TOOLS,
-    ...BUILTIN_FILE_TOOLS,
-    ...BUILTIN_TOOLMAKER_TOOLS,
-    ...BUILTIN_ALEXA_TOOLS,
-    ...getCustomToolDefinitions(),
-  ];
-  const mcpDefs = mcpManager.getAllTools();
-  const allDefs = [...builtinDefs, ...mcpDefs];
-  const lines = allDefs.map((t) => `- ${t.name}: ${(t.description || "").slice(0, 120)}`);
-  return truncateText(lines.join("\n"), MAX_TOOLS_CATALOG_CHARS);
 }
 
 async function pollEmailChannels(
@@ -919,127 +781,38 @@ export async function runProactiveScan(): Promise<void> {
     });
   }
 
-  // ── Phase: LLM-driven proactive planning ──────────────────────
-  // Instead of iterating pre-selected tools, give the LLM all available tools
-  // and context so it can plan which actions to take intelligently.
-  const toolsCatalog = buildAvailableToolsCatalog(mcpManager);
-  const knowledgeFacts = await retrieveKnowledge(
-    "proactive monitoring environment devices status priorities interests",
-    10
-  );
-  const knowledgeContext = truncateText(
-    knowledgeFacts.map((k) => `- ${k.entity} / ${k.attribute}: ${k.value}`).join("\n"),
-    MAX_KNOWLEDGE_CONTEXT_CHARS
-  );
-
+  // ── Phase: Multi-round proactive agent ─────────────────────────
+  // Spin up a full agent loop so the LLM can actively call tools,
+  // gather data, and decide on actions across multiple rounds.
   try {
-    const provider = createChatProvider();
-    const response = await provider.chat(
-      [
-        {
-          role: "user",
-          content: `[User Knowledge Context]\n${knowledgeContext || "(none)"}\n\n[Available Tools]\n${toolsCatalog}\n\nBased on the environment context and available tools, assess what proactive actions should be taken. Consider smart home devices, scheduled tasks, user preferences, and any patterns you can identify.`,
-        },
-      ],
+    const scanThread = createThread("[proactive-scan]", defaultAdminUserId);
+    const scanMessage = buildProactiveScanMessage();
+
+    const result = await runAgentLoop(
+      scanThread.id,
+      scanMessage,
       undefined,
-      PROACTIVE_SYSTEM_PROMPT
+      undefined,
+      undefined,
+      defaultAdminUserId
     );
 
-    if (response.content) {
-      await ingestKnowledgeFromText({
-        source: "proactive:assessment",
-        text: response.content,
-      });
-
-      const assessmentRaw = parseAssessmentJson(response.content);
-      if (assessmentRaw) {
-        const assessment = toProactiveAssessment(assessmentRaw);
-
-        if (assessment.action_needed) {
-          const actionTool = assessment.tool?.trim() || "unknown";
-          const actionArgs = assessment.args || {};
-          const reasoning = assessment.reasoning || "Proactive observer requested an action.";
-          const eventLevel = normalizeAssessmentLevel(assessment, actionTool);
-
-          if (isFailureDrivenAssessment(assessment)) {
-            addLog({
-              level: "info",
-              source: "scheduler",
-              message: `Suppressed failure-driven proactive notification for "${actionTool}"; recorded in logs only.`,
-              metadata: JSON.stringify({ tool: actionTool, reasoning }),
-            });
-          } else {
-            addLog({
-              level: "info",
-              source: "scheduler",
-              message: `Proactive action triggered [severity=${eventLevel}${eventLevel !== assessment.severity ? ` (capped from ${assessment.severity})` : ""}]: ${reasoning}`,
-              metadata: JSON.stringify({
-                ...assessment,
-                effectiveLevel: eventLevel,
-                capped: eventLevel !== assessment.severity,
-                tool: actionTool,
-                source: "proactive",
-              }),
-            });
-
-            const queuedTask = createScheduledTask({
-              userId: defaultAdminUserId,
-              taskName: `Proactive: ${actionTool}`,
-              frequency: "once",
-              intervalValue: 1,
-              nextRunAt: new Date().toISOString(),
-              scope: defaultAdminUserId ? "user" : "global",
-              source: "proactive",
-              taskPayload: JSON.stringify({
-                kind: "tool_call",
-                tool: actionTool,
-                args: actionArgs,
-                reasoning,
-                severity: eventLevel,
-              }),
-            });
-
-            addLog({
-              level: "info",
-              source: "scheduler",
-              message: `Queued proactive action as scheduled task [id=${queuedTask.id}] for "${actionTool}".`,
-              metadata: JSON.stringify({ taskId: queuedTask.id, tool: actionTool, severity: eventLevel, reasoning }),
-            });
-          }
-        } else {
-          addLog({
-            level: "info",
-            source: "scheduler",
-            message: `No proactive action needed: ${assessment.summary || "(no summary provided)"}`,
-            metadata: JSON.stringify({ assessment }),
-          });
-        }
-      } else {
-        addLog({
-          level: "warn",
-          source: "scheduler",
-          message: "Failed to parse LLM proactive assessment.",
-          metadata: JSON.stringify({ rawResponse: truncateText(response.content, 1000) }),
-        });
-      }
-    }
-  } catch (err) {
     addLog({
-      level: "error",
+      level: "info",
       source: "scheduler",
-      message: `Proactive planning failed: ${err}`,
-      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+      message: "Proactive agent scan completed.",
+      metadata: JSON.stringify({
+        threadId: scanThread.id,
+        toolsUsed: result.toolsUsed,
+        pendingApprovals: result.pendingApprovals,
+        responsePreview: (result.content || "").slice(0, 500),
+      }),
     });
-  }
-
-  // Process any immediate tasks queued by proactive assessments in this same cycle.
-  try {
-    await runDueScheduledTasks(digestByUser, defaultAdminUserId, mcpManager);
   } catch (err) {
     addLog({
       level: "error",
       source: "scheduler",
-      message: `Scheduled task follow-up run failed: ${err}`,
+      message: `Proactive agent scan failed: ${err}`,
       metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
     });
   }
