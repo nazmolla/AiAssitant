@@ -1,0 +1,14 @@
+{
+  "name": "youtube-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for YouTube Data API v3 — search, playlists, subscriptions, liked videos",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "auth": "node auth-setup.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "googleapis": "^144.0.0"
+  }
+}
