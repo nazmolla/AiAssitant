@@ -10,6 +10,9 @@ import type { ToolDefinition } from "@/lib/llm";
 /** Per-server connection timeout (ms). */
 const CONNECT_TIMEOUT_MS = 15_000;
 
+/** OpenAI API enforces max 64 characters for tool function names. */
+export const MAX_TOOL_NAME_LENGTH = 64;
+
 /** Race a promise against a timeout. */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -28,11 +31,43 @@ export interface ConnectedMcpServer {
 }
 
 /**
+ * Build a qualified tool name `serverId.toolName` that fits within
+ * MAX_TOOL_NAME_LENGTH. If the combined name exceeds the limit,
+ * truncate the tool-name portion. A reverse map is maintained so
+ * callTool can recover the original MCP tool name.
+ */
+export function qualifyToolName(
+  serverId: string,
+  toolName: string,
+  reverseMap: Map<string, string>,
+): string {
+  const qualified = `${serverId}.${toolName}`;
+  if (qualified.length <= MAX_TOOL_NAME_LENGTH) {
+    return qualified;
+  }
+  // Truncate tool-name portion: prefix.toolNameTrunc
+  const prefixLen = serverId.length + 1; // "serverId."
+  const maxToolLen = MAX_TOOL_NAME_LENGTH - prefixLen;
+  if (maxToolLen < 1) {
+    // Server ID itself is too long (shouldn't happen with UUIDs)
+    const truncated = qualified.substring(0, MAX_TOOL_NAME_LENGTH);
+    reverseMap.set(truncated, toolName);
+    return truncated;
+  }
+  const truncatedToolName = toolName.substring(0, maxToolLen);
+  const shortQualified = `${serverId}.${truncatedToolName}`;
+  reverseMap.set(shortQualified, toolName);
+  return shortQualified;
+}
+
+/**
  * MCP Manager: connects to configured MCP servers, discovers tools,
  * and provides a unified interface for tool invocation.
  */
 class McpManager {
   private connections = new Map<string, ConnectedMcpServer>();
+  /** Maps truncated qualified names back to original MCP tool names. */
+  private toolNameMap = new Map<string, string>();
 
   /**
    * Connect to all configured MCP servers from the database.
@@ -87,7 +122,7 @@ class McpManager {
 
               const oldCount = conn.tools.length;
               conn.tools = tools.map((t) => ({
-                name: `${server.id}.${t.name}`,
+                name: qualifyToolName(server.id, t.name, this.toolNameMap),
                 description: t.description || "",
                 inputSchema: (t.inputSchema as Record<string, unknown>) || {},
               }));
@@ -230,7 +265,7 @@ class McpManager {
     // Discover tools
     const toolsResult = await client.listTools();
     const tools: ToolDefinition[] = toolsResult.tools.map((t) => ({
-      name: `${server.id}.${t.name}`,
+      name: qualifyToolName(server.id, t.name, this.toolNameMap),
       description: t.description || "",
       inputSchema: (t.inputSchema as Record<string, unknown>) || {},
     }));
@@ -282,6 +317,7 @@ class McpManager {
   /**
    * Call a tool on the appropriate MCP server.
    * Tool names are prefixed with the server ID: `serverId.toolName`
+   * If the name was truncated during qualification, the reverse map resolves it.
    */
   async callTool(
     qualifiedName: string,
@@ -293,7 +329,9 @@ class McpManager {
     }
 
     const serverId = qualifiedName.substring(0, dotIndex);
-    const toolName = qualifiedName.substring(dotIndex + 1);
+    // Resolve truncated name back to original if needed
+    const toolName = this.toolNameMap.get(qualifiedName)
+      ?? qualifiedName.substring(dotIndex + 1);
 
     const conn = this.connections.get(serverId);
     if (!conn) {
