@@ -29,6 +29,7 @@ import {
   isAlexaTool,
   executeAlexaTool,
 } from "@/lib/agent";
+import { getCustomToolDefinitions } from "@/lib/agent/custom-tools";
 import { normalizeToolName } from "@/lib/agent/discovery";
 import {
   getToolPolicy,
@@ -72,20 +73,36 @@ const QUIET_HOURS_END = 8;   // 8 AM
  * Build the proactive scan user message.
  * This message is fed to the agent loop so the LLM can use tools in
  * a multi-round conversation: discover → gather data → decide → act.
+ *
+ * @param connectedServers  IDs of currently-connected MCP servers
+ * @param mcpToolCount      total number of MCP tools available
+ * @param customToolNames   names of agent-created custom tools
  */
-function buildProactiveScanMessage(): string {
+function buildProactiveScanMessage(
+  connectedServers: string[],
+  mcpToolCount: number,
+  customToolNames: string[]
+): string {
   const now = new Date();
   const quiet = isQuietHours();
   const quietNote = quiet
     ? `\n\n**QUIET HOURS ACTIVE (${QUIET_HOURS_START}:00–${QUIET_HOURS_END}:00)** — Do NOT use any audio-producing tools (announcements, TTS, playing media, increasing volume). Read-only queries and muting/lowering volume are fine.`
     : "";
 
+  const serverSection = connectedServers.length > 0
+    ? `\n\n## Connected MCP servers (USE THESE — they are your primary data sources)\n${connectedServers.map((s) => `- **${s}** (call tools prefixed with \`${s}.\`)`).join("\n")}\nTotal MCP tools available: ${mcpToolCount}`
+    : "\n\n## No MCP servers connected\nYou have no external service integrations right now. Focus on built-in tools (web search, network scan, file system, email).";
+
+  const customSection = customToolNames.length > 0
+    ? `\n\n## Custom tools you created previously\n${customToolNames.map((n) => `- ${n}`).join("\n")}\nConsider using these if relevant.`
+    : "";
+
   return `[Proactive Scan — ${now.toISOString()}]
 
-You are running as the Nexus proactive observer. This is an autonomous background scan — no human is in this conversation. Your job is to actively discover, monitor, and improve the owner's smart home and environment.
+You are running as the Nexus proactive observer. This is an autonomous background scan — no human is in this conversation. Your job is to actively discover, monitor, and improve the owner's smart home and environment.${serverSection}${customSection}
 
 ## Your approach — Multi-round discovery
-Do NOT just look at your tools list and guess what's happening. You must ACTIVELY USE tools to gather real data:
+You MUST call tools to do real work. A scan that does not call any tools is a FAILED scan. Follow these steps:
 
 1. **Discover**: Call tools to list devices, get states, check sensors, query services. Start with broad discovery tools (e.g. list all devices, get entity states, check what's available in each connected service).
 2. **Gather**: Based on discovery results, call more specific tools to get detailed status, readings, or metrics that look interesting or need attention.
@@ -103,14 +120,14 @@ Do NOT just look at your tools list and guess what's happening. You must ACTIVEL
 - Network device status
 
 ## Rules
-- Start by calling discovery/listing tools to see what's actually available — don't assume
+- **You MUST call at least one tool** — start by calling a listing/discovery tool from the connected MCP servers above
 - If a tool fails or a service is disconnected, note it and move on — don't treat transient failures as disasters
 - Smart home / IoT events are NEVER "disaster" severity
 - Do NOT send notifications about tool failures or service hiccups
 - Combine data from multiple sources for cross-service intelligence (e.g. weather + thermostat + time of day)
-- If you find nothing actionable after gathering data, that's fine — just summarize what you checked${quietNote}
+- After gathering data, ALWAYS provide a summary of what you found and any actions taken${quietNote}
 
-Begin your proactive scan now. Start by discovering what's available.`;
+Begin your proactive scan now. Start by calling discovery tools on each connected MCP server.`;
 }
 
 let _cronJob: CronJob | null = null;
@@ -799,17 +816,69 @@ export async function runProactiveScan(): Promise<void> {
   // Spin up a full agent loop so the LLM can actively call tools,
   // gather data, and decide on actions across multiple rounds.
   try {
+    const connectedServers = mcpManager.getConnectedServerIds();
+    const mcpTools = mcpManager.getAllTools();
+    const customTools = getCustomToolDefinitions();
+    const customToolNames = customTools.map((t) => t.name);
+
     const scanThread = createThread("[proactive-scan]", defaultAdminUserId);
-    const scanMessage = buildProactiveScanMessage();
+    const scanMessage = buildProactiveScanMessage(connectedServers, mcpTools.length, customToolNames);
+
+    addLog({
+      level: "thought",
+      source: "thought",
+      message: `[Proactive] Starting scan — ${connectedServers.length} MCP server(s) connected, ${mcpTools.length} tools available.`,
+      metadata: JSON.stringify({
+        connectedServers,
+        mcpToolCount: mcpTools.length,
+        customToolCount: customToolNames.length,
+      }),
+    });
+
+    // onStatus callback: log each agent step as a thought for dashboard visibility
+    const onStatus = (status: { step: string; detail?: string }) => {
+      addLog({
+        level: "thought",
+        source: "thought",
+        message: `[Proactive] ${status.step}${status.detail ? ` — ${status.detail}` : ""}`,
+        metadata: JSON.stringify({ threadId: scanThread.id, step: status.step, detail: status.detail }),
+      });
+    };
 
     const result = await runAgentLoop(
       scanThread.id,
       scanMessage,
-      undefined,
-      undefined,
-      undefined,
-      defaultAdminUserId
+      undefined,   // contentParts
+      undefined,   // attachments
+      undefined,   // continuation
+      defaultAdminUserId,
+      undefined,   // onMessage
+      onStatus,    // onStatus — logs proactive steps as thoughts
     );
+
+    // Log detailed scan results as thought
+    addLog({
+      level: "thought",
+      source: "thought",
+      message: result.toolsUsed.length > 0
+        ? `[Proactive] Scan complete — used ${result.toolsUsed.length} tool(s): ${result.toolsUsed.join(", ")}.`
+        : "[Proactive] Scan complete — no tools were called.",
+      metadata: JSON.stringify({
+        threadId: scanThread.id,
+        toolsUsed: result.toolsUsed,
+        pendingApprovals: result.pendingApprovals,
+      }),
+    });
+
+    // Log the actual response content so admins can see insights
+    if (result.content) {
+      addLog({
+        level: "thought",
+        source: "thought",
+        message: `[Proactive] Agent response:\n${result.content.slice(0, 2000)}`,
+        metadata: JSON.stringify({ threadId: scanThread.id, full: result.content.length <= 2000 }),
+      });
+    }
 
     addLog({
       level: "info",

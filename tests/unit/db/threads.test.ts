@@ -72,6 +72,25 @@ describe("Threads", () => {
     deleteThread(tempThread.id);
     expect(getThread(tempThread.id)).toBeUndefined();
   });
+
+  test("listThreads excludes proactive-scan threads", () => {
+    createThread("[proactive-scan]", userId);
+    createThread("[proactive-scan] 2025-01-01", userId);
+    const threads = listThreads(userId);
+    expect(threads.every((t) => !t.title?.startsWith("[proactive-scan]"))).toBe(true);
+  });
+
+  test("listThreads excludes scheduled threads", () => {
+    createThread("[scheduled] Daily Report", userId);
+    const threads = listThreads(userId);
+    expect(threads.every((t) => !t.title?.startsWith("[scheduled]"))).toBe(true);
+  });
+
+  test("listThreads without userId also excludes internal threads", () => {
+    const allThreads = listThreads();
+    expect(allThreads.every((t) => !t.title?.startsWith("[proactive-scan]"))).toBe(true);
+    expect(allThreads.every((t) => !t.title?.startsWith("[scheduled]"))).toBe(true);
+  });
 });
 
 describe("Messages", () => {
