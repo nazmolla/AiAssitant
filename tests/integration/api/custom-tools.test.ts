@@ -177,15 +177,34 @@ describe("PUT /api/config/custom-tools", () => {
     expect(res.status).toBe(404);
   });
 
-  test("returns 400 for missing enabled field", async () => {
+  test("updates tool implementation", async () => {
     setMockUser({ id: adminId, email: "admin-ct@example.com", role: "admin" });
     const req = new NextRequest("http://localhost/api/config/custom-tools", {
       method: "PUT",
-      body: JSON.stringify({ name: "custom.api_test_tool" }),
+      body: JSON.stringify({
+        name: "custom.api_test_tool",
+        implementation: "return { tripled: args.x * 3 };",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await PUT(req);
+    expect(res.status).toBe(200);
+  });
+
+  test("rejects invalid implementation on update", async () => {
+    setMockUser({ id: adminId, email: "admin-ct@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/config/custom-tools", {
+      method: "PUT",
+      body: JSON.stringify({
+        name: "custom.api_test_tool",
+        implementation: "const x = {{;",
+      }),
       headers: { "Content-Type": "application/json" },
     });
     const res = await PUT(req);
     expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/syntax/i);
   });
 });
 

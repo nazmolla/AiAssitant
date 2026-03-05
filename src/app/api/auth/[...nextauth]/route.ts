@@ -1,10 +1,21 @@
 import NextAuth from "next-auth";
 import type { NextAuthConfig } from "next-auth";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import MicrosoftEntraId from "next-auth/providers/microsoft-entra-id";
 import Google from "next-auth/providers/google";
 import { buildAuthConfig } from "@/lib/auth/auth";
 import { getEnabledAuthProviders } from "@/lib/db";
+
+// Actions that next-auth v5 does NOT support — client SDKs or older
+// integrations may still POST to these, producing noisy UnknownAction errors.
+const IGNORED_AUTH_ACTIONS = new Set(["_log"]);
+
+function isIgnoredAction(request: NextRequest): boolean {
+  // Path pattern: /api/auth/<action> — extract last segment
+  const segments = request.nextUrl.pathname.split("/").filter(Boolean);
+  const action = segments[segments.length - 1];
+  return IGNORED_AUTH_ACTIONS.has(action);
+}
 
 /**
  * Dynamic handler — rebuilds provider list from DB on each request
@@ -47,9 +58,11 @@ function buildHandlers() {
 }
 
 export function GET(request: NextRequest) {
+  if (isIgnoredAction(request)) return NextResponse.json({ ok: true });
   return buildHandlers().GET(request);
 }
 
 export function POST(request: NextRequest) {
+  if (isIgnoredAction(request)) return NextResponse.json({ ok: true });
   return buildHandlers().POST(request);
 }

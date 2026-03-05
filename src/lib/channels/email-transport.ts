@@ -250,6 +250,8 @@ export function createImapClient(cfg: EmailChannelConfig, secure: boolean): Imap
       pass: cfg.imapPass,
     },
     logger: false,
+    socketTimeout: 30_000,
+    emitLogs: false,
   });
 }
 

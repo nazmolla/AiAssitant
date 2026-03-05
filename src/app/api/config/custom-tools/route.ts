@@ -10,11 +10,12 @@ import {
   listCustomTools,
   createCustomToolRecord,
   updateCustomToolEnabled,
+  updateCustomToolRecord,
   deleteCustomToolRecord,
   getCustomTool,
   upsertToolPolicy,
 } from "@/lib/db/queries";
-import { loadCustomToolsFromDb } from "@/lib/agent/custom-tools";
+import { loadCustomToolsFromDb, validateImplementation } from "@/lib/agent/custom-tools";
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -49,12 +50,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "inputSchema must have type: 'object'" }, { status: 400 });
   }
 
-  // Validate code compiles
-  try {
-     
-    new Function("args", implementation);
-  } catch (err: any) {
-    return NextResponse.json({ error: `Syntax error in implementation: ${err.message}` }, { status: 400 });
+  // Validate code compiles and runs in sandbox
+  const validationError = validateImplementation(implementation);
+  if (validationError) {
+    return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
   const record = createCustomToolRecord({
@@ -84,13 +83,10 @@ export async function PUT(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
-  const { name, enabled } = body;
+  const { name, enabled, description, inputSchema, implementation } = body;
 
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
-  }
-  if (typeof enabled !== "boolean") {
-    return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 });
   }
 
   const existing = getCustomTool(name);
@@ -98,9 +94,40 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: `Tool "${name}" not found` }, { status: 404 });
   }
 
-  updateCustomToolEnabled(name, enabled);
-  loadCustomToolsFromDb();
+  // Simple toggle update
+  if (typeof enabled === "boolean" && !description && !inputSchema && !implementation) {
+    updateCustomToolEnabled(name, enabled);
+    loadCustomToolsFromDb();
+    return NextResponse.json({ ok: true });
+  }
 
+  // Full field update
+  const newDescription = typeof description === "string" ? description : existing.description;
+  const newInputSchema = (inputSchema && typeof inputSchema === "object") ? inputSchema : JSON.parse(existing.input_schema);
+  const newImplementation = typeof implementation === "string" ? implementation : existing.implementation;
+
+  if (inputSchema && (typeof newInputSchema !== "object" || newInputSchema.type !== "object")) {
+    return NextResponse.json({ error: "inputSchema must have type: 'object'" }, { status: 400 });
+  }
+
+  if (typeof implementation === "string") {
+    const validationError = validateImplementation(newImplementation);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
+    }
+  }
+
+  updateCustomToolRecord(name, {
+    description: newDescription,
+    inputSchema: JSON.stringify(newInputSchema),
+    implementation: newImplementation,
+  });
+
+  if (typeof enabled === "boolean") {
+    updateCustomToolEnabled(name, enabled);
+  }
+
+  loadCustomToolsFromDb();
   return NextResponse.json({ ok: true });
 }
 

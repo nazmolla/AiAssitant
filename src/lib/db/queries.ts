@@ -1313,6 +1313,17 @@ export function updateCustomToolEnabled(name: string, enabled: boolean): void {
     .run(enabled ? 1 : 0, name);
 }
 
+export function updateCustomToolRecord(
+  name: string,
+  fields: { description: string; inputSchema: string; implementation: string }
+): void {
+  getDb()
+    .prepare(
+      "UPDATE custom_tools SET description = ?, input_schema = ?, implementation = ? WHERE name = ?"
+    )
+    .run(fields.description, fields.inputSchema, fields.implementation, name);
+}
+
 export function deleteCustomToolRecord(name: string): void {
   getDb().prepare("DELETE FROM custom_tools WHERE name = ?").run(name);
 }

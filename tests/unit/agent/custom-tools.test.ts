@@ -7,6 +7,7 @@ import {
   executeCustomTool,
   getCustomToolDefinitions,
   loadCustomToolsFromDb,
+  validateImplementation,
   BUILTIN_TOOLMAKER_TOOLS,
 } from "@/lib/agent/custom-tools";
 import { createCustomToolRecord, getToolPolicy } from "@/lib/db/queries";
@@ -24,6 +25,7 @@ describe("isCustomTool", () => {
 
   test("recognises builtin toolmaker tools", () => {
     expect(isCustomTool("builtin.nexus_create_tool")).toBe(true);
+    expect(isCustomTool("builtin.nexus_update_tool")).toBe(true);
     expect(isCustomTool("builtin.nexus_list_custom_tools")).toBe(true);
     expect(isCustomTool("builtin.nexus_delete_custom_tool")).toBe(true);
   });
@@ -117,7 +119,7 @@ describe("executeCustomTool", () => {
     expect(policy!.is_proactive_enabled).toBe(0);
   });
 
-  test("create tool rejects duplicates", async () => {
+  test("create tool rejects duplicates with guidance to use update", async () => {
     await expect(
       executeCustomTool("builtin.nexus_create_tool", {
         toolName: "my_adder",
@@ -125,7 +127,7 @@ describe("executeCustomTool", () => {
         inputSchema: { type: "object", properties: {} },
         implementation: "return {};",
       })
-    ).rejects.toThrow(/already exists/);
+    ).rejects.toThrow(/already exists.*nexus_update_tool/);
   });
 
   test("execute custom tool runs sandboxed code", async () => {
@@ -137,6 +139,48 @@ describe("executeCustomTool", () => {
     await expect(
       executeCustomTool("custom.nonexistent_xyz", {})
     ).rejects.toThrow(/not found or is disabled/);
+  });
+
+  test("update tool modifies implementation", async () => {
+    const result = (await executeCustomTool("builtin.nexus_update_tool", {
+      toolName: "my_adder",
+      implementation: "return { product: args.a * args.b };",
+    })) as any;
+
+    expect(result.status).toBe("updated");
+    expect(result.fieldsUpdated).toContain("implementation");
+
+    // Verify the updated code runs
+    const execResult = (await executeCustomTool("custom.my_adder", { a: 3, b: 7 })) as any;
+    expect(execResult).toEqual({ product: 21 });
+  });
+
+  test("update tool modifies description", async () => {
+    const result = (await executeCustomTool("builtin.nexus_update_tool", {
+      toolName: "custom.my_adder",
+      description: "Multiply numbers",
+    })) as any;
+
+    expect(result.status).toBe("updated");
+    expect(result.fieldsUpdated).toContain("description");
+  });
+
+  test("update tool rejects bad implementation", async () => {
+    await expect(
+      executeCustomTool("builtin.nexus_update_tool", {
+        toolName: "my_adder",
+        implementation: "const x = {{;",
+      })
+    ).rejects.toThrow(/syntax/i);
+  });
+
+  test("update nonexistent tool throws with guidance", async () => {
+    await expect(
+      executeCustomTool("builtin.nexus_update_tool", {
+        toolName: "nonexistent_tool",
+        implementation: "return {};",
+      })
+    ).rejects.toThrow(/not found.*nexus_create_tool/);
   });
 
   test("delete tool removes it", async () => {
@@ -160,5 +204,33 @@ describe("executeCustomTool", () => {
     await expect(
       executeCustomTool("builtin.nexus_delete_custom_tool", { toolName: "nope" })
     ).rejects.toThrow(/not found/);
+  });
+});
+
+describe("validateImplementation", () => {
+  test("returns null for valid code", () => {
+    expect(validateImplementation("return { ok: true };")).toBeNull();
+  });
+
+  test("returns null for async code with fetch", () => {
+    expect(validateImplementation("const r = await fetch('http://example.com'); return { status: r.status };")).toBeNull();
+  });
+
+  test("returns error for syntax errors", () => {
+    const error = validateImplementation("const x = {{;");
+    expect(error).not.toBeNull();
+    expect(error).toMatch(/syntax/i);
+  });
+
+  test("returns error for code using unavailable globals like process", () => {
+    const error = validateImplementation("return process.env.SECRET;");
+    expect(error).not.toBeNull();
+    expect(error).toMatch(/not available in the sandbox/);
+  });
+
+  test("returns error for code using require", () => {
+    const error = validateImplementation("const fs = require('fs'); return fs;");
+    expect(error).not.toBeNull();
+    expect(error).toMatch(/not available in the sandbox/);
   });
 });

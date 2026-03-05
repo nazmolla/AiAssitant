@@ -488,7 +488,10 @@ function ensureChannelImapUidColumns(): void {
   }
 }
 
+let _dbInitialized = false;
+
 export function initializeDatabase(): void {
+  if (_dbInitialized) return;
   const db = getDb();
   db.exec(SCHEMA_SQL);
   ensureIdentityPasswordColumn();
@@ -510,6 +513,7 @@ export function initializeDatabase(): void {
   ensureEmailToolPolicyDefaults();
   encryptExistingSecrets();
   revokeExpiredKeys();
+  _dbInitialized = true;
   console.log("[Nexus DB] Schema initialized successfully.");
 }
 

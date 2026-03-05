@@ -112,6 +112,7 @@ Create new tools when:
 - The owner's environment would benefit from a specialized monitoring tool.
 
 Do NOT create tools that duplicate existing capabilities listed in [Available Tools].
+If a tool you previously created has bugs or needs improvements, use "builtin.nexus_update_tool" to fix its implementation instead of creating a new one.
 
 Always respond with valid JSON only.`;
 
@@ -635,12 +636,16 @@ async function pollEmailChannels(
           let lastUid = imapState.lastImapUid;
           if (mailboxUidValidity !== imapState.lastImapUidvalidity) {
             lastUid = 0;
-            addLog({
-              level: "info",
-              source: "email",
-              message: `UIDVALIDITY changed for channel "${channel.label}" (${imapState.lastImapUidvalidity} → ${mailboxUidValidity}); resetting UID cursor.`,
-              metadata: JSON.stringify({ channelId: channel.id }),
-            });
+            // Only log when transitioning from a non-zero value (genuine server-side UID rebuild).
+            // The initial 0→N transition is just the first sync and not noteworthy.
+            if (imapState.lastImapUidvalidity !== 0) {
+              addLog({
+                level: "info",
+                source: "email",
+                message: `UIDVALIDITY changed for channel "${channel.label}" (${imapState.lastImapUidvalidity} → ${mailboxUidValidity}); resetting UID cursor.`,
+                metadata: JSON.stringify({ channelId: channel.id }),
+              });
+            }
           }
 
           // Build search criteria: unseen + newer than our last UID
@@ -1008,7 +1013,7 @@ export async function runProactiveScan(): Promise<void> {
       if (pollArgs === null) {
         if (!_proactivePollArgWarned.has(policy.tool_name)) {
           addLog({
-            level: "warn",
+            level: "verbose",
             source: "scheduler",
             message: `Skipping proactive poll for "${policy.tool_name}": required input arguments are unavailable in current proactive context.`,
             metadata: JSON.stringify({ toolName: policy.tool_name }),
