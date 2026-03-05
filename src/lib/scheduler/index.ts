@@ -454,6 +454,13 @@ async function pollEmailChannels(
 
           let highestUid = lastUid;
 
+          // Helper: mark message as seen (best-effort, non-fatal)
+          const markSeen = async (uid: number) => {
+            try {
+              await client.messageFlagsAdd(uid, ["\\Seen"], { uid: true });
+            } catch { /* Gmail may reject flag changes; UID tracking is the real guard */ }
+          };
+
           for await (const msg of client.fetch(unseen, { uid: true, envelope: true, source: true }, { uid: true })) {
             try {
               // Track the highest UID we process
@@ -467,7 +474,7 @@ async function pollEmailChannels(
               const textBody = (parsed.text || parsed.html || "").toString().trim();
 
               if (!fromAddress) {
-                await client.messageFlagsAdd(msg.uid, ["\\Seen"], { uid: true });
+                await markSeen(msg.uid);
                 continue;
               }
 
@@ -507,7 +514,7 @@ async function pollEmailChannels(
                     }),
                   });
                 }
-                await client.messageFlagsAdd(msg.uid, ["\\Seen"], { uid: true });
+                await markSeen(msg.uid);
                 continue;
               }
 
@@ -543,7 +550,7 @@ async function pollEmailChannels(
                 });
               }
 
-              await client.messageFlagsAdd(msg.uid, ["\\Seen"], { uid: true });
+              await markSeen(msg.uid);
             } catch (messageErr) {
               addLog({
                 level: "error",
@@ -551,11 +558,18 @@ async function pollEmailChannels(
                 message: `Failed processing inbound email on channel "${channel.label}": ${messageErr}`,
                 metadata: JSON.stringify({ channelId: channel.id }),
               });
+            } finally {
+              // Persist UID after EACH message so a mid-fetch disconnect
+              // doesn't cause already-processed messages to re-appear.
+              if (highestUid > lastUid) {
+                updateChannelImapState(channel.id, highestUid, mailboxUidValidity);
+                lastUid = highestUid;
+              }
             }
           }
 
-          // Persist the highest UID we successfully saw so next poll skips them
-          if (highestUid > lastUid || mailboxUidValidity !== imapState.lastImapUidvalidity) {
+          // Final update for UIDVALIDITY changes with no new messages above lastUid
+          if (mailboxUidValidity !== imapState.lastImapUidvalidity) {
             updateChannelImapState(channel.id, highestUid, mailboxUidValidity);
           }
         } finally {
