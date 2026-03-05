@@ -29,11 +29,12 @@ import {
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { channelId: string } }
+  { params }: { params: Promise<{ channelId: string }> }
 ) {
-  const channel = getChannel(params.channelId);
+  const { channelId } = await params;
+  const channel = getChannel(channelId);
   if (!channel) {
-    addLog({ level: "warning", source: "api.channel.webhook", message: "Webhook rejected: channel not found.", metadata: JSON.stringify({ channelId: params.channelId }) });
+    addLog({ level: "warning", source: "api.channel.webhook", message: "Webhook rejected: channel not found.", metadata: JSON.stringify({ channelId }) });
     return NextResponse.json({ error: "Channel not found" }, { status: 404 });
   }
   if (!channel.enabled) {

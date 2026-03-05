@@ -4,12 +4,13 @@ import { getThread, getThreadMessages, deleteThread } from "@/lib/db";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { threadId: string } }
+  { params }: { params: Promise<{ threadId: string }> }
 ) {
+  const { threadId } = await params;
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  const thread = getThread(params.threadId);
+  const thread = getThread(threadId);
   if (!thread) {
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
   }
@@ -18,18 +19,19 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const messages = getThreadMessages(params.threadId);
+  const messages = getThreadMessages(threadId);
   return NextResponse.json({ thread, messages });
 }
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { threadId: string } }
+  { params }: { params: Promise<{ threadId: string }> }
 ) {
+  const { threadId } = await params;
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  const thread = getThread(params.threadId);
+  const thread = getThread(threadId);
   if (!thread) {
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
   }
@@ -37,6 +39,6 @@ export async function DELETE(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  deleteThread(params.threadId);
+  deleteThread(threadId);
   return NextResponse.json({ success: true });
 }

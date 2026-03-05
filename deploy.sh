@@ -26,7 +26,7 @@ npx jest --no-cache --silent 2>&1 | tail -3
 echo ""
 
 echo "[2/7] Building Next.js..."
-npx next build 2>&1 | grep -E "✓|error|Error" | head -10
+npx next build --webpack 2>&1 | grep -E "✓|error|Error" | head -10
 echo ""
 
 # ── Step 2: Create deploy tarball (NEVER include DB files) ────────

@@ -11,8 +11,9 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { serverId: string } }
+  { params }: { params: Promise<{ serverId: string }> }
 ) {
+  const { serverId } = await params;
   // Require authentication on the callback
   const user = await getAuthenticatedUser();
   if (!user) {
@@ -37,12 +38,12 @@ export async function GET(
   }
 
   // Validate state
-  const storedState = req.cookies.get(`mcp_oauth_state_${params.serverId}`)?.value;
+  const storedState = req.cookies.get(`mcp_oauth_state_${serverId}`)?.value;
   if (!storedState || storedState !== state) {
     return uiRedirect(`oauth_error=${encodeURIComponent("Invalid OAuth state (CSRF check failed)")}`);
   }
 
-  const server = getMcpServer(params.serverId);
+  const server = getMcpServer(serverId);
   if (!server) {
     return uiRedirect(`oauth_error=${encodeURIComponent("Server not found")}`);
   }
@@ -57,7 +58,7 @@ export async function GET(
     const baseUrl = `${serverUrl.protocol}//${serverUrl.host}`;
     const tokenUrl = `${baseUrl}/auth/token`;
 
-    const redirectUri = `${appBaseUrl}/api/mcp/${params.serverId}/oauth/callback`;
+    const redirectUri = `${appBaseUrl}/api/mcp/${serverId}/oauth/callback`;
     const clientId = server.client_id || appBaseUrl;
 
     // Exchange authorization code for access token
@@ -94,9 +95,9 @@ export async function GET(
 
     // Clear the state cookie
     const response = uiRedirect(
-      `oauth_server_id=${params.serverId}&oauth_token=ok`
+      `oauth_server_id=${serverId}&oauth_token=ok`
     );
-    response.cookies.delete(`mcp_oauth_state_${params.serverId}`);
+    response.cookies.delete(`mcp_oauth_state_${serverId}`);
     return response;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

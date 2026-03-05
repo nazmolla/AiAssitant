@@ -113,6 +113,18 @@ async function run() {
     const r = await req("/api/admin/api-keys");
     assert(r.status === 401, "Unauthenticated GET /api/admin/api-keys → 401");
   }
+  {
+    const r = await req("/api/audio/transcribe", { method: "POST" });
+    assert(r.status === 401, "Unauthenticated POST /api/audio/transcribe → 401");
+  }
+  {
+    const r = await req("/api/conversation/respond", { method: "POST" });
+    assert(r.status === 401, "Unauthenticated POST /api/conversation/respond → 401");
+  }
+  {
+    const r = await req("/api/notifications");
+    assert(r.status === 401, "Unauthenticated GET /api/notifications → 401");
+  }
 
   // ─── 2. Invalid bearer tokens ───────────────────────────────
   console.log("\n▸ Invalid bearer tokens");

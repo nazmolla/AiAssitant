@@ -236,7 +236,7 @@ async function createCustomTool(args: Record<string, unknown>): Promise<unknown>
 
   // Validate the implementation compiles
   try {
-    // eslint-disable-next-line no-new
+     
     new Function("args", implementation);
   } catch (err: any) {
     throw new Error(`Implementation code has syntax errors: ${err.message}`);

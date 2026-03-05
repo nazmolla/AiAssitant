@@ -14,8 +14,8 @@ const nextConfig = {
     NEXT_PUBLIC_APP_VERSION: pkg.version,
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
   },
+  serverExternalPackages: ['better-sqlite3', 'discord.js', '@discordjs/ws', '@discordjs/rest', 'ssh2', 'worker_threads'],
   experimental: {
-    serverComponentsExternalPackages: ['better-sqlite3', 'discord.js', '@discordjs/ws', '@discordjs/rest', 'ssh2'],
     serverActions: {
       bodySizeLimit: '4mb',
     },

@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   // Validate code compiles
   try {
-    // eslint-disable-next-line no-new
+     
     new Function("args", implementation);
   } catch (err: any) {
     return NextResponse.json({ error: `Syntax error in implementation: ${err.message}` }, { status: 400 });

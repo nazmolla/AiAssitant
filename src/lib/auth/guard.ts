@@ -1,7 +1,6 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { authOptions } from "./options";
+import { auth } from "./auth";
 import { bootstrapRuntime } from "@/lib/bootstrap";
 import {
   isUserEnabled,
@@ -26,7 +25,7 @@ export interface AuthenticatedUser {
  */
 export async function getOwnerSession() {
   await runtimeReady;
-  return getServerSession(authOptions);
+  return auth();
 }
 
 // ─── API Key resolution ──────────────────────────────────────
@@ -79,7 +78,7 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
   await runtimeReady;
 
   // 1. Try session-based auth (cookies)
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (session?.user) {
     const user = session.user as Record<string, unknown>;
     const id = user.id as string | undefined;
