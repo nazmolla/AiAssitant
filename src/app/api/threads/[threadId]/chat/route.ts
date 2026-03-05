@@ -11,6 +11,11 @@ export const dynamic = "force-dynamic";
 
 const ATTACHMENTS_DIR = pathMod.join(process.cwd(), "data", "attachments");
 
+/** Max text file size (bytes) to inline directly; larger files are referenced by path */
+const MAX_INLINE_TEXT_BYTES = 512 * 1024; // 512 KB
+/** Max image file size (bytes) to inline as base64; larger images are referenced by path */
+const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+
 /** MIME types we can read as UTF-8 text and pass directly to the LLM */
 const TEXT_MIME_TYPES = new Set([
   "text/plain",
@@ -108,21 +113,44 @@ export async function POST(
       const fileExists = fs.existsSync(filePath);
 
       if (att.mimeType.startsWith("image/") && fileExists) {
-        // Read image from disk → base64 data URI (LLM can't fetch private network URLs)
-        const buf = fs.readFileSync(filePath);
-        const b64 = buf.toString("base64");
-        const dataUri = `data:${att.mimeType};base64,${b64}`;
-        contentParts.push({
-          type: "image_url",
-          image_url: { url: dataUri, detail: "auto" },
-        });
+        if (att.sizeBytes <= MAX_INLINE_IMAGE_BYTES) {
+          // Read image from disk → base64 data URI (LLM can't fetch private network URLs)
+          const buf = fs.readFileSync(filePath);
+          const b64 = buf.toString("base64");
+          const dataUri = `data:${att.mimeType};base64,${b64}`;
+          contentParts.push({
+            type: "image_url",
+            image_url: { url: dataUri, detail: "auto" },
+          });
+        } else {
+          // Image too large to inline — let the agent read it via tool
+          const absPath = pathMod.resolve(filePath);
+          contentParts.push({
+            type: "text",
+            text: `📎 Image: "${att.filename}" (${att.mimeType}, ${(att.sizeBytes / 1024 / 1024).toFixed(1)} MB — too large to inline)\nStored at: ${absPath}\nUse the fs_read_file tool with this path to access the image.`,
+          });
+        }
       } else if (TEXT_MIME_TYPES.has(att.mimeType) && fileExists) {
-        // Text-based file: read content and pass directly to LLM
-        const textContent = fs.readFileSync(filePath, "utf-8");
-        contentParts.push({
-          type: "text",
-          text: `📎 File: ${att.filename}\n\`\`\`\n${textContent}\n\`\`\``,
-        });
+        if (att.sizeBytes <= MAX_INLINE_TEXT_BYTES) {
+          // Text-based file: read content and pass directly to LLM
+          const textContent = fs.readFileSync(filePath, "utf-8");
+          contentParts.push({
+            type: "text",
+            text: `📎 File: ${att.filename}\n\`\`\`\n${textContent}\n\`\`\``,
+          });
+        } else {
+          // Large text file — inline a preview, reference the full file by path
+          const fd = fs.openSync(filePath, "r");
+          const buf = Buffer.alloc(2048);
+          const bytesRead = fs.readSync(fd, buf, 0, 2048, 0);
+          fs.closeSync(fd);
+          const preview = buf.toString("utf-8", 0, bytesRead);
+          const absPath = pathMod.resolve(filePath);
+          contentParts.push({
+            type: "text",
+            text: `📎 File: "${att.filename}" (${att.mimeType}, ${(att.sizeBytes / 1024).toFixed(0)} KB — too large to inline fully)\nPreview (first 2 KB):\n\`\`\`\n${preview}\n\`\`\`\nFull file stored at: ${absPath}\nUse the fs_read_file tool with this path to read more content.`,
+          });
+        }
       } else if (fileExists) {
         // Binary document (.docx, .pdf, .xlsx, etc.): tell the agent where it is on disk
         const absPath = pathMod.resolve(filePath);
