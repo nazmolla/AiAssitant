@@ -7,12 +7,13 @@ export const dynamic = "force-dynamic";
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { serverId: string } }
+  { params }: { params: Promise<{ serverId: string }> }
 ) {
+  const { serverId } = await params;
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
-  const server = getMcpServer(params.serverId);
+  const server = getMcpServer(serverId);
   if (!server) {
     return NextResponse.json({ error: "MCP server not found." }, { status: 404 });
   }
@@ -49,12 +50,13 @@ export async function POST(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { serverId: string } }
+  { params }: { params: Promise<{ serverId: string }> }
 ) {
+  const { serverId } = await params;
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
   const mcpManager = getMcpManager();
-  await mcpManager.disconnect(params.serverId);
+  await mcpManager.disconnect(serverId);
   return NextResponse.json({ success: true });
 }

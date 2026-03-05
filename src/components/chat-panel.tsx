@@ -469,7 +469,7 @@ export function ChatPanel() {
         sendMessageRef.current?.();
       }, 50);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [transcribing]);
 
   // Ref to sendMessage for use in audio mode callbacks

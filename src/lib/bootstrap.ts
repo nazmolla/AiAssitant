@@ -5,11 +5,11 @@ import { startDiscordBot } from "@/lib/channels/discord";
 import { loadCustomToolsFromDb } from "@/lib/agent/custom-tools";
 
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __nexus_bootstrapPromise: Promise<void> | undefined;
-  // eslint-disable-next-line no-var
+   
   var __nexus_bootstrapped: boolean | undefined;
-  // eslint-disable-next-line no-var
+   
   var __nexus_bgServicesPromise: Promise<void> | undefined;
 }
 

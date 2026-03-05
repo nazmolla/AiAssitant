@@ -12,12 +12,13 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { serverId: string } }
+  { params }: { params: Promise<{ serverId: string }> }
 ) {
+  const { serverId } = await params;
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
-  const server = getMcpServer(params.serverId);
+  const server = getMcpServer(serverId);
   if (!server) {
     return NextResponse.json({ error: "MCP server not found." }, { status: 404 });
   }
@@ -33,7 +34,7 @@ export async function GET(
 
   // Build our callback URL
   const appBaseUrl = new URL(req.url).origin;
-  const redirectUri = `${appBaseUrl}/api/mcp/${params.serverId}/oauth/callback`;
+  const redirectUri = `${appBaseUrl}/api/mcp/${serverId}/oauth/callback`;
 
   // Client ID: use stored client_id, or default to our app's base URL (IndieAuth convention)
   const clientId = server.client_id || appBaseUrl;
@@ -49,7 +50,7 @@ export async function GET(
   authUrl.searchParams.set("state", state);
 
   const response = NextResponse.redirect(authUrl.toString());
-  response.cookies.set(`mcp_oauth_state_${params.serverId}`, state, {
+  response.cookies.set(`mcp_oauth_state_${serverId}`, state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     maxAge: 600, // 10 minutes

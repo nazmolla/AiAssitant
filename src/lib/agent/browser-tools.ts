@@ -853,7 +853,7 @@ export async function executeBrowserTool(
       const page = await session.getPage();
       const result = await page.evaluate((code: string) => {
         try {
-          // eslint-disable-next-line no-eval
+           
           return eval(code);
         } catch (e: any) {
           return `Error: ${e.message}`;

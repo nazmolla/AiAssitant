@@ -9,15 +9,16 @@ const ALLOWED_SUBDIRS = ["attachments", "screenshots"];
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
+  const { path: pathSegments } = await params;
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  const relativePath = params.path.join("/");
+  const relativePath = pathSegments.join("/");
 
   // Only allow known subdirectories (attachments, screenshots)
-  const firstSegment = params.path[0];
+  const firstSegment = pathSegments[0];
   let resolvedPath: string;
 
   if (ALLOWED_SUBDIRS.includes(firstSegment)) {
@@ -36,8 +37,8 @@ export async function GET(
 
   // Verify thread ownership — prevent IDOR (reading another user's attachments)
   // The thread ID is the first path segment after the optional subdir prefix
-  const pathSegments = ALLOWED_SUBDIRS.includes(firstSegment) ? params.path.slice(1) : params.path;
-  const threadIdSegment = pathSegments[0];
+  const ownershipSegments = ALLOWED_SUBDIRS.includes(firstSegment) ? pathSegments.slice(1) : pathSegments;
+  const threadIdSegment = ownershipSegments[0];
   if (threadIdSegment) {
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (UUID_RE.test(threadIdSegment)) {

@@ -1,4 +1,4 @@
-import { withAuth } from "next-auth/middleware";
+import { getToken } from "next-auth/jwt";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -29,20 +29,9 @@ setInterval(() => {
   });
 }, 300_000);
 
-const authMiddleware = withAuth({
-  callbacks: {
-    authorized: ({ token }) => {
-      if (!token) return false;
-      // Multi-user: any authenticated user with a userId is allowed
-      const userId = (token as Record<string, unknown>).userId;
-      return !!userId;
-    },
-  },
-});
-
 export async function middleware(req: NextRequest) {
   // --- Rate limiting (applied to all matched routes) ---
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.ip || "unknown";
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   if (isRateLimited(ip)) {
     return NextResponse.json(
       { error: "Too many requests. Please slow down." },
@@ -50,38 +39,33 @@ export async function middleware(req: NextRequest) {
     );
   }
 
-  // --- API-key bearer tokens bypass NextAuth session middleware ---
+  // --- API-key bearer tokens bypass session auth ---
   // Requests carrying `Authorization: Bearer nxk_...` are validated later
   // in the route-level guards (guard.ts) — let them through here.
   const authHeader = req.headers.get("authorization") ?? "";
   const isApiKeyRequest = authHeader.toLowerCase().startsWith("bearer nxk_");
 
   if (isApiKeyRequest) {
-    // Skip NextAuth middleware entirely — the route guard will validate the key.
     return NextResponse.next();
   }
 
-  // --- For API routes: return proper 401 JSON instead of sign-in page redirect ---
+  // --- Check auth via JWT token (Edge-compatible, no DB access needed) ---
   const isApiRoute = req.nextUrl.pathname.startsWith("/api/");
 
-  // Run the NextAuth middleware
-  const response = await (authMiddleware as any)(req, {} as any);
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const userId = (token as Record<string, unknown> | null)?.userId;
 
-  // If NextAuth wants to redirect (unauthenticated) and this is an API route,
-  // return a JSON 401 instead of an HTML redirect.
-  if (isApiRoute && response instanceof Response) {
-    const status = response.status;
-    const location = response.headers.get("location");
-    // NextAuth returns 302 redirect to sign-in for unauthenticated requests
-    if ((status === 302 || status === 307) && location) {
+  if (!token || !userId) {
+    if (isApiRoute) {
       return NextResponse.json(
         { error: "Authentication required" },
         { status: 401 }
       );
     }
+    return NextResponse.redirect(new URL("/auth/signin", req.url));
   }
 
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {
@@ -95,5 +79,8 @@ export const config = {
     "/api/config/:path*",
     "/api/attachments/:path*",
     "/api/admin/:path*",
+    "/api/audio/:path*",
+    "/api/conversation/:path*",
+    "/api/notifications",
   ],
 };

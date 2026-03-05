@@ -22,12 +22,13 @@ const TEXT_MIME_TYPES = new Set([
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { threadId: string } }
+  { params }: { params: Promise<{ threadId: string }> }
 ) {
+  const { threadId } = await params;
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  const thread = getThread(params.threadId);
+  const thread = getThread(threadId);
   if (!thread) {
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
   }
@@ -172,7 +173,7 @@ export async function POST(
     (async () => {
       try {
         const response = await runAgentLoopWithWorker(
-          params.threadId,
+          threadId,
           message || "(see attached files)",
           contentParts,
           attachments,

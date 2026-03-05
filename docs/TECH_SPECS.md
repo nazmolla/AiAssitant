@@ -347,7 +347,7 @@ Multi-layered defense against prompt injection across all input vectors:
 |----------------|-------|
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
-| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `camera=(), microphone=(self), geolocation=(), interest-cohort=()` |
 | `X-DNS-Prefetch-Control` | `off` |
@@ -359,6 +359,20 @@ IP-based sliding-window rate limiter in middleware:
 - **120 requests/minute** per IP on all protected API routes
 - Returns `429 Too Many Requests` with `Retry-After: 60` header when exceeded
 - Stale entries auto-cleaned every 5 minutes
+
+**Middleware matcher** — routes covered by rate limiting + JWT auth:
+
+```
+/api/threads/*      /api/approvals/*    /api/knowledge/*
+/api/mcp/*          /api/policies/*     /api/logs/*
+/api/config/*       /api/attachments/*  /api/admin/*
+/api/audio/*        /api/conversation/* /api/notifications
+```
+
+Routes **not** in the matcher (use their own auth):
+- `/api/channels/[channelId]/webhook` — authenticates via webhook secret (`timingSafeEqual`)
+- `/api/client-error` — intentionally unauthenticated (error boundary fires before session)
+- `/api/auth/*` — NextAuth endpoints (handle their own auth flows)
 
 ### Authentication Responses
 
