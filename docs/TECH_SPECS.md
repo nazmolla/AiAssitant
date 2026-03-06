@@ -496,7 +496,7 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**1206 tests across 94 suites** — all passing.
+**1216 tests across 95 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|

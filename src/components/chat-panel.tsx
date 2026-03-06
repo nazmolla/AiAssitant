@@ -146,6 +146,24 @@ export function ChatPanel() {
   const [resolvedApprovals, setResolvedApprovals] = useState<Record<string, string>>({});
   const [showSidebar, setShowSidebar] = useState(true);
 
+  // Debounced thread fetch — deduplicates concurrent calls and collapses rapid invocations
+  const threadFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const threadFetchInFlightRef = useRef<Promise<void> | null>(null);
+  const fetchThreadsDebounced = useCallback((immediate = false) => {
+    if (threadFetchTimerRef.current) clearTimeout(threadFetchTimerRef.current);
+    const doFetch = () => {
+      if (threadFetchInFlightRef.current) return; // already in-flight — skip
+      const p = fetch("/api/threads")
+        .then((r) => r.json())
+        .then((d) => { if (Array.isArray(d)) setThreads(d); })
+        .catch(console.error)
+        .finally(() => { threadFetchInFlightRef.current = null; });
+      threadFetchInFlightRef.current = p;
+    };
+    if (immediate) { doFetch(); return; }
+    threadFetchTimerRef.current = setTimeout(doFetch, 400);
+  }, []);
+
   // Screen sharing state
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [screenSharing, setScreenSharing] = useState(false);
@@ -558,13 +576,11 @@ export function ChatPanel() {
     return () => document.removeEventListener("visibilitychange", onVisChange);
   }, []);
 
-  // Fetch threads
+  // Fetch threads on mount
   useEffect(() => {
-    fetch("/api/threads")
-      .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d)) setThreads(d); })
-      .catch(console.error);
-  }, []);
+    fetchThreadsDebounced(true);
+    return () => { if (threadFetchTimerRef.current) clearTimeout(threadFetchTimerRef.current); };
+  }, [fetchThreadsDebounced]);
 
   // Fetch messages when thread changes — abort any in-flight SSE from the previous thread
   useEffect(() => {
@@ -594,10 +610,7 @@ export function ChatPanel() {
           .catch(console.error);
       }
       // Refresh thread list (status may have changed)
-      fetch("/api/threads")
-        .then((r) => r.json())
-        .then((d) => { if (Array.isArray(d)) setThreads(d); })
-        .catch(console.error);
+      fetchThreadsDebounced();
     }
     window.addEventListener("approval-resolved", handleApprovalResolved);
     return () => window.removeEventListener("approval-resolved", handleApprovalResolved);
@@ -699,7 +712,7 @@ export function ChatPanel() {
         const threadData = await threadRes.json();
         setMessages(threadData.messages || []);
       }
-      fetch("/api/threads").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setThreads(d); }).catch(console.error);
+      fetchThreadsDebounced();
 
       // Notify other components (approval inbox, dashboard)
       window.dispatchEvent(new CustomEvent("approval-resolved", { detail: data }));
@@ -889,7 +902,7 @@ export function ChatPanel() {
                 });
               } else if (currentEvent === "done") {
                 // Agent loop completed — refresh thread list for auto-generated title
-                fetch("/api/threads").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setThreads(d); }).catch(console.error);
+                fetchThreadsDebounced();
 
                 // Audio mode: speak the full streamed response
                 if (audioModeRef.current && audioModeTtsQueue.current.trim()) {
