@@ -13,7 +13,9 @@ interface SemanticMatch {
 
 // ─── Parsed Embedding Cache ──────────────────────────────────
 // Avoids re-parsing JSON on every search call. Invalidated after a
-// configurable TTL (30 s) so newly ingested knowledge is picked up.
+// configurable TTL (300 s) so newly ingested knowledge is picked up.
+// Explicit invalidation via invalidateEmbeddingCache() on ingestion
+// ensures new entries are visible immediately despite the longer TTL.
 interface EmbeddingCacheEntry {
   vectors: Map<number, number[]>;   // knowledge_id → parsed vector
   timestamp: number;
@@ -21,7 +23,7 @@ interface EmbeddingCacheEntry {
 }
 
 let _embeddingCache: EmbeddingCacheEntry | null = null;
-const EMBEDDING_CACHE_TTL_MS = 30_000; // 30 seconds
+const EMBEDDING_CACHE_TTL_MS = 300_000; // 300 seconds (5 min)
 
 function getCachedEmbeddings(userId?: string): Map<number, number[]> {
   const now = Date.now();

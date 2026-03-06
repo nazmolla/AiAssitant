@@ -238,6 +238,8 @@ The `status` events provide transparency into the agent's internal process for *
 
 **Embedding Result Cache** (`src/lib/llm/embeddings.ts`): A module-level LRU `Map` caches generated embeddings keyed by a SHA-256 hash of the query text. TTL is 1 hour, max 500 entries with LRU eviction (oldest-insertion evicted when full). Identical queries across users or repeated knowledge retrievals return cached embeddings without an API call (100-500 ms savings per hit). `invalidateEmbeddingCache()` clears all entries.
 
+**Parsed Vault Embedding Cache** (`src/lib/knowledge/retriever.ts`): A module-level cache stores parsed embedding vectors (JSON → `number[]`) keyed by user. TTL is **300 seconds** (5 min, increased from 30s in PERF-03) to reduce redundant JSON parsing of the entire vault on every search call. Explicit invalidation via `invalidateEmbeddingCache()` on knowledge ingestion ensures new entries are visible immediately despite the longer TTL.
+
 Previously, `selectProvider()` called `listLlmProviders()` (full table scan + decryption) on every request — now cached. Similarly, `getUserById()` and `listToolPolicies()` were called per-request for role checks and tool filtering — now cached. Auth lookups (`getUserByEmail`, `getUserByExternalSub`) use a 5-minute TTL to avoid DB hits on every login/OAuth flow; all user mutation paths invalidate the by-id, by-email, and by-sub caches atomically.
 
 **Event Loop Yield Points**: Because `better-sqlite3` is synchronous, the agent loop uses `await yieldLoop()` (backed by `setImmediate()`) at critical points to prevent blocking the Node.js event loop:
