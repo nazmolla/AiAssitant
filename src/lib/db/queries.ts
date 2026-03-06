@@ -28,12 +28,22 @@ export function getUserById(id: string): UserRecord | undefined {
   );
 }
 
+const AUTH_CACHE_TTL_MS = 300_000; // 5 minutes
+
 export function getUserByEmail(email: string): UserRecord | undefined {
-  return stmt("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(email) as UserRecord | undefined;
+  return appCache.get(
+    `${CACHE_KEYS.USER_BY_EMAIL_PREFIX}${email.toLowerCase()}`,
+    () => stmt("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(email) as UserRecord | undefined,
+    AUTH_CACHE_TTL_MS
+  );
 }
 
 export function getUserByExternalSub(subId: string): UserRecord | undefined {
-  return stmt("SELECT * FROM users WHERE external_sub_id = ?").get(subId) as UserRecord | undefined;
+  return appCache.get(
+    `${CACHE_KEYS.USER_BY_SUB_PREFIX}${subId}`,
+    () => stmt("SELECT * FROM users WHERE external_sub_id = ?").get(subId) as UserRecord | undefined,
+    AUTH_CACHE_TTL_MS
+  );
 }
 
 export function createUser(args: {
@@ -70,6 +80,7 @@ export function createUser(args: {
 
 export function updateUserPassword(userId: string, passwordHash: string): void {
   getDb().prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, userId);
+  invalidateUserCaches(userId);
 }
 
 export function listUsers(): UserRecord[] {
@@ -148,12 +159,12 @@ export function getUserPermissions(userId: string): UserPermissions | undefined 
 export function updateUserRole(userId: string, role: string): void {
   if (!["admin", "user"].includes(role)) throw new Error("Invalid role");
   getDb().prepare("UPDATE users SET role = ? WHERE id = ?").run(role, userId);
-  appCache.invalidate(`${CACHE_KEYS.USER_PREFIX}${userId}`);
+  invalidateUserCaches(userId);
 }
 
 export function updateUserEnabled(userId: string, enabled: boolean): void {
   getDb().prepare("UPDATE users SET enabled = ? WHERE id = ?").run(enabled ? 1 : 0, userId);
-  appCache.invalidate(`${CACHE_KEYS.USER_PREFIX}${userId}`);
+  invalidateUserCaches(userId);
 }
 
 export function updateUserPermissions(userId: string, perms: Partial<Omit<UserPermissions, "user_id">>): void {
@@ -174,14 +185,32 @@ export function updateUserPermissions(userId: string, perms: Partial<Omit<UserPe
 }
 
 export function deleteUser(userId: string): void {
+  // Capture email/sub before deletion so we can invalidate their cache entries
+  const existing = getUserById(userId);
   getDb().prepare("DELETE FROM users WHERE id = ?").run(userId);
-  appCache.invalidate(`${CACHE_KEYS.USER_PREFIX}${userId}`);
+  invalidateUserCaches(userId, existing);
   appCache.invalidate(`${CACHE_KEYS.PROFILE_PREFIX}${userId}`);
 }
 
 export function isUserEnabled(userId: string): boolean {
-  const row = stmt("SELECT enabled FROM users WHERE id = ?").get(userId) as { enabled?: number } | undefined;
-  return (row?.enabled ?? 1) === 1;
+  const user = getUserById(userId);
+  return ((user as unknown as { enabled?: number })?.enabled ?? 1) === 1;
+}
+
+/**
+ * Invalidate all cache entries related to a user (by-id, by-email, by-sub).
+ * If `known` is provided, uses it to build the email/sub keys; otherwise
+ * reads the current record from the by-id cache before clearing it.
+ */
+function invalidateUserCaches(userId: string, known?: UserRecord): void {
+  const user = known ?? getUserById(userId);
+  appCache.invalidate(`${CACHE_KEYS.USER_PREFIX}${userId}`);
+  if (user?.email) {
+    appCache.invalidate(`${CACHE_KEYS.USER_BY_EMAIL_PREFIX}${user.email.toLowerCase()}`);
+  }
+  if (user?.external_sub_id) {
+    appCache.invalidate(`${CACHE_KEYS.USER_BY_SUB_PREFIX}${user.external_sub_id}`);
+  }
 }
 
 // â”€â”€â”€ Identity (legacy â€” kept for backward compat) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

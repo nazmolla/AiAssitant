@@ -5,17 +5,20 @@ import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db
 import {
   getUserById,
   getUserByEmail,
+  getUserByExternalSub,
   createUser,
   listUsers,
   getUserCount,
   updateUserRole,
   updateUserEnabled,
+  updateUserPassword,
   isUserEnabled,
   deleteUser,
   updateUserPermissions,
   getUserPermissions,
   listUsersWithPermissions,
 } from "@/lib/db/queries";
+import { appCache } from "@/lib/cache";
 
 beforeAll(() => setupTestDb());
 afterAll(() => teardownTestDb());
@@ -190,5 +193,99 @@ describe("User Permissions", () => {
       expect(u.permissions).toBeDefined();
       expect(typeof u.permissions.chat).toBe("number");
     }
+  });
+});
+
+describe("Auth query caching & invalidation", () => {
+  let userId: string;
+  const email = "cache-test@example.com";
+
+  beforeAll(() => {
+    const user = createUser({
+      email,
+      providerId: "local",
+      externalSubId: "ext-sub-cache-test",
+      role: "admin",
+    });
+    userId = user.id;
+  });
+
+  beforeEach(() => {
+    appCache.invalidateAll();
+  });
+
+  test("getUserByEmail returns cached result on second call", () => {
+    const first = getUserByEmail(email);
+    const second = getUserByEmail(email);
+    expect(first).toEqual(second);
+    // Both should be the same reference (cache hit)
+    expect(first).toBe(second);
+  });
+
+  test("getUserByExternalSub returns cached result on second call", () => {
+    const first = getUserByExternalSub("ext-sub-cache-test");
+    const second = getUserByExternalSub("ext-sub-cache-test");
+    expect(first).toEqual(second);
+    expect(first).toBe(second);
+  });
+
+  test("updateUserRole invalidates email and sub caches", () => {
+    const before = getUserByEmail(email);
+    expect(before!.role).toBe("admin");
+
+    updateUserRole(userId, "user");
+    const after = getUserByEmail(email);
+    expect(after!.role).toBe("user");
+    // Should not be the same reference — cache was invalidated
+    expect(after).not.toBe(before);
+
+    // Restore
+    updateUserRole(userId, "admin");
+  });
+
+  test("updateUserEnabled invalidates email cache", () => {
+    getUserByEmail(email); // warm cache
+    updateUserEnabled(userId, false);
+
+    const after = getUserByEmail(email);
+    expect(isUserEnabled(userId)).toBe(false);
+
+    updateUserEnabled(userId, true);
+  });
+
+  test("updateUserPassword invalidates user caches", () => {
+    const before = getUserByEmail(email);
+    updateUserPassword(userId, "new-hash-123");
+
+    const after = getUserByEmail(email);
+    expect(after!.password_hash).toBe("new-hash-123");
+    expect(after).not.toBe(before);
+  });
+
+  test("deleteUser invalidates all user cache entries", () => {
+    const tempUser = createUser({
+      email: "cache-del@example.com",
+      providerId: "local",
+      externalSubId: "ext-del-test",
+    });
+
+    // Warm all caches
+    getUserByEmail("cache-del@example.com");
+    getUserByExternalSub("ext-del-test");
+    getUserById(tempUser.id);
+
+    deleteUser(tempUser.id);
+
+    expect(getUserById(tempUser.id)).toBeUndefined();
+    expect(getUserByEmail("cache-del@example.com")).toBeUndefined();
+    expect(getUserByExternalSub("ext-del-test")).toBeUndefined();
+  });
+
+  test("getUserByEmail cache is case-insensitive", () => {
+    const lower = getUserByEmail(email);
+    appCache.invalidateAll();
+    const upper = getUserByEmail(email.toUpperCase());
+    // Both should resolve the same user (COLLATE NOCASE)
+    expect(lower!.id).toBe(upper!.id);
   });
 });
