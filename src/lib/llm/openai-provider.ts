@@ -106,14 +106,20 @@ export class OpenAIChatProvider implements ChatProvider {
       }
     }
 
-    const oaiTools: OpenAI.ChatCompletionTool[] | undefined = tools?.map((t) => ({
-      type: "function" as const,
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.inputSchema as Record<string, unknown>,
-      },
-    }));
+    // Build sanitized-name → original-name mapping for reverse lookup
+    const nameMap = new Map<string, string>();
+    const oaiTools: OpenAI.ChatCompletionTool[] | undefined = tools?.map((t) => {
+      const safeName = sanitizeToolName(t.name);
+      if (safeName !== t.name) nameMap.set(safeName, t.name);
+      return {
+        type: "function" as const,
+        function: {
+          name: safeName,
+          description: t.description,
+          parameters: sanitizeToolSchema(t.inputSchema),
+        },
+      };
+    });
 
     const disableThinking = this.disableThinkingByDefault || !!requestOptions?.disableThinking;
 
@@ -178,7 +184,7 @@ export class OpenAIChatProvider implements ChatProvider {
 
       const toolCalls = Array.from(toolCallsMap.values()).map((tc) => ({
         id: tc.id,
-        name: tc.name,
+        name: nameMap.get(tc.name) || tc.name,
         arguments: JSON.parse(tc.arguments || "{}"),
       }));
 
@@ -217,7 +223,7 @@ export class OpenAIChatProvider implements ChatProvider {
         ?.filter((tc): tc is OpenAI.ChatCompletionMessageFunctionToolCall => tc.type === "function")
         .map((tc) => ({
           id: tc.id,
-          name: tc.function.name,
+          name: nameMap.get(tc.function.name) || tc.function.name,
           arguments: JSON.parse(tc.function.arguments || "{}"),
         })) || [];
 
@@ -236,6 +242,36 @@ function isUnsupportedThinkParamError(err: unknown): boolean {
     msg.includes("invalid") && msg.includes("think") ||
     msg.includes("unsupported") && msg.includes("think")
   );
+}
+
+/**
+ * Sanitize a tool name to comply with the OpenAI function-calling spec:
+ * must match ^[a-zA-Z0-9_-]+$ (max 64 chars).
+ * MCP tools use dots (server.tool) — replace with underscores.
+ */
+export function sanitizeToolName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+}
+
+/**
+ * Sanitize a tool's inputSchema so strict OpenAI-compatible APIs (e.g. DeepSeek)
+ * don't reject it with 422.  Ensures `type: "object"` is present and strips
+ * top-level keys that some providers choke on.
+ */
+export function sanitizeToolSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const cleaned = { ...schema };
+  // Must have type: "object" — empty schemas ({}) are invalid
+  if (!cleaned.type) {
+    cleaned.type = "object";
+  }
+  // Ensure properties exists (some providers require it)
+  if (!cleaned.properties) {
+    cleaned.properties = {};
+  }
+  // Strip keys that strict providers reject
+  delete cleaned.$schema;
+  delete cleaned.additionalProperties;
+  return cleaned;
 }
 
 function toOpenAIPart(part: ContentPart): OpenAI.ChatCompletionContentPart {
