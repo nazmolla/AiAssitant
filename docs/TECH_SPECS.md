@@ -418,7 +418,7 @@ Large file attachments are size-gated before being passed to the LLM to prevent 
 
 Knowledge retrieval is gated to avoid unnecessary API calls and latency:
 
-1. **Empty vault skip** — `hasKnowledgeEntries(userId)` checks the in-memory embedding cache (30s TTL, SQLite-backed). If the user has no knowledge entries, retrieval is skipped entirely — no status event, no embedding API call.
+1. **Empty vault skip** — `hasKnowledgeEntries(userId)` checks the in-memory embedding cache (300s TTL, SQLite-backed). If the user has no knowledge entries, retrieval is skipped entirely — no status event, no embedding API call.
 2. **Cache-first semantic search** — `semanticSearch()` loads cached embeddings **before** calling `generateEmbedding()`. If the cache is empty, the expensive embedding API call is skipped.
 3. **Minimum similarity threshold** — `MIN_SIMILARITY = 0.25` filters out low-relevance matches (e.g. "hello" vs. random knowledge entries).
 4. **Keyword fallback** — If semantic search returns fewer than the requested limit, keyword-based `LIKE` search fills the remaining slots.
@@ -495,11 +495,11 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**1160 tests across 90 suites** — all passing.
+**1173 tests across 91 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|
-| Unit | ~63 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards, knowledge retrieval, inbound email classification, attachment size guards, embedding cache, provider cache, auth cache, decrypted row cache |
+| Unit | ~64 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards, knowledge retrieval, inbound email classification, attachment size guards, embedding cache, provider cache, auth cache, decrypted row cache, vault embedding cache |
 | Integration | ~6 | End-to-end API flows, MCP integration, channel routing, SSE concurrency & disconnect safety |
 | Component | ~10 | Full navigation (every page + settings sub-page), component rendering, settings panel, tool policies, profile config, markdown rendering, TTS-to-listening transitions, interrupt / barge-in |
 
