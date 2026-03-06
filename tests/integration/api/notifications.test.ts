@@ -14,6 +14,7 @@ import {
   createNotification,
   createApprovalRequest,
   createThread,
+  updateThreadStatus,
 } from "@/lib/db/queries";
 
 let adminId: string;
@@ -57,6 +58,7 @@ describe("GET /api/notifications", () => {
   test("includes pending approvals for admin users", async () => {
     setMockUser({ id: adminId, email: "admin-notif@test.com", role: "admin" });
     const thread = createThread("test thread", adminId);
+    updateThreadStatus(thread.id, "awaiting_approval");
     createApprovalRequest({
       thread_id: thread.id,
       tool_name: "test_tool",

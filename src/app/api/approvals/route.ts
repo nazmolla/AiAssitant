@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { listPendingApprovals, getApprovalById, updateApprovalStatus, updateThreadStatus, getThreadMessages, addMessage, getThread, addLog } from "@/lib/db";
+import { listPendingApprovals, listPendingApprovalsForUser, cleanStaleApprovals, getApprovalById, updateApprovalStatus, updateThreadStatus, getThreadMessages, addMessage, getThread, addLog } from "@/lib/db";
 import { executeApprovedTool, continueAgentLoop } from "@/lib/agent";
 import { executeProactiveApprovedTool } from "@/lib/scheduler";
 import type { ToolCall } from "@/lib/llm";
@@ -11,41 +11,17 @@ export async function GET() {
 
   const all = listPendingApprovals();
 
-  // Clean up stale approvals: auto-reject entries whose thread no longer exists
-  // or whose thread is no longer awaiting_approval (i.e. the action is no longer
-  // blocking anything — these are not actionable).
-  // Proactive approvals (thread_id === null) are always actionable since they
-  // originate from the scheduler and have no associated chat thread.
-  const actionable: typeof all = [];
-  for (const a of all) {
-    if (!a.thread_id) {
-      // Proactive scheduler approval — no thread needed, always actionable
-      actionable.push(a);
-      continue;
-    }
-    const thread = getThread(a.thread_id);
-    if (!thread) {
-      // Thread was deleted — reject the orphaned approval
-      updateApprovalStatus(a.id, "rejected");
-      continue;
-    }
-    if (thread.status !== "awaiting_approval") {
-      // Thread is active/completed — this approval is stale, auto-reject
-      updateApprovalStatus(a.id, "rejected");
-      continue;
-    }
-    actionable.push(a);
-  }
+  // Clean up stale approvals in bulk (O(1) queries, not O(n) per-approval loop)
+  cleanStaleApprovals();
+
+  // Re-fetch after cleanup to get only actionable approvals
+  const actionable = listPendingApprovals();
 
   // Scope visibility: admins see all, regular users see only their threads
   // Proactive approvals (no thread) are admin-only
   const pending = auth.user.role === "admin"
     ? actionable
-    : actionable.filter((a) => {
-        if (!a.thread_id) return false; // Proactive approvals are admin-only
-        const thread = getThread(a.thread_id);
-        return thread?.user_id === auth.user.id;
-      });
+    : listPendingApprovalsForUser(auth.user.id);
 
   return NextResponse.json(pending);
 }
