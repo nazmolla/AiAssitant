@@ -11,6 +11,11 @@ import {
   updateLlmProvider,
   deleteLlmProvider,
 } from "@/lib/db/queries";
+import {
+  getCachedProviderByRecord,
+  invalidateProviderCache,
+  getProviderCacheSize,
+} from "@/lib/llm/orchestrator";
 
 beforeAll(() => setupTestDb());
 afterAll(() => teardownTestDb());
@@ -157,5 +162,96 @@ describe("LLM Provider CRUD", () => {
     expect(getLlmProvider(solo.id)).toBeUndefined();
     // No fallback exists — no default should be set
     // (getDefaultLlmProvider may return a previously created provider from earlier tests)
+  });
+});
+
+describe("Provider instance caching", () => {
+  beforeEach(() => {
+    invalidateProviderCache();
+  });
+
+  const mockRecord = (id: string, configJson: string) => ({
+    id,
+    label: `Test-${id}`,
+    provider_type: "openai" as const,
+    purpose: "chat" as const,
+    config_json: configJson,
+    is_default: 0,
+    created_at: new Date().toISOString(),
+  });
+
+  const dummyFactory = () => ({} as ReturnType<typeof getCachedProviderByRecord>);
+
+  test("same config returns cached instance (same reference)", () => {
+    const record = mockRecord("p1", '{"apiKey":"k","model":"gpt-4o"}');
+    const config = { apiKey: "k", model: "gpt-4o" };
+
+    const first = getCachedProviderByRecord(record, config, dummyFactory);
+    const second = getCachedProviderByRecord(record, config, dummyFactory);
+    expect(first).toBe(second); // same reference
+    expect(getProviderCacheSize()).toBe(1);
+  });
+
+  test("config change creates new instance", () => {
+    const record = mockRecord("p2", '{"apiKey":"k","model":"gpt-4o"}');
+    const config1 = { apiKey: "k", model: "gpt-4o" };
+    const config2 = { apiKey: "k", model: "gpt-4o-mini" };
+
+    const first = getCachedProviderByRecord(record, config1, dummyFactory);
+    const second = getCachedProviderByRecord(record, config2, dummyFactory);
+    expect(first).not.toBe(second); // different config hash
+    expect(getProviderCacheSize()).toBe(2);
+  });
+
+  test("TTL expiration recreates instance", () => {
+    const record = mockRecord("p3", '{"apiKey":"k","model":"gpt-4o"}');
+    const config = { apiKey: "k", model: "gpt-4o" };
+
+    const first = getCachedProviderByRecord(record, config, dummyFactory);
+
+    // Simulate TTL expiration by invalidating the cache
+    invalidateProviderCache();
+    expect(getProviderCacheSize()).toBe(0);
+
+    const second = getCachedProviderByRecord(record, config, dummyFactory);
+    expect(second).not.toBe(first); // new instance after flush
+  });
+
+  test("invalidateProviderCache clears all cached instances", () => {
+    const r1 = mockRecord("p4", '{"apiKey":"a"}');
+    const r2 = mockRecord("p5", '{"apiKey":"b"}');
+    getCachedProviderByRecord(r1, { apiKey: "a" }, dummyFactory);
+    getCachedProviderByRecord(r2, { apiKey: "b" }, dummyFactory);
+    expect(getProviderCacheSize()).toBe(2);
+
+    invalidateProviderCache();
+    expect(getProviderCacheSize()).toBe(0);
+  });
+
+  test("provider works correctly after cache hit (integration)", () => {
+    // Create a real provider record in the DB
+    const p = createLlmProvider({
+      label: "CacheIntTest",
+      providerType: "openai",
+      purpose: "chat",
+      config: { apiKey: "sk-cache-test", model: "gpt-4o" },
+    });
+    const record = getLlmProvider(p.id)!;
+    const config = JSON.parse(record.config_json);
+
+    // First call creates instance, second uses cache
+    const { OpenAIChatProvider } = require("@/lib/llm/openai-provider");
+    const first = getCachedProviderByRecord(record, config, () =>
+      new OpenAIChatProvider({ variant: "openai", apiKey: config.apiKey, model: config.model })
+    );
+    const second = getCachedProviderByRecord(record, config, () =>
+      new OpenAIChatProvider({ variant: "openai", apiKey: config.apiKey, model: config.model })
+    );
+    expect(first).toBe(second);
+    // Provider should still have its methods (not a broken reference)
+    expect(typeof first.chat).toBe("function");
+
+    // Clean up
+    deleteLlmProvider(p.id);
   });
 });

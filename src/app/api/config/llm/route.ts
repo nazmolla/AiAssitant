@@ -10,6 +10,7 @@ import {
   type LlmProviderType,
   type LlmProviderPurpose,
 } from "@/lib/db";
+import { invalidateProviderCache } from "@/lib/llm/orchestrator";
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });
   }
   const record = createLlmProvider({ label, providerType, purpose, config: normalizedConfig, isDefault });
+  invalidateProviderCache();
   return NextResponse.json(serializeRecord(record), { status: 201 });
 }
 
@@ -131,6 +133,7 @@ export async function PATCH(req: NextRequest) {
   if (!updated) {
     return NextResponse.json({ error: "Provider not found." }, { status: 404 });
   }
+  invalidateProviderCache();
   return NextResponse.json(serializeRecord(updated));
 }
 
@@ -145,6 +148,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   deleteLlmProvider(id);
+  invalidateProviderCache();
   return NextResponse.json({ success: true });
 }
 
