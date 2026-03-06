@@ -566,8 +566,11 @@ export function ChatPanel() {
       .catch(console.error);
   }, []);
 
-  // Fetch messages when thread changes
+  // Fetch messages when thread changes — abort any in-flight SSE from the previous thread
   useEffect(() => {
+    abortControllerRef.current?.abort();
+    setLoading(false);
+    setThinkingSteps([]);
     if (!activeThread) return;
     fetch(`/api/threads/${activeThread}`)
       .then((r) => r.json())

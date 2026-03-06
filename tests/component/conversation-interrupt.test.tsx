@@ -468,14 +468,15 @@ async function simulateCycleToThinking() {
 
 /**
  * Start interrupt speech: set the interrupt VAD signal to speech
- * and advance enough time for 200ms sustained speech detection.
+ * and advance enough time for the grace period (500ms) plus
+ * 200ms sustained speech detection (700ms total).
  */
 async function triggerInterruptSpeech() {
   interruptVadSignal = "speech";
-  // Advance 350ms — polling at 100ms intervals, need 200ms cumulative
-  // so we need at least 3 polls: t=100, t=200, t=300
+  // Advance 800ms — 500ms grace period + 200ms sustained speech + margin
+  // polling at 100ms intervals
   await act(async () => {
-    await jest.advanceTimersByTimeAsync(350);
+    await jest.advanceTimersByTimeAsync(800);
   });
 }
 
@@ -696,5 +697,32 @@ describe("ConversationMode — Interrupt / Barge-in", () => {
       await jest.advanceTimersByTimeAsync(400);
     });
     expect(screen.getByText("Listening...")).toBeInTheDocument();
+  });
+
+  test("grace period prevents false interrupts from mic init noise (#25)", async () => {
+    setupSlowLlmFetchMock();
+    render(<ConversationMode />);
+
+    await clickMicAndStartListening();
+    await simulateCycleToThinking();
+
+    // Simulate mic init noise immediately — speech signal during grace period
+    interruptVadSignal = "speech";
+    await act(async () => {
+      // Advance 400ms — within 500ms grace period
+      await jest.advanceTimersByTimeAsync(400);
+    });
+
+    // Should NOT have interrupted — still in thinking state
+    expect(screen.queryByText("Listening...")).not.toBeInTheDocument();
+
+    // Stop the speech signal
+    interruptVadSignal = "silence";
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(200);
+    });
+
+    // Still not interrupted — the noise during grace period was ignored
+    expect(screen.queryByText("Listening...")).not.toBeInTheDocument();
   });
 });

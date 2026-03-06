@@ -219,6 +219,11 @@ export function ConversationMode() {
       let speechStart: number | null = null;
       const INTERRUPT_SPEECH_MS = 200; // 200ms of speech to trigger interrupt
 
+      // Grace period: skip the first 500ms after mic init to avoid false
+      // triggers from microphone initialization noise / residual audio buffer.
+      const vadStartedAt = Date.now();
+      const INTERRUPT_GRACE_MS = 500;
+
       interruptVadRef.current = setInterval(() => {
         const s = stateRef.current;
         if (s !== "thinking" && s !== "speaking") {
@@ -227,6 +232,9 @@ export function ConversationMode() {
           return;
         }
 
+        // Ignore mic input during grace period
+        if (Date.now() - vadStartedAt < INTERRUPT_GRACE_MS) return;
+
         analyser.getFloatTimeDomainData(dataArray);
         let sum = 0;
         for (let i = 0; i < dataArray.length; i++) {
@@ -234,8 +242,8 @@ export function ConversationMode() {
         }
         const rms = Math.sqrt(sum / dataArray.length);
 
-        if (rms > SILENCE_THRESHOLD * 2) {
-          // Use 2x threshold to avoid false triggers from TTS bleed
+        if (rms > SILENCE_THRESHOLD * 3) {
+          // Use 3x threshold to avoid false triggers from mic init noise and TTS bleed
           if (!speechStart) speechStart = Date.now();
           if (Date.now() - speechStart >= INTERRUPT_SPEECH_MS) {
             // Interrupt!
