@@ -360,12 +360,16 @@ export async function runAgentLoop(
 
     // If LLM wants to call tools
     if (response.toolCalls.length > 0) {
+      // Expand multi_tool_use.parallel into individual tool calls
+      const { expandMultiToolUse } = await import("./discovery");
+      const toolCalls = expandMultiToolUse(response.toolCalls);
+
       // Save the assistant message with tool calls
       const savedThinking = addMessage({
         thread_id: threadId,
         role: "assistant",
         content: response.content,
-        tool_calls: JSON.stringify(response.toolCalls),
+        tool_calls: JSON.stringify(toolCalls),
         tool_results: null,
         attachments: null,
       });
@@ -374,11 +378,11 @@ export async function runAgentLoop(
       chatMessages.push({
         role: "assistant",
         content: response.content || "",
-        tool_calls: response.toolCalls,
+        tool_calls: toolCalls,
       });
 
       // Process each tool call through the unified policy gatekeeper
-      for (const toolCall of response.toolCalls) {
+      for (const toolCall of toolCalls) {
         await yieldLoop(); // yield between tool executions
         onStatus?.({ step: "Executing tool", detail: toolCall.name });
         const result = await executeToolWithPolicy(toolCall, threadId, response.content || undefined);

@@ -1,4 +1,4 @@
-import type { ToolDefinition } from "@/lib/llm";
+import type { ToolDefinition, ToolCall } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
 import * as agentExports from "./index";
 
@@ -134,4 +134,44 @@ export function normalizeToolName(name: string): string {
 
   const fullName = getBuiltinShortNameMap().get(name);
   return fullName ?? name;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  multi_tool_use.parallel expansion                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Expand OpenAI's `multi_tool_use.parallel` synthetic tool call into
+ * individual tool calls. Some models emit this instead of returning
+ * multiple separate tool_calls entries.
+ *
+ * Expected arguments format:
+ *   { tool_uses: [{ recipient_name: "functions.toolName", parameters: {...} }] }
+ */
+export function expandMultiToolUse(toolCalls: ToolCall[]): ToolCall[] {
+  const expanded: ToolCall[] = [];
+  for (const tc of toolCalls) {
+    if (tc.name === "multi_tool_use.parallel" || tc.name === "multi_tool_use") {
+      const toolUses = tc.arguments?.tool_uses;
+      if (Array.isArray(toolUses)) {
+        for (let i = 0; i < toolUses.length; i++) {
+          const use = toolUses[i] as { recipient_name?: string; parameters?: Record<string, unknown> } | undefined;
+          const recipientName = typeof use?.recipient_name === "string"
+            ? use.recipient_name.replace(/^functions\./, "")
+            : "";
+          if (recipientName) {
+            expanded.push({
+              id: `${tc.id}_${i}`,
+              name: recipientName,
+              arguments: use?.parameters ?? {},
+            });
+          }
+        }
+      }
+      // Skip the original multi_tool_use call — it's been expanded
+    } else {
+      expanded.push(tc);
+    }
+  }
+  return expanded;
 }

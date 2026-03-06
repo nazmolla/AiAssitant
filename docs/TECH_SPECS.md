@@ -303,6 +303,10 @@ All built-in tools use the `builtin.` prefix (e.g. `builtin.alexa_announce`, `bu
 
 **Tool name length enforcement**: The OpenAI API enforces a maximum of **64 characters** for tool `function.name`. MCP tool names are qualified as `serverId.toolName` where `serverId` is a UUID (36 chars) + dot = 37-char prefix, leaving 27 characters for the tool name. The `qualifyToolName()` function in `manager.ts` truncates the tool-name portion when the combined name exceeds 64 characters, and maintains a `toolNameMap` reverse mapping so `callTool()` can resolve the truncated name back to the original MCP tool name. Custom tools enforce the same 2–64 character limit at creation time.
 
+**Tool array cap**: The OpenAI API enforces a maximum of **128 tools** per request. All dispatch paths (agent loop, conversation endpoint, worker) cap the total tools array at `MAX_TOOLS_PER_REQUEST = 128` — builtin and custom tools take priority, then MCP tools fill remaining slots.
+
+**`multi_tool_use.parallel` expansion**: Some OpenAI models emit a synthetic `multi_tool_use.parallel` tool call instead of returning multiple separate `tool_calls` entries. The `expandMultiToolUse()` function in `discovery.ts` detects this pattern, extracts individual tool calls from the `tool_uses` array (stripping the `functions.` prefix from `recipient_name`), and generates individual `ToolCall` entries with sequential IDs. Applied in all dispatch paths: `loop.ts`, `conversation/respond`, and `agent-worker.js`.
+
 **Dispatch chain** (identical in `loop.ts`, `gatekeeper.ts`, `scheduler/index.ts`):
 
 `isBuiltinWebTool → isBrowserTool → isFsTool → isFileTool → isNetworkTool → isEmailTool → isAlexaTool → isCustomTool → MCP fallback`
@@ -523,3 +527,5 @@ Component tests use `jsdom` environment with the following mocks:
 | `tests/integration/api/sse-concurrency.test.ts` | 7 | Concurrent SSE requests, stream cancellation mid-flight, post-disconnect token safety, independent stream isolation |
 | `tests/unit/api/chat-attachments.test.ts` | 16 | OOM-prevention size guards: MAX_INLINE_TEXT (512 KB), MAX_INLINE_IMAGE (5 MB), TEXT_MIME_TYPES coverage, preview size validation |
 | `tests/unit/channels/inbound-email.test.ts` | 5 | System sender classification priority over security keywords, severity assignment, summary content |
+| `tests/unit/mcp/mcp-manager.test.ts` | 18 | listChanged auto-refresh, qualifyToolName 64-char enforcement, callTool truncated-name reverse mapping |
+| `tests/unit/agent/expand-multi-tool-use.test.ts` | 10 | multi_tool_use.parallel expansion, mixed calls, missing parameters, empty recipient_name, bare multi_tool_use |

@@ -27,6 +27,34 @@
 
 const { parentPort, workerData } = require('worker_threads');
 
+/* ── Expand multi_tool_use.parallel into individual tool calls ──── */
+function expandMultiToolUse(toolCalls) {
+  const expanded = [];
+  for (const tc of toolCalls) {
+    if (tc.name === 'multi_tool_use.parallel' || tc.name === 'multi_tool_use') {
+      const toolUses = tc.arguments && tc.arguments.tool_uses;
+      if (Array.isArray(toolUses)) {
+        for (let i = 0; i < toolUses.length; i++) {
+          const use = toolUses[i];
+          const recipientName = typeof (use && use.recipient_name) === 'string'
+            ? use.recipient_name.replace(/^functions\./, '')
+            : '';
+          if (recipientName) {
+            expanded.push({
+              id: `${tc.id}_${i}`,
+              name: recipientName,
+              arguments: (use && use.parameters) || {},
+            });
+          }
+        }
+      }
+    } else {
+      expanded.push(tc);
+    }
+  }
+  return expanded;
+}
+
 /* ── Pending tool-result resolvers ───────────────────────────────── */
 
 const toolResultResolvers = new Map();
@@ -156,18 +184,21 @@ async function runLoop(client, isAnthropic, model, config) {
 
     // Tool calls → request execution from main thread
     if (response.toolCalls && response.toolCalls.length > 0) {
+      // Expand multi_tool_use.parallel into individual calls
+      const toolCalls = expandMultiToolUse(response.toolCalls);
+
       // Add assistant message with tool calls to conversation
       chatMessages.push({
         role: 'assistant',
         content: response.content || '',
-        tool_calls: response.toolCalls,
+        tool_calls: toolCalls,
       });
 
       const requestId = `tr_${Date.now()}_${iterations}`;
       parentPort.postMessage({
         type: 'tool_request',
         requestId,
-        calls: response.toolCalls,
+        calls: toolCalls,
         assistantContent: response.content,
       });
 

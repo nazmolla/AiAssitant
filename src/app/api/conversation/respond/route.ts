@@ -63,6 +63,8 @@ After using a tool, summarize what happened conversationally.`;
 const MAX_HISTORY_MESSAGES = 30;
 /** Max tool iterations per request */
 const MAX_TOOL_ITERATIONS = 10;
+/** Max tools per LLM request (OpenAI hard limit is 128) */
+const MAX_TOOLS_PER_REQUEST = 128;
 /** Hard timeout for the entire conversation turn (including tool calls) */
 const TURN_TIMEOUT_MS = 60_000; // 60 seconds
 
@@ -118,7 +120,7 @@ export async function POST(req: NextRequest) {
   await yieldLoop();
   const mcpTools = getMcpManager().getAllTools();
   const customTools = getCustomToolDefinitions();
-  const allTools: ToolDefinition[] = [
+  const builtinAndCustomTools: ToolDefinition[] = [
     ...BUILTIN_WEB_TOOLS,
     ...BUILTIN_BROWSER_TOOLS,
     ...BUILTIN_FS_TOOLS,
@@ -127,8 +129,10 @@ export async function POST(req: NextRequest) {
     ...BUILTIN_FILE_TOOLS,
     ...BUILTIN_ALEXA_TOOLS,
     ...customTools,
-    ...mcpTools,
   ];
+  // Cap total tools at MAX_TOOLS_PER_REQUEST — builtin/custom take priority, then MCP fills remaining slots
+  const mcpSlots = Math.max(0, MAX_TOOLS_PER_REQUEST - builtinAndCustomTools.length);
+  const allTools: ToolDefinition[] = [...builtinAndCustomTools, ...mcpTools.slice(0, mcpSlots)];
 
   // Filter tools by user role — non-admin users only see global-scope tools
   const isAdmin = auth.user.id ? (getUserById(auth.user.id)?.role === "admin") : true;
@@ -257,8 +261,12 @@ async function runConversationLoop(
 
     // If LLM wants to call tools — execute them and loop back
     if (response.toolCalls.length > 0) {
+      // Expand multi_tool_use.parallel into individual tool calls
+      const { expandMultiToolUse } = await import("@/lib/agent/discovery");
+      const toolCalls = expandMultiToolUse(response.toolCalls);
+
       // Notify client about tool calls
-      for (const tc of response.toolCalls) {
+      for (const tc of toolCalls) {
         sseSend(
           `event: tool_call\ndata: ${JSON.stringify({ name: tc.name, args: tc.arguments })}\n\n`
         );
@@ -268,11 +276,11 @@ async function runConversationLoop(
       chatMessages.push({
         role: "assistant",
         content: response.content || "",
-        tool_calls: response.toolCalls,
+        tool_calls: toolCalls,
       });
 
       // Execute each tool call
-      for (const toolCall of response.toolCalls) {
+      for (const toolCall of toolCalls) {
         await yieldLoop(); // yield between tool executions
 
         const result = await executeConversationTool(toolCall, userId);

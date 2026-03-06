@@ -295,6 +295,9 @@ async function _runViaWorker(
     /* onStatus */ onStatus,
     /* onToolRequest — execute tools in main thread */
     async (calls, assistantContent) => {
+      // Note: multi_tool_use.parallel expansion happens in the worker script
+      // before calls arrive here, so `calls` are already expanded.
+
       // Save assistant message with tool calls to DB
       const savedThinking = addMessage({
         thread_id: threadId,
