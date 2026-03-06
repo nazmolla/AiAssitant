@@ -265,10 +265,10 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET/POST` | `/api/threads` | User | List/create threads (user-scoped) |
+| `GET/POST` | `/api/threads` | User | List/create threads (user-scoped); GET supports `?limit=N&offset=M` pagination (default 50, max 200) returning `{ data, total, limit, offset, hasMore }` |
 | `GET/DELETE` | `/api/threads/[threadId]` | User | Get/delete thread (ownership enforced) |
 | `POST` | `/api/threads/[threadId]/chat` | User | Send message and run agent loop (SSE streaming: `token`, `status`, `message`, `done`, `error` events) |
-| `GET/POST` | `/api/knowledge` | User | List/upsert knowledge entries (user-scoped) |
+| `GET/POST` | `/api/knowledge` | User | List/upsert knowledge entries (user-scoped); GET supports `?limit=N&offset=M` pagination (default 100, max 500) returning `{ data, total, limit, offset, hasMore }` |
 | `GET/POST` | `/api/mcp` | User | List/add MCP servers (global + user-scoped) |
 | `POST` | `/api/mcp/[serverId]/connect` | Auth | Connect to an MCP server |
 | `GET` | `/api/mcp/tools` | Auth | List all available MCP tools |
@@ -496,7 +496,7 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**1216 tests across 95 suites** — all passing.
+**1233 tests across 96 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|

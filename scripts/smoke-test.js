@@ -122,10 +122,10 @@ function cleanup() {
 // ── Tests ───────────────────────────────────────────────────────
 
 async function runTests() {
-  // 1. GET /api/threads — list threads
+  // 1. GET /api/threads — list threads (paginated response)
   const listRes = await httpRequest("GET", "/api/threads");
   check("GET /api/threads returns 200", listRes.status === 200);
-  check("GET /api/threads returns array", Array.isArray(listRes.body));
+  check("GET /api/threads returns array", Array.isArray(listRes.body && listRes.body.data));
 
   // 2. POST /api/threads — create a thread
   const createRes = await httpRequest("POST", "/api/threads", {

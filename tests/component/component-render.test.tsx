@@ -336,7 +336,7 @@ describe("KnowledgeVault", () => {
       if (url.includes("/api/knowledge")) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve([]),
+          json: () => Promise.resolve({ data: [], total: 0, limit: 100, offset: 0, hasMore: false }),
         });
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });

@@ -8,6 +8,15 @@ import { appCache, CACHE_KEYS } from "@/lib/cache";
 /** Thin wrapper that passes the (patchable) `getDb` import to the cache */
 function stmt(sql: string) { return _cachedStmt(sql, getDb); }
 
+/** Generic paginated result wrapper */
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 // â”€â”€â”€ Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface UserRecord {
@@ -659,6 +668,16 @@ export function listKnowledge(userId?: string): KnowledgeEntry[] {
     .all(userId) as KnowledgeEntry[];
 }
 
+export function listKnowledgePaginated(userId: string, limit = 100, offset = 0): PaginatedResult<KnowledgeEntry> {
+  const db = getDb();
+  const total = (db.prepare("SELECT COUNT(*) as cnt FROM user_knowledge WHERE user_id = ? OR user_id IS NULL")
+    .get(userId) as { cnt: number }).cnt;
+  const data = db.prepare(
+    "SELECT * FROM user_knowledge WHERE user_id = ? OR user_id IS NULL ORDER BY last_updated DESC LIMIT ? OFFSET ?"
+  ).all(userId, limit, offset) as KnowledgeEntry[];
+  return { data, total, limit, offset, hasMore: offset + data.length < total };
+}
+
 export function getKnowledgeEntry(id: number): KnowledgeEntry | undefined {
   return stmt(
     "SELECT * FROM user_knowledge WHERE id = ?"
@@ -782,6 +801,18 @@ export function listThreads(userId?: string): Thread[] {
   return getDb()
     .prepare("SELECT * FROM threads WHERE title NOT LIKE '[proactive-scan]%' AND title NOT LIKE '[scheduled]%' AND title NOT LIKE 'channel:%' ORDER BY last_message_at DESC")
     .all() as Thread[];
+}
+
+const THREAD_FILTER = "title NOT LIKE '[proactive-scan]%' AND title NOT LIKE '[scheduled]%' AND title NOT LIKE 'channel:%'";
+
+export function listThreadsPaginated(userId: string, limit = 50, offset = 0): PaginatedResult<Thread> {
+  const db = getDb();
+  const total = (db.prepare(`SELECT COUNT(*) as cnt FROM threads WHERE user_id = ? AND ${THREAD_FILTER}`)
+    .get(userId) as { cnt: number }).cnt;
+  const data = db.prepare(
+    `SELECT * FROM threads WHERE user_id = ? AND ${THREAD_FILTER} ORDER BY last_message_at DESC LIMIT ? OFFSET ?`
+  ).all(userId, limit, offset) as Thread[];
+  return { data, total, limit, offset, hasMore: offset + data.length < total };
 }
 
 export function getThread(id: string): Thread | undefined {
