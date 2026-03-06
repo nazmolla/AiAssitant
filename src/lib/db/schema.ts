@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS user_knowledge (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_knowledge_unique
     ON user_knowledge(user_id, entity, attribute, value);
 
+CREATE INDEX IF NOT EXISTS idx_user_knowledge_user_id ON user_knowledge(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_knowledge_entity ON user_knowledge(user_id, entity);
+CREATE INDEX IF NOT EXISTS idx_user_knowledge_attribute ON user_knowledge(user_id, attribute);
+
 CREATE TABLE IF NOT EXISTS knowledge_embeddings (
     knowledge_id INTEGER PRIMARY KEY REFERENCES user_knowledge(id) ON DELETE CASCADE,
     embedding TEXT NOT NULL
