@@ -16,6 +16,55 @@ import { listLlmProviders, type LlmProviderRecord } from "@/lib/db";
 import type { ChatProvider } from "./types";
 import { OpenAIChatProvider } from "./openai-provider";
 import { AnthropicChatProvider } from "./anthropic-provider";
+import { createHash } from "crypto";
+
+// ── Provider Instance Cache ───────────────────────────────────
+// Avoids re-creating OpenAI/Anthropic SDK clients on every request.
+// Keyed by a hash of the provider config; 10s TTL.
+
+const PROVIDER_CACHE_TTL_MS = 10_000;
+
+interface CachedProvider {
+  provider: ChatProvider;
+  cachedAt: number;
+}
+
+const providerCache = new Map<string, CachedProvider>();
+
+function providerConfigHash(record: LlmProviderRecord, config: Record<string, unknown>): string {
+  const raw = JSON.stringify({ id: record.id, type: record.provider_type, config });
+  return createHash("sha256").update(raw).digest("hex").slice(0, 16);
+}
+
+/**
+ * Return a cached provider instance if the config hash matches and TTL hasn't expired,
+ * otherwise create via `factory` and cache it.
+ */
+export function getCachedProviderByRecord(
+  record: LlmProviderRecord,
+  config: Record<string, unknown>,
+  factory: () => ChatProvider
+): ChatProvider {
+  const hash = providerConfigHash(record, config);
+  const entry = providerCache.get(hash);
+  const now = Date.now();
+  if (entry && (now - entry.cachedAt) < PROVIDER_CACHE_TTL_MS) {
+    return entry.provider;
+  }
+  const provider = factory();
+  providerCache.set(hash, { provider, cachedAt: now });
+  return provider;
+}
+
+/** Flush cached provider instances (called when LLM config changes). */
+export function invalidateProviderCache(): void {
+  providerCache.clear();
+}
+
+/** Visible for testing. */
+export function getProviderCacheSize(): number {
+  return providerCache.size;
+}
 
 // ── Task Classification ───────────────────────────────────────
 
@@ -211,6 +260,10 @@ function scoreProvider(
 // ── Provider Builder ──────────────────────────────────────────
 
 function buildProvider(record: LlmProviderRecord, config: Record<string, unknown>): ChatProvider {
+  return getCachedProviderByRecord(record, config, () => buildProviderUncached(record, config));
+}
+
+function buildProviderUncached(record: LlmProviderRecord, config: Record<string, unknown>): ChatProvider {
   switch (record.provider_type) {
     case "azure-openai": {
       const apiKey = config.apiKey as string;

@@ -231,6 +231,8 @@ The `status` events provide transparency into the agent's internal process for *
 | Auth lookup by email (5-min TTL) | `user_email:{email}` | `updateUserRole`, `updateUserEnabled`, `updateUserPassword`, `deleteUser` |
 | Auth lookup by external sub (5-min TTL) | `user_sub:{subId}` | `updateUserRole`, `updateUserEnabled`, `updateUserPassword`, `deleteUser` |
 
+**Provider Instance Cache** (`src/lib/llm/orchestrator.ts`): A separate module-level `Map` caches constructed `ChatProvider` instances keyed by a SHA-256 hash of `{id, type, config}`. TTL is 10 seconds. When an LLM provider row is created, updated, or deleted via the `/api/config/llm` route handlers, `invalidateProviderCache()` is called to flush all entries. This avoids re-parsing config JSON plus re-instantiating SDK clients on every request while still reflecting admin changes within seconds.
+
 Previously, `selectProvider()` called `listLlmProviders()` (full table scan + decryption) on every request — now cached. Similarly, `getUserById()` and `listToolPolicies()` were called per-request for role checks and tool filtering — now cached. Auth lookups (`getUserByEmail`, `getUserByExternalSub`) use a 5-minute TTL to avoid DB hits on every login/OAuth flow; all user mutation paths invalidate the by-id, by-email, and by-sub caches atomically.
 
 **Event Loop Yield Points**: Because `better-sqlite3` is synchronous, the agent loop uses `await yieldLoop()` (backed by `setImmediate()`) at critical points to prevent blocking the Node.js event loop:

@@ -2,6 +2,7 @@ import { getDefaultLlmProvider, type LlmProviderRecord } from "@/lib/db";
 import type { ChatProvider } from "./types";
 import { OpenAIChatProvider } from "./openai-provider";
 import { AnthropicChatProvider } from "./anthropic-provider";
+import { getCachedProviderByRecord } from "./orchestrator";
 
 export type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ToolCall, ContentPart } from "./types";
 export { selectProvider, selectBackgroundProvider, selectFallbackProvider, selectProviderForWorker, classifyTask, type TaskType, type RoutingTier, type OrchestratorResult, type WorkerProviderInfo } from "./orchestrator";
@@ -23,7 +24,10 @@ export function createChatProvider(): ChatProvider {
 
 function buildProviderFromRecord(record: LlmProviderRecord): ChatProvider {
   const config = parseConfig(record);
+  return getCachedProviderByRecord(record, config, () => buildProviderUncached(record, config));
+}
 
+function buildProviderUncached(record: LlmProviderRecord, config: Record<string, unknown>): ChatProvider {
   switch (record.provider_type) {
     case "azure-openai": {
       const apiKey = config.apiKey as string | undefined;
