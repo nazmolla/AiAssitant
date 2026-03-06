@@ -683,15 +683,18 @@ export function dbMessagesToChat(
   messages: Message[],
   latestContentParts?: ContentPart[]
 ): ChatMessage[] {
-  const result: ChatMessage[] = [];
-  // Track which tool_call_ids are present in assistant messages
+  // Single-pass: collect assistant messages first, then assemble result.
+  // Pre-parse tool_calls once to avoid redundant JSON.parse per message.
   const knownToolCallIds = new Set<string>();
+  const parsedToolCalls = new Map<number, ToolCall[]>(); // message index → parsed tool_calls
 
-  // First pass: collect known tool_call_ids from assistant messages
-  for (const m of messages) {
+  // Collect known tool_call_ids and cache parsed tool_calls (single parse)
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
     if (m.role === "assistant" && m.tool_calls) {
       try {
         const tcs: ToolCall[] = JSON.parse(m.tool_calls);
+        parsedToolCalls.set(i, tcs);
         for (const tc of tcs) {
           knownToolCallIds.add(tc.id);
         }
@@ -706,6 +709,7 @@ export function dbMessagesToChat(
     }
   }
 
+  const result: ChatMessage[] = [];
   for (let idx = 0; idx < messages.length; idx++) {
     const m = messages[idx];
     const isLast = idx === messages.length - 1;
@@ -713,20 +717,8 @@ export function dbMessagesToChat(
     // Skip system messages — system prompt is injected separately
     if (m.role === "system") continue;
 
-    // Parse tool_calls from the DB if stored on an assistant message
-    let toolCalls: ToolCall[] | undefined;
-    if (m.role === "assistant" && m.tool_calls) {
-      try {
-        toolCalls = JSON.parse(m.tool_calls);
-      } catch (err) {
-        addLog({
-          level: "verbose",
-          source: "agent",
-          message: "Skipped malformed assistant tool_calls payload.",
-          metadata: JSON.stringify({ threadId: m.thread_id, error: err instanceof Error ? err.message : String(err) }),
-        });
-      }
-    }
+    // Use pre-parsed tool_calls from cache (avoid redundant JSON.parse)
+    const toolCalls: ToolCall[] | undefined = parsedToolCalls.get(idx);
 
     // Parse tool_call_id for tool messages
     if (m.role === "tool") {
