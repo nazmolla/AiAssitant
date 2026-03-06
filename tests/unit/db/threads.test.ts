@@ -86,10 +86,18 @@ describe("Threads", () => {
     expect(threads.every((t) => !t.title?.startsWith("[scheduled]"))).toBe(true);
   });
 
+  test("listThreads excludes channel threads", () => {
+    createThread("channel:a3ab3b28-5212-4df4:sender@example.com", userId);
+    createThread("channel:00000000-0000-0000:test", userId);
+    const threads = listThreads(userId);
+    expect(threads.every((t) => !t.title?.startsWith("channel:"))).toBe(true);
+  });
+
   test("listThreads without userId also excludes internal threads", () => {
     const allThreads = listThreads();
     expect(allThreads.every((t) => !t.title?.startsWith("[proactive-scan]"))).toBe(true);
     expect(allThreads.every((t) => !t.title?.startsWith("[scheduled]"))).toBe(true);
+    expect(allThreads.every((t) => !t.title?.startsWith("channel:"))).toBe(true);
   });
 });
 

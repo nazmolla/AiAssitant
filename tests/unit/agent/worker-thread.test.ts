@@ -481,4 +481,15 @@ describe("Worker Script — agent-worker.js", () => {
     const code = realFs.readFileSync(workerPath, "utf-8");
     expect(code).toContain("require('worker_threads')");
   });
+
+  test("worker script normalizes litellm baseURL with /v1 suffix", () => {
+    const path = require("path");
+    const realFs = jest.requireActual("fs");
+    const workerPath = path.join(process.cwd(), "scripts", "agent-worker.js");
+    const code = realFs.readFileSync(workerPath, "utf-8");
+    // The worker must normalize litellm baseURLs by appending /v1
+    expect(code).toContain("providerType === 'litellm'");
+    expect(code).toContain("'/v1'");
+    expect(code).toMatch(/effectiveBaseURL.*\/v1/);
+  });
 });

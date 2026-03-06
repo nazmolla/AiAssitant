@@ -13,7 +13,8 @@
 #    7. Remote: build (DB moved aside to prevent corruption)
 #    8. Remote: restore DB + integrity recheck
 #    9. Remote: start service + health check
-#   10. Remote: post-deploy DB validation (row counts vs snapshot)
+#   10. Remote: functional smoke tests (API key + endpoints)
+#   11. Remote: post-deploy DB validation (row counts vs snapshot)
 #   11. Local:  cleanup
 #
 #  On failure at any step, the script auto-restores the DB from
@@ -34,7 +35,7 @@ TAR_NAME="deploy.tar.gz"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 MAX_BACKUPS=5          # keep last N DB backups on server
 HEALTH_WAIT=10         # seconds to wait after start before health check
-STEPS=10
+STEPS=11
 
 # ── Helpers ────────────────────────────────────────────────────────
 rcmd()  { ssh -o LogLevel=ERROR "${REMOTE}" "$@" 2>/dev/null; }
@@ -290,8 +291,18 @@ echo "  ✓ HTTP :3000 → ${HTTP_3000}"
 HTTPS_CODE=$(rcmd "curl -sk -o /dev/null -w '%{http_code}' --max-time 10 https://localhost" || echo "000")
 echo "  ✓ HTTPS :443 → ${HTTPS_CODE}"
 
-# ── 10. Remote: post-deploy DB validation ─────────────────────────
-step 10 "Post-deploy database validation..."
+# ── 10. Remote: functional smoke tests ────────────────────────────
+step 10 "Running functional smoke tests..."
+SMOKE_RESULT=$(rcmd "cd ${REMOTE_DIR} && node scripts/smoke-test.js 2>&1" || true)
+echo "${SMOKE_RESULT}"
+if echo "${SMOKE_RESULT}" | grep -q '0 failed'; then
+  echo "  ✓ All smoke tests passed"
+else
+  echo "  ⚠ Smoke tests had failures (non-blocking)"
+fi
+
+# ── 11. Remote: post-deploy DB validation ─────────────────────────
+step 11 "Post-deploy database validation..."
 if [ "${PRE_DB_SIZE}" -gt 0 ]; then
   POST_DB_SIZE=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
   POST_INTEGRITY=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'PRAGMA integrity_check;'" || echo "ERROR")

@@ -129,9 +129,14 @@ async function handleStart(config) {
   } else {
     // openai or litellm
     const OpenAI = require('openai').default || require('openai');
+    let effectiveBaseURL = baseURL || undefined;
+    // Ollama serves OpenAI-compatible API at /v1 — normalize if not present
+    if (providerType === 'litellm' && effectiveBaseURL && !effectiveBaseURL.endsWith('/v1') && !effectiveBaseURL.endsWith('/v1/')) {
+      effectiveBaseURL = effectiveBaseURL.replace(/\/$/, '') + '/v1';
+    }
     client = new OpenAI({
       apiKey: apiKey || 'no-key-required',
-      baseURL: baseURL || undefined,
+      baseURL: effectiveBaseURL,
     });
     isAnthropic = false;
   }

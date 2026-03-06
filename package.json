@@ -1,6 +1,6 @@
 {
   "name": "nexus-agent",
-  "version": "0.44.12",
+  "version": "0.44.14",
   "private": true,
   "scripts": {
     "dev": "next dev",

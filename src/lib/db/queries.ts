@@ -733,11 +733,11 @@ export function createThread(title?: string, userId?: string): Thread {
 export function listThreads(userId?: string): Thread[] {
   if (userId) {
     return getDb()
-      .prepare("SELECT * FROM threads WHERE user_id = ? AND title NOT LIKE '[proactive-scan]%' AND title NOT LIKE '[scheduled]%' ORDER BY last_message_at DESC")
+      .prepare("SELECT * FROM threads WHERE user_id = ? AND title NOT LIKE '[proactive-scan]%' AND title NOT LIKE '[scheduled]%' AND title NOT LIKE 'channel:%' ORDER BY last_message_at DESC")
       .all(userId) as Thread[];
   }
   return getDb()
-    .prepare("SELECT * FROM threads WHERE title NOT LIKE '[proactive-scan]%' AND title NOT LIKE '[scheduled]%' ORDER BY last_message_at DESC")
+    .prepare("SELECT * FROM threads WHERE title NOT LIKE '[proactive-scan]%' AND title NOT LIKE '[scheduled]%' AND title NOT LIKE 'channel:%' ORDER BY last_message_at DESC")
     .all() as Thread[];
 }
 
