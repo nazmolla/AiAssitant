@@ -99,4 +99,8 @@ export const CACHE_KEYS = {
   USER_PREFIX: "user:",
   /** Per-user profile. Key: `profile:{userId}` */
   PROFILE_PREFIX: "profile:",
+  /** User lookup by email. Key: `user_email:{normalised_email}` */
+  USER_BY_EMAIL_PREFIX: "user_email:",
+  /** User lookup by external sub ID. Key: `user_sub:{subId}` */
+  USER_BY_SUB_PREFIX: "user_sub:",
 } as const;
