@@ -1,6 +1,6 @@
 export { runAgentLoop, continueAgentLoop, type AgentResponse } from "./loop";
 export { runAgentLoopWithWorker } from "./loop-worker";
-export { isWorkerAvailable } from "./worker-manager";
+export { isWorkerAvailable, getWorkerPoolStats } from "./worker-manager";
 export { executeWithGatekeeper, executeApprovedTool, type GatekeeperResult } from "./gatekeeper";
 export { BUILTIN_WEB_TOOLS, isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
 export { BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool, BROWSER_TOOLS_REQUIRING_APPROVAL } from "./browser-tools";

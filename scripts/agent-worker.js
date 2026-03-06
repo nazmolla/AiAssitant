@@ -93,6 +93,10 @@ parentPort.on('message', async (msg) => {
 /* ── Initialise LLM client and run the loop ──────────────────────── */
 
 async function handleStart(config) {
+  // Reset state for worker reuse (pool keeps workers alive between tasks)
+  aborted = false;
+  toolResultResolvers.clear();
+
   const {
     providerType,
     apiKey,
@@ -209,7 +213,10 @@ async function runLoop(client, isAnthropic, model, config) {
 
       // Block (async) until main thread executes the tools and responds
       const results = await waitForToolResults(requestId);
-      if (aborted) return;
+      if (aborted) {
+        parentPort.postMessage({ type: 'error', data: 'Aborted' });
+        return;
+      }
 
       for (const r of results) {
         chatMessages.push({
