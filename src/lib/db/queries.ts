@@ -939,6 +939,50 @@ export function listPendingApprovals(): ApprovalRequest[] {
   ).all() as ApprovalRequest[];
 }
 
+/**
+ * Return pending approvals scoped to threads owned by `userId`.
+ * Uses a single JOIN — O(1) queries instead of O(n).
+ * Proactive approvals (thread_id IS NULL) are excluded for non-admin callers.
+ */
+export function listPendingApprovalsForUser(userId: string): ApprovalRequest[] {
+  return getDb()
+    .prepare(
+      `SELECT a.* FROM approval_queue a
+       JOIN threads t ON a.thread_id = t.id
+       WHERE a.status = 'pending' AND t.user_id = ?
+       ORDER BY a.created_at DESC`
+    )
+    .all(userId) as ApprovalRequest[];
+}
+
+/**
+ * Auto-reject stale pending approvals in bulk:
+ * - thread has been deleted (orphaned)
+ * - thread status is no longer 'awaiting_approval'
+ * Proactive approvals (thread_id IS NULL) are never touched.
+ * Returns the count of rejected rows.
+ */
+export function cleanStaleApprovals(): number {
+  const db = getDb();
+  // Reject approvals whose thread no longer exists
+  const orphaned = db
+    .prepare(
+      `UPDATE approval_queue SET status = 'rejected'
+       WHERE status = 'pending' AND thread_id IS NOT NULL
+         AND thread_id NOT IN (SELECT id FROM threads)`
+    )
+    .run();
+  // Reject approvals whose thread is no longer awaiting_approval
+  const stale = db
+    .prepare(
+      `UPDATE approval_queue SET status = 'rejected'
+       WHERE status = 'pending' AND thread_id IS NOT NULL
+         AND thread_id IN (SELECT id FROM threads WHERE status != 'awaiting_approval')`
+    )
+    .run();
+  return orphaned.changes + stale.changes;
+}
+
 export function updateApprovalStatus(id: string, status: "approved" | "rejected"): void {
   getDb().prepare("UPDATE approval_queue SET status = ? WHERE id = ?").run(status, id);
 }

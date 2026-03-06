@@ -271,7 +271,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `GET/POST` | `/api/mcp` | User | List/add MCP servers (global + user-scoped) |
 | `POST` | `/api/mcp/[serverId]/connect` | Auth | Connect to an MCP server |
 | `GET` | `/api/mcp/tools` | Auth | List all available MCP tools |
-| `GET/POST` | `/api/approvals` | Auth | List/resolve pending approvals (includes proactive/threadless approvals for admins) |
+| `GET/POST` | `/api/approvals` | Auth | List/resolve pending approvals (O(1) JOIN query; stale approvals auto-cleaned) |
 | `GET/POST` | `/api/policies` | Auth | List/update tool policies |
 | `GET` | `/api/logs` | Auth | Fetch agent activity logs |
 | `GET/POST` | `/api/config/llm` | Auth | Manage LLM provider configs |
@@ -495,7 +495,7 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**1173 tests across 91 suites** — all passing.
+**1182 tests across 92 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|

@@ -7,8 +7,8 @@ import {
   markAllNotificationsRead,
   deleteNotification,
   listPendingApprovals,
-  getThread,
-  updateApprovalStatus,
+  listPendingApprovalsForUser,
+  cleanStaleApprovals,
 } from "@/lib/db";
 
 /**
@@ -26,24 +26,13 @@ export async function GET() {
   const notifications = listNotifications(userId);
   const unreadCount = countUnreadNotifications(userId);
 
-  // Fetch pending approvals and include them as notification items
-  const allApprovals = listPendingApprovals();
-  const approvals = isAdmin
-    ? allApprovals
-    : allApprovals.filter((a) => {
-        if (!a.thread_id) return false;
-        const thread = getThread(a.thread_id);
-        return thread?.user_id === userId;
-      });
+  // Clean stale approvals in bulk (O(1) queries, not O(n))
+  cleanStaleApprovals();
 
-  // Auto-clean stale approvals
-  for (const a of allApprovals) {
-    if (!a.thread_id) continue;
-    const thread = getThread(a.thread_id);
-    if (!thread || thread.status !== "awaiting_approval") {
-      updateApprovalStatus(a.id, "rejected");
-    }
-  }
+  // Fetch pending approvals — single JOIN query for non-admins
+  const approvals = isAdmin
+    ? listPendingApprovals()
+    : listPendingApprovalsForUser(userId);
 
   return NextResponse.json({
     notifications,

@@ -250,6 +250,11 @@ Previously, `selectProvider()` called `listLlmProviders()` (full table scan + de
 
 This ensures other HTTP requests (including new tabs, API calls, and the conversation endpoint) can be served even while a long-running agent loop with multiple tool calls is executing.
 
+**Approval Query Optimization** (`src/lib/db/queries.ts`): The `/api/notifications` and `/api/approvals` GET handlers previously suffered from an N+1 query pattern — each pending approval triggered a separate `getThread()` call to verify ownership and staleness. This was replaced with:
+
+- `listPendingApprovalsForUser(userId)` — a single `JOIN` query (`approval_queue ⨝ threads`) that returns only the current user's pending approvals in O(1) queries instead of O(n).
+- `cleanStaleApprovals()` — a bulk `UPDATE` that rejects orphaned approvals (deleted thread) and stale approvals (thread no longer in `awaiting_approval` status) in two statements, replacing per-row staleness checks. Proactive approvals (`thread_id IS NULL`) are preserved.
+
 ### Notification & Inbound Email Safety Path
 
 - **Per-user thresholds** — Channel notifications are filtered by each user profile's `notification_level` (`low`, `medium`, `high`, `disaster`).
