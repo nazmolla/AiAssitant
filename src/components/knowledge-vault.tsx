@@ -24,11 +24,8 @@ type SourceFilter = "all" | "proactive" | "manual";
 
 function getSourceLabel(sourceContext: string | null): string {
   if (!sourceContext) return "Manual";
-  if (sourceContext.startsWith("mcp:")) {
-    if (sourceContext.endsWith(":poll")) return "Proactive Poll";
-    if (sourceContext.endsWith(":assessment")) return "Proactive Assessment";
-    return "Proactive";
-  }
+  if (sourceContext.startsWith("[proactive:")) return "Proactive";
+  if (sourceContext.startsWith("[chat:")) return "Conversation";
   return "Manual";
 }
 
@@ -70,9 +67,9 @@ export function KnowledgeVault() {
   const filteredEntries = useMemo(() => {
     if (sourceFilter === "all") return entries;
     if (sourceFilter === "proactive") {
-      return entries.filter((entry) => (entry.source_context || "").startsWith("mcp:"));
+      return entries.filter((entry) => (entry.source_context || "").startsWith("[proactive:"));
     }
-    return entries.filter((entry) => !(entry.source_context || "").startsWith("mcp:"));
+    return entries.filter((entry) => !(entry.source_context || "").startsWith("[proactive:"));
   }, [entries, sourceFilter]);
 
   useEffect(() => {

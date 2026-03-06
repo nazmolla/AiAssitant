@@ -954,8 +954,21 @@ export async function persistKnowledgeFromTurn(
 ): Promise<void> {
   const payload = snippets.join("\n\n").slice(0, 8000);
   if (!payload.trim()) return;
+
+  // Determine source type from thread title — proactive scans and
+  // scheduled tasks are "proactive:", everything else is "chat:".
+  let source = `chat:${threadId}`;
+  try {
+    const thread = getThread(threadId);
+    if (thread?.title?.startsWith("[proactive-scan]") || thread?.title?.startsWith("[scheduled]")) {
+      source = `proactive:${threadId}`;
+    }
+  } catch {
+    // Fall back to chat source if thread lookup fails
+  }
+
   await ingestKnowledgeFromText({
-    source: `chat:${threadId}`,
+    source,
     text: payload,
     contextHint: "Extract durable user knowledge from this conversation turn.",
     userId,
