@@ -288,4 +288,46 @@ describe("Auth query caching & invalidation", () => {
     // Both should resolve the same user (COLLATE NOCASE)
     expect(lower!.id).toBe(upper!.id);
   });
+
+  test("TTL expiration causes re-query from DB", () => {
+    // Warm the cache
+    const first = getUserByEmail(email);
+    expect(first).toBeDefined();
+
+    // Manually expire the cache entry by back-dating cachedAt
+    const key = `user_email:${email.toLowerCase()}`;
+    const entry = (appCache as unknown as { entries: Map<string, { data: unknown; cachedAt: number }> }).entries.get(key);
+    expect(entry).toBeDefined();
+    // Set cachedAt to 6 minutes ago (beyond the 5-min AUTH_CACHE_TTL_MS)
+    entry!.cachedAt = Date.now() - 360_000;
+
+    // Next call must re-query (returns fresh object, not same reference)
+    const afterExpiry = getUserByEmail(email);
+    expect(afterExpiry).toBeDefined();
+    expect(afterExpiry!.id).toBe(first!.id);
+    expect(afterExpiry).not.toBe(first); // new reference = cache miss
+  });
+
+  test("auth cache integrates with login flow (getUserByEmail → getUserById)", () => {
+    // Simulate a login flow: look up by email, then verify by id
+    const byEmail = getUserByEmail(email);
+    expect(byEmail).toBeDefined();
+
+    const byId = getUserById(byEmail!.id);
+    expect(byId).toBeDefined();
+    expect(byId!.email).toBe(byEmail!.email);
+
+    // Simulate role change during session — both caches should reflect it
+    updateUserRole(byEmail!.id, "user");
+    const refreshedEmail = getUserByEmail(email);
+    const refreshedId = getUserById(byEmail!.id);
+    expect(refreshedEmail!.role).toBe("user");
+    expect(refreshedId!.role).toBe("user");
+
+    // isUserEnabled should also reflect cached state
+    expect(isUserEnabled(byEmail!.id)).toBe(true);
+
+    // Restore
+    updateUserRole(byEmail!.id, "admin");
+  });
 });
