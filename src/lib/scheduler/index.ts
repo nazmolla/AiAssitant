@@ -121,11 +121,12 @@ You MUST call tools to do real work. A scan that does not call any tools is a FA
 
 ## Rules
 - **You MUST call at least one tool** — start by calling a listing/discovery tool from the connected MCP servers above
+- **NEVER ask questions.** No human is reading this. Do not end your thoughts with questions like "Should I…?", "Would the owner prefer…?", or "Is this worth investigating?". Instead, decide and act. You are the proactive agent — make the call yourself based on context, owner preferences, time of day, and common sense.
 - If a tool fails or a service is disconnected, note it and move on — don't treat transient failures as disasters
 - Smart home / IoT events are NEVER "disaster" severity
 - Do NOT send notifications about tool failures or service hiccups
 - Combine data from multiple sources for cross-service intelligence (e.g. weather + thermostat + time of day)
-- After gathering data, ALWAYS provide a summary of what you found and any actions taken${quietNote}
+- After gathering data, ALWAYS provide a summary of what you found and any actions taken — state facts and decisions, never questions${quietNote}
 
 Begin your proactive scan now. Start by calling discovery tools on each connected MCP server.`;
 }
