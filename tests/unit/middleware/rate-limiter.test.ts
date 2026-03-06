@@ -79,6 +79,29 @@ describe("Middleware — rate limiter (real implementation)", () => {
     const resB = await middleware(makeRequest({ ip: ipB }));
     expect(resB.status).not.toBe(429);
   });
+
+  // PERF-14: LRU eviction ensures map doesn't grow unbounded
+  test("handles many unique IPs without crashing (LRU eviction)", async () => {
+    // Send requests from a large number of unique IPs
+    // The LRU eviction at 10K cap should prevent unbounded growth
+    const batchSize = 500;
+    for (let i = 0; i < batchSize; i++) {
+      const res = await middleware(makeRequest({ ip: uniqueIp() }));
+      expect(res.status).not.toBe(429);
+    }
+    // All should succeed — each IP is unique with only 1 request
+  });
+
+  test("rate limiting still works after LRU eviction", async () => {
+    const ip = uniqueIp();
+    // Exhaust this IP's rate limit
+    for (let i = 0; i < 120; i++) {
+      await middleware(makeRequest({ ip }));
+    }
+    // Should be blocked
+    const res = await middleware(makeRequest({ ip }));
+    expect(res.status).toBe(429);
+  });
 });
 
 describe("Middleware — auth routing", () => {

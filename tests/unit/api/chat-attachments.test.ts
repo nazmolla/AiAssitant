@@ -103,3 +103,39 @@ describe("Preview size", () => {
     expect(PREVIEW_BYTES).toBeLessThan(MAX_INLINE_TEXT_BYTES / 100);
   });
 });
+
+// PERF-01: Verify no synchronous file reads in chat route
+describe("Async file reads (PERF-01)", () => {
+  test("chat route uses fsp (fs/promises) instead of readFileSync", () => {
+    // Read the source file and verify no readFileSync calls exist
+    const fs = require("fs");
+    const path = require("path");
+    const routePath = path.join(__dirname, "../../../src/app/api/threads/[threadId]/chat/route.ts");
+    const src = fs.readFileSync(routePath, "utf-8");
+
+    // Should NOT contain readFileSync
+    expect(src).not.toContain("readFileSync");
+    // Should NOT contain openSync, readSync, closeSync
+    expect(src).not.toContain("openSync");
+    expect(src).not.toContain("readSync(");
+    expect(src).not.toContain("closeSync");
+
+    // Should import fs/promises
+    expect(src).toMatch(/import\s+\w+\s+from\s+["']fs\/promises["']/);
+    // Should use async reads
+    expect(src).toContain("await fsp.readFile");
+    expect(src).toContain("await fsp.open");
+  });
+
+  test("chat route has no synchronous file reads", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const routePath = path.join(__dirname, "../../../src/app/api/threads/[threadId]/chat/route.ts");
+    const src = fs.readFileSync(routePath, "utf-8");
+    // Exclude import statements — only check actual usage
+    const withoutImports = src.replace(/^import\s.*$/gm, "");
+    expect(withoutImports).not.toMatch(/\breadFileSync\b/);
+    expect(withoutImports).not.toMatch(/\bopenSync\b/);
+    expect(withoutImports).not.toMatch(/\bcloseSync\b/);
+  });
+});

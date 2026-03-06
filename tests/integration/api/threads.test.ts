@@ -16,6 +16,7 @@ import {
   GET as GET_THREAD,
   DELETE as DELETE_THREAD,
 } from "@/app/api/threads/[threadId]/route";
+import { getRecentLogs } from "@/lib/db/queries";
 
 let userId: string;
 let adminId: string;
@@ -150,5 +151,50 @@ describe("DELETE /api/threads/[threadId]", () => {
     const req = new NextRequest(`http://localhost/api/threads/${threadId}`);
     const res = await GET_THREAD(req, { params: { threadId } });
     expect(res.status).toBe(404);
+  });
+});
+
+// PERF-20: Verify read-path logging was removed
+describe("GET /api/threads — logging", () => {
+  test("GET does not write log entries (PERF-20)", async () => {
+    setMockUser({ id: userId, email: "threads@example.com", role: "user" });
+    // Capture log count before GET
+    const logsBefore = getRecentLogs(10000);
+    const countBefore = logsBefore.filter(
+      (l) => l.source === "api.threads" && l.message === "Fetched threads list."
+    ).length;
+
+    // Make several GET requests
+    await GET();
+    await GET();
+    await GET();
+
+    // Count again — should NOT have increased
+    const logsAfter = getRecentLogs(10000);
+    const countAfter = logsAfter.filter(
+      (l) => l.source === "api.threads" && l.message === "Fetched threads list."
+    ).length;
+    expect(countAfter).toBe(countBefore);
+  });
+
+  test("POST still writes log entries", async () => {
+    setMockUser({ id: userId, email: "threads@example.com", role: "user" });
+    const logsBefore = getRecentLogs(10000);
+    const countBefore = logsBefore.filter(
+      (l) => l.source === "api.threads" && l.message === "Created new thread."
+    ).length;
+
+    const req = new NextRequest("http://localhost/api/threads", {
+      method: "POST",
+      body: JSON.stringify({ title: "Log test thread" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    await POST(req);
+
+    const logsAfter = getRecentLogs(10000);
+    const countAfter = logsAfter.filter(
+      (l) => l.source === "api.threads" && l.message === "Created new thread."
+    ).length;
+    expect(countAfter).toBeGreaterThan(countBefore);
   });
 });

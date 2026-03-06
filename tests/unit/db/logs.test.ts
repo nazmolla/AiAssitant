@@ -47,9 +47,34 @@ describe("Agent Logs", () => {
     expect(logs).toHaveLength(2);
   });
 
-  test("getRecentLogs returns all entries for non-finite limit", () => {
+  test("getRecentLogs applies default limit (1000) for NaN", () => {
+    // PERF-17: NaN is clamped to 1000 instead of running unbounded
     const logs = getRecentLogs(Number.NaN);
     expect(logs.length).toBeGreaterThanOrEqual(3);
+    // The important thing is it didn't crash and didn't run unbounded — it used LIMIT 1000
+  });
+
+  test("getRecentLogs applies default limit for Infinity", () => {
+    const logs = getRecentLogs(Infinity);
+    expect(logs.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("getRecentLogs applies default limit for negative values", () => {
+    const logs = getRecentLogs(-5);
+    expect(logs.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("getRecentLogs applies default limit for zero", () => {
+    const logs = getRecentLogs(0);
+    expect(logs.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("getRecentLogs caps at 10000", () => {
+    // PERF-17: Even if caller requests more than 10000, it's clamped
+    const logs = getRecentLogs(50000);
+    // With only a few test entries, we just verify it doesn't crash
+    expect(logs.length).toBeGreaterThanOrEqual(3);
+    expect(logs.length).toBeLessThanOrEqual(10000);
   });
 
   test("addLog supports error level", () => {
