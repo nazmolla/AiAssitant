@@ -110,6 +110,7 @@ CREATE TABLE user_knowledge (
     last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 -- Unique index: (user_id, entity, attribute, value)
+-- Performance indexes: (user_id), (user_id, entity), (user_id, attribute)
 
 CREATE TABLE knowledge_embeddings (
     knowledge_id INTEGER PRIMARY KEY REFERENCES user_knowledge(id),
@@ -495,7 +496,7 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**1182 tests across 92 suites** — all passing.
+**1197 tests across 93 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|

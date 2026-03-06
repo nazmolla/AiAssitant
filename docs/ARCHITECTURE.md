@@ -255,6 +255,8 @@ This ensures other HTTP requests (including new tabs, API calls, and the convers
 - `listPendingApprovalsForUser(userId)` — a single `JOIN` query (`approval_queue ⨝ threads`) that returns only the current user's pending approvals in O(1) queries instead of O(n).
 - `cleanStaleApprovals()` — a bulk `UPDATE` that rejects orphaned approvals (deleted thread) and stale approvals (thread no longer in `awaiting_approval` status) in two statements, replacing per-row staleness checks. Proactive approvals (`thread_id IS NULL`) are preserved.
 
+**Knowledge Search Indexes** (`src/lib/db/schema.ts`): Three indexes added on `user_knowledge` to eliminate full table scans in `searchKnowledge()`: `idx_user_knowledge_user_id` (user_id), `idx_user_knowledge_entity` (user_id, entity), and `idx_user_knowledge_attribute` (user_id, attribute). The search query itself was restructured from `OR user_id IS NULL` to `UNION ALL` so SQLite's query planner can use the user_id index for both branches. FTS5 was evaluated but not adopted — the overhead of shadow tables and sync triggers is not justified at current vault sizes (benchmarked at 38ms for 5,000 entries).
+
 ### Notification & Inbound Email Safety Path
 
 - **Per-user thresholds** — Channel notifications are filtered by each user profile's `notification_level` (`low`, `medium`, `high`, `disaster`).
