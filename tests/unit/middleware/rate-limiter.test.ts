@@ -1,82 +1,114 @@
 /**
- * Unit tests — Middleware rate-limiter logic
+ * Unit tests — Middleware (rate-limiter + auth routing)
  *
- * We test the rate-limiting function in isolation by re-implementing
- * the same sliding-window algorithm and verifying its behaviour.
+ * Tests the actual exported middleware function, which exercises the
+ * real isRateLimited() sliding-window logic and auth routing.
  */
 
-describe("Rate Limiter Logic", () => {
-  const WINDOW_MS = 60_000;
-  const MAX_REQUESTS = 120;
+// ── Mocks ────────────────────────────────────────────────────────
 
-  let ipHits: Map<string, { count: number; resetAt: number }>;
+jest.mock("next-auth/jwt", () => ({
+  getToken: jest.fn(),
+}));
 
-  function isRateLimited(ip: string): boolean {
-    const now = Date.now();
-    const entry = ipHits.get(ip);
-    if (!entry || now > entry.resetAt) {
-      ipHits.set(ip, { count: 1, resetAt: now + WINDOW_MS });
-      return false;
-    }
-    entry.count++;
-    return entry.count > MAX_REQUESTS;
-  }
+import { middleware } from "@/middleware";
+import { getToken } from "next-auth/jwt";
+import { NextRequest } from "next/server";
 
+const mockedGetToken = getToken as jest.MockedFunction<typeof getToken>;
+
+function makeRequest(opts: { ip?: string; path?: string; auth?: string } = {}) {
+  const { ip = "10.0.0.1", path = "/api/threads/abc", auth } = opts;
+  const url = `http://localhost:3000${path}`;
+  const headers = new Headers();
+  headers.set("x-forwarded-for", ip);
+  if (auth) headers.set("authorization", auth);
+  return new NextRequest(url, { headers });
+}
+
+// Each test uses a unique IP so the module-scoped ipHits Map is fresh per test.
+let ipCounter = 0;
+function uniqueIp() {
+  return `192.168.${Math.floor(ipCounter / 256)}.${ipCounter++ % 256}`;
+}
+
+// ── Tests ────────────────────────────────────────────────────────
+
+describe("Middleware — rate limiter (real implementation)", () => {
   beforeEach(() => {
-    ipHits = new Map();
+    jest.clearAllMocks();
+    mockedGetToken.mockResolvedValue({ userId: "u1" } as never);
   });
 
-  test("first request is never rate limited", () => {
-    expect(isRateLimited("10.0.0.1")).toBe(false);
+  test("first request is never rate limited", async () => {
+    const res = await middleware(makeRequest({ ip: uniqueIp() }));
+    expect(res.status).not.toBe(429);
   });
 
-  test("allows up to MAX_REQUESTS in a window", () => {
-    for (let i = 0; i < MAX_REQUESTS; i++) {
-      expect(isRateLimited("10.0.0.2")).toBe(false);
+  test("allows up to 120 requests in a window", async () => {
+    const ip = uniqueIp();
+    for (let i = 0; i < 120; i++) {
+      const res = await middleware(makeRequest({ ip }));
+      expect(res.status).not.toBe(429);
     }
   });
 
-  test("blocks request #MAX_REQUESTS+1", () => {
-    for (let i = 0; i < MAX_REQUESTS; i++) {
-      isRateLimited("10.0.0.3");
+  test("blocks request #121", async () => {
+    const ip = uniqueIp();
+    for (let i = 0; i < 120; i++) {
+      await middleware(makeRequest({ ip }));
     }
-    expect(isRateLimited("10.0.0.3")).toBe(true);
+    const res = await middleware(makeRequest({ ip }));
+    expect(res.status).toBe(429);
+
+    const body = await res.json();
+    expect(body.error).toMatch(/too many requests/i);
+    expect(res.headers.get("Retry-After")).toBe("60");
   });
 
-  test("different IPs have independent limits", () => {
-    for (let i = 0; i < MAX_REQUESTS; i++) {
-      isRateLimited("10.0.0.4");
+  test("different IPs have independent limits", async () => {
+    const ipA = uniqueIp();
+    const ipB = uniqueIp();
+    for (let i = 0; i < 120; i++) {
+      await middleware(makeRequest({ ip: ipA }));
     }
-    expect(isRateLimited("10.0.0.4")).toBe(true);
-    expect(isRateLimited("10.0.0.5")).toBe(false);
+    // ipA is exhausted
+    const resA = await middleware(makeRequest({ ip: ipA }));
+    expect(resA.status).toBe(429);
+    // ipB is fresh
+    const resB = await middleware(makeRequest({ ip: ipB }));
+    expect(resB.status).not.toBe(429);
+  });
+});
+
+describe("Middleware — auth routing", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
-  test("counter resets after window expires", () => {
-    // Simulate filling the window
-    for (let i = 0; i < MAX_REQUESTS; i++) {
-      isRateLimited("10.0.0.6");
-    }
-    expect(isRateLimited("10.0.0.6")).toBe(true);
-
-    // Fast-forward past the window by directly manipulating resetAt
-    const entry = ipHits.get("10.0.0.6")!;
-    entry.resetAt = Date.now() - 1;
-
-    // Should reset and allow again
-    expect(isRateLimited("10.0.0.6")).toBe(false);
+  test("API-key bearer tokens bypass session auth", async () => {
+    const ip = uniqueIp();
+    mockedGetToken.mockResolvedValue(null);
+    const res = await middleware(
+      makeRequest({ ip, auth: "Bearer nxk_test1234" })
+    );
+    expect(res.status).toBe(200);
+    expect(mockedGetToken).not.toHaveBeenCalled();
   });
 
-  test("stale entry cleanup", () => {
-    isRateLimited("10.0.0.7");
-    const entry = ipHits.get("10.0.0.7")!;
-    entry.resetAt = Date.now() - 1;
+  test("unauthenticated API requests return 401", async () => {
+    const ip = uniqueIp();
+    mockedGetToken.mockResolvedValue(null);
+    const res = await middleware(makeRequest({ ip, path: "/api/threads/abc" }));
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toMatch(/authentication required/i);
+  });
 
-    // Simulate the periodic cleanup
-    const now = Date.now();
-    ipHits.forEach((e, ip) => {
-      if (now > e.resetAt) ipHits.delete(ip);
-    });
-
-    expect(ipHits.has("10.0.0.7")).toBe(false);
+  test("authenticated API requests pass through", async () => {
+    const ip = uniqueIp();
+    mockedGetToken.mockResolvedValue({ userId: "u1" } as never);
+    const res = await middleware(makeRequest({ ip, path: "/api/threads/abc" }));
+    expect(res.status).toBe(200);
   });
 });

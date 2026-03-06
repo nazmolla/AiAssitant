@@ -287,6 +287,13 @@ export function ChatPanel() {
       audioModeRef.current = false;
       // Abort any in-flight SSE fetch
       abortControllerRef.current?.abort();
+      // PERF-19: Revoke any orphaned blob URLs from pending file previews
+      setPendingFiles((prev) => {
+        for (const pf of prev) {
+          if (pf.previewUrl) URL.revokeObjectURL(pf.previewUrl);
+        }
+        return [];
+      });
     };
   }, [screenStream]);
 

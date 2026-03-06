@@ -512,17 +512,20 @@ export function setDefaultLlmProvider(id: string): void {
 }
 
 export function deleteLlmProvider(id: string): void {
+  const db = getDb();
   const record = getLlmProvider(id);
-  getDb().prepare("DELETE FROM llm_providers WHERE id = ?").run(id);
-
-  if (record?.is_default) {
-    const fallback = getDb()
-      .prepare("SELECT id FROM llm_providers WHERE purpose = ? ORDER BY created_at DESC LIMIT 1")
-      .get(record.purpose) as { id: string } | undefined;
-    if (fallback) {
-      setDefaultLlmProvider(fallback.id);
+  // PERF-15: Wrap in a single transaction for atomicity
+  db.transaction(() => {
+    db.prepare("DELETE FROM llm_providers WHERE id = ?").run(id);
+    if (record?.is_default) {
+      const fallback = db
+        .prepare("SELECT id FROM llm_providers WHERE purpose = ? ORDER BY created_at DESC LIMIT 1")
+        .get(record.purpose) as { id: string } | undefined;
+      if (fallback) {
+        setDefaultLlmProvider(fallback.id);
+      }
     }
-  }
+  })();
   appCache.invalidate(CACHE_KEYS.LLM_PROVIDERS);
 }
 
@@ -972,34 +975,24 @@ export function addLog(log: AgentLogInput): void {
 export function getRecentLogs(limit = 100, level?: UnifiedLogLevel | "all", source?: string | "all"): AgentLog[] {
   const filterByLevel = !!level && level !== "all";
   const filterBySource = !!source && source !== "all";
-  if (!Number.isFinite(limit)) {
-    if (filterByLevel && filterBySource) {
-      return stmt("SELECT * FROM agent_logs WHERE level = ? AND source = ? ORDER BY created_at DESC").all(level, source) as AgentLog[];
-    }
-    if (filterByLevel) {
-      return stmt("SELECT * FROM agent_logs WHERE level = ? ORDER BY created_at DESC").all(level) as AgentLog[];
-    }
-    if (filterBySource) {
-      return stmt("SELECT * FROM agent_logs WHERE source = ? ORDER BY created_at DESC").all(source) as AgentLog[];
-    }
-    return stmt("SELECT * FROM agent_logs ORDER BY created_at DESC").all() as AgentLog[];
-  }
+  // PERF-17: Clamp to sensible bounds to prevent unbounded queries
+  const safeLimit = (!Number.isFinite(limit) || limit <= 0) ? 1000 : Math.min(limit, 10000);
   if (filterByLevel && filterBySource) {
     return stmt(
       "SELECT * FROM agent_logs WHERE level = ? AND source = ? ORDER BY created_at DESC LIMIT ?"
-    ).all(level, source, limit) as AgentLog[];
+    ).all(level, source, safeLimit) as AgentLog[];
   }
   if (filterByLevel) {
     return stmt(
       "SELECT * FROM agent_logs WHERE level = ? ORDER BY created_at DESC LIMIT ?"
-    ).all(level, limit) as AgentLog[];
+    ).all(level, safeLimit) as AgentLog[];
   }
   if (filterBySource) {
     return stmt(
       "SELECT * FROM agent_logs WHERE source = ? ORDER BY created_at DESC LIMIT ?"
-    ).all(source, limit) as AgentLog[];
+    ).all(source, safeLimit) as AgentLog[];
   }
-  return stmt("SELECT * FROM agent_logs ORDER BY created_at DESC LIMIT ?").all(limit) as AgentLog[];
+  return stmt("SELECT * FROM agent_logs ORDER BY created_at DESC LIMIT ?").all(safeLimit) as AgentLog[];
 }
 
 export function deleteAllLogs(): number {

@@ -22,12 +22,7 @@ export async function GET() {
     if ("error" in auth) return auth.error;
 
     const threads = listThreads(auth.user.id);
-    addLog({
-      level: "verbose",
-      source: "api.threads",
-      message: "Fetched threads list.",
-      metadata: JSON.stringify({ userId: auth.user.id, count: threads.length }),
-    });
+    // PERF-20: Removed verbose read-path logging (was 3,600+ log writes/hour)
     return NextResponse.json(threads);
   } catch (err) {
     addLog({

@@ -14,6 +14,11 @@ function isRateLimited(ip: string): boolean {
   const now = Date.now();
   const entry = ipHits.get(ip);
   if (!entry || now > entry.resetAt) {
+    // PERF-14: Evict oldest entries if map exceeds cap
+    if (ipHits.size >= IP_HITS_MAX_SIZE) {
+      const firstKey = ipHits.keys().next().value;
+      if (firstKey) ipHits.delete(firstKey);
+    }
     ipHits.set(ip, { count: 1, resetAt: now + WINDOW_MS });
     return false;
   }
@@ -21,13 +26,14 @@ function isRateLimited(ip: string): boolean {
   return entry.count > MAX_REQUESTS;
 }
 
-// Periodically clean stale entries (every 5 min)
+// PERF-14: Clean stale entries every 60s (was 5 min) + cap map size
+const IP_HITS_MAX_SIZE = 10_000;
 setInterval(() => {
   const now = Date.now();
   ipHits.forEach((entry, ip) => {
     if (now > entry.resetAt) ipHits.delete(ip);
   });
-}, 300_000);
+}, 60_000);
 
 export async function middleware(req: NextRequest) {
   // --- Rate limiting (applied to all matched routes) ---

@@ -4,6 +4,7 @@ import { runAgentLoopWithWorker } from "@/lib/agent";
 import { getThread } from "@/lib/db";
 import type { ContentPart } from "@/lib/llm";
 import fs from "fs";
+import fsp from "fs/promises";
 import pathMod from "path";
 
 /** Prevent Next.js from caching SSE responses */
@@ -115,7 +116,7 @@ export async function POST(
       if (att.mimeType.startsWith("image/") && fileExists) {
         if (att.sizeBytes <= MAX_INLINE_IMAGE_BYTES) {
           // Read image from disk → base64 data URI (LLM can't fetch private network URLs)
-          const buf = fs.readFileSync(filePath);
+          const buf = await fsp.readFile(filePath);
           const b64 = buf.toString("base64");
           const dataUri = `data:${att.mimeType};base64,${b64}`;
           contentParts.push({
@@ -133,17 +134,17 @@ export async function POST(
       } else if (TEXT_MIME_TYPES.has(att.mimeType) && fileExists) {
         if (att.sizeBytes <= MAX_INLINE_TEXT_BYTES) {
           // Text-based file: read content and pass directly to LLM
-          const textContent = fs.readFileSync(filePath, "utf-8");
+          const textContent = await fsp.readFile(filePath, "utf-8");
           contentParts.push({
             type: "text",
             text: `📎 File: ${att.filename}\n\`\`\`\n${textContent}\n\`\`\``,
           });
         } else {
           // Large text file — inline a preview, reference the full file by path
-          const fd = fs.openSync(filePath, "r");
+          const fh = await fsp.open(filePath, "r");
           const buf = Buffer.alloc(2048);
-          const bytesRead = fs.readSync(fd, buf, 0, 2048, 0);
-          fs.closeSync(fd);
+          const { bytesRead } = await fh.read(buf, 0, 2048, 0);
+          await fh.close();
           const preview = buf.toString("utf-8", 0, bytesRead);
           const absPath = pathMod.resolve(filePath);
           contentParts.push({

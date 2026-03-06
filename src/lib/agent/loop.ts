@@ -265,9 +265,9 @@ export async function runAgentLoop(
   const knowledgeSnippets: string[] = [`[User]\n${queryText}`];
 
   // Build context from knowledge vault (scoped to user)
-  // Skip if vault is empty OR if the message clearly doesn't need knowledge context
+  // Skip if the message clearly doesn't need knowledge context OR if vault is empty
   let knowledgeContext = "";
-  if (hasKnowledgeEntries(userId) && needsKnowledgeRetrieval(queryText)) {
+  if (needsKnowledgeRetrieval(queryText) && hasKnowledgeEntries(userId)) {
     onStatus?.({ step: "Retrieving knowledge", detail: "Searching knowledge vault…" });
     const relevantKnowledge = await retrieveKnowledge(queryText, 8, userId);
     onStatus?.({ step: "Retrieving knowledge", detail: `Found ${relevantKnowledge.length} relevant ${relevantKnowledge.length === 1 ? "entry" : "entries"}` });
