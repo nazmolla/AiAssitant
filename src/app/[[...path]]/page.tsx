@@ -321,7 +321,10 @@ export default function HomePage() {
 
       {/* Content */}
       <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {activeTab === "chat" && <ChatPanel />}
+        {/* ChatPanel kept mounted — hidden via CSS to preserve state & SSE connections */}
+        <Box sx={{ display: activeTab === "chat" ? "flex" : "none", flex: 1, overflow: "hidden", flexDirection: "column" }}>
+          <ChatPanel />
+        </Box>
         {activeTab === "conversation" && <ConversationMode />}
         {activeTab === "dashboard" && (
           <Box sx={{ flex: 1, overflow: "auto", p: { xs: 1.5, sm: 3 } }}>

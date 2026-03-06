@@ -364,6 +364,41 @@ export function selectBackgroundProvider(): OrchestratorResult {
   return selectProvider("summarize this", false, "local");
 }
 
+/**
+ * Select a fallback provider, excluding specified labels.
+ * Returns null if no alternative provider is available.
+ */
+export function selectFallbackProvider(
+  message: string,
+  excludeLabels: string[],
+  hasImages?: boolean
+): OrchestratorResult | null {
+  const taskType = classifyTask(message, hasImages);
+  const allProviders = listLlmProviders()
+    .filter((p) => p.purpose === "chat" && !excludeLabels.includes(p.label));
+
+  if (allProviders.length === 0) return null;
+
+  const scored: ScoredProvider[] = allProviders.map((record) => {
+    const { config, capabilities, tier } = parseProviderConfig(record);
+    const score = scoreProvider(capabilities, tier, taskType);
+    return { record, config, capabilities, tier, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  const provider = buildProvider(best.record, best.config);
+  const reason = `Fallback · ${buildReason(best, taskType, scored.length)}`;
+
+  return {
+    provider,
+    providerLabel: best.record.label,
+    taskType,
+    tier: best.tier,
+    reason,
+  };
+}
+
 function buildReason(best: ScoredProvider, taskType: TaskType, totalProviders: number): string {
   const parts = [
     `Task: ${taskType}`,

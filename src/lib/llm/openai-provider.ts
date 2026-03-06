@@ -42,6 +42,8 @@ export class OpenAIChatProvider implements ChatProvider {
         baseURL: `${endpoint}/openai/deployments/${options.deployment}`,
         defaultQuery: { "api-version": options.apiVersion || "2024-08-01-preview" },
         defaultHeaders: { "api-key": options.apiKey },
+        timeout: 60_000,
+        maxRetries: 1,
       });
       return { client, model };
     }
@@ -49,6 +51,8 @@ export class OpenAIChatProvider implements ChatProvider {
     const client = new OpenAI({
       apiKey: options.apiKey,
       baseURL: options.baseURL,
+      timeout: 60_000,
+      maxRetries: 1,
     });
     const model = options.model || "gpt-4o";
     return { client, model };

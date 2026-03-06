@@ -12,6 +12,7 @@
 import {
   createChatProvider,
   selectProvider,
+  selectFallbackProvider,
   selectBackgroundProvider,
   type ChatMessage,
   type ChatResponse,
@@ -157,8 +158,8 @@ export async function runAgentLoop(
   // Use the orchestrator to pick the best model for this task
   onStatus?.({ step: "Selecting model", detail: "Classifying task complexity…" });
   const hasImages = contentParts?.some((p) => p.type === "image_url") ?? false;
-  const orchestration = selectProvider(userMessage || "continuation", hasImages);
-  const provider = orchestration.provider;
+  let orchestration = selectProvider(userMessage || "continuation", hasImages);
+  let provider = orchestration.provider;
   onStatus?.({ step: "Selecting model", detail: `Task: ${orchestration.taskType} → ${orchestration.providerLabel}` });
   const mcpManager = getMcpManager();
   const mcpTools = mcpManager.getAllTools();
@@ -347,12 +348,32 @@ export async function runAgentLoop(
     await yieldLoop(); // yield event loop between iterations so other requests can be served
 
     onStatus?.({ step: "Generating response", detail: `Sending to ${orchestration.providerLabel}${iterations > 1 ? ` (iteration ${iterations})` : ""}` });
-    const response: ChatResponse = await provider.chat(
-      chatMessages,
-      tools.length > 0 ? tools : undefined,
-      SYSTEM_PROMPT + profileContext + knowledgeContext,
-      onToken
-    );
+    let response: ChatResponse;
+    try {
+      response = await provider.chat(
+        chatMessages,
+        tools.length > 0 ? tools : undefined,
+        SYSTEM_PROMPT + profileContext + knowledgeContext,
+        onToken
+      );
+    } catch (primaryErr) {
+      // Attempt fallback to another provider
+      const fallback = selectFallbackProvider(userMessage || "continuation", [orchestration.providerLabel], hasImages);
+      if (fallback) {
+        console.warn(`[agent] Primary provider ${orchestration.providerLabel} failed (${primaryErr instanceof Error ? primaryErr.message : primaryErr}), falling back to ${fallback.providerLabel}`);
+        onStatus?.({ step: "Falling back", detail: `${orchestration.providerLabel} failed — trying ${fallback.providerLabel}` });
+        orchestration = fallback;
+        provider = fallback.provider;
+        response = await provider.chat(
+          chatMessages,
+          tools.length > 0 ? tools : undefined,
+          SYSTEM_PROMPT + profileContext + knowledgeContext,
+          onToken
+        );
+      } else {
+        throw primaryErr;
+      }
+    }
 
     if (response.content) {
       knowledgeSnippets.push(`[Assistant]\n${response.content}`);

@@ -141,6 +141,7 @@ export function ChatPanel() {
   const [screenShareEnabled, setScreenShareEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [actingApproval, setActingApproval] = useState<string | null>(null);
   const [resolvedApprovals, setResolvedApprovals] = useState<Record<string, string>>({});
   const [showSidebar, setShowSidebar] = useState(true);
@@ -270,7 +271,7 @@ export function ChatPanel() {
     latestFrameRef.current = null;
   }
 
-  // Clean up screen share on unmount
+  // Clean up screen share and SSE on unmount
   useEffect(() => {
     return () => {
       if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
@@ -284,6 +285,8 @@ export function ChatPanel() {
         ttsAudioRef.current = null;
       }
       audioModeRef.current = false;
+      // Abort any in-flight SSE fetch
+      abortControllerRef.current?.abort();
     };
   }, [screenStream]);
 
@@ -709,6 +712,10 @@ export function ChatPanel() {
     setThinkingSteps([]);
     audioModeTtsQueue.current = ""; // reset TTS accumulator
 
+    // Abort any previous in-flight SSE request, create fresh controller
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+
     // Capture screen frame if sharing is active
     const frames: string[] = [];
     if (screenSharing) {
@@ -717,6 +724,7 @@ export function ChatPanel() {
     }
 
     // Optimistic update
+    const optimisticId = Date.now();
     const optimisticAttachments = filesToSend.map((pf) => ({
       id: "",
       filename: pf.file.name,
@@ -727,7 +735,7 @@ export function ChatPanel() {
     setMessages((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: optimisticId,
         thread_id: activeThread,
         role: "user",
         content: userMsg || null,
@@ -750,6 +758,7 @@ export function ChatPanel() {
       const res = await fetch(`/api/threads/${activeThread}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortControllerRef.current?.signal,
         body: JSON.stringify({
           message: userMsg || (frames.length > 0 ? "(see my screen)" : undefined),
           attachments: uploadedMeta.length > 0 ? uploadedMeta : undefined,
@@ -797,14 +806,13 @@ export function ChatPanel() {
                   // Replace optimistic user msg with server version (has real id + created_at)
                   setMessages((prev) => {
                     const copy = [...prev];
-                    // Find last optimistic user message
-                    for (let i = copy.length - 1; i >= 0; i--) {
-                      if (copy[i].role === "user" && copy[i].id === Date.now()) {
-                        copy[i] = data;
-                        return copy;
-                      }
+                    // Find the optimistic user message by its stable id
+                    const optIdx = copy.findIndex((m) => m.id === optimisticId);
+                    if (optIdx >= 0) {
+                      copy[optIdx] = data;
+                      return copy;
                     }
-                    // If no match (id changed), replace last user msg
+                    // Fallback: replace last user msg
                     for (let i = copy.length - 1; i >= 0; i--) {
                       if (copy[i].role === "user") {
                         copy[i] = data;
@@ -893,6 +901,8 @@ export function ChatPanel() {
         }
       }
     } catch (err) {
+      // Don't show abort errors (user navigated away or sent a new message)
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setMessages((prev) => [
         ...prev,
         { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${err}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
@@ -1054,7 +1064,7 @@ export function ChatPanel() {
               <ListItemButton
                 key={thread.id}
                 selected={activeThread === thread.id}
-                onClick={() => { setActiveThread(thread.id); setShowSidebar(false); }}
+                onClick={() => { if (activeThread !== thread.id) setActiveThread(thread.id); setShowSidebar(false); }}
                 sx={{
                   mx: 0.5,
                   borderRadius: 2,
