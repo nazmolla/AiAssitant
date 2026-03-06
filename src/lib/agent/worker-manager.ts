@@ -120,13 +120,14 @@ export function runLlmInWorker(
       fn();
     };
 
-    // Hard timeout: 300 seconds per LLM session (complex multi-tool conversations can be long)
+    // Hard timeout: 30 seconds — if the worker hasn't responded by then,
+    // kill it and fall back to main thread (which has its own fallback logic)
     const timeout = setTimeout(() => {
       settle(() => {
         worker?.terminate();
-        reject(new Error("Agent worker timed out after 300s"));
+        reject(new Error("Agent worker timed out after 30s"));
       });
-    }, 300_000);
+    }, 30_000);
 
     worker.on("message", async (msg: {
       type: string;

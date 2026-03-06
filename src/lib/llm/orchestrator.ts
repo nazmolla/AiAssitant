@@ -144,10 +144,10 @@ function inferCapabilities(
     inferred.costTier = "high";
   }
 
-  // Local models
+  // Local models (CPU-only Ollama is slow; only fast if GPU-accelerated)
   if (record.provider_type === "litellm") {
     inferred.costTier = "free";
-    inferred.speed = "medium";
+    inferred.speed = "slow";
   }
 
   return inferred;
@@ -174,13 +174,15 @@ function scoreProvider(
       break;
 
     case "simple":
-      // Prefer fast, cheap models
-      if (capabilities.speed === "fast") score += 50;
-      if (capabilities.costTier === "free") score += 40;
-      else if (capabilities.costTier === "low") score += 30;
-      if (tier === "local") score += 30;
-      else if (tier === "secondary") score += 20;
-      else score += 10;
+      // Prefer fast cloud models for snappy interactive chat
+      if (capabilities.speed === "fast") score += 60;
+      else if (capabilities.speed === "medium") score += 30;
+      else score -= 40; // penalize slow (CPU-only local)
+      if (tier === "primary") score += 40;
+      else if (tier === "secondary") score += 30;
+      else score += 5; // local — only use as last resort for chat
+      if (capabilities.costTier === "free") score += 10;
+      else if (capabilities.costTier === "low") score += 15;
       if (capabilities.toolCalling) score += 10;
       break;
 

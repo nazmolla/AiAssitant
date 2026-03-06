@@ -106,11 +106,11 @@ export async function POST(req: NextRequest) {
 
   chatMessages.push({ role: "user", content: message.trim() });
 
-  // Select best LLM provider — prefer local models for voice conversation
-  // to avoid burning cloud rate limits on quick back-and-forth exchanges
+  // Select best LLM provider — prefer fast cloud models for voice conversation
+  // to ensure snappy real-time responses
   let orchestration;
   try {
-    orchestration = selectProvider(message, false, "local");
+    orchestration = selectProvider(message, false);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 503 });
