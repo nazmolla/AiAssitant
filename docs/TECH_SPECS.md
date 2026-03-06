@@ -10,7 +10,7 @@
 |-------|-----------|---------|
 | Runtime | Node.js | v20+ (LTS). Tested on x86-64 and ARM64. |
 | Language | TypeScript | v5.x, Strict Mode |
-| Database | SQLite | `better-sqlite3` — zero-config, single-file persistence. **Application cache** (`src/lib/cache.ts`) — in-memory write-through cache with 60s TTL and explicit invalidation for LLM providers, tool policies, user records, profiles, and auth lookups (by-email/by-sub with 5-min TTL) to avoid redundant synchronous DB queries on every request. **Provider instance cache** (`src/lib/llm/orchestrator.ts`) — module-level Map keyed by config hash with 10s TTL; avoids re-constructing SDK clients on every chat request. |
+| Database | SQLite | `better-sqlite3` — zero-config, single-file persistence. **Application cache** (`src/lib/cache.ts`) — in-memory write-through cache with 60s TTL and explicit invalidation for LLM providers, tool policies, user records, profiles, and auth lookups (by-email/by-sub with 5-min TTL) to avoid redundant synchronous DB queries on every request. **Provider instance cache** (`src/lib/llm/orchestrator.ts`) — module-level Map keyed by config hash with 10s TTL; avoids re-constructing SDK clients on every chat request. **Embedding result cache** (`src/lib/llm/embeddings.ts`) — LRU Map keyed by SHA-256 text hash with 1-hour TTL, max 500 entries; eliminates redundant embedding API calls (100-500 ms each). |
 | Frontend | Next.js 16 | App Router, Material UI (MUI v7) with 7 color themes, TailwindCSS, screen sharing via getDisplayMedia, **Markdown rendering** via `react-markdown` + `remark-gfm`, header account dropdown with quick Profile and Sign out actions. **Middleware proxy** limit set to `50 MB` (`proxyClientMaxBodySize`) for large file uploads. Build requires `--webpack` flag (Turbopack unsupported). |
 | HTTPS | nginx + self-signed cert | Reverse proxy HTTPS:443 → Next.js:3000. Required for mic access over network. TLSv1.2/1.3, HTTP → HTTPS redirect, SSE passthrough. |
 | Audio | OpenAI Whisper + TTS-1 | Speech-to-Text (mic input, 25 MB max, webm/wav/mp3/ogg/flac) and Text-to-Speech (9 voices, configurable output format: mp3/wav/pcm/opus/aac/flac). Supports dedicated `tts` and `stt` purpose providers with standard deployment field for Azure OpenAI. **Local Whisper fallback** — optional local Whisper server (faster-whisper-server or whisper.cpp) as automatic backup when cloud STT fails. **Audio mode** — hands-free conversation with auto-listen and streaming TTS. **Conversation Mode** — dedicated `/conversation` tab with VAD-based automatic speech endpoint detection (WebAudio AnalyserNode, 1.2 s silence / 0.4 s min speech), lightweight `/api/conversation/respond` endpoint (full tool support, no knowledge/profile/DB overhead), in-memory client-side history (30 msg cap), real-time audio level visualization, atomic `stateRef` sync via `useCallback`, auto-listen after response, and **interrupt / barge-in** (separate interrupt VAD with 200 ms sustained speech at 2× threshold triggers abort of LLM + TTS, marks transcript with ⸺, transitions to listening). **ESP32 Atom Echo** — standalone Arduino sketch for M5Stack Atom Echo with on-device wake-word detection via micro-wake-up, WAV-format TTS, full tool support via `/api/conversation/respond`. |
@@ -495,11 +495,11 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**932 tests across 77 suites** — all passing.
+**1147 tests across 89 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|
-| Unit | ~55 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards, knowledge retrieval, inbound email classification, attachment size guards |
+| Unit | ~62 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards, knowledge retrieval, inbound email classification, attachment size guards, embedding cache, provider cache, auth cache |
 | Integration | ~6 | End-to-end API flows, MCP integration, channel routing, SSE concurrency & disconnect safety |
 | Component | ~10 | Full navigation (every page + settings sub-page), component rendering, settings panel, tool policies, profile config, markdown rendering, TTS-to-listening transitions, interrupt / barge-in |
 
