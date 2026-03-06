@@ -588,12 +588,15 @@ function decryptMcpServer(srv: McpServerRecord | undefined): McpServerRecord | u
 
 /** List servers visible to a user: their own + global ones */
 export function listMcpServers(userId?: string): McpServerRecord[] {
-  const rows = userId
-    ? getDb()
-        .prepare("SELECT * FROM mcp_servers WHERE user_id IS NULL OR scope = 'global' OR user_id = ?")
-        .all(userId) as McpServerRecord[]
-    : getDb().prepare("SELECT * FROM mcp_servers").all() as McpServerRecord[];
-  return rows.map((r) => decryptMcpServer(r)!);
+  const cacheKey = `${CACHE_KEYS.MCP_SERVERS_PREFIX}${userId ?? "_all"}`;
+  return appCache.get(cacheKey, () => {
+    const rows = userId
+      ? getDb()
+          .prepare("SELECT * FROM mcp_servers WHERE user_id IS NULL OR scope = 'global' OR user_id = ?")
+          .all(userId) as McpServerRecord[]
+      : getDb().prepare("SELECT * FROM mcp_servers").all() as McpServerRecord[];
+    return rows.map((r) => decryptMcpServer(r)!);
+  });
 }
 
 export function getMcpServer(id: string): McpServerRecord | undefined {
@@ -626,6 +629,7 @@ export function upsertMcpServer(server: McpServerRecord): void {
       server.client_id ?? null, encryptField(server.client_secret ?? null),
       server.user_id ?? null, server.scope ?? "global"
     );
+  appCache.invalidatePrefix(CACHE_KEYS.MCP_SERVERS_PREFIX);
 }
 
 export function deleteMcpServer(id: string): void {
@@ -633,6 +637,7 @@ export function deleteMcpServer(id: string): void {
   // Remove tool policies that reference this server to avoid FK constraint errors
   db.prepare("DELETE FROM tool_policies WHERE mcp_id = ?").run(id);
   db.prepare("DELETE FROM mcp_servers WHERE id = ?").run(id);
+  appCache.invalidatePrefix(CACHE_KEYS.MCP_SERVERS_PREFIX);
 }
 
 // â”€â”€â”€ User Knowledge (per-user) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1066,10 +1071,13 @@ function decryptChannel(ch: ChannelRecord | undefined): ChannelRecord | undefine
 }
 
 export function listChannels(userId?: string): ChannelRecord[] {
-  const rows = userId
-    ? getDb().prepare("SELECT * FROM channels WHERE user_id = ? ORDER BY created_at ASC").all(userId) as ChannelRecord[]
-    : getDb().prepare("SELECT * FROM channels ORDER BY created_at ASC").all() as ChannelRecord[];
-  return rows.map((r) => decryptChannel(r)!);
+  const cacheKey = `${CACHE_KEYS.CHANNELS_PREFIX}${userId ?? "_all"}`;
+  return appCache.get(cacheKey, () => {
+    const rows = userId
+      ? getDb().prepare("SELECT * FROM channels WHERE user_id = ? ORDER BY created_at ASC").all(userId) as ChannelRecord[]
+      : getDb().prepare("SELECT * FROM channels ORDER BY created_at ASC").all() as ChannelRecord[];
+    return rows.map((r) => decryptChannel(r)!);
+  });
 }
 
 export function getChannel(id: string): ChannelRecord | undefined {
@@ -1091,6 +1099,7 @@ export function createChannel(args: {
        VALUES (?, ?, ?, 1, ?, ?, ?)`
     )
     .run(id, args.channelType, args.label, encryptField(args.configJson), encryptField(webhookSecret), args.userId);
+  appCache.invalidatePrefix(CACHE_KEYS.CHANNELS_PREFIX);
   return getDb().prepare("SELECT * FROM channels WHERE id = ?").get(id) as ChannelRecord;
 }
 
@@ -1112,11 +1121,13 @@ export function updateChannel(args: {
       `UPDATE channels SET label = ?, channel_type = ?, config_json = ?, enabled = ? WHERE id = ?`
     )
     .run(label, channelType, encryptField(configJson), enabled, args.id);
+  appCache.invalidatePrefix(CACHE_KEYS.CHANNELS_PREFIX);
   return getDb().prepare("SELECT * FROM channels WHERE id = ?").get(args.id) as ChannelRecord;
 }
 
 export function deleteChannel(id: string): void {
   getDb().prepare("DELETE FROM channels WHERE id = ?").run(id);
+  appCache.invalidatePrefix(CACHE_KEYS.CHANNELS_PREFIX);
 }
 
 // ─── IMAP UID Tracking ──────────────────────────────────────
@@ -1223,10 +1234,12 @@ function decryptAuthProvider(p: AuthProviderRecord | undefined): AuthProviderRec
 }
 
 export function listAuthProviders(): AuthProviderRecord[] {
-  const rows = getDb()
-    .prepare("SELECT * FROM auth_providers ORDER BY created_at ASC")
-    .all() as AuthProviderRecord[];
-  return rows.map((r) => decryptAuthProvider(r)!);
+  return appCache.get(CACHE_KEYS.AUTH_PROVIDERS, () => {
+    const rows = getDb()
+      .prepare("SELECT * FROM auth_providers ORDER BY created_at ASC")
+      .all() as AuthProviderRecord[];
+    return rows.map((r) => decryptAuthProvider(r)!);
+  });
 }
 
 export function getEnabledAuthProviders(): AuthProviderRecord[] {
@@ -1284,11 +1297,13 @@ export function upsertAuthProvider(args: {
     args.applicationId ?? null,
     args.enabled !== false ? 1 : 0
   );
+  appCache.invalidate(CACHE_KEYS.AUTH_PROVIDERS);
   return getAuthProvider(id)!;
 }
 
 export function deleteAuthProvider(id: string): void {
   getDb().prepare("DELETE FROM auth_providers WHERE id = ?").run(id);
+  appCache.invalidate(CACHE_KEYS.AUTH_PROVIDERS);
 }
 
 // â”€â”€â”€ Custom Tools (agent-created extensibility) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
