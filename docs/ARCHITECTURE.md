@@ -259,6 +259,8 @@ This ensures other HTTP requests (including new tabs, API calls, and the convers
 
 **Chat History Conversion** (`src/lib/agent/loop.ts`): `dbMessagesToChat()` converts DB messages to LLM-ready chat format. Previously it ran two full passes — first to collect `tool_call_id`s, then to build the result array, re-parsing `tool_calls` JSON each time. Now uses a single-pass approach with a pre-parsed `Map` cache, eliminating redundant `JSON.parse()` calls (50% reduction in parse overhead for tool-heavy conversations).
 
+**Listing Query Pagination** (`src/lib/db/queries.ts`): High-volume listing endpoints (`/api/threads`, `/api/knowledge`) use `LIMIT`/`OFFSET` pagination via `listThreadsPaginated()` and `listKnowledgePaginated()`. Each returns a `PaginatedResult<T>` with `{ data, total, limit, offset, hasMore }`. Threads default to 50 per page (max 200), knowledge to 100 per page (max 500). The frontend appends pages on demand via "Load more" controls. Original unpaginated functions (`listThreads()`, `listKnowledge()`) remain available for internal callers (e.g., export, migration).
+
 ### Notification & Inbound Email Safety Path
 
 - **Per-user thresholds** — Channel notifications are filtered by each user profile's `notification_level` (`low`, `medium`, `high`, `disaster`).

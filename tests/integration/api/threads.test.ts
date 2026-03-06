@@ -31,16 +31,18 @@ afterAll(() => teardownTestDb());
 describe("GET /api/threads", () => {
   test("returns 401 when unauthenticated", async () => {
     setMockUser(null);
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/threads"));
     expect(res.status).toBe(401);
   });
 
   test("returns empty list for new user", async () => {
     setMockUser({ id: userId, email: "threads@example.com", role: "user" });
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/threads"));
     expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data).toEqual([]);
+    const body = await res.json();
+    expect(body.data).toEqual([]);
+    expect(body.total).toBe(0);
+    expect(body.hasMore).toBe(false);
   });
 });
 
@@ -61,17 +63,17 @@ describe("POST /api/threads", () => {
 
   test("created thread appears in GET list", async () => {
     setMockUser({ id: userId, email: "threads@example.com", role: "user" });
-    const res = await GET();
-    const data = await res.json();
-    expect(data.length).toBeGreaterThanOrEqual(1);
-    expect(data[0].title).toBe("My thread");
+    const res = await GET(new NextRequest("http://localhost/api/threads"));
+    const body = await res.json();
+    expect(body.data.length).toBeGreaterThanOrEqual(1);
+    expect(body.data[0].title).toBe("My thread");
   });
 
   test("user cannot see another user's threads", async () => {
     setMockUser({ id: adminId, email: "admin@example.com", role: "admin" });
-    const res = await GET();
-    const data = await res.json();
-    expect(data).toEqual([]);
+    const res = await GET(new NextRequest("http://localhost/api/threads"));
+    const body = await res.json();
+    expect(body.data).toEqual([]);
   });
 });
 
@@ -165,9 +167,9 @@ describe("GET /api/threads — logging", () => {
     ).length;
 
     // Make several GET requests
-    await GET();
-    await GET();
-    await GET();
+    await GET(new NextRequest("http://localhost/api/threads"));
+    await GET(new NextRequest("http://localhost/api/threads"));
+    await GET(new NextRequest("http://localhost/api/threads"));
 
     // Count again — should NOT have increased
     const logsAfter = getRecentLogs(10000);

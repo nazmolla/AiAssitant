@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { listThreads, createThread, addLog } from "@/lib/db";
+import { listThreadsPaginated, createThread, addLog } from "@/lib/db";
 import { initializeDatabase } from "@/lib/db";
 
 // Ensure DB is initialized
@@ -16,14 +16,17 @@ try {
   });
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const auth = await requireUser();
     if ("error" in auth) return auth.error;
 
-    const threads = listThreads(auth.user.id);
-    // PERF-20: Removed verbose read-path logging (was 3,600+ log writes/hour)
-    return NextResponse.json(threads);
+    const url = req.nextUrl;
+    const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 1), 200);
+    const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
+
+    const result = listThreadsPaginated(auth.user.id, limit, offset);
+    return NextResponse.json(result);
   } catch (err) {
     addLog({
       level: "error",

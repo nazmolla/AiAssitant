@@ -132,6 +132,8 @@ function sanitizeAssistantContent(content: string | null, hasAttachments: boolea
 
 export function ChatPanel() {
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [threadsTotal, setThreadsTotal] = useState(0);
+  const [threadsHasMore, setThreadsHasMore] = useState(false);
   const [activeThread, setActiveThread] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -155,7 +157,13 @@ export function ChatPanel() {
       if (threadFetchInFlightRef.current) return; // already in-flight — skip
       const p = fetch("/api/threads")
         .then((r) => r.json())
-        .then((d) => { if (Array.isArray(d)) setThreads(d); })
+        .then((d) => {
+          if (d && Array.isArray(d.data)) {
+            setThreads(d.data);
+            setThreadsTotal(d.total ?? d.data.length);
+            setThreadsHasMore(d.hasMore ?? false);
+          }
+        })
         .catch(console.error)
         .finally(() => { threadFetchInFlightRef.current = null; });
       threadFetchInFlightRef.current = p;
@@ -1134,6 +1142,27 @@ export function ChatPanel() {
               </ListItemButton>
             ))}
           </List>
+          {threadsHasMore && (
+            <Box sx={{ textAlign: "center", py: 1 }}>
+              <Button
+                size="small"
+                onClick={() => {
+                  fetch(`/api/threads?limit=50&offset=${threads.length}`)
+                    .then((r) => r.json())
+                    .then((d) => {
+                      if (d && Array.isArray(d.data)) {
+                        setThreads((prev) => [...prev, ...d.data]);
+                        setThreadsTotal(d.total ?? threads.length + d.data.length);
+                        setThreadsHasMore(d.hasMore ?? false);
+                      }
+                    })
+                    .catch(console.error);
+                }}
+              >
+                Load more ({threadsTotal - threads.length} remaining)
+              </Button>
+            </Box>
+          )}
         </Box>
       </Paper>
 

@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { listKnowledge, upsertKnowledge, updateKnowledge, deleteKnowledge, getKnowledgeEntry } from "@/lib/db";
+import { listKnowledgePaginated, upsertKnowledge, updateKnowledge, deleteKnowledge, getKnowledgeEntry } from "@/lib/db";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  const knowledge = listKnowledge(auth.user.id);
-  return NextResponse.json(knowledge);
+  const url = req.nextUrl;
+  const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") || "100", 10) || 100, 1), 500);
+  const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
+
+  const result = listKnowledgePaginated(auth.user.id, limit, offset);
+  return NextResponse.json(result);
 }
 
 export async function POST(req: NextRequest) {

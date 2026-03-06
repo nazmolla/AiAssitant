@@ -21,15 +21,17 @@ afterAll(() => teardownTestDb());
 describe("GET /api/knowledge", () => {
   test("returns 401 when unauthenticated", async () => {
     setMockUser(null);
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/knowledge"));
     expect(res.status).toBe(401);
   });
 
   test("returns empty list initially", async () => {
     setMockUser({ id: userId, email: "know@example.com", role: "user" });
-    const res = await GET();
-    const data = await res.json();
-    expect(data).toEqual([]);
+    const res = await GET(new NextRequest("http://localhost/api/knowledge"));
+    const body = await res.json();
+    expect(body.data).toEqual([]);
+    expect(body.total).toBe(0);
+    expect(body.hasMore).toBe(false);
   });
 });
 
@@ -63,17 +65,17 @@ describe("POST /api/knowledge", () => {
 
   test("created entry appears in GET", async () => {
     setMockUser({ id: userId, email: "know@example.com", role: "user" });
-    const res = await GET();
-    const data = await res.json();
-    expect(data.length).toBe(1);
-    expect(data[0].entity).toBe("TypeScript");
+    const res = await GET(new NextRequest("http://localhost/api/knowledge"));
+    const body = await res.json();
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].entity).toBe("TypeScript");
   });
 
   test("entries are scoped to user", async () => {
     setMockUser({ id: otherUserId, email: "other@example.com", role: "user" });
-    const res = await GET();
-    const data = await res.json();
-    expect(data).toEqual([]);
+    const res = await GET(new NextRequest("http://localhost/api/knowledge"));
+    const body = await res.json();
+    expect(body.data).toEqual([]);
   });
 });
 
@@ -82,9 +84,9 @@ describe("PUT /api/knowledge", () => {
 
   beforeAll(async () => {
     setMockUser({ id: userId, email: "know@example.com", role: "user" });
-    const res = await GET();
-    const data = await res.json();
-    entryId = data[0].id;
+    const res = await GET(new NextRequest("http://localhost/api/knowledge"));
+    const body = await res.json();
+    entryId = body.data[0].id;
   });
 
   test("returns 400 without id", async () => {
@@ -126,9 +128,9 @@ describe("DELETE /api/knowledge", () => {
 
   beforeAll(async () => {
     setMockUser({ id: userId, email: "know@example.com", role: "user" });
-    const res = await GET();
-    const data = await res.json();
-    entryId = data[0].id;
+    const res = await GET(new NextRequest("http://localhost/api/knowledge"));
+    const body = await res.json();
+    entryId = body.data[0].id;
   });
 
   test("returns 400 without id", async () => {
@@ -156,8 +158,8 @@ describe("DELETE /api/knowledge", () => {
 
   test("entry gone after deletion", async () => {
     setMockUser({ id: userId, email: "know@example.com", role: "user" });
-    const res = await GET();
-    const data = await res.json();
-    expect(data).toEqual([]);
+    const res = await GET(new NextRequest("http://localhost/api/knowledge"));
+    const body = await res.json();
+    expect(body.data).toEqual([]);
   });
 });

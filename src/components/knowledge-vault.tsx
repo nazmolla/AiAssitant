@@ -31,6 +31,8 @@ function getSourceLabel(sourceContext: string | null): string {
 
 export function KnowledgeVault() {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
+  const [knowledgeTotal, setKnowledgeTotal] = useState(0);
+  const [knowledgeHasMore, setKnowledgeHasMore] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
@@ -41,7 +43,26 @@ export function KnowledgeVault() {
   const fetchKnowledge = () => {
     fetch("/api/knowledge")
       .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d)) setEntries(d); })
+      .then((d) => {
+        if (d && Array.isArray(d.data)) {
+          setEntries(d.data);
+          setKnowledgeTotal(d.total ?? d.data.length);
+          setKnowledgeHasMore(d.hasMore ?? false);
+        }
+      })
+      .catch(console.error);
+  };
+
+  const loadMoreKnowledge = () => {
+    fetch(`/api/knowledge?limit=100&offset=${entries.length}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && Array.isArray(d.data)) {
+          setEntries((prev) => [...prev, ...d.data]);
+          setKnowledgeTotal(d.total ?? entries.length + d.data.length);
+          setKnowledgeHasMore(d.hasMore ?? false);
+        }
+      })
       .catch(console.error);
   };
 
@@ -255,6 +276,17 @@ export function KnowledgeVault() {
                 onClick={() => setRenderCount((prev) => prev + 120)}
               >
                 Load more ({filteredEntries.length - visibleEntries.length} remaining)
+              </MuiButton>
+            </Box>
+          )}
+          {knowledgeHasMore && filteredEntries.length <= visibleEntries.length && (
+            <Box sx={{ p: 1.5, display: "flex", justifyContent: "center" }}>
+              <MuiButton
+                size="small"
+                variant="outlined"
+                onClick={loadMoreKnowledge}
+              >
+                Load more from server ({knowledgeTotal - entries.length} remaining)
               </MuiButton>
             </Box>
           )}
