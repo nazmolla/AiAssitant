@@ -453,6 +453,44 @@ describe("Loop Worker — runAgentLoopWithWorker fallback", () => {
   });
 });
 
+describe("Worker Manager — timeout", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    MockWorker.lastInstance = null;
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test("worker times out after 30 seconds, not 300", async () => {
+    const { runLlmInWorker } = require("@/lib/agent/worker-manager");
+
+    const { promise } = runLlmInWorker({
+      provider: { providerType: "openai", apiKey: "sk-test", model: "gpt-4" },
+      systemPrompt: "Test",
+      messages: [{ role: "user", content: "Hello" }],
+      tools: [],
+    });
+
+    // At 29 seconds, the promise should still be pending
+    jest.advanceTimersByTime(29_000);
+    const racePending = Promise.race([
+      promise.then(() => "resolved").catch(() => "rejected"),
+      new Promise((r) => setTimeout(() => r("pending"), 0)),
+    ]);
+    jest.advanceTimersByTime(0);
+    expect(await racePending).toBe("pending");
+
+    // At 30 seconds, the worker should be terminated and promise rejected
+    jest.advanceTimersByTime(1_000);
+
+    await expect(promise).rejects.toThrow("Agent worker timed out after 30s");
+    expect(mockTerminate).toHaveBeenCalled();
+  });
+});
+
 describe("Worker Script — agent-worker.js", () => {
   test("worker script file exists on disk", () => {
     const path = require("path");

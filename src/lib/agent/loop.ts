@@ -591,7 +591,7 @@ export async function runAgentLoop(
         }
 
         screenshotAttachments.length = 0;
-        await persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId);
+        persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId).catch(() => {});
         return { content: finalContent, toolsUsed, pendingApprovals, attachments: [] };
       }
 
@@ -639,12 +639,14 @@ export async function runAgentLoop(
       metadata: JSON.stringify({ threadId, toolsUsed }),
     });
 
-    // Auto-generate thread title from first exchange (skip for continuations)
+    // Fire-and-forget: title generation and knowledge ingestion must NOT block
+    // the response — the user already has the content, keeping the SSE open
+    // just shows a lingering "Generating response" spinner.
     if (!continuation) {
-      await maybeUpdateThreadTitle(threadId, queryText, finalText);
+      maybeUpdateThreadTitle(threadId, queryText, finalText).catch(() => {});
     }
+    persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId).catch(() => {});
 
-    await persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId);
     return { content: finalContent, toolsUsed, pendingApprovals, attachments: attachmentsForResponse };
   }
 
@@ -661,7 +663,7 @@ export async function runAgentLoop(
   onMessage?.(savedFallback);
 
   knowledgeSnippets.push(`[Assistant]\n${fallback}`);
-  await persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId);
+  persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId).catch(() => {});
 
   return { content: fallback, toolsUsed, pendingApprovals, attachments: [] };
 }

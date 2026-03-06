@@ -148,4 +148,75 @@ describe("selectProvider", () => {
       isDefault: true,
     });
   });
+
+  test("simple chat tasks prefer cloud over slow local (Ollama CPU)", () => {
+    const { selectProvider } = require("@/lib/llm/orchestrator");
+    const result = selectProvider("hello");
+    expect(result.taskType).toBe("simple");
+    // Cloud provider should win over slow local Ollama for interactive chat
+    expect(result.providerLabel).not.toBe("Local Llama");
+    expect(result.tier).not.toBe("local");
+  });
+
+  test("simple chat always selects a fast provider", () => {
+    const { selectProvider } = require("@/lib/llm/orchestrator");
+    const result = selectProvider("What is 2+2?");
+    expect(result.taskType).toBe("simple");
+    // Any fast cloud provider is acceptable — local/slow must never win
+    expect(["Primary GPT-4o", "Cheap Mini"]).toContain(result.providerLabel);
+    expect(result.tier).not.toBe("local");
+  });
+});
+
+describe("selectFallbackProvider", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { setupTestDb, teardownTestDb } = require("../../helpers/test-db");
+
+  beforeAll(() => {
+    setupTestDb();
+    const { createLlmProvider } = require("@/lib/db/queries");
+    createLlmProvider({
+      label: "Primary GPT-4o",
+      providerType: "openai",
+      purpose: "chat",
+      config: { apiKey: "sk-test", model: "gpt-4o" },
+      isDefault: true,
+    });
+    createLlmProvider({
+      label: "Secondary DeepSeek",
+      providerType: "openai",
+      purpose: "chat",
+      config: { apiKey: "sk-test2", model: "deepseek-chat", baseURL: "https://api.deepseek.com/v1" },
+      isDefault: false,
+    });
+    createLlmProvider({
+      label: "Local Ollama",
+      providerType: "litellm",
+      purpose: "chat",
+      config: { baseURL: "http://localhost:11434", model: "qwen3.5" },
+      isDefault: false,
+    });
+  });
+
+  afterAll(() => teardownTestDb());
+
+  test("returns a different provider when primary is excluded", () => {
+    const { selectFallbackProvider } = require("@/lib/llm/orchestrator");
+    const result = selectFallbackProvider("hello", ["Primary GPT-4o"]);
+    expect(result).not.toBeNull();
+    expect(result!.providerLabel).not.toBe("Primary GPT-4o");
+  });
+
+  test("returns null when all providers are excluded", () => {
+    const { selectFallbackProvider } = require("@/lib/llm/orchestrator");
+    const result = selectFallbackProvider("hello", ["Primary GPT-4o", "Secondary DeepSeek", "Local Ollama"]);
+    expect(result).toBeNull();
+  });
+
+  test("excludes multiple failed providers", () => {
+    const { selectFallbackProvider } = require("@/lib/llm/orchestrator");
+    const result = selectFallbackProvider("hello", ["Primary GPT-4o", "Secondary DeepSeek"]);
+    expect(result).not.toBeNull();
+    expect(result!.providerLabel).toBe("Local Ollama");
+  });
 });
