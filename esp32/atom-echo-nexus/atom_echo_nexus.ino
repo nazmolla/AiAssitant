@@ -241,10 +241,18 @@ static bool nexus_converse(const String& prompt, String& outReply) {
       data.trim();
       if (eventName == "token") {
         JsonDocument token;
-        if (!deserializeJson(token, data) && token["token"].is<String>()) {
-          outReply += token["token"].as<String>();
+        if (!deserializeJson(token, data) && token.is<const char*>()) {
+          outReply += token.as<String>();
         }
       } else if (eventName == "done") {
+        // done event carries {"content":"full response"} — use as fallback
+        // in case any streamed tokens were missed
+        JsonDocument done;
+        if (!deserializeJson(done, data) && done["content"].is<const char*>()) {
+          if (outReply.length() == 0) {
+            outReply = done["content"].as<String>();
+          }
+        }
         break;
       } else if (eventName == "error") {
         http.end();
