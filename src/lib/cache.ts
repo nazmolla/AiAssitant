@@ -103,4 +103,10 @@ export const CACHE_KEYS = {
   USER_BY_EMAIL_PREFIX: "user_email:",
   /** User lookup by external sub ID. Key: `user_sub:{subId}` */
   USER_BY_SUB_PREFIX: "user_sub:",
+  /** Channels (decrypted). Key: `channels:{userId|_all}` */
+  CHANNELS_PREFIX: "channels:",
+  /** Auth providers (decrypted). */
+  AUTH_PROVIDERS: "auth_providers",
+  /** MCP servers (decrypted). Key: `mcp_servers:{userId|_all}` */
+  MCP_SERVERS_PREFIX: "mcp_servers:",
 } as const;

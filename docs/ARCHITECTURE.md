@@ -230,6 +230,9 @@ The `status` events provide transparency into the agent's internal process for *
 | User profiles | `profile:{userId}` | `upsertUserProfile`, `deleteUser` |
 | Auth lookup by email (5-min TTL) | `user_email:{email}` | `updateUserRole`, `updateUserEnabled`, `updateUserPassword`, `deleteUser` |
 | Auth lookup by external sub (5-min TTL) | `user_sub:{subId}` | `updateUserRole`, `updateUserEnabled`, `updateUserPassword`, `deleteUser` |
+| Channels (decrypted, per-user) | `channels:{userId}` | `createChannel`, `updateChannel`, `deleteChannel` |
+| Auth providers (decrypted) | `auth_providers` | `upsertAuthProvider`, `deleteAuthProvider` |
+| MCP servers (decrypted, per-user) | `mcp_servers:{userId}` | `upsertMcpServer`, `deleteMcpServer` |
 
 **Provider Instance Cache** (`src/lib/llm/orchestrator.ts`): A separate module-level `Map` caches constructed `ChatProvider` instances keyed by a SHA-256 hash of `{id, type, config}`. TTL is 10 seconds. When an LLM provider row is created, updated, or deleted via the `/api/config/llm` route handlers, `invalidateProviderCache()` is called to flush all entries. This avoids re-parsing config JSON plus re-instantiating SDK clients on every request while still reflecting admin changes within seconds.
 
