@@ -1,5 +1,39 @@
 import OpenAI from "openai";
+import { createHash } from "crypto";
 import { getDefaultLlmProvider } from "@/lib/db";
+
+/* ── Embedding result cache (PERF-02) ────────────────────────────── */
+const EMBEDDING_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const EMBEDDING_CACHE_MAX_SIZE = 500;           // max entries (LRU eviction)
+
+interface CachedEmbedding {
+  embedding: number[];
+  cachedAt: number;
+}
+
+const embeddingCache = new Map<string, CachedEmbedding>();
+
+function embeddingCacheKey(text: string): string {
+  return createHash("sha256").update(text).digest("hex").slice(0, 32);
+}
+
+/** Evict the oldest entry when the cache exceeds max size. */
+function evictIfNeeded(): void {
+  if (embeddingCache.size <= EMBEDDING_CACHE_MAX_SIZE) return;
+  // Map iteration order = insertion order; delete the first (oldest) key
+  const oldest = embeddingCache.keys().next().value;
+  if (oldest !== undefined) embeddingCache.delete(oldest);
+}
+
+/** Clear the entire embedding cache. */
+export function invalidateEmbeddingCache(): void {
+  embeddingCache.clear();
+}
+
+/** Number of cached entries (for testing). */
+export function getEmbeddingCacheSize(): number {
+  return embeddingCache.size;
+}
 
 /**
  * Generates embeddings using the configured default embedding provider,
@@ -9,12 +43,28 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   const trimmed = text.trim();
   if (!trimmed) return [];
 
-  const dbProvider = getDefaultLlmProvider("embedding");
-  if (dbProvider) {
-    return generateFromRecord(dbProvider, trimmed);
+  // Check cache
+  const key = embeddingCacheKey(trimmed);
+  const cached = embeddingCache.get(key);
+  if (cached && Date.now() - cached.cachedAt < EMBEDDING_CACHE_TTL_MS) {
+    // Move to end for LRU ordering
+    embeddingCache.delete(key);
+    embeddingCache.set(key, cached);
+    return cached.embedding;
   }
 
-  throw new Error("[Nexus] No embedding provider configured. Add one in Settings → LLM Providers.");
+  const dbProvider = getDefaultLlmProvider("embedding");
+  if (!dbProvider) {
+    throw new Error("[Nexus] No embedding provider configured. Add one in Settings → LLM Providers.");
+  }
+
+  const result = await generateFromRecord(dbProvider, trimmed);
+
+  // Store in cache
+  embeddingCache.set(key, { embedding: result, cachedAt: Date.now() });
+  evictIfNeeded();
+
+  return result;
 }
 
 function generateFromRecord(
