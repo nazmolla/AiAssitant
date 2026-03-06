@@ -74,21 +74,302 @@ export function isWorkerAvailable(): boolean {
   return _workerAvailable!;
 }
 
-/* ── Run a single LLM session in a worker thread ───────────────────── */
+/* ── Worker Pool ────────────────────────────────────────────────────── */
+
+interface PooledWorker {
+  worker: Worker;
+  busy: boolean;
+  task: TaskBinding | null;
+}
+
+interface TaskBinding {
+  settled: boolean;
+  resolve: (result: WorkerDoneResult) => void;
+  reject: (error: Error) => void;
+  onToken?: OnTokenFn;
+  onStatus?: OnStatusFn;
+  onToolRequest?: OnToolRequestFn;
+  timeout: ReturnType<typeof setTimeout>;
+  handle: TaskHandle;
+}
+
+interface QueuedTask {
+  config: WorkerStartConfig;
+  onToken?: OnTokenFn;
+  onStatus?: OnStatusFn;
+  onToolRequest?: OnToolRequestFn;
+  resolve: (result: WorkerDoneResult) => void;
+  reject: (error: Error) => void;
+  handle: TaskHandle;
+  queueTimer: ReturnType<typeof setTimeout>;
+}
+
+interface TaskHandle {
+  state: "queued" | "dispatched" | "settled";
+  pw: PooledWorker | null;
+}
+
+const POOL_SIZE = Math.min(
+  Math.max(parseInt(process.env.WORKER_POOL_SIZE || "2", 10) || 2, 1),
+  8
+);
+
+const pool: PooledWorker[] = [];
+const taskQueue: QueuedTask[] = [];
+let poolInitialized = false;
+
+function ensurePool(): void {
+  if (poolInitialized) return;
+  poolInitialized = true;
+  for (let i = 0; i < POOL_SIZE; i++) {
+    try {
+      pool.push(spawnPooledWorker());
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addLog({
+        level: "error",
+        source: "worker-pool",
+        message: `Failed to create pool worker ${i}: ${msg}`,
+        metadata: null,
+      });
+    }
+  }
+  if (pool.length > 0) {
+    addLog({
+      level: "info",
+      source: "worker-pool",
+      message: `Worker pool initialized with ${pool.length} thread(s)`,
+      metadata: null,
+    });
+  }
+}
+
+function spawnPooledWorker(): PooledWorker {
+  const worker = new Worker(WORKER_SCRIPT);
+  const pw: PooledWorker = { worker, busy: false, task: null };
+
+  worker.on("message", async (msg: {
+    type: string;
+    data?: unknown;
+    requestId?: string;
+    calls?: ToolCall[];
+    assistantContent?: string | null;
+  }) => {
+    await handlePoolMessage(pw, msg);
+  });
+
+  worker.on("error", (err: Error) => handlePoolError(pw, err));
+  worker.on("exit", (code: number) => handlePoolExit(pw, code));
+
+  return pw;
+}
+
+async function handlePoolMessage(pw: PooledWorker, msg: {
+  type: string;
+  data?: unknown;
+  requestId?: string;
+  calls?: ToolCall[];
+  assistantContent?: string | null;
+}) {
+  const task = pw.task;
+  if (!task || task.settled) return;
+
+  try {
+    switch (msg.type) {
+      case "token":
+        await task.onToken?.(msg.data as string);
+        break;
+
+      case "status":
+        task.onStatus?.(msg.data as { step: string; detail?: string });
+        break;
+
+      case "tool_request": {
+        if (!task.onToolRequest) {
+          pw.worker.postMessage({
+            type: "tool_result",
+            requestId: msg.requestId,
+            results: (msg.calls || []).map((tc: ToolCall) => ({
+              toolCallId: tc.id,
+              toolName: tc.name,
+              content: JSON.stringify({ error: "Tool execution not available" }),
+            })),
+          });
+          break;
+        }
+        const results = await task.onToolRequest(
+          msg.calls || [],
+          msg.assistantContent ?? null
+        );
+        pw.worker.postMessage({
+          type: "tool_result",
+          requestId: msg.requestId,
+          results,
+        });
+        break;
+      }
+
+      case "done":
+        settleTask(pw, () => task.resolve(msg.data as WorkerDoneResult));
+        break;
+
+      case "error":
+        settleTask(pw, () => task.reject(new Error(msg.data as string)));
+        break;
+    }
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    settleTask(pw, () =>
+      task.reject(new Error(`Worker message handler error: ${errMsg}`))
+    );
+  }
+}
+
+function handlePoolError(pw: PooledWorker, err: Error) {
+  if (pw.task && !pw.task.settled) {
+    const reject = pw.task.reject;
+    settleTask(pw, () => reject(err), true);
+  }
+  replaceWorker(pw);
+}
+
+function handlePoolExit(pw: PooledWorker, code: number) {
+  if (pw.task && !pw.task.settled) {
+    const reject = pw.task.reject;
+    settleTask(
+      pw,
+      () =>
+        reject(
+          new Error(
+            code !== 0
+              ? `Agent worker exited with code ${code}`
+              : "Agent worker exited before completing"
+          )
+        ),
+      true
+    );
+  }
+  replaceWorker(pw);
+}
+
+function settleTask(pw: PooledWorker, fn: () => void, skipRelease = false) {
+  const task = pw.task;
+  if (!task || task.settled) return;
+  task.settled = true;
+  task.handle.state = "settled";
+  clearTimeout(task.timeout);
+  pw.task = null;
+  pw.busy = false;
+  fn();
+  if (!skipRelease) drainQueue();
+}
+
+function replaceWorker(pw: PooledWorker) {
+  const idx = pool.indexOf(pw);
+  if (idx === -1) return;
+  try {
+    pw.worker.terminate();
+  } catch {
+    /* already exited */
+  }
+  try {
+    pool[idx] = spawnPooledWorker();
+    addLog({
+      level: "warn",
+      source: "worker-pool",
+      message: "Worker crashed and was replaced",
+      metadata: null,
+    });
+  } catch (err) {
+    pool.splice(idx, 1);
+    const msg = err instanceof Error ? err.message : String(err);
+    addLog({
+      level: "error",
+      source: "worker-pool",
+      message: `Failed to replace worker: ${msg}`,
+      metadata: null,
+    });
+  }
+  drainQueue();
+}
+
+function drainQueue() {
+  while (taskQueue.length > 0) {
+    const idle = pool.find((w) => !w.busy);
+    if (!idle) break;
+    const queued = taskQueue.shift()!;
+    clearTimeout(queued.queueTimer);
+    if (queued.handle.state === "settled") continue;
+    assignTask(
+      idle,
+      queued.config,
+      queued.onToken,
+      queued.onStatus,
+      queued.onToolRequest,
+      queued.resolve,
+      queued.reject,
+      queued.handle
+    );
+  }
+}
+
+function assignTask(
+  pw: PooledWorker,
+  config: WorkerStartConfig,
+  onToken: OnTokenFn | undefined,
+  onStatus: OnStatusFn | undefined,
+  onToolRequest: OnToolRequestFn | undefined,
+  resolve: (r: WorkerDoneResult) => void,
+  reject: (e: Error) => void,
+  handle: TaskHandle
+) {
+  pw.busy = true;
+  handle.state = "dispatched";
+  handle.pw = pw;
+
+  const timeout = setTimeout(() => {
+    settleTask(pw, () => reject(new Error("Agent worker timed out after 30s")), true);
+    replaceWorker(pw);
+  }, 30_000);
+
+  pw.task = {
+    settled: false,
+    resolve,
+    reject,
+    onToken,
+    onStatus,
+    onToolRequest,
+    timeout,
+    handle,
+  };
+
+  pw.worker.postMessage({
+    type: "start",
+    config: {
+      providerType: config.provider.providerType,
+      apiKey: config.provider.apiKey,
+      model: config.provider.model,
+      endpoint: config.provider.endpoint,
+      deployment: config.provider.deployment,
+      apiVersion: config.provider.apiVersion,
+      baseURL: config.provider.baseURL,
+      disableThinking: config.provider.disableThinking,
+      systemPrompt: config.systemPrompt,
+      messages: config.messages,
+      tools: config.tools,
+      maxIterations: config.maxIterations || 25,
+    },
+  });
+}
+
+/* ── Run a single LLM session via the worker pool ──────────────────── */
 
 /**
- * Spawn a worker thread to handle LLM communication.
+ * Run an LLM session using a pooled worker thread.
  *
- * Returns a Promise that resolves with the final response, or rejects
- * on error.  The worker is transient — created per request and terminated
- * after the response is complete.
- *
- * @param config       Provider + prompt + messages + tools
- * @param onToken      Called for each streamed LLM token
- * @param onStatus     Called for status updates (model selection, iterations)
- * @param onToolRequest Called when the LLM wants to execute tools.
- *                      The callback must execute them (in the main thread)
- *                      and return the results.
+ * Workers are reused across requests (pool size controlled by
+ * WORKER_POOL_SIZE env var, default 2, max 8).  If all workers are busy,
+ * the task is queued and dispatched when one becomes idle.
  */
 export function runLlmInWorker(
   config: WorkerStartConfig,
@@ -96,158 +377,88 @@ export function runLlmInWorker(
   onStatus?: OnStatusFn,
   onToolRequest?: OnToolRequestFn
 ): { promise: Promise<WorkerDoneResult>; abort: () => void } {
-  let worker: Worker | null = null;
-  let settled = false;
+  ensurePool();
+
+  const handle: TaskHandle = { state: "queued", pw: null };
+  let queuedEntry: QueuedTask | null = null;
 
   const promise = new Promise<WorkerDoneResult>((resolve, reject) => {
-    try {
-      worker = new Worker(WORKER_SCRIPT);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      addLog({
-        level: "error",
-        source: "worker",
-        message: `Failed to spawn agent worker: ${msg}`,
-        metadata: null,
-      });
-      reject(new Error(`Worker spawn failed: ${msg}`));
-      return;
+    const idle = pool.find((w) => !w.busy);
+    if (idle) {
+      assignTask(idle, config, onToken, onStatus, onToolRequest, resolve, reject, handle);
+    } else {
+      const queueTimer = setTimeout(() => {
+        const idx = taskQueue.indexOf(queuedEntry!);
+        if (idx !== -1) taskQueue.splice(idx, 1);
+        if (handle.state !== "settled") {
+          handle.state = "settled";
+          reject(new Error("Worker pool queue timeout — all workers busy for 30s"));
+        }
+      }, 30_000);
+
+      queuedEntry = {
+        config,
+        onToken,
+        onStatus,
+        onToolRequest,
+        resolve,
+        reject,
+        handle,
+        queueTimer,
+      };
+      taskQueue.push(queuedEntry);
     }
-
-    const settle = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      fn();
-    };
-
-    // Hard timeout: 30 seconds — if the worker hasn't responded by then,
-    // kill it and fall back to main thread (which has its own fallback logic)
-    const timeout = setTimeout(() => {
-      settle(() => {
-        worker?.terminate();
-        reject(new Error("Agent worker timed out after 30s"));
-      });
-    }, 30_000);
-
-    worker.on("message", async (msg: {
-      type: string;
-      data?: unknown;
-      requestId?: string;
-      calls?: ToolCall[];
-      assistantContent?: string | null;
-    }) => {
-      try {
-        switch (msg.type) {
-          case "token":
-            await onToken?.(msg.data as string);
-            break;
-
-          case "status":
-            onStatus?.(msg.data as { step: string; detail?: string });
-            break;
-
-          case "tool_request": {
-            if (!onToolRequest) {
-              // No tool handler — send empty results
-              worker?.postMessage({
-                type: "tool_result",
-                requestId: msg.requestId,
-                results: (msg.calls || []).map((tc: ToolCall) => ({
-                  toolCallId: tc.id,
-                  toolName: tc.name,
-                  content: JSON.stringify({ error: "Tool execution not available" }),
-                })),
-              });
-              break;
-            }
-            const results = await onToolRequest(
-              msg.calls || [],
-              msg.assistantContent ?? null
-            );
-            worker?.postMessage({
-              type: "tool_result",
-              requestId: msg.requestId,
-              results,
-            });
-            break;
-          }
-
-          case "done":
-            clearTimeout(timeout);
-            settle(() => {
-              worker?.terminate();
-              resolve(msg.data as WorkerDoneResult);
-            });
-            break;
-
-          case "error":
-            clearTimeout(timeout);
-            settle(() => {
-              worker?.terminate();
-              reject(new Error(msg.data as string));
-            });
-            break;
-        }
-      } catch (err) {
-        clearTimeout(timeout);
-        const errMsg = err instanceof Error ? err.message : String(err);
-        settle(() => {
-          worker?.terminate();
-          reject(new Error(`Worker message handler error: ${errMsg}`));
-        });
-      }
-    });
-
-    worker.on("error", (err) => {
-      clearTimeout(timeout);
-      settle(() => {
-        worker?.terminate();
-        reject(err);
-      });
-    });
-
-    worker.on("exit", (code) => {
-      clearTimeout(timeout);
-      settle(() => {
-        if (code !== 0) {
-          reject(new Error(`Agent worker exited with code ${code}`));
-        } else {
-          reject(new Error("Agent worker exited before completing"));
-        }
-      });
-    });
-
-    // Send the start command
-    worker.postMessage({
-      type: "start",
-      config: {
-        providerType: config.provider.providerType,
-        apiKey: config.provider.apiKey,
-        model: config.provider.model,
-        endpoint: config.provider.endpoint,
-        deployment: config.provider.deployment,
-        apiVersion: config.provider.apiVersion,
-        baseURL: config.provider.baseURL,
-        disableThinking: config.provider.disableThinking,
-        systemPrompt: config.systemPrompt,
-        messages: config.messages,
-        tools: config.tools,
-        maxIterations: config.maxIterations || 25,
-      },
-    });
   });
 
   const abort = () => {
-    if (worker && !settled) {
-      worker.postMessage({ type: "abort" });
-      // Give the worker 1s to clean up, then force terminate
+    if (handle.state === "settled") return;
+
+    if (handle.state === "queued" && queuedEntry) {
+      const idx = taskQueue.indexOf(queuedEntry);
+      if (idx !== -1) taskQueue.splice(idx, 1);
+      clearTimeout(queuedEntry.queueTimer);
+      handle.state = "settled";
+      queuedEntry.reject(new Error("Aborted while queued"));
+    } else if (handle.state === "dispatched" && handle.pw) {
+      const pw = handle.pw;
+      pw.worker.postMessage({ type: "abort" });
       setTimeout(() => {
-        if (!settled) {
-          worker?.terminate();
+        if (pw.task && !pw.task.settled) {
+          settleTask(pw, () => pw.task!.reject(new Error("Aborted")), true);
+          replaceWorker(pw);
         }
       }, 1000);
     }
   };
 
   return { promise, abort };
+}
+
+/* ── Pool diagnostics ──────────────────────────────────────────────── */
+
+export function getWorkerPoolStats() {
+  return {
+    poolSize: POOL_SIZE,
+    initialized: poolInitialized,
+    busyCount: pool.filter((w) => w.busy).length,
+    idleCount: pool.filter((w) => !w.busy).length,
+    queueLength: taskQueue.length,
+  };
+}
+
+/** @internal — reset pool state for testing */
+export function _resetPool() {
+  for (const pw of pool) {
+    if (pw.task) {
+      clearTimeout(pw.task.timeout);
+      pw.task = null;
+    }
+    try { pw.worker.terminate(); } catch { /* ignore */ }
+  }
+  for (const qt of taskQueue) {
+    clearTimeout(qt.queueTimer);
+  }
+  pool.length = 0;
+  taskQueue.length = 0;
+  poolInitialized = false;
 }

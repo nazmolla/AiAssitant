@@ -261,6 +261,8 @@ This ensures other HTTP requests (including new tabs, API calls, and the convers
 
 **Listing Query Pagination** (`src/lib/db/queries.ts`): High-volume listing endpoints (`/api/threads`, `/api/knowledge`) use `LIMIT`/`OFFSET` pagination via `listThreadsPaginated()` and `listKnowledgePaginated()`. Each returns a `PaginatedResult<T>` with `{ data, total, limit, offset, hasMore }`. Threads default to 50 per page (max 200), knowledge to 100 per page (max 500). The frontend appends pages on demand via "Load more" controls. Original unpaginated functions (`listThreads()`, `listKnowledge()`) remain available for internal callers (e.g., export, migration).
 
+**Worker Thread Pool** (`src/lib/agent/worker-manager.ts`): LLM API calls are offloaded to a reusable pool of worker threads instead of spawning a new thread per request. Pool size is configurable via `WORKER_POOL_SIZE` env var (default 2, range 1–8). Workers are recycled after each task completes — the worker script (`scripts/agent-worker.js`) resets `aborted` and `toolResultResolvers` state between tasks. If all workers are busy, tasks are queued and dispatched as workers become idle (30s queue timeout). Crashed workers are automatically terminated, replaced, and logged. `getWorkerPoolStats()` exposes pool diagnostics (busy/idle counts, queue length).
+
 ### Notification & Inbound Email Safety Path
 
 - **Per-user thresholds** — Channel notifications are filtered by each user profile's `notification_level` (`low`, `medium`, `high`, `disaster`).

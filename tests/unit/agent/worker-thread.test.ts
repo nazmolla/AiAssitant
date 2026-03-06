@@ -11,49 +11,46 @@
 
 /* ── Mock dependencies ─────────────────────────────────────────────── */
 
-// Mock worker_threads
-const mockPostMessage = jest.fn();
-const mockTerminate = jest.fn();
-const mockOn = jest.fn();
-
+// Mock worker_threads — per-instance mocks for pool support
 class MockWorker {
-  postMessage = mockPostMessage;
-  terminate = mockTerminate;
-  on = mockOn;
+  static instances: MockWorker[] = [];
+
+  postMessage = jest.fn();
+  terminate = jest.fn();
+  private handlers: Record<string, Function> = {};
 
   constructor(_scriptPath: string) {
-    // Store for test access
-    MockWorker.lastInstance = this;
+    MockWorker.instances.push(this);
   }
 
-  static lastInstance: MockWorker | null = null;
-
-  // Helper to simulate messages from the worker
-  simulateMessage(msg: unknown) {
-    const messageHandler = mockOn.mock.calls.find(
-      ([event]: [string]) => event === "message"
-    );
-    if (messageHandler) {
-      messageHandler[1](msg);
-    }
+  on(event: string, handler: Function) {
+    this.handlers[event] = handler;
   }
 
-  simulateError(err: Error) {
-    const errorHandler = mockOn.mock.calls.find(
-      ([event]: [string]) => event === "error"
-    );
-    if (errorHandler) {
-      errorHandler[1](err);
-    }
+  async triggerMessage(msg: unknown) {
+    const handler = this.handlers["message"];
+    if (handler) await handler(msg);
   }
 
-  simulateExit(code: number) {
-    const exitHandler = mockOn.mock.calls.find(
-      ([event]: [string]) => event === "exit"
+  triggerError(err: Error) {
+    const handler = this.handlers["error"];
+    if (handler) handler(err);
+  }
+
+  triggerExit(code: number) {
+    const handler = this.handlers["exit"];
+    if (handler) handler(code);
+  }
+
+  static reset() {
+    MockWorker.instances = [];
+  }
+
+  /** Find the pool worker that received the given task (by checking postMessage calls for "start") */
+  static findTaskWorker(): MockWorker | undefined {
+    return MockWorker.instances.find((w) =>
+      w.postMessage.mock.calls.some((c: unknown[]) => (c[0] as { type: string })?.type === "start")
     );
-    if (exitHandler) {
-      exitHandler[1](code);
-    }
   }
 }
 
@@ -240,10 +237,12 @@ describe("Worker Manager — isWorkerAvailable", () => {
 describe("Worker Manager — runLlmInWorker", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    MockWorker.lastInstance = null;
+    MockWorker.reset();
+    const wm = require("@/lib/agent/worker-manager");
+    wm._resetPool();
   });
 
-  test("spawns a worker and resolves on 'done' message", async () => {
+  test("dispatches task to a pool worker and resolves on 'done'", async () => {
     const { runLlmInWorker } = require("@/lib/agent/worker-manager");
 
     const onToken = jest.fn();
@@ -260,23 +259,20 @@ describe("Worker Manager — runLlmInWorker", () => {
       onStatus
     );
 
-    // Worker was created
-    expect(MockWorker.lastInstance).not.toBeNull();
-
-    // Simulate worker sending tokens
-    const messageHandler = mockOn.mock.calls.find(([e]: [string]) => e === "message")?.[1];
-    expect(messageHandler).toBeDefined();
+    // Pool creates workers, find the one with the task
+    const taskWorker = MockWorker.findTaskWorker();
+    expect(taskWorker).toBeDefined();
 
     // Send a token
-    await messageHandler({ type: "token", data: "Hello" });
+    await taskWorker!.triggerMessage({ type: "token", data: "Hello" });
     expect(onToken).toHaveBeenCalledWith("Hello");
 
     // Send status
-    await messageHandler({ type: "status", data: { step: "Generating", detail: "Iteration 1" } });
+    await taskWorker!.triggerMessage({ type: "status", data: { step: "Generating", detail: "Iteration 1" } });
     expect(onStatus).toHaveBeenCalledWith({ step: "Generating", detail: "Iteration 1" });
 
     // Send done
-    await messageHandler({
+    await taskWorker!.triggerMessage({
       type: "done",
       data: { content: "Test response", toolsUsed: [], iterations: 1 },
     });
@@ -306,10 +302,10 @@ describe("Worker Manager — runLlmInWorker", () => {
       onToolRequest
     );
 
-    const messageHandler = mockOn.mock.calls.find(([e]: [string]) => e === "message")?.[1];
+    const taskWorker = MockWorker.findTaskWorker()!;
 
     // Worker requests tool execution
-    await messageHandler({
+    await taskWorker.triggerMessage({
       type: "tool_request",
       requestId: "tr_1",
       calls: [{ id: "tc-1", name: "web_search", arguments: { query: "test" } }],
@@ -322,14 +318,14 @@ describe("Worker Manager — runLlmInWorker", () => {
     );
 
     // Verify tool results were posted back to worker
-    expect(mockPostMessage).toHaveBeenCalledWith({
+    expect(taskWorker.postMessage).toHaveBeenCalledWith({
       type: "tool_result",
       requestId: "tr_1",
       results: toolResults,
     });
 
     // Complete the worker
-    await messageHandler({
+    await taskWorker.triggerMessage({
       type: "done",
       data: { content: "Search complete", toolsUsed: ["web_search"], iterations: 2 },
     });
@@ -351,13 +347,13 @@ describe("Worker Manager — runLlmInWorker", () => {
       }
     );
 
-    const messageHandler = mockOn.mock.calls.find(([e]: [string]) => e === "message")?.[1];
-    await messageHandler({ type: "error", data: "API key invalid" });
+    const taskWorker = MockWorker.findTaskWorker()!;
+    await taskWorker.triggerMessage({ type: "error", data: "API key invalid" });
 
     await expect(promise).rejects.toThrow("API key invalid");
   });
 
-  test("rejects on worker process error", async () => {
+  test("rejects on worker process error and replaces worker", async () => {
     const { runLlmInWorker } = require("@/lib/agent/worker-manager");
 
     const { promise } = runLlmInWorker(
@@ -369,16 +365,19 @@ describe("Worker Manager — runLlmInWorker", () => {
       }
     );
 
-    const errorHandler = mockOn.mock.calls.find(([e]: [string]) => e === "error")?.[1];
-    errorHandler(new Error("Worker crashed"));
+    const taskWorker = MockWorker.findTaskWorker()!;
+    const instanceCountBefore = MockWorker.instances.length;
+    taskWorker.triggerError(new Error("Worker crashed"));
 
     await expect(promise).rejects.toThrow("Worker crashed");
+    // A replacement worker was spawned
+    expect(MockWorker.instances.length).toBe(instanceCountBefore + 1);
   });
 
-  test("abort sends abort message and terminates", async () => {
+  test("abort sends abort message to the dispatched worker", async () => {
     const { runLlmInWorker } = require("@/lib/agent/worker-manager");
 
-    const { abort } = runLlmInWorker(
+    const { promise, abort } = runLlmInWorker(
       {
         provider: { providerType: "openai", apiKey: "sk-test" },
         systemPrompt: "Test",
@@ -386,15 +385,17 @@ describe("Worker Manager — runLlmInWorker", () => {
         tools: [],
       }
     );
+    promise.catch(() => {}); // suppress expected rejection
 
+    const taskWorker = MockWorker.findTaskWorker()!;
     abort();
-    expect(mockPostMessage).toHaveBeenCalledWith({ type: "abort" });
+    expect(taskWorker.postMessage).toHaveBeenCalledWith({ type: "abort" });
   });
 
-  test("sends start config to worker on spawn", () => {
+  test("sends start config to the pool worker", () => {
     const { runLlmInWorker } = require("@/lib/agent/worker-manager");
 
-    runLlmInWorker({
+    const { promise } = runLlmInWorker({
       provider: {
         providerType: "anthropic",
         apiKey: "sk-ant-test",
@@ -405,9 +406,10 @@ describe("Worker Manager — runLlmInWorker", () => {
       tools: [{ name: "web_search", description: "Search", inputSchema: {} }],
       maxIterations: 10,
     });
+    promise.catch(() => {}); // suppress timeout rejection
 
-    // First postMessage should be the start config
-    expect(mockPostMessage).toHaveBeenCalledWith({
+    const taskWorker = MockWorker.findTaskWorker()!;
+    expect(taskWorker.postMessage).toHaveBeenCalledWith({
       type: "start",
       config: expect.objectContaining({
         providerType: "anthropic",
@@ -456,7 +458,9 @@ describe("Loop Worker — runAgentLoopWithWorker fallback", () => {
 describe("Worker Manager — timeout", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    MockWorker.lastInstance = null;
+    MockWorker.reset();
+    const wm = require("@/lib/agent/worker-manager");
+    wm._resetPool();
     jest.useFakeTimers();
   });
 
@@ -487,7 +491,8 @@ describe("Worker Manager — timeout", () => {
     jest.advanceTimersByTime(1_000);
 
     await expect(promise).rejects.toThrow("Agent worker timed out after 30s");
-    expect(mockTerminate).toHaveBeenCalled();
+    const taskWorker = MockWorker.findTaskWorker()!;
+    expect(taskWorker.terminate).toHaveBeenCalled();
   });
 });
 
@@ -529,5 +534,173 @@ describe("Worker Script — agent-worker.js", () => {
     expect(code).toContain("providerType === 'litellm'");
     expect(code).toContain("'/v1'");
     expect(code).toMatch(/effectiveBaseURL.*\/v1/);
+  });
+
+  test("worker script resets state between tasks for pool reuse", () => {
+    const path = require("path");
+    const realFs = jest.requireActual("fs");
+    const workerPath = path.join(process.cwd(), "scripts", "agent-worker.js");
+    const code = realFs.readFileSync(workerPath, "utf-8");
+    // Must reset aborted flag and clear pending resolvers
+    expect(code).toContain("aborted = false");
+    expect(code).toContain("toolResultResolvers.clear()");
+  });
+});
+
+/* ── Worker Pool ───────────────────────────────────────────────────── */
+
+describe("Worker Pool — pool behavior", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    MockWorker.reset();
+    const wm = require("@/lib/agent/worker-manager");
+    wm._resetPool();
+  });
+
+  test("pool creates default number of workers on first runLlmInWorker call", () => {
+    const { runLlmInWorker } = require("@/lib/agent/worker-manager");
+
+    runLlmInWorker({
+      provider: { providerType: "openai", apiKey: "sk-test" },
+      systemPrompt: "Test",
+      messages: [{ role: "user", content: "Hi" }],
+      tools: [],
+    });
+
+    // Default pool size is 2
+    expect(MockWorker.instances.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("reuses workers for sequential tasks (no new workers spawned)", async () => {
+    const { runLlmInWorker } = require("@/lib/agent/worker-manager");
+
+    // Task 1
+    const { promise: p1 } = runLlmInWorker({
+      provider: { providerType: "openai", apiKey: "sk-test" },
+      systemPrompt: "Test",
+      messages: [{ role: "user", content: "Task 1" }],
+      tools: [],
+    });
+
+    const countAfterFirst = MockWorker.instances.length;
+    const taskWorker1 = MockWorker.findTaskWorker()!;
+
+    // Complete task 1
+    await taskWorker1.triggerMessage({
+      type: "done",
+      data: { content: "Done 1", toolsUsed: [], iterations: 1 },
+    });
+    await p1;
+
+    // Task 2 — should reuse existing pool worker, no new spawn
+    const { promise: p2 } = runLlmInWorker({
+      provider: { providerType: "openai", apiKey: "sk-test" },
+      systemPrompt: "Test",
+      messages: [{ role: "user", content: "Task 2" }],
+      tools: [],
+    });
+
+    expect(MockWorker.instances.length).toBe(countAfterFirst);
+
+    // Complete task 2
+    const taskWorker2 = MockWorker.instances.find(
+      (w) => w.postMessage.mock.calls.filter(
+        (c: unknown[]) => (c[0] as { type: string })?.type === "start"
+      ).length > 0 && !w.terminate.mock.calls.length
+    )!;
+    await taskWorker2.triggerMessage({
+      type: "done",
+      data: { content: "Done 2", toolsUsed: [], iterations: 1 },
+    });
+    await p2;
+  });
+
+  test("replaces crashed workers with new ones", async () => {
+    const { runLlmInWorker } = require("@/lib/agent/worker-manager");
+
+    const { promise } = runLlmInWorker({
+      provider: { providerType: "openai", apiKey: "sk-test" },
+      systemPrompt: "Test",
+      messages: [{ role: "user", content: "Hello" }],
+      tools: [],
+    });
+
+    const countBeforeCrash = MockWorker.instances.length;
+    const taskWorker = MockWorker.findTaskWorker()!;
+
+    // Simulate crash
+    taskWorker.triggerError(new Error("Segfault"));
+
+    await expect(promise).rejects.toThrow("Segfault");
+    // A replacement was spawned
+    expect(MockWorker.instances.length).toBe(countBeforeCrash + 1);
+    // Original was terminated
+    expect(taskWorker.terminate).toHaveBeenCalled();
+  });
+
+  test("getWorkerPoolStats returns correct info", async () => {
+    const { runLlmInWorker, getWorkerPoolStats } = require("@/lib/agent/worker-manager");
+
+    // Before any call — pool not initialized
+    const statsBefore = getWorkerPoolStats();
+    expect(statsBefore.initialized).toBe(false);
+
+    // Start a task to trigger pool init
+    const { promise } = runLlmInWorker({
+      provider: { providerType: "openai", apiKey: "sk-test" },
+      systemPrompt: "Test",
+      messages: [{ role: "user", content: "Hi" }],
+      tools: [],
+    });
+
+    const statsActive = getWorkerPoolStats();
+    expect(statsActive.initialized).toBe(true);
+    expect(statsActive.busyCount).toBe(1);
+    expect(statsActive.idleCount).toBeGreaterThanOrEqual(1);
+
+    // Complete the task
+    const taskWorker = MockWorker.findTaskWorker()!;
+    await taskWorker.triggerMessage({
+      type: "done",
+      data: { content: "Done", toolsUsed: [], iterations: 1 },
+    });
+    await promise;
+
+    const statsAfter = getWorkerPoolStats();
+    expect(statsAfter.busyCount).toBe(0);
+  });
+});
+
+describe("Worker Pool — source verification", () => {
+  const readSource = () => {
+    const realFs = jest.requireActual("fs");
+    const path = require("path");
+    return realFs.readFileSync(
+      path.join(process.cwd(), "src", "lib", "agent", "worker-manager.ts"),
+      "utf-8"
+    ) as string;
+  };
+
+  test("uses WORKER_POOL_SIZE env var for configuration", () => {
+    const code = readSource();
+    expect(code).toContain("WORKER_POOL_SIZE");
+    expect(code).toContain("process.env.WORKER_POOL_SIZE");
+  });
+
+  test("has drainQueue for task queuing when all workers busy", () => {
+    const code = readSource();
+    expect(code).toContain("drainQueue");
+    expect(code).toContain("taskQueue");
+  });
+
+  test("has replaceWorker for crash recovery", () => {
+    const code = readSource();
+    expect(code).toContain("replaceWorker");
+    expect(code).toContain("Worker crashed and was replaced");
+  });
+
+  test("exports getWorkerPoolStats for monitoring", () => {
+    const code = readSource();
+    expect(code).toContain("export function getWorkerPoolStats");
   });
 });
