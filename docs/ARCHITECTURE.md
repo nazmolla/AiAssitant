@@ -442,7 +442,11 @@ src/
 │   ├── approval-inbox.tsx      # HITL approval UI (legacy, superseded by notification-bell)
 │   ├── auth-config.tsx         # Authentication provider configuration
 │   ├── channels-config.tsx     # Channel management (user-scoped)
-│   ├── chat-panel.tsx          # Thread/chat with inline approvals, real-time token streaming, debounced thread fetch
+│   ├── chat-panel.tsx          # Chat orchestrator — owns all state, composes ThreadSidebar + ChatArea + InputBar
+│   ├── chat-panel-types.ts    # Shared types (Thread, Message, PendingFile, etc.) and utility functions
+│   ├── thread-sidebar.tsx     # Memo'd thread list sidebar (thread select, create, delete, load more)
+│   ├── chat-area.tsx          # Memo'd message display (ThinkingBlock, ThoughtsBlock, AttachmentPreview, auto-scroll)
+│   ├── input-bar.tsx          # Memo'd input area (text, file attach, screen share, audio recording, send)
 │   ├── conversation-mode.tsx   # Full-screen voice conversation (VAD + TTS + worker thread)
 │   ├── custom-tools-config.tsx # Custom tools CRUD
 │   ├── knowledge-vault.tsx     # Knowledge CRUD

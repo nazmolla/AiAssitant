@@ -496,11 +496,11 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**1242 tests across 96 suites** — all passing.
+**1266 tests across 97 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|
-| Unit | ~64 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards, knowledge retrieval, inbound email classification, attachment size guards, embedding cache, provider cache, auth cache, decrypted row cache, vault embedding cache |
+| Unit | ~65 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards, knowledge retrieval, inbound email classification, attachment size guards, embedding cache, provider cache, auth cache, decrypted row cache, vault embedding cache, ChatPanel split verification |
 | Integration | ~6 | End-to-end API flows, MCP integration, channel routing, SSE concurrency & disconnect safety |
 | Component | ~10 | Full navigation (every page + settings sub-page), component rendering, settings panel, tool policies, profile config, markdown rendering, TTS-to-listening transitions, interrupt / barge-in |
 
@@ -528,5 +528,6 @@ Component tests use `jsdom` environment with the following mocks:
 | `tests/integration/api/sse-concurrency.test.ts` | 7 | Concurrent SSE requests, stream cancellation mid-flight, post-disconnect token safety, independent stream isolation |
 | `tests/unit/api/chat-attachments.test.ts` | 16 | OOM-prevention size guards: MAX_INLINE_TEXT (512 KB), MAX_INLINE_IMAGE (5 MB), TEXT_MIME_TYPES coverage, preview size validation |
 | `tests/unit/channels/inbound-email.test.ts` | 5 | System sender classification priority over security keywords, severity assignment, summary content |
+| `tests/unit/components/chat-panel-split.test.ts` | 24 | ChatPanel split verification — subcomponent structure, memo isolation, shared types, props interface, state ownership, file size reduction |
 | `tests/unit/mcp/mcp-manager.test.ts` | 18 | listChanged auto-refresh, qualifyToolName 64-char enforcement, callTool truncated-name reverse mapping |
 | `tests/unit/agent/expand-multi-tool-use.test.ts` | 10 | multi_tool_use.parallel expansion, mixed calls, missing parameters, empty recipient_name, bare multi_tool_use |
