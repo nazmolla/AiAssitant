@@ -137,9 +137,10 @@ describe("ChatArea component", () => {
     expect(chatAreaSrc).toContain("ChatBubbleOutlineIcon");
   });
 
-  test("manages its own auto-scroll ref", () => {
-    expect(chatAreaSrc).toContain("messagesEndRef");
-    expect(chatAreaSrc).toContain("scrollIntoView");
+  test("uses virtualized rendering with auto-scroll", () => {
+    expect(chatAreaSrc).toContain("useVirtualizer");
+    expect(chatAreaSrc).toContain("scrollToIndex");
+    expect(chatAreaSrc).toContain("getVirtualItems");
   });
 });
 
@@ -200,8 +201,9 @@ describe("State isolation", () => {
     expect(inputBarSrc).not.toContain("fetch(");
   });
 
-  test("ChatArea manages only its own scroll ref", () => {
-    expect(chatAreaSrc).toContain("messagesEndRef");
+  test("ChatArea manages its own virtualizer and scroll state", () => {
+    expect(chatAreaSrc).toContain("useVirtualizer");
+    expect(chatAreaSrc).toContain("scrollContainerRef");
     // ChatArea should NOT have primary state for messages, threads, or input
     const stateMatches = [...chatAreaSrc.matchAll(/\buseState\b/g)];
     // Only ThinkingBlock and ThoughtsBlock have local expanded state
@@ -221,6 +223,6 @@ describe("Reduced file sizes", () => {
     expect(threadSidebarSrc.split("\n").length).toBeLessThan(200);
     expect(inputBarSrc.split("\n").length).toBeLessThan(250);
     // ChatArea is the largest since it includes ThinkingBlock, ThoughtsBlock, AttachmentPreview
-    expect(chatAreaSrc.split("\n").length).toBeLessThan(650);
+    expect(chatAreaSrc.split("\n").length).toBeLessThan(700);
   });
 });

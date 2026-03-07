@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
@@ -20,6 +20,7 @@ import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import MarkdownMessage from "./markdown-message";
 import type { AttachmentMeta, ThinkingStep, ThoughtStep, ProcessedMessage } from "./chat-panel-types";
 import { sanitizeToolContent, sanitizeAssistantContent } from "./chat-panel-types";
@@ -53,12 +54,47 @@ export const ChatArea = memo(function ChatArea({
   resolvedApprovals,
   onApproval,
 }: ChatAreaProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const prevCountRef = useRef(0);
 
-  // Auto-scroll when messages change
+  const virtualizer = useVirtualizer({
+    count: processedMessages.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 120,
+    overscan: 5,
+    measureElement: (el) => el.getBoundingClientRect().height,
+  });
+
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [processedMessages]);
+    const count = processedMessages.length;
+    if (count > 0 && count !== prevCountRef.current) {
+      prevCountRef.current = count;
+      // Use requestAnimationFrame to let the virtualizer render the new item first
+      requestAnimationFrame(() => {
+        virtualizer.scrollToIndex(count - 1, { align: "end", behavior: "smooth" });
+      });
+    }
+  }, [processedMessages.length, virtualizer]);
+
+  // Re-measure all items when content changes (e.g., streaming tokens update content)
+  const lastContentRef = useRef("");
+  useEffect(() => {
+    if (processedMessages.length === 0) return;
+    const lastMsg = processedMessages[processedMessages.length - 1];
+    const contentKey = lastMsg.msg.content || "";
+    if (contentKey !== lastContentRef.current) {
+      lastContentRef.current = contentKey;
+      virtualizer.measure();
+    }
+  }, [processedMessages, virtualizer]);
+
+  const measureRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node) virtualizer.measureElement(node);
+    },
+    [virtualizer],
+  );
 
   if (!activeThread) {
     return (
@@ -103,11 +139,33 @@ export const ChatArea = memo(function ChatArea({
         </Button>
         <Typography variant="caption" color="text.secondary" noWrap>{activeThreadTitle}</Typography>
       </Box>
-      <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
-        <Box sx={{ maxWidth: 720, mx: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
-          {processedMessages.map(({ msg, attachments, approvalMeta, displayContent, thoughts }, pmIdx) => (
+      <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: "auto", p: 2 }}>
+        <Box
+          sx={{
+            maxWidth: 720,
+            mx: "auto",
+            position: "relative",
+            height: virtualizer.getTotalSize(),
+          }}
+        >
+          {virtualizer.getVirtualItems().map((virtualItem) => {
+            const pmIdx = virtualItem.index;
+            const { msg, attachments, approvalMeta, displayContent, thoughts } = processedMessages[pmIdx];
+            return (
             <Box
               key={msg.id}
+              ref={measureRef}
+              data-index={virtualItem.index}
+              sx={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualItem.start}px)`,
+                pb: 2,
+              }}
+            >
+            <Box
               sx={{
                 display: "flex",
                 justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
@@ -281,8 +339,9 @@ export const ChatArea = memo(function ChatArea({
                 })()}
               </Paper>
             </Box>
-          ))}
-          <div ref={messagesEndRef} />
+            </Box>
+            );
+          })}
         </Box>
       </Box>
     </>
