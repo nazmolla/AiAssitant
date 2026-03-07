@@ -77,7 +77,7 @@ export const InputBar = memo(function InputBar({
             <img
               ref={frameImgRef}
               alt="Screen preview"
-              style={{ height: 32, borderRadius: 4, marginLeft: "auto", display: latestFrameRef.current ? undefined : "none" }}
+              style={{ height: 32, borderRadius: 4, marginLeft: "auto" }}
             />
             <Button
               size="small"
