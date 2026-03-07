@@ -445,7 +445,7 @@ src/
 │   ├── chat-panel.tsx          # Chat orchestrator — owns all state, composes ThreadSidebar + ChatArea + InputBar
 │   ├── chat-panel-types.ts    # Shared types (Thread, Message, PendingFile, etc.) and utility functions
 │   ├── thread-sidebar.tsx     # Memo'd thread list sidebar (thread select, create, delete, load more)
-│   ├── chat-area.tsx          # Memo'd message display (ThinkingBlock, ThoughtsBlock, AttachmentPreview, auto-scroll)
+│   ├── chat-area.tsx          # Memo'd virtualized message display (@tanstack/react-virtual, ThinkingBlock, ThoughtsBlock, AttachmentPreview)
 │   ├── input-bar.tsx          # Memo'd input area (text, file attach, screen share, audio recording, send)
 │   ├── conversation-mode.tsx   # Full-screen voice conversation (VAD + TTS + worker thread)
 │   ├── custom-tools-config.tsx # Custom tools CRUD
