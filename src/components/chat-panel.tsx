@@ -1,134 +1,12 @@
-"use client";
+﻿"use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import IconButton from "@mui/material/IconButton";
-import TextField from "@mui/material/TextField";
-import Chip from "@mui/material/Chip";
-import Typography from "@mui/material/Typography";
-import Paper from "@mui/material/Paper";
-import Divider from "@mui/material/Divider";
-import List from "@mui/material/List";
-import ListItemButton from "@mui/material/ListItemButton";
-import CircularProgress from "@mui/material/CircularProgress";
-import Collapse from "@mui/material/Collapse";
-import SendIcon from "@mui/icons-material/Send";
-import AttachFileIcon from "@mui/icons-material/AttachFile";
-import ScreenShareIcon from "@mui/icons-material/ScreenShare";
-import StopScreenShareIcon from "@mui/icons-material/StopScreenShare";
-import AddIcon from "@mui/icons-material/Add";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
-import PsychologyIcon from "@mui/icons-material/Psychology";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import BuildIcon from "@mui/icons-material/Build";
-import MicIcon from "@mui/icons-material/Mic";
-import MicOffIcon from "@mui/icons-material/MicOff";
-import VolumeUpIcon from "@mui/icons-material/VolumeUp";
-import StopCircleIcon from "@mui/icons-material/StopCircle";
-import MarkdownMessage from "./markdown-message";
-
-interface Thread {
-  id: string;
-  title: string;
-  status: string;
-  last_message_at: string;
-}
-
-interface AttachmentMeta {
-  id: string;
-  filename: string;
-  mimeType: string;
-  sizeBytes: number;
-  storagePath: string;
-}
-
-interface Message {
-  id: number;
-  thread_id: string;
-  role: string;
-  content: string | null;
-  tool_calls: string | null;
-  tool_results: string | null;
-  attachments: string | null;
-  created_at: string | null;
-}
-
-interface PendingFile {
-  file: File;
-  previewUrl: string | null;
-  uploading: boolean;
-  uploaded?: AttachmentMeta;
-}
-
-const ACCEPT_STRING = "*/*";
-
-/** Sanitize tool message content: hide raw screenshot paths when attachments are present */
-function sanitizeToolContent(content: string | null, hasAttachments: boolean): string {
-  if (!content) return hasAttachments ? "" : "(no content)";
-  // If the tool message contains screenshot paths and we have inline attachments, hide the raw JSON
-  if (hasAttachments && (content.includes('"screenshotPath"') || content.includes('"relativePath"'))) {
-    return "";
-  }
-  // Even without attachments, clean up raw screenshot result JSON so users never see paths
-  if (content.includes('"screenshotPath"') || content.includes('"relativePath"')) {
-    return "📸 Screenshot captured.";
-  }
-  return content;
-}
-
-/** Extract approval metadata from a system message, if any */
-function extractApprovalMeta(content: string | null): { approvalId: string; tool_name: string; args: Record<string, unknown>; reasoning: string | null } | null {
-  if (!content) return null;
-  const match = content.match(/<!-- APPROVAL:(\{[\s\S]*?\}) -->/);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[1]);
-  } catch {
-    return null;
-  }
-}
-
-/** Strip approval metadata marker from display text */
-function stripApprovalMeta(content: string | null): string {
-  if (!content) return "";
-  return content.replace(/\n?<!-- APPROVAL:\{[\s\S]*?\} -->/,"").trim();
-}
-
-/** Safely parse JSON with a fallback — prevents component crashes on malformed data */
-function safeJsonParse<T>(json: string | null, fallback: T): T {
-  if (!json) return fallback;
-  try { return JSON.parse(json); } catch { return fallback; }
-}
-
-/** Strip sandbox/file paths from assistant messages so users see clean text */
-function sanitizeAssistantContent(content: string | null, hasAttachments: boolean): string {
-  if (!content) return hasAttachments ? "" : "(no content)";
-  let cleaned = content;
-  // Remove markdown links with sandbox: or absolute file paths
-  cleaned = cleaned.replace(/\[([^\]]*?)\]\(sandbox:[^)]*\)/g, "");
-  cleaned = cleaned.replace(/\[([^\]]*?)\]\(\/home\/[^)]*\)/g, "");
-  cleaned = cleaned.replace(/\[([^\]]*?)\]\(\/[a-zA-Z][^)]*\.png[^)]*\)/g, "");
-  // Remove raw sandbox: paths
-  cleaned = cleaned.replace(/sandbox:\/[^\s)]+/g, "");
-  // Remove raw absolute file paths to screenshots
-  cleaned = cleaned.replace(/\/home\/[^\s)]*screenshots\/[^\s)]+/g, "");
-  cleaned = cleaned.replace(/\/home\/[^\s)]*\.png/g, "");
-  // Remove leftover "You can view it" type phrases that referenced removed links
-  cleaned = cleaned.replace(/You can view (?:it|the screenshot)\s*\.?\s*/gi, "");
-  cleaned = cleaned.replace(/Here(?:'s| is) the screenshot\s*\.?/gi, (m) => m); // keep this one
-  // Collapse extra whitespace/newlines
-  cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
-  // If the assistant only had a path link and nothing else, show a clean fallback
-  if (!cleaned && hasAttachments) return "";
-  if (!cleaned) return "(no content)";
-  return cleaned;
-}
+import type { Thread, AttachmentMeta, Message, PendingFile, ThoughtStep, ProcessedMessage } from "./chat-panel-types";
+import { extractApprovalMeta, stripApprovalMeta, safeJsonParse, sanitizeAssistantContent } from "./chat-panel-types";
+import { ThreadSidebar } from "./thread-sidebar";
+import { ChatArea } from "./chat-area";
+import { InputBar } from "./input-bar";
 
 export function ChatPanel() {
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -141,20 +19,19 @@ export function ChatPanel() {
   const [thinkingSteps, setThinkingSteps] = useState<Array<{ step: string; detail?: string; timestamp: number }>>([]);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [screenShareEnabled, setScreenShareEnabled] = useState(true);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [actingApproval, setActingApproval] = useState<string | null>(null);
   const [resolvedApprovals, setResolvedApprovals] = useState<Record<string, string>>({});
   const [showSidebar, setShowSidebar] = useState(true);
 
-  // Debounced thread fetch — deduplicates concurrent calls and collapses rapid invocations
+  // Debounced thread fetch â€” deduplicates concurrent calls and collapses rapid invocations
   const threadFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const threadFetchInFlightRef = useRef<Promise<void> | null>(null);
   const fetchThreadsDebounced = useCallback((immediate = false) => {
     if (threadFetchTimerRef.current) clearTimeout(threadFetchTimerRef.current);
     const doFetch = () => {
-      if (threadFetchInFlightRef.current) return; // already in-flight — skip
+      if (threadFetchInFlightRef.current) return; // already in-flight â€” skip
       const p = fetch("/api/threads")
         .then((r) => r.json())
         .then((d) => {
@@ -191,7 +68,7 @@ export function ChatPanel() {
   const [playingTtsId, setPlayingTtsId] = useState<number | null>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Audio mode — continuous voice conversation
+  // Audio mode â€” continuous voice conversation
   const [audioMode, setAudioMode] = useState(false);
   const audioModeRef = useRef(false); // ref for use in callbacks
   const audioModeTtsQueue = useRef<string>("");     // accumulates tokens for TTS
@@ -271,7 +148,7 @@ export function ChatPanel() {
       });
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "NotAllowedError") {
-        // User cancelled the dialog — not an error
+        // User cancelled the dialog â€” not an error
         return;
       }
       console.error("Screen share failed:", err);
@@ -323,7 +200,7 @@ export function ChatPanel() {
     };
   }, [screenStream]);
 
-  // ── Audio Recording (Speech-to-Text) ──────────────────────────
+  // â”€â”€ Audio Recording (Speech-to-Text) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async function startRecording() {
     // getUserMedia requires a secure context (HTTPS or localhost)
@@ -412,7 +289,7 @@ export function ChatPanel() {
     setRecording(false);
   }
 
-  // ── Text-to-Speech ────────────────────────────────────────────
+  // â”€â”€ Text-to-Speech â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async function playTts(messageId: number, text: string) {
     // Stop any currently playing TTS
@@ -468,7 +345,7 @@ export function ChatPanel() {
     }
   }
 
-  // ── Audio Mode — Continuous Voice Conversation ─────────────────
+  // â”€â”€ Audio Mode â€” Continuous Voice Conversation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function toggleAudioMode() {
     const next = !audioMode;
@@ -494,7 +371,7 @@ export function ChatPanel() {
     if (!transcribing && audioModeRef.current && audioModePendingText.current) {
       const text = audioModePendingText.current;
       audioModePendingText.current = null;
-      // setInput was already called — trigger send on next tick
+      // setInput was already called â€” trigger send on next tick
       setTimeout(() => {
         sendMessageRef.current?.();
       }, 50);
@@ -505,7 +382,7 @@ export function ChatPanel() {
   // Ref to sendMessage for use in audio mode callbacks
   const sendMessageRef = useRef<(() => void) | null>(null);
 
-  /** Play TTS for audio mode — speaks the full response text, then auto-listens */
+  /** Play TTS for audio mode â€” speaks the full response text, then auto-listens */
   async function audioModePlayTts(text: string) {
     if (!audioModeRef.current || !text.trim()) return;
     audioModeSpeaking.current = true;
@@ -590,7 +467,7 @@ export function ChatPanel() {
     return () => { if (threadFetchTimerRef.current) clearTimeout(threadFetchTimerRef.current); };
   }, [fetchThreadsDebounced]);
 
-  // Fetch messages when thread changes — abort any in-flight SSE from the previous thread
+  // Fetch messages when thread changes â€” abort any in-flight SSE from the previous thread
   useEffect(() => {
     abortControllerRef.current?.abort();
     setLoading(false);
@@ -601,11 +478,6 @@ export function ChatPanel() {
       .then((data) => setMessages(data.messages || []))
       .catch(console.error);
   }, [activeThread]);
-
-  // Auto-scroll
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   // Listen for approval-resolved events to refresh messages and threads
   useEffect(() => {
@@ -714,7 +586,7 @@ export function ChatPanel() {
         console.warn("Agent continuation error:", data.continuationError);
       }
 
-      // Refresh messages and threads — the agent loop may have added new messages
+      // Refresh messages and threads â€” the agent loop may have added new messages
       if (activeThread) {
         const threadRes = await fetch(`/api/threads/${activeThread}`);
         const threadData = await threadRes.json();
@@ -868,7 +740,7 @@ export function ChatPanel() {
                   setMessages((prev) => [...prev, data as Message]);
                 }
               } else if (currentEvent === "token") {
-                // Streaming token — append to the current streaming assistant message
+                // Streaming token â€” append to the current streaming assistant message
                 const token = data as string;
 
                 // Accumulate for audio mode TTS
@@ -897,7 +769,7 @@ export function ChatPanel() {
                   }];
                 });
               } else if (currentEvent === "status") {
-                // Agent thinking/analysis step — accumulate for the ThinkingBlock display
+                // Agent thinking/analysis step â€” accumulate for the ThinkingBlock display
                 setThinkingSteps((prev) => {
                   const existing = prev.findIndex((s) => s.step === data.step);
                   if (existing >= 0) {
@@ -909,7 +781,7 @@ export function ChatPanel() {
                   return [...prev, { step: data.step, detail: data.detail, timestamp: Date.now() }];
                 });
               } else if (currentEvent === "done") {
-                // Agent loop completed — refresh thread list for auto-generated title
+                // Agent loop completed â€” refresh thread list for auto-generated title
                 fetchThreadsDebounced();
 
                 // Audio mode: speak the full streamed response
@@ -949,20 +821,6 @@ export function ChatPanel() {
   const activeThreadTitle = useMemo(() => threads.find(t => t.id === activeThread)?.title, [threads, activeThread]);
 
   // Pre-process messages: group thinking steps into collapsible blocks
-  interface ThoughtStep {
-    thinking: string | null;      // assistant reasoning text
-    toolCalls: Array<{ name: string; args: Record<string, unknown> }>;
-    toolResults: Array<{ name: string; result: string }>;
-    attachments: AttachmentMeta[];
-  }
-  interface ProcessedMessage {
-    msg: Message;
-    attachments: AttachmentMeta[];
-    approvalMeta: ReturnType<typeof extractApprovalMeta>;
-    displayContent: string | null;
-    thoughts: ThoughtStep[];
-  }
-
   const processedMessages: ProcessedMessage[] = useMemo(() => {
     const result: ProcessedMessage[] = [];
     let pendingThoughts: ThoughtStep[] = [];
@@ -970,7 +828,7 @@ export function ChatPanel() {
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
 
-      // Tool messages — collect results into the current thought step
+      // Tool messages â€” collect results into the current thought step
       if (msg.role === "tool") {
         if (pendingThoughts.length > 0) {
           const lastThought = pendingThoughts[pendingThoughts.length - 1];
@@ -1040,7 +898,7 @@ export function ChatPanel() {
       result.push({ msg, attachments, approvalMeta, displayContent, thoughts: [] });
     }
 
-    // If thoughts are still pending (streaming — final assistant message hasn't arrived yet),
+    // If thoughts are still pending (streaming â€” final assistant message hasn't arrived yet),
     // synthesize a placeholder so the user can see the agent's progress in real-time
     if (pendingThoughts.length > 0 && loading) {
       result.push({
@@ -1051,7 +909,7 @@ export function ChatPanel() {
         thoughts: pendingThoughts,
       });
     } else if (loading && thinkingSteps.length > 0 && !result.some((r) => r.msg.role === "assistant")) {
-      // No assistant message yet, but we have thinking steps — show a placeholder
+      // No assistant message yet, but we have thinking steps â€” show a placeholder
       result.push({
         msg: { id: -1, thread_id: "", role: "assistant", content: null, tool_calls: null, tool_results: null, attachments: null, created_at: null },
         attachments: [],
@@ -1064,109 +922,37 @@ export function ChatPanel() {
     return result;
   }, [messages, loading, thinkingSteps]);
 
+  const handleSelectThread = useCallback((id: string) => {
+    if (activeThread !== id) setActiveThread(id);
+    setShowSidebar(false);
+  }, [activeThread]);
+
+  const handleLoadMore = useCallback(() => {
+    fetch(`/api/threads?limit=50&offset=${threads.length}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && Array.isArray(d.data)) {
+          setThreads((prev) => [...prev, ...d.data]);
+          setThreadsTotal(d.total ?? threads.length + d.data.length);
+          setThreadsHasMore(d.hasMore ?? false);
+        }
+      })
+      .catch(console.error);
+  }, [threads.length]);
+
   return (
     <Box sx={{ display: "flex", height: "100%" }}>
-      {/* Thread Sidebar */}
-      <Paper
-        elevation={0}
-        sx={{
-          display: { xs: showSidebar ? "flex" : "none", sm: "flex" },
-          width: { xs: "100%", sm: 260 },
-          flexShrink: 0,
-          flexDirection: "column",
-          borderRight: 1,
-          borderColor: "divider",
-        }}
-      >
-        <Box sx={{ p: 1.5, borderBottom: 1, borderColor: "divider" }}>
-          <Button
-            onClick={createThread}
-            fullWidth
-            variant="outlined"
-            size="small"
-            startIcon={<AddIcon />}
-          >
-            New Thread
-          </Button>
-        </Box>
-        <Box sx={{ flex: 1, overflow: "auto" }}>
-          <List dense disablePadding sx={{ py: 0.5 }}>
-            {threads.map((thread) => (
-              <ListItemButton
-                key={thread.id}
-                selected={activeThread === thread.id}
-                onClick={() => { if (activeThread !== thread.id) setActiveThread(thread.id); setShowSidebar(false); }}
-                sx={{
-                  mx: 0.5,
-                  borderRadius: 2,
-                  mb: 0.25,
-                  alignItems: "flex-start",
-                  pr: 1,
-                }}
-              >
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
-                    {thread.title}
-                  </Typography>
-                  <Box sx={{ mt: 0.5 }}>
-                    <Chip
-                      label={thread.status}
-                      size="small"
-                      color={
-                        thread.status === "active"
-                          ? "success"
-                          : thread.status === "awaiting_approval"
-                          ? "warning"
-                          : "default"
-                      }
-                      sx={{ height: 20, fontSize: "0.7rem" }}
-                    />
-                  </Box>
-                </Box>
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteThread(thread.id);
-                  }}
-                  sx={{
-                    mt: 0.5,
-                    opacity: { xs: 1, sm: 0 },
-                    ".MuiListItemButton-root:hover &": { opacity: 1 },
-                    color: "text.secondary",
-                    "&:hover": { color: "error.main" },
-                  }}
-                >
-                  <DeleteOutlineIcon fontSize="small" />
-                </IconButton>
-              </ListItemButton>
-            ))}
-          </List>
-          {threadsHasMore && (
-            <Box sx={{ textAlign: "center", py: 1 }}>
-              <Button
-                size="small"
-                onClick={() => {
-                  fetch(`/api/threads?limit=50&offset=${threads.length}`)
-                    .then((r) => r.json())
-                    .then((d) => {
-                      if (d && Array.isArray(d.data)) {
-                        setThreads((prev) => [...prev, ...d.data]);
-                        setThreadsTotal(d.total ?? threads.length + d.data.length);
-                        setThreadsHasMore(d.hasMore ?? false);
-                      }
-                    })
-                    .catch(console.error);
-                }}
-              >
-                Load more ({threadsTotal - threads.length} remaining)
-              </Button>
-            </Box>
-          )}
-        </Box>
-      </Paper>
-
-      {/* Chat Area */}
+      <ThreadSidebar
+        threads={threads}
+        threadsTotal={threadsTotal}
+        threadsHasMore={threadsHasMore}
+        activeThread={activeThread}
+        showSidebar={showSidebar}
+        onSelectThread={handleSelectThread}
+        onCreateThread={createThread}
+        onDeleteThread={handleDeleteThread}
+        onLoadMore={handleLoadMore}
+      />
       <Box
         sx={{
           display: { xs: !showSidebar ? "flex" : "none", sm: "flex" },
@@ -1175,716 +961,47 @@ export function ChatPanel() {
           minWidth: 0,
         }}
       >
-        {activeThread ? (
-          <>
-            {/* Mobile back button */}
-            <Box sx={{ display: { xs: "flex", sm: "none" }, alignItems: "center", gap: 1, px: 1.5, py: 1, borderBottom: 1, borderColor: "divider" }}>
-              <Button
-                size="small"
-                variant="text"
-                startIcon={<ArrowBackIcon />}
-                onClick={() => setShowSidebar(true)}
-                sx={{ textTransform: "none" }}
-              >
-                Threads
-              </Button>
-              <Typography variant="caption" color="text.secondary" noWrap>{activeThreadTitle}</Typography>
-            </Box>
-            <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
-              <Box sx={{ maxWidth: 720, mx: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
-                {processedMessages.map(({ msg, attachments, approvalMeta, displayContent, thoughts }, pmIdx) => {
-
-                  return (
-                    <Box
-                      key={msg.id}
-                      sx={{
-                        display: "flex",
-                        justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
-                      }}
-                    >
-                      <Paper
-                        elevation={msg.role === "user" ? 2 : 0}
-                        sx={{
-                          maxWidth: "80%",
-                          borderRadius: 3,
-                          px: 2,
-                          py: 1.5,
-                          ...(msg.role === "user"
-                            ? {
-                                bgcolor: "primary.main",
-                                color: "primary.contrastText",
-                                borderBottomRightRadius: 4,
-                              }
-                            : msg.role === "system"
-                            ? {
-                                bgcolor: "warning.main",
-                                color: "warning.contrastText",
-                                opacity: 0.9,
-                                borderBottomLeftRadius: 4,
-                              }
-                            : msg.role === "tool"
-                            ? {
-                                bgcolor: "action.hover",
-                                fontFamily: "monospace",
-                                fontSize: "0.75rem",
-                                borderBottomLeftRadius: 4,
-                              }
-                            : {
-                                bgcolor: "background.paper",
-                                border: 1,
-                                borderColor: "divider",
-                                borderBottomLeftRadius: 4,
-                              }),
-                        }}
-                      >
-                        {msg.role !== "user" && (
-                          <Typography variant="overline" sx={{ fontSize: "0.625rem", letterSpacing: 1.2, color: msg.role === "system" ? "inherit" : "text.secondary" }}>
-                            {msg.role === "assistant" ? "Nexus" : msg.role}
-                          </Typography>
-                        )}
-
-                        {/* Agent Thinking Steps — shown on the last assistant message */}
-                        {msg.role === "assistant" && pmIdx === processedMessages.length - 1 && thinkingSteps.length > 0 && (
-                          <ThinkingBlock steps={thinkingSteps} autoExpand={loading} />
-                        )}
-
-                        {/* Collapsible Thoughts */}
-                        {thoughts.length > 0 && <ThoughtsBlock thoughts={thoughts} autoExpand={loading} />}
-
-                        {/* Attachments */}
-                        {attachments.length > 0 && (
-                          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 1 }}>
-                            {attachments.map((att) => (
-                              <AttachmentPreview key={att.id || att.filename} attachment={att} />
-                            ))}
-                          </Box>
-                        )}
-
-                        {/* Message content — assistant uses markdown, others plain text */}
-                        {msg.role === "assistant" ? (
-                          msg.content ? (
-                            <MarkdownMessage content={sanitizeAssistantContent(msg.content, attachments.length > 0)} />
-                          ) : null
-                        ) : (
-                          <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
-                            {msg.role === "tool"
-                              ? sanitizeToolContent(msg.content, attachments.length > 0)
-                              : msg.role === "system" && approvalMeta
-                              ? displayContent || ""
-                              : msg.content || (attachments.length > 0 ? "" : "(no content)")}
-                          </Typography>
-                        )}
-                        {msg.id === -1 && loading && !msg.content && (
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
-                            <CircularProgress size={14} />
-                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
-                              Thinking...
-                            </Typography>
-                          </Box>
-                        )}
-
-                        {/* Timestamp */}
-                        {msg.created_at && (
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              display: "block",
-                              mt: 0.5,
-                              fontSize: "0.6rem",
-                              color: msg.role === "user" ? "rgba(255,255,255,0.7)" : "text.disabled",
-                              textAlign: msg.role === "user" ? "right" : "left",
-                            }}
-                          >
-                            {new Date(msg.created_at).toLocaleString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </Typography>
-                        )}
-
-                        {/* TTS — Read aloud button for assistant messages */}
-                        {msg.role === "assistant" && msg.content && msg.id !== -1 && (
-                          <IconButton
-                            size="small"
-                            onClick={() => playTts(msg.id, sanitizeAssistantContent(msg.content, false))}
-                            title={playingTtsId === msg.id ? "Stop reading" : "Read aloud"}
-                            sx={{ mt: 0.25, p: 0.5, opacity: 0.6, "&:hover": { opacity: 1 } }}
-                          >
-                            {playingTtsId === msg.id ? (
-                              <StopCircleIcon sx={{ fontSize: 16 }} />
-                            ) : (
-                              <VolumeUpIcon sx={{ fontSize: 16 }} />
-                            )}
-                          </IconButton>
-                        )}
-
-                        {/* Inline approval buttons */}
-                        {approvalMeta && (() => {
-                          const resolved = resolvedApprovals[approvalMeta.approvalId];
-                          return (
-                            <Box sx={{ mt: 1.5 }}>
-                              <Box sx={{ fontSize: "0.7rem", color: "text.secondary", mb: 1 }}>
-                                <div><strong>Tool:</strong> {approvalMeta.tool_name}</div>
-                                {approvalMeta.reasoning && (
-                                  <div><strong>Reason:</strong> {approvalMeta.reasoning}</div>
-                                )}
-                                <details style={{ marginTop: 4 }}>
-                                  <summary style={{ cursor: "pointer", fontSize: "0.65rem" }}>Arguments</summary>
-                                  <Box component="pre" sx={{ fontSize: "0.65rem", bgcolor: "action.hover", p: 1, borderRadius: 1, mt: 0.5, overflow: "auto" }}>
-                                    {JSON.stringify(approvalMeta.args, null, 2)}
-                                  </Box>
-                                </details>
-                              </Box>
-                              {resolved ? (
-                                <Chip
-                                  label={resolved === "approved" ? "✓ Approved" : "✕ Denied"}
-                                  size="small"
-                                  color={resolved === "approved" ? "success" : "error"}
-                                />
-                              ) : (
-                                <Box sx={{ display: "flex", gap: 1, pt: 0.5 }}>
-                                  <Button
-                                    variant="contained"
-                                    color="success"
-                                    size="small"
-                                    onClick={() => handleApproval(approvalMeta.approvalId, "approved")}
-                                    disabled={actingApproval === approvalMeta.approvalId}
-                                  >
-                                    {actingApproval === approvalMeta.approvalId ? "Processing..." : "✓ Approve"}
-                                  </Button>
-                                  <Button
-                                    variant="outlined"
-                                    color="error"
-                                    size="small"
-                                    onClick={() => handleApproval(approvalMeta.approvalId, "rejected")}
-                                    disabled={actingApproval === approvalMeta.approvalId}
-                                  >
-                                    ✕ Deny
-                                  </Button>
-                                </Box>
-                              )}
-                            </Box>
-                          );
-                        })()}
-                      </Paper>
-                    </Box>
-                  );
-                })}
-                <div ref={messagesEndRef} />
-              </Box>
-            </Box>
-
-            {/* Input Bar */}
-            <Box sx={{ borderTop: 1, borderColor: "divider", p: 1.5, bgcolor: "background.paper" }}>
-              <Box sx={{ maxWidth: 720, mx: "auto" }}>
-                {/* Screen sharing indicator */}
-                {screenSharing && (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, px: 1.5, py: 1, borderRadius: 2, bgcolor: "error.main", color: "error.contrastText", opacity: 0.9 }}>
-                    <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "white", animation: "pulse 1.5s infinite" }} />
-                    <Typography variant="caption" sx={{ fontWeight: 500 }}>Sharing your screen</Typography>
-                    <img
-                      ref={frameImgRef}
-                      alt="Screen preview"
-                      style={{ height: 32, borderRadius: 4, marginLeft: "auto", display: latestFrameRef.current ? undefined : "none" }}
-                    />
-                    <Button
-                      size="small"
-                      variant="text"
-                      onClick={stopScreenShare}
-                      sx={{ color: "inherit", minWidth: 0 }}
-                    >
-                      Stop
-                    </Button>
-                  </Box>
-                )}
-
-                {/* Audio mode indicator */}
-                {audioMode && (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, px: 1.5, py: 1, borderRadius: 2, bgcolor: "primary.main", color: "primary.contrastText", opacity: 0.9 }}>
-                    <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "white", animation: "pulse 1.5s infinite" }} />
-                    <MicIcon sx={{ fontSize: 16 }} />
-                    <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                      {audioModeSpeaking ? "Speaking..." : recording ? "Listening..." : transcribing ? "Transcribing..." : loading ? "Thinking..." : "Audio mode active"}
-                    </Typography>
-                    <Button
-                      size="small"
-                      variant="text"
-                      onClick={toggleAudioMode}
-                      sx={{ color: "inherit", minWidth: 0, ml: "auto" }}
-                    >
-                      Stop
-                    </Button>
-                  </Box>
-                )}
-
-                {/* Pending file previews */}
-                {pendingFiles.length > 0 && (
-                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mb: 1 }}>
-                    {pendingFiles.map((pf, idx) => (
-                      <Chip
-                        key={`${pf.file.name}-${pf.file.lastModified}`}
-                        label={pf.file.name}
-                        size="small"
-                        variant="outlined"
-                        icon={pf.previewUrl ? (
-                          <img
-                            src={pf.previewUrl}
-                            alt={pf.file.name}
-                            style={{ height: 20, width: 20, objectFit: "cover", borderRadius: 4 }}
-                          />
-                        ) : undefined}
-                        onDelete={() => removePendingFile(idx)}
-                        sx={{ maxWidth: 180 }}
-                      />
-                    ))}
-                  </Box>
-                )}
-
-                <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept={ACCEPT_STRING}
-                    onChange={handleFileSelect}
-                    style={{ display: "none" }}
-                  />
-                  <IconButton
-                    size="small"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={loading || !activeThread}
-                    title="Attach files"
-                  >
-                    <AttachFileIcon fontSize="small" />
-                  </IconButton>
-                  {screenShareEnabled && (
-                    <IconButton
-                      size="small"
-                      onClick={screenSharing ? stopScreenShare : startScreenShare}
-                      disabled={loading || !activeThread}
-                      title={screenSharing ? "Stop screen sharing" : "Share your screen"}
-                      color={screenSharing ? "error" : "default"}
-                    >
-                      {screenSharing ? <StopScreenShareIcon fontSize="small" /> : <ScreenShareIcon fontSize="small" />}
-                    </IconButton>
-                  )}
-                  {!audioMode && (
-                  <IconButton
-                    size="small"
-                    onClick={recording ? stopRecording : startRecording}
-                    disabled={loading || transcribing || !activeThread}
-                    title={recording ? "Stop recording" : transcribing ? "Transcribing..." : "Voice input"}
-                    color={recording ? "error" : "default"}
-                    sx={recording ? { animation: "pulse 1.5s infinite", "@keyframes pulse": { "0%, 100%": { opacity: 1 }, "50%": { opacity: 0.5 } } } : {}}
-                  >
-                    {transcribing ? (
-                      <CircularProgress size={18} color="inherit" />
-                    ) : recording ? (
-                      <MicOffIcon fontSize="small" />
-                    ) : (
-                      <MicIcon fontSize="small" />
-                    )}
-                  </IconButton>
-                  )}
-                  <TextField
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        sendMessage();
-                      }
-                    }}
-                    placeholder={recording ? "Listening..." : transcribing ? "Transcribing..." : "Message Nexus..."}
-                    disabled={loading}
-                    size="small"
-                    fullWidth
-                    variant="outlined"
-                    multiline
-                    maxRows={6}
-                    inputProps={{ style: { lineHeight: 1.5 } }}
-                  />
-                  <IconButton
-                    onClick={sendMessage}
-                    disabled={loading || (!input.trim() && pendingFiles.length === 0 && !screenSharing)}
-                    color="primary"
-                    title="Send message"
-                  >
-                    {loading ? (
-                      <CircularProgress size={20} color="inherit" />
-                    ) : (
-                      <SendIcon fontSize="small" />
-                    )}
-                  </IconButton>
-                </Box>
-              </Box>
-            </Box>
-          </>
-        ) : (
-          <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative" }}>
-            {/* Mobile back button for empty state */}
-            <Box sx={{ display: { xs: "block", sm: "none" }, position: "absolute", top: 0, left: 0, px: 1.5, py: 1 }}>
-              <Button
-                size="small"
-                variant="text"
-                startIcon={<ArrowBackIcon />}
-                onClick={() => setShowSidebar(true)}
-                sx={{ textTransform: "none" }}
-              >
-                Threads
-              </Button>
-            </Box>
-            <Box sx={{ textAlign: "center" }}>
-              <ChatBubbleOutlineIcon sx={{ fontSize: 64, color: "text.disabled", mb: 2 }} />
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                No thread selected
-              </Typography>
-              <Typography variant="caption" color="text.disabled">
-                Select or create a thread to start chatting.
-              </Typography>
-            </Box>
-          </Box>
-        )}
-      </Box>
-    </Box>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*  ThinkingBlock — shows agent analysis steps (model selection, knowledge     */
-/*  retrieval, etc.) in a Gemini/Copilot-style collapsible block              */
-/* -------------------------------------------------------------------------- */
-
-interface ThinkingStep {
-  step: string;
-  detail?: string;
-  timestamp: number;
-}
-
-const ThinkingBlock = memo(function ThinkingBlock({ steps, autoExpand }: { steps: ThinkingStep[]; autoExpand?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-
-  // Auto-expand when streaming
-  useEffect(() => {
-    if (autoExpand) setExpanded(true);
-  }, [autoExpand]);
-
-  const stepCount = steps.length;
-
-  return (
-    <Box sx={{ mb: 1 }}>
-      {/* Toggle button */}
-      <Box
-        onClick={() => setExpanded(!expanded)}
-        sx={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 0.5,
-          cursor: "pointer",
-          userSelect: "none",
-          borderRadius: 2,
-          px: 1,
-          py: 0.5,
-          bgcolor: "action.hover",
-          "&:hover": { bgcolor: "action.selected" },
-          transition: "background-color 0.15s",
-        }}
-      >
-        <AutoAwesomeIcon sx={{ fontSize: 16, color: autoExpand ? "primary.main" : "text.secondary" }} />
-        <Typography variant="caption" sx={{ fontWeight: 500, fontSize: "0.7rem", color: "text.secondary" }}>
-          {autoExpand ? "Analyzing…" : `Analyzed in ${stepCount} ${stepCount === 1 ? "step" : "steps"}`}
-        </Typography>
-        {autoExpand && (
-          <CircularProgress size={12} sx={{ ml: 0.5 }} />
-        )}
-        {expanded ? (
-          <ExpandLessIcon sx={{ fontSize: 16, color: "text.secondary" }} />
-        ) : (
-          <ExpandMoreIcon sx={{ fontSize: 16, color: "text.secondary" }} />
-        )}
-      </Box>
-
-      {/* Expandable content */}
-      <Collapse in={expanded} timeout="auto" unmountOnExit>
-        <Box
-          sx={{
-            mt: 1,
-            pl: 1.5,
-            borderLeft: 2,
-            borderColor: autoExpand ? "primary.main" : "divider",
-            display: "flex",
-            flexDirection: "column",
-            gap: 0.75,
-          }}
-        >
-          {steps.map((s, idx) => {
-            const isLatest = autoExpand && idx === steps.length - 1;
-            return (
-              <Box key={`${s.step}-${idx}`} sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                {isLatest ? (
-                  <CircularProgress size={12} sx={{ flexShrink: 0 }} />
-                ) : (
-                  <CheckCircleOutlineIcon sx={{ fontSize: 14, color: "success.main", flexShrink: 0 }} />
-                )}
-                <Box>
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      fontWeight: 600,
-                      fontSize: "0.7rem",
-                      color: isLatest ? "text.primary" : "text.secondary",
-                    }}
-                  >
-                    {s.step}
-                  </Typography>
-                  {s.detail && (
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        fontSize: "0.65rem",
-                        color: "text.disabled",
-                        ml: 0.75,
-                      }}
-                    >
-                      {s.detail}
-                    </Typography>
-                  )}
-                </Box>
-              </Box>
-            );
-          })}
-        </Box>
-      </Collapse>
-    </Box>
-  );
-});
-
-/* -------------------------------------------------------------------------- */
-/*  ThoughtsBlock — collapsible thinking steps (collapsed by default)          */
-/* -------------------------------------------------------------------------- */
-
-interface ThoughtStep {
-  thinking: string | null;
-  toolCalls: Array<{ name: string; args: Record<string, unknown> }>;
-  toolResults: Array<{ name: string; result: string }>;
-  attachments: AttachmentMeta[];
-}
-
-/** Pretty-print a tool name: "builtin.web_fetch" → "web_fetch", "mcp.server.tool" → "tool" */
-function shortToolName(name: string): string {
-  const parts = name.split(".");
-  return parts[parts.length - 1];
-}
-
-const ThoughtsBlock = memo(function ThoughtsBlock({ thoughts, autoExpand }: { thoughts: ThoughtStep[]; autoExpand?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-
-  // Auto-expand when streaming
-  useEffect(() => {
-    if (autoExpand) setExpanded(true);
-  }, [autoExpand]);
-
-  // Count total tool calls across all steps
-  const totalTools = thoughts.reduce((sum, t) => sum + t.toolCalls.length, 0);
-
-  // Collect all unique tool names for the summary chip
-  const toolNames = Array.from(new Set(thoughts.flatMap((t) => t.toolCalls.map((tc) => shortToolName(tc.name)))));  const summaryLabel = totalTools === 1
-    ? `Used ${toolNames[0]}`
-    : `${totalTools} tool calls`;
-
-  return (
-    <Box sx={{ mb: 1 }}>
-      {/* Toggle button */}
-      <Box
-        onClick={() => setExpanded(!expanded)}
-        sx={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 0.5,
-          cursor: "pointer",
-          userSelect: "none",
-          borderRadius: 2,
-          px: 1,
-          py: 0.5,
-          bgcolor: "action.hover",
-          "&:hover": { bgcolor: "action.selected" },
-          transition: "background-color 0.15s",
-        }}
-      >
-        <PsychologyIcon sx={{ fontSize: 16, color: "text.secondary" }} />
-        <Typography variant="caption" sx={{ fontWeight: 500, fontSize: "0.7rem", color: "text.secondary" }}>
-          Thought for {thoughts.length} {thoughts.length === 1 ? "step" : "steps"}
-        </Typography>
-        <Chip
-          label={summaryLabel}
-          size="small"
-          variant="outlined"
-          icon={<BuildIcon sx={{ fontSize: "12px !important" }} />}
-          sx={{ height: 20, fontSize: "0.65rem", ml: 0.5, "& .MuiChip-icon": { fontSize: 12 } }}
+        <ChatArea
+          processedMessages={processedMessages}
+          loading={loading}
+          thinkingSteps={thinkingSteps}
+          activeThread={activeThread}
+          activeThreadTitle={activeThreadTitle}
+          showSidebar={showSidebar}
+          onBackToSidebar={() => setShowSidebar(true)}
+          playingTtsId={playingTtsId}
+          onPlayTts={playTts}
+          actingApproval={actingApproval}
+          resolvedApprovals={resolvedApprovals}
+          onApproval={handleApproval}
         />
-        {expanded ? (
-          <ExpandLessIcon sx={{ fontSize: 16, color: "text.secondary" }} />
-        ) : (
-          <ExpandMoreIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+        {activeThread && (
+          <InputBar
+            input={input}
+            onInputChange={setInput}
+            onSendMessage={sendMessage}
+            loading={loading}
+            activeThread={activeThread}
+            pendingFiles={pendingFiles}
+            onFileSelect={handleFileSelect}
+            onRemovePendingFile={removePendingFile}
+            fileInputRef={fileInputRef}
+            recording={recording}
+            transcribing={transcribing}
+            onStartRecording={startRecording}
+            onStopRecording={stopRecording}
+            screenShareEnabled={screenShareEnabled}
+            screenSharing={screenSharing}
+            onStartScreenShare={startScreenShare}
+            onStopScreenShare={stopScreenShare}
+            audioMode={audioMode}
+            audioModeSpeaking={audioModeSpeaking.current}
+            onToggleAudioMode={toggleAudioMode}
+            latestFrameRef={latestFrameRef}
+            frameImgRef={frameImgRef}
+          />
         )}
       </Box>
-
-      {/* Expandable content */}
-      <Collapse in={expanded} timeout="auto" unmountOnExit>
-        <Box
-          sx={{
-            mt: 1,
-            pl: 1.5,
-            borderLeft: 2,
-            borderColor: "divider",
-            display: "flex",
-            flexDirection: "column",
-            gap: 1.5,
-          }}
-        >
-          {thoughts.map((step, stepIdx) => (
-            <Box key={stepIdx}>
-              {/* Thinking text */}
-              {step.thinking && (
-                <Typography
-                  variant="body2"
-                  sx={{
-                    fontSize: "0.8rem",
-                    color: "text.secondary",
-                    fontStyle: "italic",
-                    whiteSpace: "pre-wrap",
-                    lineHeight: 1.5,
-                    mb: 0.5,
-                  }}
-                >
-                  {step.thinking}
-                </Typography>
-              )}
-
-              {/* Tool calls & results */}
-              {step.toolCalls.map((tc, tcIdx) => {
-                const result = step.toolResults[tcIdx];
-                return (
-                  <Box key={tcIdx} sx={{ mb: 0.5 }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 0.25 }}>
-                      <BuildIcon sx={{ fontSize: 12, color: "text.disabled" }} />
-                      <Typography
-                        variant="caption"
-                        sx={{ fontWeight: 600, fontFamily: "monospace", fontSize: "0.7rem", color: "text.secondary" }}
-                      >
-                        {shortToolName(tc.name)}
-                      </Typography>
-                    </Box>
-                    {/* Collapsible args */}
-                    <details style={{ marginLeft: 8 }}>
-                      <summary style={{ cursor: "pointer", fontSize: "0.65rem", color: "inherit", opacity: 0.7 }}>
-                        Arguments
-                      </summary>
-                      <Box
-                        component="pre"
-                        sx={{
-                          fontSize: "0.65rem",
-                          bgcolor: "action.hover",
-                          p: 0.75,
-                          borderRadius: 1,
-                          mt: 0.25,
-                          overflow: "auto",
-                          maxHeight: 120,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        {JSON.stringify(tc.args, null, 2)}
-                      </Box>
-                    </details>
-                    {/* Tool result */}
-                    {result && (
-                      <details style={{ marginLeft: 8 }}>
-                        <summary style={{ cursor: "pointer", fontSize: "0.65rem", color: "inherit", opacity: 0.7 }}>
-                          Result
-                        </summary>
-                        <Box
-                          component="pre"
-                          sx={{
-                            fontSize: "0.65rem",
-                            bgcolor: "action.hover",
-                            p: 0.75,
-                            borderRadius: 1,
-                            mt: 0.25,
-                            overflow: "auto",
-                            maxHeight: 200,
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-word",
-                          }}
-                        >
-                          {result.result}
-                        </Box>
-                      </details>
-                    )}
-
-                    {/* Inline attachments from tool results (e.g., screenshots) */}
-                    {step.attachments.length > 0 && tcIdx === step.toolCalls.length - 1 && (
-                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.5 }}>
-                        {step.attachments.map((att) => (
-                          <AttachmentPreview key={att.id || att.filename} attachment={att} />
-                        ))}
-                      </Box>
-                    )}
-                  </Box>
-                );
-              })}
-            </Box>
-          ))}
-        </Box>
-      </Collapse>
     </Box>
   );
-});
-
-const AttachmentPreview = memo(function AttachmentPreview({ attachment }: { attachment: AttachmentMeta }) {
-  const isImage = attachment.mimeType.startsWith("image/");
-  const isVideo = attachment.mimeType.startsWith("video/");
-  const url = attachment.storagePath
-    ? `/api/attachments/${attachment.storagePath}`
-    : undefined;
-
-  if (isImage && url) {
-    return (
-      <a href={url} target="_blank" rel="noopener noreferrer">
-        <Box
-          component="img"
-          src={url}
-          alt={attachment.filename}
-          sx={{ maxHeight: 400, maxWidth: "100%", borderRadius: 2, objectFit: "contain", cursor: "zoom-in", border: 1, borderColor: "divider", "&:hover": { borderColor: "primary.main" } }}
-        />
-      </a>
-    );
-  }
-
-  if (isVideo && url) {
-    return (
-      <Box
-        component="video"
-        src={url}
-        controls
-        sx={{ maxHeight: 192, maxWidth: 320, borderRadius: 2, border: 1, borderColor: "divider" }}
-      />
-    );
-  }
-
-  return (
-    <Chip
-      component="a"
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      clickable
-      icon={<AttachFileIcon sx={{ fontSize: 14 }} />}
-      label={`${attachment.filename} (${(attachment.sizeBytes / 1024).toFixed(0)} KB)`}
-      size="small"
-      variant="outlined"
-    />
-  );
-});
+}
