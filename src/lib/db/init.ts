@@ -295,6 +295,65 @@ function ensureKnowledgeSourceTypeColumn(): void {
   ).run();
 }
 
+function dedupeKnowledgeRows(): void {
+  if (!tableExists("user_knowledge")) return;
+  const db = getDb();
+
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_user_knowledge_norm_lookup
+     ON user_knowledge(user_id, lower(trim(entity)), lower(trim(attribute)), lower(trim(value)))`
+  );
+
+  const hasDup = db
+    .prepare(
+      `SELECT 1
+       FROM user_knowledge k1
+       JOIN user_knowledge k2
+         ON coalesce(k1.user_id, '') = coalesce(k2.user_id, '')
+        AND lower(trim(k1.entity)) = lower(trim(k2.entity))
+        AND lower(trim(k1.attribute)) = lower(trim(k2.attribute))
+        AND lower(trim(k1.value)) = lower(trim(k2.value))
+        AND (
+          k1.last_updated < k2.last_updated
+          OR (k1.last_updated = k2.last_updated AND k1.id < k2.id)
+        )
+       LIMIT 1`
+    )
+    .get() as { 1: number } | undefined;
+
+  if (!hasDup) return;
+
+  const removed = db
+    .prepare(
+      `DELETE FROM user_knowledge
+       WHERE id IN (
+         SELECT k1.id
+         FROM user_knowledge k1
+         JOIN user_knowledge k2
+           ON coalesce(k1.user_id, '') = coalesce(k2.user_id, '')
+          AND lower(trim(k1.entity)) = lower(trim(k2.entity))
+          AND lower(trim(k1.attribute)) = lower(trim(k2.attribute))
+          AND lower(trim(k1.value)) = lower(trim(k2.value))
+          AND (
+            k1.last_updated < k2.last_updated
+            OR (k1.last_updated = k2.last_updated AND k1.id < k2.id)
+          )
+       )`
+    )
+    .run();
+
+  if (Number(removed.changes || 0) > 0) {
+    console.log(`[Nexus DB] Deduplicated ${removed.changes} normalized knowledge rows.`);
+  }
+
+  // Shrink oversized legacy source context fields to reduce storage bloat.
+  db.prepare(
+    `UPDATE user_knowledge
+     SET source_context = substr(source_context, 1, 220)
+     WHERE source_context IS NOT NULL AND length(source_context) > 220`
+  ).run();
+}
+
 /**
  * Collect the names of built-in tools that require approval by default.
  */
@@ -595,6 +654,9 @@ export function initializeDatabase(): void {
   ensureUserIdColumns();
   ensureThreadClassificationColumns();
   ensureKnowledgeSourceTypeColumn();
+  if (process.env.NEXUS_DEDUPE_KNOWLEDGE_STARTUP === "1") {
+    dedupeKnowledgeRows();
+  }
   ensureMcpServerNewColumns();
   ensureScreenSharingColumn();
   ensureToolPolicyScopeColumn();

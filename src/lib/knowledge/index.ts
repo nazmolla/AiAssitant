@@ -124,6 +124,7 @@ function parseFacts(raw: string): ExtractedFact[] {
   try {
     const parsed = JSON.parse(normalized);
     if (Array.isArray(parsed)) {
+      const dedup = new Set<string>();
       return parsed
         .filter((item) =>
           item &&
@@ -133,10 +134,18 @@ function parseFacts(raw: string): ExtractedFact[] {
             typeof item.value === "string"
         )
         .map((item) => ({
-          entity: item.entity.trim(),
-          attribute: item.attribute.trim(),
-          value: item.value.trim(),
-        }));
+          entity: item.entity.replace(/\s+/g, " ").trim(),
+          attribute: item.attribute.replace(/\s+/g, " ").trim(),
+          value: item.value.replace(/\s+/g, " ").trim(),
+        }))
+        .filter((fact) => {
+          if (!fact.entity || !fact.attribute || !fact.value) return false;
+          if (fact.value.length > 220) return false;
+          const key = `${fact.entity.toLowerCase()}|${fact.attribute.toLowerCase()}|${fact.value.toLowerCase()}`;
+          if (dedup.has(key)) return false;
+          dedup.add(key);
+          return true;
+        });
     }
   } catch (err) {
     addLog({
@@ -150,7 +159,7 @@ function parseFacts(raw: string): ExtractedFact[] {
 }
 
 function buildSourceContext(source: string, text: string): string {
-  const truncated = text.length > 400 ? `${text.substring(0, 397)}...` : text;
+  const truncated = text.length > 180 ? `${text.substring(0, 177)}...` : text;
   return `[${source}] ${truncated}`;
 }
 

@@ -713,8 +713,47 @@ export function upsertKnowledge(
   entry: Omit<KnowledgeEntry, "id" | "last_updated" | "source_type"> & { source_type?: KnowledgeEntry["source_type"] },
   userId?: string
 ): number {
+  const normalizeFactText = (input: string) => input.replace(/\s+/g, " ").trim();
   const uid = entry.user_id ?? userId ?? null;
   const sourceType = entry.source_type ?? "manual";
+
+  const entity = normalizeFactText(entry.entity);
+  const attribute = normalizeFactText(entry.attribute);
+  const value = normalizeFactText(entry.value);
+  const sourceContext = typeof entry.source_context === "string"
+    ? entry.source_context.slice(0, 220)
+    : entry.source_context;
+
+  // Merge near-duplicates that differ only by case/whitespace into one canonical row.
+  const existing = getDb()
+    .prepare(
+      `SELECT id
+       FROM user_knowledge
+       WHERE ((? IS NULL AND user_id IS NULL) OR user_id = ?)
+         AND lower(trim(entity)) = lower(trim(?))
+         AND lower(trim(attribute)) = lower(trim(?))
+         AND lower(trim(value)) = lower(trim(?))
+       ORDER BY last_updated DESC, id DESC
+       LIMIT 1`
+    )
+    .get(uid, uid, entity, attribute, value) as { id: number } | undefined;
+
+  if (existing) {
+    getDb()
+      .prepare(
+        `UPDATE user_knowledge
+         SET entity = ?,
+             attribute = ?,
+             value = ?,
+             source_type = ?,
+             source_context = ?,
+             last_updated = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      )
+      .run(entity, attribute, value, sourceType, sourceContext, existing.id);
+    return existing.id;
+  }
+
   const row = getDb()
     .prepare(
       `INSERT INTO user_knowledge (user_id, entity, attribute, value, source_type, source_context)
@@ -726,7 +765,7 @@ export function upsertKnowledge(
          last_updated = CURRENT_TIMESTAMP
        RETURNING id`
     )
-    .get(uid, entry.entity, entry.attribute, entry.value, sourceType, entry.source_context) as { id: number } | undefined;
+    .get(uid, entity, attribute, value, sourceType, sourceContext) as { id: number } | undefined;
 
   if (!row) {
     throw new Error("Failed to upsert knowledge entry");
