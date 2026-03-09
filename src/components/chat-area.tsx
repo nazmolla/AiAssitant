@@ -96,6 +96,16 @@ export const ChatArea = memo(function ChatArea({
     [virtualizer],
   );
 
+  const scheduleMeasure = useCallback(() => {
+    requestAnimationFrame(() => virtualizer.measure());
+  }, [virtualizer]);
+
+  // Dynamic UI blocks (thinking/thoughts/sidebar) can change row height without
+  // changing message content; re-measure to keep virtual row offsets accurate.
+  useEffect(() => {
+    scheduleMeasure();
+  }, [scheduleMeasure, thinkingSteps.length, loading, showSidebar]);
+
   if (!activeThread) {
     return (
       <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative" }}>
@@ -214,11 +224,11 @@ export const ChatArea = memo(function ChatArea({
 
                 {/* Agent Thinking Steps — shown on the last assistant message */}
                 {msg.role === "assistant" && pmIdx === processedMessages.length - 1 && thinkingSteps.length > 0 && (
-                  <ThinkingBlock steps={thinkingSteps} autoExpand={loading} />
+                  <ThinkingBlock steps={thinkingSteps} autoExpand={loading} onHeightChange={scheduleMeasure} />
                 )}
 
                 {/* Collapsible Thoughts */}
-                {thoughts.length > 0 && <ThoughtsBlock thoughts={thoughts} autoExpand={loading} />}
+                {thoughts.length > 0 && <ThoughtsBlock thoughts={thoughts} autoExpand={loading} onHeightChange={scheduleMeasure} />}
 
                 {/* Attachments */}
                 {attachments.length > 0 && (
@@ -352,12 +362,16 @@ export const ChatArea = memo(function ChatArea({
 /*  ThinkingBlock                                                              */
 /* -------------------------------------------------------------------------- */
 
-const ThinkingBlock = memo(function ThinkingBlock({ steps, autoExpand }: { steps: ThinkingStep[]; autoExpand?: boolean }) {
+const ThinkingBlock = memo(function ThinkingBlock({ steps, autoExpand, onHeightChange }: { steps: ThinkingStep[]; autoExpand?: boolean; onHeightChange?: () => void }) {
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (autoExpand) setExpanded(true);
   }, [autoExpand]);
+
+  useEffect(() => {
+    onHeightChange?.();
+  }, [onHeightChange, expanded, steps.length, autoExpand]);
 
   const stepCount = steps.length;
 
@@ -457,12 +471,16 @@ function shortToolName(name: string): string {
   return parts[parts.length - 1];
 }
 
-const ThoughtsBlock = memo(function ThoughtsBlock({ thoughts, autoExpand }: { thoughts: ThoughtStep[]; autoExpand?: boolean }) {
+const ThoughtsBlock = memo(function ThoughtsBlock({ thoughts, autoExpand, onHeightChange }: { thoughts: ThoughtStep[]; autoExpand?: boolean; onHeightChange?: () => void }) {
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (autoExpand) setExpanded(true);
   }, [autoExpand]);
+
+  useEffect(() => {
+    onHeightChange?.();
+  }, [onHeightChange, expanded, thoughts.length, autoExpand]);
 
   const totalTools = thoughts.reduce((sum, t) => sum + t.toolCalls.length, 0);
   const toolNames = Array.from(new Set(thoughts.flatMap((t) => t.toolCalls.map((tc) => shortToolName(tc.name)))));
