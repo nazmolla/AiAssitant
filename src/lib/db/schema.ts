@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS identity_config (
 CREATE TABLE IF NOT EXISTS owner_profile (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     display_name TEXT NOT NULL DEFAULT '',
+    avatar_url TEXT DEFAULT '',
     title TEXT DEFAULT '',
     bio TEXT DEFAULT '',
     location TEXT DEFAULT '',
@@ -49,6 +50,7 @@ CREATE TABLE IF NOT EXISTS owner_profile (
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     display_name TEXT NOT NULL DEFAULT '',
+    avatar_url TEXT DEFAULT '',
     title TEXT DEFAULT '',
     bio TEXT DEFAULT '',
     location TEXT DEFAULT '',

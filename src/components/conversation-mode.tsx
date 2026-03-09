@@ -17,6 +17,7 @@ import MicOffIcon from "@mui/icons-material/MicOff";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import HeadsetMicIcon from "@mui/icons-material/HeadsetMic";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import CloseIcon from "@mui/icons-material/Close";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
@@ -71,6 +72,7 @@ export function ConversationMode() {
   const [audioLevel, setAudioLevel] = useState(0); // 0-1 for visual feedback
   const [voice, setVoice] = useState<string>("nova");
   const [autoListen, setAutoListen] = useState(true);
+  const [previewingVoice, setPreviewingVoice] = useState(false);
 
   /* ─── Refs ─────────────────────────────────────────────────────── */
   const stateRef = useRef<ConvState>("idle");
@@ -88,6 +90,7 @@ export function ConversationMode() {
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const autoListenRef = useRef(true);
   const conversationHistoryRef = useRef<Array<{ role: string; content: string }>>([]); // in-memory LLM history
+  const voicePreviewRef = useRef<HTMLAudioElement | null>(null);
 
   // Interrupt (barge-in) refs
   const interruptVadRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -124,6 +127,7 @@ export function ConversationMode() {
   useEffect(() => {
     return () => {
       stopEverything();
+      if (voicePreviewRef.current) { voicePreviewRef.current.pause(); voicePreviewRef.current = null; }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -799,6 +803,33 @@ export function ConversationMode() {
               ))}
             </Select>
           </FormControl>
+          <IconButton
+            size="small"
+            title="Preview selected voice"
+            disabled={previewingVoice || isActive}
+            onClick={async () => {
+              if (voicePreviewRef.current) { voicePreviewRef.current.pause(); voicePreviewRef.current = null; }
+              setPreviewingVoice(true);
+              try {
+                const res = await fetch("/api/audio/tts", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ text: "Hello! This is how I sound.", voice }),
+                });
+                if (!res.ok) { setPreviewingVoice(false); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const audio = new Audio(url);
+                voicePreviewRef.current = audio;
+                audio.onended = () => { URL.revokeObjectURL(url); setPreviewingVoice(false); voicePreviewRef.current = null; };
+                audio.onerror = () => { URL.revokeObjectURL(url); setPreviewingVoice(false); voicePreviewRef.current = null; };
+                await audio.play();
+              } catch { setPreviewingVoice(false); }
+            }}
+            sx={{ color: previewingVoice ? "primary.main" : "text.secondary" }}
+          >
+            {previewingVoice ? <VolumeUpIcon fontSize="small" /> : <PlayArrowIcon fontSize="small" />}
+          </IconButton>
           <Chip
             size="small"
             label={autoListen ? "Auto" : "Manual"}

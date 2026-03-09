@@ -28,7 +28,7 @@ import DashboardIcon from "@mui/icons-material/Dashboard";
 import SchoolIcon from "@mui/icons-material/School";
 import SettingsIcon from "@mui/icons-material/Settings";
 import HeadsetMicIcon from "@mui/icons-material/HeadsetMic";
-import PersonIcon from "@mui/icons-material/Person";
+import Avatar from "@mui/material/Avatar";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import { useTheme, THEMES } from "@/components/theme-provider";
 
@@ -73,11 +73,11 @@ export default function HomePage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>("user");
   const [isUserMetaLoading, setIsUserMetaLoading] = useState(true);
   const pathname = usePathname();
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
-  const [accountMenuAnchor, setAccountMenuAnchor] = useState<null | HTMLElement>(null);
 
   /* Derive initial tab + settings sub-page from the current URL */
   const pathSegments = pathname.split("/").filter(Boolean);
@@ -103,14 +103,12 @@ export default function HomePage() {
   }, [router]);
 
   const openProfileFromMenu = useCallback(() => {
-    setAccountMenuAnchor(null);
     setActiveTab("config");
     setSettingsPage("profile");
     router.push("/settings/profile");
   }, [router]);
 
   const signOutFromMenu = useCallback(() => {
-    setAccountMenuAnchor(null);
     signOut({ callbackUrl: `${window.location.origin}/auth/signin` });
   }, []);
   const [perms, setPerms] = useState<Record<string, number>>({
@@ -132,6 +130,9 @@ export default function HomePage() {
 
         if (profileResult.status === "fulfilled" && profileResult.value?.display_name) {
           setDisplayName(profileResult.value.display_name);
+        }
+        if (profileResult.status === "fulfilled" && profileResult.value?.avatar_url) {
+          setAvatarUrl(profileResult.value.avatar_url);
         }
 
         if (meResult.status === "fulfilled") {
@@ -238,40 +239,31 @@ export default function HomePage() {
             <NotificationBell />
             <ThemeSwitcher />
             <FiberManualRecordIcon sx={{ fontSize: 10, color: "success.main" }} titleAccess="Online" />
-            <Button
-              size="small"
-              variant="text"
-              title="Account menu"
-              onClick={(e) => setAccountMenuAnchor(e.currentTarget)}
-              sx={{
-                textTransform: "none",
-                minWidth: 0,
-                px: 1,
-                color: "text.secondary",
-                maxWidth: 220,
-              }}
-            >
-              {displayName || session.user?.email}
-            </Button>
-            <Menu
-              anchorEl={accountMenuAnchor}
-              open={!!accountMenuAnchor}
-              onClose={() => setAccountMenuAnchor(null)}
-              slotProps={{ paper: { sx: { minWidth: 200, mt: 1 } } }}
-            >
-              <MenuItem onClick={openProfileFromMenu}>
-                <ListItemIcon>
-                  <PersonIcon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText primary="Profile" />
-              </MenuItem>
-              <MenuItem onClick={signOutFromMenu}>
-                <ListItemIcon>
-                  <LogoutIcon fontSize="small" color="error" />
-                </ListItemIcon>
-                <ListItemText primary="Sign out" />
-              </MenuItem>
-            </Menu>
+              <Button
+                size="small"
+                variant="text"
+                title="Open profile settings"
+                onClick={openProfileFromMenu}
+                sx={{
+                  textTransform: "none",
+                  minWidth: 0,
+                  px: 1,
+                  color: "text.secondary",
+                  maxWidth: 220,
+                  gap: 0.75,
+                }}
+              >
+                <Avatar
+                  src={avatarUrl || undefined}
+                  sx={{ width: 24, height: 24, fontSize: "0.75rem", bgcolor: "primary.main" }}
+                >
+                  {(displayName || session.user?.email || "?").charAt(0).toUpperCase()}
+                </Avatar>
+                {displayName || session.user?.email}
+              </Button>
+              <IconButton size="small" onClick={signOutFromMenu} sx={{ color: "text.secondary" }} title="Sign out">
+                <LogoutIcon fontSize="small" />
+              </IconButton>
           </Box>
         </Toolbar>
       </AppBar>

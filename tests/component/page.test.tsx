@@ -161,7 +161,7 @@ describe("HomePage", () => {
 
   test("renders account menu trigger", () => {
     render(<HomePage />);
-    expect(screen.getByTitle("Account menu")).toBeInTheDocument();
+    expect(screen.getByTitle("Open profile settings")).toBeInTheDocument();
   });
 });
 

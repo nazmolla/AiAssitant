@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { useTheme, THEMES, ThemeId, FONTS, FontId } from "@/components/theme-pro
 
 interface ProfileData {
   display_name: string;
+  avatar_url: string;
   title: string;
   bio: string;
   location: string;
@@ -34,6 +35,7 @@ interface ProfileData {
 
 const EMPTY: ProfileData = {
   display_name: "",
+  avatar_url: "",
   title: "",
   bio: "",
   location: "",
@@ -61,6 +63,8 @@ export function ProfileConfig() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [langInput, setLangInput] = useState("");
+  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+  const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
   const { theme, setTheme, font, setFont, timezone, setTimezone } = useTheme();
 
   const timezones = useMemo(() => {
@@ -119,6 +123,30 @@ export function ProfileConfig() {
   const removeLang = (l: string) =>
     update("languages", JSON.stringify(languages.filter((x) => x !== l)));
 
+  const playVoicePreview = async (voiceId: string) => {
+    // Stop any playing preview
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+    }
+    setPreviewingVoice(voiceId);
+    try {
+      const res = await fetch("/api/audio/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Hello! This is how I sound.", voice: voiceId }),
+      });
+      if (!res.ok) { setPreviewingVoice(null); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      previewAudioRef.current = audio;
+      audio.onended = () => { URL.revokeObjectURL(url); setPreviewingVoice(null); previewAudioRef.current = null; };
+      audio.onerror = () => { URL.revokeObjectURL(url); setPreviewingVoice(null); previewAudioRef.current = null; };
+      await audio.play();
+    } catch { setPreviewingVoice(null); }
+  };
+
   const save = async () => {
     setSaving(true);
     await fetch("/api/config/profile", {
@@ -143,6 +171,27 @@ export function ProfileConfig() {
           <CardTitle className="text-lg font-display">Personal Information</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {/* Avatar */}
+          <div className="flex items-center gap-4">
+            <div className="relative h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border border-white/[0.08] shrink-0">
+              {profile.avatar_url ? (
+                <img src={profile.avatar_url} alt="Avatar" className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-2xl font-bold text-primary/60">
+                  {(profile.display_name || "?").charAt(0).toUpperCase()}
+                </span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <label className={labelClass}>Avatar URL</label>
+              <Input
+                value={profile.avatar_url}
+                onChange={(e) => update("avatar_url", e.target.value)}
+                placeholder="https://example.com/photo.jpg"
+              />
+              <p className="text-[10px] text-muted-foreground/50 mt-0.5">Paste a URL to your profile picture.</p>
+            </div>
+          </div>
           <div>
             <label className={labelClass}>Display Name</label>
             <Input
@@ -403,6 +452,14 @@ export function ProfileConfig() {
                 >
                   <div className="text-[13px] font-medium">{v.label}</div>
                   <div className="text-[10px] text-muted-foreground/60">{v.desc}</div>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); playVoicePreview(v.id); }}
+                    className="mt-0.5 text-[10px] text-primary/70 hover:text-primary underline"
+                    disabled={previewingVoice === v.id}
+                  >
+                    {previewingVoice === v.id ? "Playing…" : "Preview"}
+                  </button>
                 </button>
               ))}
             </div>

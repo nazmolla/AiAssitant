@@ -246,6 +246,7 @@ export function getIdentity(): IdentityConfig | undefined {
 export interface UserProfile {
   user_id: string;
   display_name: string;
+  avatar_url: string;
   title: string;
   bio: string;
   location: string;
@@ -278,6 +279,7 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
   const existing = getUserProfile(userId);
   const p = {
     display_name: profile.display_name ?? existing?.display_name ?? "",
+    avatar_url: profile.avatar_url ?? existing?.avatar_url ?? "",
     title: profile.title ?? existing?.title ?? "",
     bio: profile.bio ?? existing?.bio ?? "",
     location: profile.location ?? existing?.location ?? "",
@@ -299,10 +301,11 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
   };
   getDb()
     .prepare(
-      `INSERT INTO user_profiles (user_id, display_name, title, bio, location, phone, email, website, linkedin, github, twitter, skills, languages, company, screen_sharing_enabled, notification_level, theme, font, timezone, tts_voice, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `INSERT INTO user_profiles (user_id, display_name, avatar_url, title, bio, location, phone, email, website, linkedin, github, twitter, skills, languages, company, screen_sharing_enabled, notification_level, theme, font, timezone, tts_voice, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(user_id) DO UPDATE SET
          display_name = excluded.display_name,
+         avatar_url = excluded.avatar_url,
          title = excluded.title,
          bio = excluded.bio,
          location = excluded.location,
@@ -325,7 +328,7 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
     )
     .run(
       userId,
-      p.display_name, p.title, p.bio, p.location,
+      p.display_name, p.avatar_url, p.title, p.bio, p.location,
       p.phone, p.email, p.website, p.linkedin,
       p.github, p.twitter, p.skills, p.languages, p.company,
       p.screen_sharing_enabled, p.notification_level, p.theme, p.font, p.timezone, p.tts_voice

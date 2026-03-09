@@ -432,6 +432,7 @@ function ensureUserAccessManagement(): void {
 function ensureProfilePreferencesColumns(): void {
   for (const table of ["owner_profile", "user_profiles"] as const) {
     if (!tableExists(table)) continue;
+    addColumnIfMissing(table, "avatar_url", "TEXT DEFAULT ''");
     addColumnIfMissing(table, "theme", "TEXT DEFAULT 'ember'");
     addColumnIfMissing(table, "font", "TEXT DEFAULT 'inter'");
     addColumnIfMissing(table, "timezone", "TEXT DEFAULT ''");

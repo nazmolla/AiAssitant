@@ -46,7 +46,7 @@ export async function PUT(req: Request) {
     const body = await req.json();
     // Whitelist allowed profile fields to prevent mass assignment
     const ALLOWED_FIELDS = [
-      "display_name", "title", "bio", "location", "phone",
+      "display_name", "avatar_url", "title", "bio", "location", "phone",
       "email", "website", "linkedin", "github", "twitter",
       "skills", "languages", "company", "screen_sharing_enabled",
       "notification_level", "theme", "font", "timezone", "tts_voice",

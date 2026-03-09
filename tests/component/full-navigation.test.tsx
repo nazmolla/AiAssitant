@@ -775,14 +775,10 @@ describe("UI Elements", () => {
     });
   });
 
-  test("Account menu shows sign out and it is clickable", async () => {
+  test("Sign out button is clickable", async () => {
     const { signOut } = jest.requireMock("next-auth/react");
     await renderAndWait("/chat");
-    fireEvent.click(screen.getByTitle("Account menu"));
-    await waitFor(() => {
-      expect(screen.getByText("Sign out")).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByText("Sign out"));
+    fireEvent.click(screen.getByTitle("Sign out"));
     expect(signOut).toHaveBeenCalled();
   });
 
@@ -808,14 +804,10 @@ describe("UI Elements", () => {
     expect(screen.getByText("Nexus")).toBeInTheDocument();
   });
 
-  test("Header account menu opens profile navigation", async () => {
+  test("Header profile button opens profile settings", async () => {
     await renderAndWait("/chat");
     expect(screen.getByText("Admin")).toBeInTheDocument();
-    fireEvent.click(screen.getByTitle("Account menu"));
-    await waitFor(() => {
-      expect(screen.getByText("Profile")).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByText("Profile"));
+    fireEvent.click(screen.getByTitle("Open profile settings"));
     expect(mockPush).toHaveBeenCalledWith("/settings/profile");
   });
 
