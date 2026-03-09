@@ -53,6 +53,11 @@ Then open the **Dashboard** tab and verify:
 - Clicking a chart bucket drills down to detail logs
 - Log entries show full date + time
 
+If you plan to use automated job scouting and resume delivery by email, also verify:
+
+- At least one **Email** channel is configured and enabled in Settings.
+- Your profile includes current role history, core skills, and location preferences for accurate resume tailoring.
+
 ---
 
 ## Environment Variables

@@ -47,6 +47,15 @@ All screenshots are captured from the **test environment**.
 - Each standing order has a tool name, action, device, and reason signature. Future tool calls matching the signature are automatically resolved per your decision.
 - You can change a standing order's decision (e.g., switch from "Always Allow" to "Always Reject"), delete individual orders, or clear all orders at once.
 
+## Job Scout and Resume Delivery
+
+- Nexus can scout role listings from public job pages (including LinkedIn job links discovered via web search), shortlist matches, and prepare tailored resumes.
+- Recommended prompt pattern:
+	- "Scout senior Dynamics 365 Technical Architect roles in Toronto, shortlist best matches, generate a tailored resume per role as docx, and email me links plus resumes."
+- Ensure your profile contains up-to-date experience/skills so resume tailoring is accurate.
+- Configure at least one enabled Email channel in Settings before requesting email delivery.
+- Nexus will not submit applications on your behalf unless you explicitly request submission and provide required approvals/credentials.
+
 ## Reading Path
 
 1. **Start here:** [USAGE_GETTING_STARTED.md](USAGE_GETTING_STARTED.md)

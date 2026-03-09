@@ -142,6 +142,8 @@ flowchart LR
 
 The system follows a **Sense-Think-Act** loop. It observes its environment through MCP servers, built-in web/browser/file-system tools, and communication channels — then acts autonomously grounded in per-user knowledge.
 
+This loop also supports end-to-end career workflows: discover relevant jobs from public listings (including LinkedIn links via web search), tailor a resume per role with file generation tools, and deliver a ready-to-submit package through the email tool.
+
 1. **Sense** — Receive input from web chat, Discord, WhatsApp, webhooks, or the proactive scheduler
 2. **Think** — Retrieve relevant knowledge via cache-first semantic search (skipped entirely if the user's knowledge vault is empty), construct a context-rich prompt, and call the LLM
 3. **Act** — Execute tool calls (with HITL gating), capture new knowledge, and deliver the response

@@ -26,7 +26,8 @@
 - **No-Thinking Provider Option** — OpenAI-compatible chat providers (OpenAI/LiteLLM) can force `think=false` for faster responses when supported
 - **Worker Thread Isolation** — LLM API calls run in a dedicated Worker Thread to keep the main event loop responsive; automatic fallback if unavailable
 - **Self-Extending Tools** — the agent can create its own tools at runtime, compiled and sandboxed
-- **Account Dropdown** — top-right user menu provides quick **Profile** and **Sign out** actions
+- **Profile Quick Access** — top-right avatar + name opens Profile directly, with dedicated sign-out button
+- **Job Scout Workflow** — can discover matching roles (including LinkedIn listings), generate tailored resumes per role, and email job links with attached resumes
 - **Unified Notification Center** — bell icon in the header aggregates approvals, tool errors, proactive actions, channel errors and system alerts; IM channels + email fallback for external delivery
 - **DB Management Center** — dedicated Settings page for DB/table size breakdown, host resource snapshot (CPU/RAM/storage), manual cleanup tools, and recurring retention jobs
 - **Security Hardened** — prompt injection defense, CSP headers, rate limiting, input validation
