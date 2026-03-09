@@ -7,13 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "@/components/theme-provider";
 
-const ALL_SCOPES = ["chat", "knowledge", "approvals", "threads"] as const;
+const ALL_SCOPES = ["chat", "knowledge", "approvals", "threads", "logs"] as const;
 
 const SCOPE_DESCRIPTIONS: Record<string, string> = {
   chat: "Send messages and receive responses",
   knowledge: "Read and manage knowledge vault",
   approvals: "View and act on tool approvals",
   threads: "List, create, and read threads",
+  logs: "Read runtime logs and stream log events",
 };
 
 interface ApiKey {

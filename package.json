@@ -15,6 +15,7 @@
     "test:e2e:headed": "playwright test --headed",
     "test:all": "npm run test && npm run test:e2e",
     "test:watch": "jest --watch",
+    "logs:stream": "node scripts/stream-logs.js",
     "db:init": "tsx src/lib/db/init.ts",
     "deploy": "bash deploy.sh",
     "deploy:local": "npm install && npx playwright install chromium && npm run build && npm run start",

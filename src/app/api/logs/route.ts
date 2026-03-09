@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, requireUser } from "@/lib/auth";
 import { getRecentLogs, deleteAllLogs, deleteLogsByLevel, deleteLogsOlderThanDays, addLog } from "@/lib/db";
 import { isUnifiedLogLevel } from "@/lib/logging/levels";
 
+async function requireLogsReadAccess() {
+  const auth = await requireUser();
+  if ("error" in auth) return auth;
+
+  if (!auth.user.apiKeyScopes) {
+    if (auth.user.role === "admin") return auth;
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+
+  if (!auth.user.apiKeyScopes.includes("logs")) {
+    return { error: NextResponse.json({ error: "API key missing required scope: logs" }, { status: 403 }) };
+  }
+
+  return auth;
+}
+
 export async function GET(req: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireLogsReadAccess();
   if ("error" in auth) return auth.error;
 
   const { searchParams } = new URL(req.url);
