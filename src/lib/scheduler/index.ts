@@ -178,12 +178,29 @@ function buildMustTryTools(availableTools: string[], lastToolsUsed: string[]): s
   return candidates.slice(0, 6);
 }
 
-function shouldRunExplorationFollowup(toolsUsed: string[], lastToolsUsed: string[]): boolean {
+function hasExplorationCategoryCoverage(toolsUsed: string[]): boolean {
+  return toolsUsed.some((tool) => {
+    const category = getToolCategory(tool);
+    return category === "network" || category === "camera" || category === "occupancy";
+  });
+}
+
+function hasToolmakerCoverage(toolsUsed: string[]): boolean {
+  return toolsUsed.some((tool) => getToolCategory(tool) === "toolmaker");
+}
+
+function shouldRunExplorationFollowup(
+  toolsUsed: string[],
+  lastToolsUsed: string[],
+  requireToolmakerAction: boolean
+): boolean {
   if (toolsUsed.length === 0) return true;
   const categories = new Set(toolsUsed.map(getToolCategory));
   const onlyOther = categories.size === 1 && categories.has("other");
   const novelty = toolsUsed.some((t) => !lastToolsUsed.includes(t));
-  return onlyOther || !novelty;
+  const missingExplorationCoverage = !hasExplorationCategoryCoverage(toolsUsed);
+  const missingToolmakerCoverage = requireToolmakerAction && !hasToolmakerCoverage(toolsUsed);
+  return onlyOther || !novelty || missingExplorationCoverage || missingToolmakerCoverage;
 }
 
 function buildExplorationFollowupMessage(connectedServers: string[], mustTryTools: string[]): string {
@@ -918,6 +935,14 @@ async function _runProactiveScanInner(): Promise<void> {
     const customTools = getCustomToolDefinitions();
     const customToolNames = customTools.map((t) => t.name);
     const lastToolsUsed = getLastProactiveTools();
+    const allVisibleTools = [
+      ...mcpTools.map((t) => t.name),
+      ...customToolNames,
+    ];
+    const requireToolmakerAction =
+      allVisibleTools.some((name) => /nexus_create_tool|nexus_update_tool/i.test(name)) ||
+      !!getToolPolicy("nexus_create_tool") ||
+      !!getToolPolicy("nexus_update_tool");
     const noApprovalCandidates = mcpTools
       .map((t) => t.name)
       .filter((name) => {
@@ -963,7 +988,7 @@ async function _runProactiveScanInner(): Promise<void> {
 
     // Force a second, focused pass when the first pass is repetitive/shallow.
     let finalResult = result;
-    if (shouldRunExplorationFollowup(result.toolsUsed, lastToolsUsed)) {
+    if (shouldRunExplorationFollowup(result.toolsUsed, lastToolsUsed, requireToolmakerAction)) {
       addLog({
         level: "info",
         source: "scheduler",
@@ -982,6 +1007,20 @@ async function _runProactiveScanInner(): Promise<void> {
         undefined,
         onStatus,
       );
+
+      if (shouldRunExplorationFollowup(finalResult.toolsUsed, lastToolsUsed, requireToolmakerAction)) {
+        addLog({
+          level: "warn",
+          source: "scheduler",
+          message: "Proactive follow-up did not fully satisfy exploration constraints.",
+          metadata: JSON.stringify({
+            toolsUsed: finalResult.toolsUsed,
+            requireToolmakerAction,
+            hasExplorationCoverage: hasExplorationCategoryCoverage(finalResult.toolsUsed),
+            hasToolmakerCoverage: hasToolmakerCoverage(finalResult.toolsUsed),
+          }),
+        });
+      }
     }
 
     setLastProactiveTools(finalResult.toolsUsed);
