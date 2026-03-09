@@ -53,6 +53,7 @@ const AlexaConfig = dynamic(() => import("@/components/alexa-config").then(m => 
 const WhisperConfig = dynamic(() => import("@/components/whisper-config").then(m => ({ default: m.WhisperConfig })), { ssr: false });
 const SchedulerConfig = dynamic(() => import("@/components/scheduler-config").then(m => ({ default: m.SchedulerConfig })), { ssr: false });
 const DbManagementConfig = dynamic(() => import("@/components/db-management-config").then(m => ({ default: m.DbManagementConfig })), { ssr: false });
+const StandingOrdersConfig = dynamic(() => import("@/components/standing-orders-config").then(m => ({ default: m.StandingOrdersConfig })), { ssr: false });
 
 /* ── URL ↔ tab mapping (module-level for stable references) ── */
 const TAB_FROM_PATH: Record<string, string> = {
@@ -360,6 +361,7 @@ const SETTINGS_PAGES: SettingsPage[] = [
   { key: "channels", label: "Channels", icon: "📡", permKey: "channels" },
   { key: "mcp", label: "MCP Servers", icon: "🔌", permKey: "mcp_servers" },
   { key: "policies", label: "Tool Policies", icon: "🛡️", permKey: "mcp_servers" },
+  { key: "standing-orders", label: "Standing Orders", icon: "📋" },
   { key: "alexa", label: "Alexa", icon: "🔊" },
   { key: "whisper", label: "Local Whisper", icon: "🎤", adminOnly: true },
   { key: "logging", label: "Logging", icon: "🧾" },
@@ -377,6 +379,7 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
   channels: { title: "Communication Channels", subtitle: "Connect messaging platforms so Nexus can chat with you anywhere." },
   mcp: { title: "MCP Servers", subtitle: "Manage Model Context Protocol server connections." },
   policies: { title: "Tool Policies", subtitle: "Configure approval requirements and proactive scanning for each discovered tool." },
+  "standing-orders": { title: "Standing Orders", subtitle: "View, edit, or revoke your saved approval decisions (Always Allow, Always Ignore, Always Reject)." },
   alexa: { title: "Alexa Smart Home", subtitle: "Connect your Amazon Alexa account to control smart home devices, make announcements, and read sensors." },
   whisper: { title: "Local Whisper", subtitle: "Deploy and configure a local Whisper server as a fallback for cloud Speech-to-Text." },
   logging: { title: "Logging", subtitle: "Server-wide log levels, retention boundary, and cleanup tools." },
@@ -495,6 +498,7 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
           {active === "channels" && <ChannelsConfig />}
           {active === "mcp" && <McpConfig />}
           {active === "policies" && <ToolPolicies />}
+          {active === "standing-orders" && <StandingOrdersConfig />}
           {active === "alexa" && <AlexaConfig />}
           {active === "whisper" && userRole === "admin" && <WhisperConfig />}
           {active === "logging" && <LoggingConfig />}

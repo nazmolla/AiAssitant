@@ -1,12 +1,17 @@
 /**
  * Unit tests — Agent Logs
  */
-import { setupTestDb, teardownTestDb } from "../../helpers/test-db";
+import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db";
 import {
   addLog,
   getDbMaintenanceConfig,
   getLogsAfterId,
   getRecentLogs,
+  listApprovalPreferences,
+  updateApprovalPreferenceDecision,
+  deleteApprovalPreference,
+  deleteAllApprovalPreferences,
+  upsertApprovalPreferenceFromApproval,
   runDbMaintenance,
   setDbMaintenanceConfig,
   setServerMinLogLevel,
@@ -184,5 +189,69 @@ describe("Agent Logs", () => {
     expect(typeof result.startedAt).toBe("string");
     expect(typeof result.completedAt).toBe("string");
     expect(result.deletedLogs).toBeGreaterThanOrEqual(0);
+  });
+
+  test("standing orders can be listed, updated, and deleted", () => {
+    const userId = seedTestUser();
+
+    // Create a standing order via upsertApprovalPreferenceFromApproval
+    const fakeApproval = {
+      id: "test-approval-1",
+      thread_id: null,
+      tool_name: "alexa_control",
+      args: JSON.stringify({ action: "turn_on", name: "bedroom_light" }),
+      reasoning: "scheduled routine",
+      nl_request: null,
+      status: "pending",
+      created_at: new Date().toISOString(),
+    };
+    upsertApprovalPreferenceFromApproval(userId, fakeApproval as never, "approved");
+
+    // List should return the preference
+    let prefs = listApprovalPreferences(userId);
+    expect(prefs.length).toBeGreaterThanOrEqual(1);
+    const pref = prefs.find((p) => p.tool_name === "alexa_control");
+    expect(pref).toBeDefined();
+    expect(pref!.decision).toBe("approved");
+
+    // Update the decision
+    const updated = updateApprovalPreferenceDecision(pref!.id, userId, "rejected");
+    expect(updated).toBe(true);
+    prefs = listApprovalPreferences(userId);
+    expect(prefs.find((p) => p.id === pref!.id)?.decision).toBe("rejected");
+
+    // Delete single
+    const deleted = deleteApprovalPreference(pref!.id, userId);
+    expect(deleted).toBe(true);
+    prefs = listApprovalPreferences(userId);
+    expect(prefs.find((p) => p.id === pref!.id)).toBeUndefined();
+  });
+
+  test("deleteAllApprovalPreferences clears all for user", () => {
+    const userId = seedTestUser();
+
+    // Create two standing orders
+    for (const name of ["tool_a", "tool_b"]) {
+      const approval = {
+        id: `bulk-${name}`,
+        thread_id: null,
+        tool_name: name,
+        args: JSON.stringify({ action: "run" }),
+        reasoning: null,
+        nl_request: null,
+        status: "pending",
+        created_at: new Date().toISOString(),
+      };
+      upsertApprovalPreferenceFromApproval(userId, approval as never, "approved");
+    }
+
+    let prefs = listApprovalPreferences(userId);
+    expect(prefs.length).toBeGreaterThanOrEqual(2);
+
+    const count = deleteAllApprovalPreferences(userId);
+    expect(count).toBeGreaterThanOrEqual(2);
+
+    prefs = listApprovalPreferences(userId);
+    expect(prefs.length).toBe(0);
   });
 });

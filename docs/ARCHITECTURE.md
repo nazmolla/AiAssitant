@@ -334,7 +334,7 @@ The UI is a single-page app served by a Next.js **optional catch-all** route (`[
 
 ### Settings Sub-Pages
 
-The Settings tab contains 12 sub-pages, each rendered as horizontally-scrollable chip-selectable panels. Sub-pages may be gated by **permissions** (e.g. `channels`, `llm_config`) or restricted to **admin-only** access. The Profile page is not shown in the chip navigation but remains accessible from the account menu (top-right).
+The Settings tab contains 13 sub-pages, each rendered as horizontally-scrollable chip-selectable panels. Sub-pages may be gated by **permissions** (e.g. `channels`, `llm_config`) or restricted to **admin-only** access. The Profile page is not shown in the chip navigation but remains accessible from the account menu (top-right).
 
 | Key | Label | Gate |
 |-----|-------|------|
@@ -342,6 +342,7 @@ The Settings tab contains 12 sub-pages, each rendered as horizontally-scrollable
 | `channels` | Channels | `channels` perm |
 | `mcp` | MCP Servers | `mcp_servers` perm |
 | `policies` | Tool Policies | Admin only |
+| `standing-orders` | Standing Orders | — |
 | `alexa` | Alexa | — |
 | `whisper` | Local Whisper | — |
 | `logging` | Logging | Admin only |

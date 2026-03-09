@@ -1165,6 +1165,45 @@ export function findApprovalPreferenceDecision(
   return row?.decision ?? null;
 }
 
+export function listApprovalPreferences(userId: string): ApprovalPreference[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM approval_preferences
+       WHERE user_id = ?
+       ORDER BY updated_at DESC`
+    )
+    .all(userId) as ApprovalPreference[];
+}
+
+export function updateApprovalPreferenceDecision(
+  id: string,
+  userId: string,
+  decision: "approved" | "rejected" | "ignored"
+): boolean {
+  const result = getDb()
+    .prepare(
+      `UPDATE approval_preferences
+       SET decision = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ?`
+    )
+    .run(decision, id, userId);
+  return result.changes > 0;
+}
+
+export function deleteApprovalPreference(id: string, userId: string): boolean {
+  const result = getDb()
+    .prepare("DELETE FROM approval_preferences WHERE id = ? AND user_id = ?")
+    .run(id, userId);
+  return result.changes > 0;
+}
+
+export function deleteAllApprovalPreferences(userId: string): number {
+  const result = getDb()
+    .prepare("DELETE FROM approval_preferences WHERE user_id = ?")
+    .run(userId);
+  return result.changes;
+}
+
 // â”€â”€â”€ Agent Logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface AgentLog {

@@ -27,6 +27,13 @@ All screenshots are captured from the **test environment**.
 - Includes table-level breakdown, managed storage totals (DB/WAL/SHM/attachments), and host resource snapshot (CPU/RAM/uptime).
 - Supports manual cleanup runs and recurring maintenance policies for logs, conversations/threads, attachments, and orphan files.
 
+## Standing Orders
+
+- Use **Settings → Standing Orders** to view, edit, or revoke your saved approval decisions.
+- Standing orders are created when you choose **Always Allow**, **Always Ignore**, or **Always Reject** on an approval notification.
+- Each standing order has a tool name, action, device, and reason signature. Future tool calls matching the signature are automatically resolved per your decision.
+- You can change a standing order's decision (e.g., switch from "Always Allow" to "Always Reject"), delete individual orders, or clear all orders at once.
+
 ## Reading Path
 
 1. **Start here:** [USAGE_GETTING_STARTED.md](USAGE_GETTING_STARTED.md)

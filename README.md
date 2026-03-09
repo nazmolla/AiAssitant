@@ -11,6 +11,7 @@
 - **Scheduled Task Queue** — future and recurring tasks are persisted with frequency, next run, last run, source, and scope; executed automatically by the background scheduler
 - **Autonomous Knowledge Capture** — every conversation is mined for durable facts
 - **Human-in-the-Loop (HITL)** — sensitive tool calls require explicit approval; all approvals, system errors, and proactive actions surface in the **Notification Center** (bell icon in the top bar); per-tool **scope** (Global or User Only) controls visibility
+- **Standing Orders Management** — view, edit, and revoke saved approval decisions (Always Allow / Always Ignore / Always Reject) from Settings → Standing Orders
 - **Browser Automation** — Playwright-powered web navigation, form filling, and screenshots
 - **Multi-Channel** — Web chat, WhatsApp, Discord, and custom webhooks
 - **Two-Way Email Channel** — SMTP send + IMAP receive with shared inbox routing
