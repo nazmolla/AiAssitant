@@ -300,14 +300,18 @@ export async function runAgentLoop(
     }
 
     // Persist user-requested future/recurring tasks into scheduler queue.
-    if (userId) {
+    // Only allow this for interactive user threads to avoid recursive task creation
+    // when scheduled tasks themselves execute via runAgentLoop.
+    const currentThread = getThread(threadId);
+    if (userId && currentThread?.thread_type === "interactive") {
       const parsedTasks = parseScheduledTasksFromUserMessage(userMessage);
       for (const task of parsedTasks) {
         try {
+          const baseTaskName = task.taskName.replace(/^\s*(scheduled\s*task\s*:\s*)+/i, "").trim() || "Scheduled task";
           createScheduledTask({
             userId,
             threadId,
-            taskName: task.taskName,
+            taskName: baseTaskName,
             frequency: task.schedule.frequency,
             intervalValue: task.schedule.intervalValue,
             nextRunAt: task.schedule.nextRunAt.toISOString(),
@@ -315,7 +319,7 @@ export async function runAgentLoop(
             source: "user_request",
             taskPayload: JSON.stringify({
               kind: "agent_prompt",
-              prompt: `Scheduled task: ${task.taskName}`,
+              prompt: `Scheduled task: ${baseTaskName}`,
             }),
           });
         } catch (err) {

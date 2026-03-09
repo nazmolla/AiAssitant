@@ -815,7 +815,10 @@ async function runDueScheduledTasks(
           ? { id: task.thread_id }
           : createThread(`[scheduled] ${task.task_name}`, task.user_id, { threadType: "scheduled" });
         resultingThreadId = thread.id;
-        await runAgentLoop(thread.id, payload.prompt, undefined, undefined, undefined, task.user_id);
+        const normalizedPrompt = payload.prompt
+          .replace(/^\s*(scheduled\s*task\s*:\s*)+/i, "Scheduled task: ")
+          .trim();
+        await runAgentLoop(thread.id, normalizedPrompt, undefined, undefined, undefined, task.user_id);
       } else if (payload.kind === "tool_call") {
         const actionTool = payload.tool;
         const actionArgs = payload.args || {};

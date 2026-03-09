@@ -16,6 +16,7 @@ const SCHEDULE_HINT_RE = /\b(remind|schedule|recurr|every|daily|weekly|monthly|h
 function normalizeTaskName(raw: string): string {
   const cleaned = raw
     .replace(/^\s*(please\s+)?(remind me|schedule|add|create)\s+/i, "")
+    .replace(/^\s*(scheduled\s*task\s*:\s*)+/i, "")
     .replace(/^\s*to\s+/i, "")
     .replace(/\s+/g, " ")
     .trim();
