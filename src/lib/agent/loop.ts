@@ -125,6 +125,73 @@ function isUntrustedToolOutput(toolName: string): boolean {
 const MAX_TOOL_ITERATIONS = 25;
 const MAX_TOOLS_PER_REQUEST = 128;
 
+const INLINE_APPROVAL_MARKER = "<!-- INLINE_APPROVAL:";
+
+interface InlineApprovalPayload {
+  tool_name: string;
+  args: Record<string, unknown>;
+  reason: string;
+  requester: string;
+  source: string;
+  tool_call_id: string;
+}
+
+function isAffirmativeApproval(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return /^(yes|y|approve|approved|allow|confirm|go ahead|do it|proceed)\b/.test(normalized);
+}
+
+function isNegativeApproval(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return /^(no|n|reject|rejected|deny|denied|cancel|stop|ignore)\b/.test(normalized);
+}
+
+function extractLatestInlineApproval(messages: Message[]): InlineApprovalPayload | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message.role !== "system" || !message.content) continue;
+    const markerIndex = message.content.indexOf(INLINE_APPROVAL_MARKER);
+    if (markerIndex < 0) continue;
+    const raw = message.content.slice(markerIndex + INLINE_APPROVAL_MARKER.length);
+    const end = raw.indexOf("-->");
+    if (end < 0) continue;
+    try {
+      const parsed = JSON.parse(raw.slice(0, end)) as InlineApprovalPayload;
+      if (
+        parsed &&
+        typeof parsed.tool_name === "string" &&
+        parsed.args &&
+        typeof parsed.reason === "string" &&
+        typeof parsed.requester === "string" &&
+        typeof parsed.source === "string"
+      ) {
+        return parsed;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function extractApprovalReason(reasoning: string | undefined, args: Record<string, unknown>): string | null {
+  const fromReasoning = (reasoning || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => !!line && !line.startsWith("{"));
+
+  if (fromReasoning) return fromReasoning.slice(0, 500);
+
+  for (const key of ["reason", "rationale", "justification", "purpose", "why", "note", "message"]) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim().slice(0, 500);
+    }
+  }
+
+  return null;
+}
+
 export interface AgentResponse {
   content: string;
   toolsUsed: string[];
@@ -249,6 +316,87 @@ export async function runAgentLoop(
             metadata: JSON.stringify({ threadId, userId, taskName: task.taskName }),
           });
         }
+      }
+    }
+
+    // Inline approval flow for interactive threads:
+    // when a tool asked for approval in-chat, the next user message should be approve/reject.
+    const threadForInline = getThread(threadId);
+    if (threadForInline?.status === "awaiting_user_confirmation") {
+      const inlinePayload = extractLatestInlineApproval(getThreadMessages(threadId));
+      if (!inlinePayload) {
+        const { updateThreadStatus } = await import("@/lib/db");
+        updateThreadStatus(threadId, "active");
+      } else if (!isAffirmativeApproval(userMessage) && !isNegativeApproval(userMessage)) {
+        const guidance = `I need a clear decision for ${inlinePayload.tool_name}. Reply with "approve" to continue or "reject" to cancel.`;
+        const guidanceMsg = addMessage({
+          thread_id: threadId,
+          role: "assistant",
+          content: guidance,
+          tool_calls: null,
+          tool_results: null,
+          attachments: null,
+        });
+        onMessage?.(guidanceMsg);
+        return { content: guidance, toolsUsed: [], pendingApprovals: [], attachments: [] };
+      } else if (isNegativeApproval(userMessage)) {
+        const { updateThreadStatus } = await import("@/lib/db");
+        updateThreadStatus(threadId, "active");
+        const cancelled = `Understood. I cancelled ${inlinePayload.tool_name}.`;
+        const cancelledMsg = addMessage({
+          thread_id: threadId,
+          role: "assistant",
+          content: cancelled,
+          tool_calls: null,
+          tool_results: null,
+          attachments: null,
+        });
+        onMessage?.(cancelledMsg);
+        return { content: cancelled, toolsUsed: [], pendingApprovals: [], attachments: [] };
+      } else {
+        onStatus?.({ step: "Executing approved tool", detail: inlinePayload.tool_name });
+        const { executeApprovedTool } = await import("./gatekeeper");
+        const approvedResult = await executeApprovedTool(
+          inlinePayload.tool_name,
+          inlinePayload.args,
+          threadId
+        );
+
+        if (approvedResult.status !== "executed") {
+          const failed = `Approval confirmed, but ${inlinePayload.tool_name} failed: ${approvedResult.error || "Unknown error"}`;
+          const failedMsg = addMessage({
+            thread_id: threadId,
+            role: "assistant",
+            content: failed,
+            tool_calls: null,
+            tool_results: null,
+            attachments: null,
+          });
+          onMessage?.(failedMsg);
+          return { content: failed, toolsUsed: [], pendingApprovals: [], attachments: [] };
+        }
+
+        const toolPayloadRaw = JSON.stringify(approvedResult.result);
+        const toolPayload = toolPayloadRaw.length > 15000
+          ? toolPayloadRaw.slice(0, 15000) + "\n... [truncated]"
+          : toolPayloadRaw;
+
+        const toolMsg = addMessage({
+          thread_id: threadId,
+          role: "tool",
+          content: toolPayload,
+          tool_calls: null,
+          tool_results: JSON.stringify({
+            tool_call_id: inlinePayload.tool_call_id || `inline-${Date.now()}`,
+            name: inlinePayload.tool_name,
+            result: approvedResult.result,
+          }),
+          attachments: null,
+        });
+        onMessage?.(toolMsg);
+
+        // Resume loop so the LLM can consume the tool result and answer naturally.
+        return runAgentLoop(threadId, "", undefined, undefined, true, userId, onMessage, onStatus, onToken);
       }
     }
   }
@@ -791,19 +939,15 @@ async function executeToolWithPolicy(
   threadId: string,
   reasoning?: string
 ): Promise<import("./gatekeeper").GatekeeperResult> {
-  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg, getThread, findApprovalPreferenceDecision } = await import("@/lib/db");
+  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg, getThread, findApprovalPreferenceDecision, getChannel } = await import("@/lib/db");
   const { executeCustomTool: execCustom } = await import("./custom-tools");
   const { normalizeToolName } = await import("./discovery");
 
   // Normalize tool name — the LLM sometimes strips the "builtin." prefix
   toolCall = { ...toolCall, name: normalizeToolName(toolCall.name) };
 
-  const nlRequest =
-    (reasoning || "")
-      .split("\n")
-      .map((line) => line.trim())
-      .find((line) => !!line && !line.startsWith("{"))
-      ?.slice(0, 500) || null;
+  const reason = extractApprovalReason(reasoning, toolCall.arguments);
+  const nlRequest = reason;
 
   const policy = getToolPolicy(toolCall.name);
 
@@ -819,12 +963,21 @@ async function executeToolWithPolicy(
   // Default-deny: if no policy exists, require approval (matches gatekeeper behavior).
   if (!policy || policy.requires_approval) {
     const thread = getThread(threadId);
+    const requesterUser = thread?.user_id ? getUserById(thread.user_id) : null;
+    const requester = requesterUser?.display_name || requesterUser?.email || thread?.external_sender_id || "Unknown requester";
+    const channel = thread?.channel_id ? getChannel(thread.channel_id) : undefined;
+    const source = thread?.thread_type === "interactive"
+      ? "chat"
+      : channel?.channel_type === "email"
+        ? `email:${thread?.external_sender_id || requesterUser?.email || "unknown"}`
+        : "proactive";
+
     const preferenceDecision = thread?.user_id
       ? findApprovalPreferenceDecision(
           thread.user_id,
           toolCall.name,
           JSON.stringify(toolCall.arguments),
-          reasoning || null,
+          reason || null,
           nlRequest
         )
       : null;
@@ -859,42 +1012,90 @@ async function executeToolWithPolicy(
     }
 
     if (preferenceDecision !== "approved") {
+    if (!reason) {
+      addLog({
+        level: "warning",
+        source: "hitl",
+        message: `Skipped approval for tool "${toolCall.name}" because no reason was provided.`,
+        metadata: JSON.stringify({ threadId, requester }),
+      });
+      return {
+        status: "error",
+        error: `Approval for ${toolCall.name} requires a clear reason. Ask again with a specific reason before requesting approval.`,
+      };
+    }
+
+    if (source === "chat") {
+      const inlineMeta = JSON.stringify({
+        tool_name: toolCall.name,
+        args: toolCall.arguments,
+        reason,
+        requester,
+        source,
+        tool_call_id: toolCall.id,
+      });
+
+      updateThreadStatus(threadId, "awaiting_user_confirmation");
+      addMsg({
+        thread_id: threadId,
+        role: "system",
+        content:
+          `Approval needed to continue.\n` +
+          `Requester: ${requester}\n` +
+          `Action: ${toolCall.name}\n` +
+          `Reason: ${reason}\n` +
+          `Reply with \"approve\" to continue or \"reject\" to cancel.\n` +
+          `<!-- INLINE_APPROVAL:${inlineMeta} -->`,
+        tool_calls: null,
+        tool_results: null,
+        attachments: null,
+      });
+
+      return { status: "pending_approval", approvalId: `inline-${threadId}-${Date.now()}` };
+    }
+
     addLog({
       level: "info",
       source: "hitl",
-      message: `Tool "${toolCall.name}" requires approval.`,
-      metadata: JSON.stringify({ threadId, args: toolCall.arguments }),
+      message: `Tool "${toolCall.name}" requires approval (${source}).`,
+      metadata: JSON.stringify({ threadId, args: toolCall.arguments, requester, source }),
     });
 
     const approval = createApprovalRequest({
       thread_id: threadId,
       tool_name: toolCall.name,
       args: JSON.stringify(toolCall.arguments),
-      reasoning: reasoning || null,
+      reasoning: reason,
       nl_request: nlRequest,
+      source,
     });
 
     const approvalMeta = JSON.stringify({
       approvalId: approval.id,
       tool_name: toolCall.name,
       args: toolCall.arguments,
-      reasoning: reasoning || null,
+      reasoning: reason,
       nl_request: nlRequest,
+      requester,
+      source,
     });
 
-    updateThreadStatus(threadId, "awaiting_approval");
-    addMsg({
-      thread_id: threadId,
-      role: "system",
-      content: `⏸️ Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
-      tool_calls: null,
-      tool_results: null,
-      attachments: null,
-    });
+    // Only freeze interactive threads; proactive/email workflows stay asynchronous.
+    if (thread?.thread_type === "interactive") {
+      updateThreadStatus(threadId, "awaiting_approval");
+      addMsg({
+        thread_id: threadId,
+        role: "system",
+        content: `⏸️ Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
+        tool_calls: null,
+        tool_results: null,
+        attachments: null,
+      });
+    }
 
     try {
       await notifyAdmin(
-        `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nReason: ${reasoning || "(not provided)"}`,
+        `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nRequester: ${requester}\nReason: ${reason}`,
         "Nexus Approval Required",
         { level: "medium", notificationType: "approval_required" }
       );

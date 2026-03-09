@@ -170,7 +170,7 @@ CREATE TABLE approval_queue (
     thread_id TEXT REFERENCES threads(id),  -- NULL for proactive (scheduler) approvals
     tool_name TEXT, args TEXT, reasoning TEXT,
     nl_request TEXT,                     -- Human-readable summary of the request
-    source TEXT DEFAULT 'chat',          -- 'chat' | 'scheduler' | 'proactive' | 'voice'
+    source TEXT DEFAULT 'chat',          -- source tag (examples: 'chat', 'proactive', 'proactive:scheduler', 'email:<sender>')
     status TEXT DEFAULT 'pending',       -- 'pending' | 'approved' | 'rejected'
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

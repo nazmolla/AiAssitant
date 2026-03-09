@@ -5,6 +5,11 @@ import { executeApprovedTool, continueAgentLoop } from "@/lib/agent";
 import { executeProactiveApprovedTool } from "@/lib/scheduler";
 import type { ToolCall } from "@/lib/llm";
 
+function isApprovalCenterSource(source: string | null | undefined): boolean {
+  const value = (source || "").toLowerCase();
+  return value === "proactive" || value.startsWith("proactive:") || value === "email" || value.startsWith("email:");
+}
+
 export async function GET() {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
@@ -23,7 +28,7 @@ export async function GET() {
     ? actionable
     : listPendingApprovalsForUser(auth.user.id);
 
-  return NextResponse.json(pending);
+  return NextResponse.json(pending.filter((approval) => isApprovalCenterSource(approval.source)));
 }
 
 /**

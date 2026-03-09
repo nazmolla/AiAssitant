@@ -60,6 +60,7 @@ const mockGetUserProfile = jest.fn();
 jest.mock("@/lib/db", () => ({
   getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
   getUserById: jest.fn().mockReturnValue({ role: "admin" }),
+  getThread: jest.fn().mockReturnValue({ id: "t1", status: "active" }),
   addMessage: jest.fn().mockReturnValue({ id: "msg-1", thread_id: "t1", role: "user", content: "" }),
   addAttachment: jest.fn(),
   getThreadMessages: jest.fn().mockReturnValue([]),

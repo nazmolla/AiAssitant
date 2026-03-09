@@ -64,6 +64,7 @@ describe("GET /api/notifications", () => {
       tool_name: "test_tool",
       args: "{}",
       reasoning: "test reasoning",
+      source: "proactive",
     });
     const req = new NextRequest("http://localhost/api/notifications");
     const res = await GET(req);

@@ -71,6 +71,24 @@ const TURN_TIMEOUT_MS = 60_000; // 60 seconds
 /** Yield the event loop so other requests can be processed */
 const yieldLoop = () => new Promise<void>((r) => setImmediate(r));
 
+function extractApprovalReason(reasoning: string | undefined, args: Record<string, unknown>): string | null {
+  const fromReasoning = (reasoning || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => !!line && !line.startsWith("{"));
+
+  if (fromReasoning) return fromReasoning.slice(0, 500);
+
+  for (const key of ["reason", "rationale", "justification", "purpose", "why", "note", "message"]) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim().slice(0, 500);
+    }
+  }
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
@@ -135,14 +153,13 @@ export async function POST(req: NextRequest) {
   const allTools: ToolDefinition[] = [...builtinAndCustomTools, ...mcpTools.slice(0, mcpSlots)];
 
   // Filter tools by user role and approval policy.
-  // Voice conversations cannot pause for approval, so tools requiring approval
-  // are excluded entirely. Unknown tools (no policy) are also excluded (default-deny).
+  // Unknown tools (no policy) are excluded (default-deny).
+  // Tools that require approval stay available, but are handled inline in the conversation.
   const isAdmin = auth.user.id ? (getUserById(auth.user.id)?.role === "admin") : true;
   const policyMap = new Map(listToolPolicies().map((p) => [p.tool_name, p]));
   const tools: ToolDefinition[] = allTools.filter((t) => {
     const policy = policyMap.get(t.name);
-    // Exclude tools that require approval — voice can't pause for HITL
-    if (!policy || policy.requires_approval) return false;
+    if (!policy) return false;
     // Non-admin users only see global-scope tools
     if (!isAdmin && policy.scope === "user") return false;
     return true;
@@ -285,7 +302,14 @@ async function runConversationLoop(
       for (const toolCall of toolCalls) {
         await yieldLoop(); // yield between tool executions
 
-        const result = await executeConversationTool(toolCall, userId);
+        const result = await executeConversationTool(toolCall, userId, response.content || undefined);
+
+        if (result.status === "approval_required_inline") {
+          const prompt = result.error || `This action requires your approval: ${toolCall.name}.`;
+          sseSend(`event: done\ndata: ${JSON.stringify({ content: prompt })}\n\n`);
+          return;
+        }
+
         const resultStr = JSON.stringify(result.result ?? result.error ?? "done");
         const truncatedResult = resultStr.length > 8000
           ? resultStr.slice(0, 8000) + "\n... [truncated]"
@@ -327,7 +351,8 @@ async function runConversationLoop(
 
 async function executeConversationTool(
   toolCall: ToolCall,
-  userId: string
+  userId: string,
+  reasoning?: string
 ): Promise<{ status: string; result?: unknown; error?: string }> {
   try {
     // Normalize tool name — the LLM sometimes strips prefixes
@@ -338,7 +363,17 @@ async function executeConversationTool(
     // Defense-in-depth: refuse any tool that requires approval (default-deny)
     const policy = getToolPolicy(tc.name);
     if (!policy || policy.requires_approval) {
-      return { status: "error", error: `Tool "${tc.name}" requires approval and cannot be used in voice conversations.` };
+      const reason = extractApprovalReason(reasoning, tc.arguments);
+      if (!reason) {
+        return {
+          status: "approval_required_inline",
+          error: `I need your approval to run ${tc.name}, but no clear reason was provided. Please ask again with why you want this action.`,
+        };
+      }
+      return {
+        status: "approval_required_inline",
+        error: `Approval needed for ${tc.name}. Reason: ${reason}. Reply with an explicit approval request in this conversation to continue.`,
+      };
     }
 
     let result: unknown;
@@ -428,7 +463,16 @@ async function runConversationLoopViaWorker(
 
       const results: WorkerToolResult[] = [];
       for (const toolCall of calls) {
-        const result = await executeConversationTool(toolCall, userId);
+        const result = await executeConversationTool(toolCall, userId, _assistantContent || undefined);
+        if (result.status === "approval_required_inline") {
+          return [
+            {
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              content: JSON.stringify(result.error || `Approval required for ${toolCall.name}`),
+            },
+          ];
+        }
         const resultStr = JSON.stringify(result.result ?? result.error ?? "done");
         const truncatedResult = resultStr.length > 8000
           ? resultStr.slice(0, 8000) + "\n... [truncated]"

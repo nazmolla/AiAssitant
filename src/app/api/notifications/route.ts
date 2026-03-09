@@ -11,6 +11,11 @@ import {
   cleanStaleApprovals,
 } from "@/lib/db";
 
+function isApprovalCenterSource(source: string | null | undefined): boolean {
+  const value = (source || "").toLowerCase();
+  return value === "proactive" || value.startsWith("proactive:") || value === "email" || value.startsWith("email:");
+}
+
 /**
  * GET /api/notifications
  * Returns notifications + pending approvals merged into a unified feed.
@@ -34,10 +39,12 @@ export async function GET() {
     ? listPendingApprovals()
     : listPendingApprovalsForUser(userId);
 
+  const filteredApprovals = approvals.filter((approval) => isApprovalCenterSource(approval.source));
+
   return NextResponse.json({
     notifications,
-    approvals,
-    unreadCount: unreadCount + approvals.length,
+    approvals: filteredApprovals,
+    unreadCount: unreadCount + filteredApprovals.length,
   });
 }
 

@@ -78,6 +78,7 @@ describe("GET /api/approvals", () => {
       tool_name: "builtin.fs_read_file",
       args: JSON.stringify({ filePath: "/tmp/test.txt" }),
       reasoning: "User asked to read a file",
+      source: "proactive",
     });
 
     // Thread must be in awaiting_approval for the approval to be actionable
@@ -372,6 +373,7 @@ describe("GET /api/approvals — proactive approvals (thread_id=null)", () => {
       tool_name: "builtin.alexa_set_fan_speed",
       args: JSON.stringify({ speed: 3 }),
       reasoning: "Fan is running at unexpected speed",
+      source: "proactive",
     });
     proactiveApprovalId = approval.id;
   });
@@ -415,6 +417,7 @@ describe("POST /api/approvals — proactive approve", () => {
       tool_name: "builtin.alexa_set_fan_speed",
       args: JSON.stringify({ speed: 3 }),
       reasoning: "Fan running at unexpected speed — adjust",
+      source: "proactive",
     });
     proactiveApprovalId = approval.id;
     (executeProactiveApprovedTool as jest.Mock).mockClear();
@@ -478,6 +481,7 @@ describe("POST /api/approvals — proactive reject", () => {
       tool_name: "builtin.alexa_set_fan_speed",
       args: JSON.stringify({ speed: 3 }),
       reasoning: "Fan running at unexpected speed",
+      source: "proactive",
     });
     proactiveApprovalId = approval.id;
     (executeProactiveApprovedTool as jest.Mock).mockClear();

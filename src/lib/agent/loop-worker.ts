@@ -30,6 +30,7 @@ import { BUILTIN_ALEXA_TOOLS } from "./alexa-tools";
 import {
   addMessage,
   getThreadMessages,
+  getThread,
   addLog,
   addAttachment,
   getUserProfile,
@@ -116,8 +117,11 @@ export async function runAgentLoopWithWorker(
   onStatus?: (status: { step: string; detail?: string }) => void,
   onToken?: (token: string) => void | Promise<void>
 ): Promise<AgentResponse> {
-  // Fall back to main-thread loop for continuations or if worker unavailable
-  if (continuation || !isWorkerAvailable()) {
+  const thread = getThread(threadId);
+
+  // Fall back to main-thread loop for continuations, inline-approval confirmations,
+  // or if worker is unavailable.
+  if (continuation || thread?.status === "awaiting_user_confirmation" || !isWorkerAvailable()) {
     return runAgentLoop(
       threadId, userMessage, contentParts, attachments,
       continuation, userId, onMessage, onStatus, onToken

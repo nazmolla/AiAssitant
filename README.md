@@ -10,7 +10,7 @@
 - **Proactive Intelligence** — background scheduler monitors MCP tools, creates custom tools for automation opportunities, and generates reminders; schedule configurable via Settings → Scheduler
 - **Scheduled Task Queue** — future and recurring tasks are persisted with frequency, next run, last run, source, and scope; executed automatically by the background scheduler
 - **Autonomous Knowledge Capture** — every conversation is mined for durable facts
-- **Human-in-the-Loop (HITL)** — default-deny policy enforcement; approval notifications show structured details (action, item, location, reason, source); voice conversations exclude approval-gated tools; per-tool **scope** (Global or User Only) controls visibility
+- **Human-in-the-Loop (HITL)** — default-deny policy enforcement with required rationale; interactive chat/voice approvals are requested inline in the same conversation; Approval Center is reserved for proactive/email-origin actions with structured details (action, item, location, reason, source); per-tool **scope** (Global or User Only) controls visibility
 - **Standing Orders Management** — view, edit, and revoke saved approval decisions (Always Allow / Always Ignore / Always Reject) from Settings → Standing Orders
 - **Browser Automation** — Playwright-powered web navigation, form filling, and screenshots
 - **Multi-Channel** — Web chat, WhatsApp, Discord, and custom webhooks

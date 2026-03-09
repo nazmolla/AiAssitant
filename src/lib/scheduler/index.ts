@@ -829,7 +829,7 @@ async function runDueScheduledTasks(
             args: JSON.stringify(actionArgs),
             reasoning: payload.reasoning || `Scheduled task execution for: ${task.task_name}`,
             nl_request: payload.reasoning || `Approve scheduled task \"${task.task_name}\" to run ${actionTool}.`,
-            source: "scheduler",
+            source: "proactive:scheduler",
           });
           enqueueDigestItem(digestByUser, defaultAdminUserId, {
             level: payload.severity || "medium",

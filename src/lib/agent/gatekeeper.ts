@@ -34,6 +34,24 @@ export interface GatekeeperResult {
   error?: string;
 }
 
+function extractApprovalReason(reasoning: string | undefined, args: Record<string, unknown>): string | null {
+  const fromReasoning = (reasoning || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => !!line && !line.startsWith("{"));
+
+  if (fromReasoning) return fromReasoning.slice(0, 500);
+
+  for (const key of ["reason", "rationale", "justification", "purpose", "why", "note", "message"]) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim().slice(0, 500);
+    }
+  }
+
+  return null;
+}
+
 /** Redact sensitive fields from tool arguments before logging */
 const SENSITIVE_KEYS = new Set(["password", "token", "secret", "api_key", "apiKey", "access_token", "accessToken", "private_key", "privateKey", "credentials"]);
 function redactArgs(args: Record<string, unknown>): Record<string, unknown> {
@@ -62,12 +80,8 @@ export async function executeWithGatekeeper(
   // Use lazy import to avoid circular dependency (gatekeeper → discovery → index → gatekeeper)
   const { normalizeToolName } = await import("./discovery");
   toolCall = { ...toolCall, name: normalizeToolName(toolCall.name) };
-  const nlRequest =
-    (reasoning || "")
-      .split("\n")
-      .map((line) => line.trim())
-      .find((line) => !!line && !line.startsWith("{"))
-      ?.slice(0, 500) || null;
+  const reason = extractApprovalReason(reasoning, toolCall.arguments);
+  const nlRequest = reason;
 
   const policy = getToolPolicy(toolCall.name);
 
@@ -86,12 +100,22 @@ export async function executeWithGatekeeper(
   // treated as unknown and gated for safety.
   if (!policy || policy.requires_approval) {
     const thread = getThread(threadId);
+    const { getUserById, getChannel } = await import("@/lib/db");
+    const requesterUser = thread?.user_id ? getUserById(thread.user_id) : null;
+    const requester = requesterUser?.display_name || requesterUser?.email || thread?.external_sender_id || "Unknown requester";
+    const channel = thread?.channel_id ? getChannel(thread.channel_id) : undefined;
+    const source = thread?.thread_type === "interactive"
+      ? "chat"
+      : channel?.channel_type === "email"
+        ? `email:${thread?.external_sender_id || requesterUser?.email || "unknown"}`
+        : "proactive";
+
     const preferenceDecision = thread?.user_id
       ? findApprovalPreferenceDecision(
           thread.user_id,
           toolCall.name,
           JSON.stringify(toolCall.arguments),
-          reasoning || null,
+          reason || null,
           nlRequest
         )
       : null;
@@ -126,11 +150,56 @@ export async function executeWithGatekeeper(
     }
 
     if (preferenceDecision !== "approved") {
+    if (!reason) {
+      addLog({
+        level: "warning",
+        source: "hitl",
+        message: `Skipped approval for tool "${toolCall.name}" because no reason was provided.`,
+        metadata: JSON.stringify({ threadId, requester }),
+      });
+      return {
+        status: "error",
+        error: `Approval for ${toolCall.name} requires a clear reason. Ask again with a specific reason before requesting approval.`,
+      };
+    }
+
+    if (source === "chat") {
+      const inlineMeta = JSON.stringify({
+        tool_name: toolCall.name,
+        args: toolCall.arguments,
+        reason,
+        requester,
+        source,
+        tool_call_id: toolCall.id,
+      });
+
+      updateThreadStatus(threadId, "awaiting_user_confirmation");
+      addMessage({
+        thread_id: threadId,
+        role: "system",
+        content:
+          `Approval needed to continue.\n` +
+          `Requester: ${requester}\n` +
+          `Action: ${toolCall.name}\n` +
+          `Reason: ${reason}\n` +
+          `Reply with \"approve\" to continue or \"reject\" to cancel.\n` +
+          `<!-- INLINE_APPROVAL:${inlineMeta} -->`,
+        tool_calls: null,
+        tool_results: null,
+        attachments: null,
+      });
+
+      return {
+        status: "pending_approval",
+        approvalId: `inline-${threadId}-${Date.now()}`,
+      };
+    }
+
     addLog({
       level: "info",
       source: "hitl",
-      message: `Tool "${toolCall.name}" requires approval. Creating approval request.`,
-      metadata: JSON.stringify({ threadId, args: redactArgs(toolCall.arguments) }),
+      message: `Tool "${toolCall.name}" requires approval. Creating approval request (${source}).`,
+      metadata: JSON.stringify({ threadId, args: redactArgs(toolCall.arguments), requester, source }),
     });
 
     // Create an approval request
@@ -138,35 +207,42 @@ export async function executeWithGatekeeper(
       thread_id: threadId,
       tool_name: toolCall.name,
       args: JSON.stringify(toolCall.arguments),
-      reasoning: reasoning || null,
+      reasoning: reason,
       nl_request: nlRequest,
+      source,
     });
 
-    // Freeze the thread
-    updateThreadStatus(threadId, "awaiting_approval");
+    // Freeze only interactive threads (non-interactive approvals are asynchronous).
+    if (thread?.thread_type === "interactive") {
+      updateThreadStatus(threadId, "awaiting_approval");
+    }
 
     // Build structured approval metadata for inline chat approve/reject
     const approvalMeta = JSON.stringify({
       approvalId: approval.id,
       tool_name: toolCall.name,
       args: toolCall.arguments,
-      reasoning: reasoning || null,
+      reasoning: reason,
       nl_request: nlRequest,
+      requester,
+      source,
     });
 
-    // Add a system message to the thread with embedded approval data
-    addMessage({
-      thread_id: threadId,
-      role: "system",
-      content: `⏸️ Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
-      tool_calls: null,
-      tool_results: null,
-      attachments: null,
-    });
+    if (thread?.thread_type === "interactive") {
+      // Add a system message to the thread with embedded approval data
+      addMessage({
+        thread_id: threadId,
+        role: "system",
+        content: `⏸️ Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
+        tool_calls: null,
+        tool_results: null,
+        attachments: null,
+      });
+    }
 
     try {
       await notifyAdmin(
-        `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nReason: ${reasoning || "(not provided)"}`,
+        `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nRequester: ${requester}\nReason: ${reason}`,
         "Nexus Approval Required",
         { level: "medium", notificationType: "approval_required" }
       );

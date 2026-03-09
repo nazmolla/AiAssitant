@@ -144,15 +144,22 @@ function readableLocation(args: Record<string, unknown>): string | null {
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  chat: "User Chat",
-  scheduler: "Scheduled Task",
-  proactive: "Proactive",
+  proactive: "Proactive Agent",
+  email: "Email",
   voice: "Voice",
 };
 
 function readableSource(approval: ApprovalRequest): string {
-  const src = approval.source || (approval.thread_id ? "chat" : "scheduler");
-  return SOURCE_LABELS[src] || toTitleCase(src);
+  const src = (approval.source || "").trim();
+  if (src.startsWith("email:")) {
+    const sender = src.slice("email:".length).trim();
+    return sender ? `Email (${sender})` : "Email";
+  }
+  if (src.startsWith("proactive:")) {
+    const subtype = src.slice("proactive:".length).trim();
+    return subtype ? `Proactive Agent (${toTitleCase(subtype)})` : "Proactive Agent";
+  }
+  return SOURCE_LABELS[src] || toTitleCase(src || "proactive");
 }
 
 interface ApprovalDetails {
@@ -165,11 +172,12 @@ interface ApprovalDetails {
 
 function buildApprovalDetails(approval: ApprovalRequest): ApprovalDetails {
   const args = parseArgs(approval.args);
+  const reason = approval.reasoning?.trim() || approval.nl_request?.trim() || null;
   return {
     action: readableAction(approval.tool_name, args),
     target: readableTarget(args),
     location: readableLocation(args),
-    reason: approval.reasoning?.trim() || null,
+    reason,
     source: readableSource(approval),
   };
 }

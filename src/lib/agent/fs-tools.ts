@@ -61,7 +61,7 @@ export const BUILTIN_FS_TOOLS: ToolDefinition[] = [
   {
     name: FS_TOOL_NAMES.READ_FILE,
     description:
-      "Read the contents of a file from the file system. Returns the text content. Use this to inspect config files, logs, source code, etc.",
+      "Read the contents of a file from the file system. Returns the text content. Use this to inspect config files, logs, source code, etc. For large files, use startLine/endLine (line-based) or offset/length (byte-based) to read in chunks.",
     inputSchema: {
       type: "object",
       properties: {
@@ -80,6 +80,14 @@ export const BUILTIN_FS_TOOLS: ToolDefinition[] = [
         endLine: {
           type: "number",
           description: "Optional 1-based end line to read to (for large files).",
+        },
+        offset: {
+          type: "number",
+          description: "Optional byte offset to start reading from (0-based). Use with 'length' for byte-level chunked reading of very large or minified files.",
+        },
+        length: {
+          type: "number",
+          description: "Optional number of bytes to read starting from offset. Default: 65536 (64 KB). Max: 1 MB.",
         },
       },
       required: ["filePath"],
@@ -389,9 +397,44 @@ async function fsReadFile(args: Record<string, unknown>): Promise<unknown> {
   if (!stat.isFile()) {
     throw new Error(`Path is not a file: ${filePath}`);
   }
-  if (stat.size > MAX_READ_BYTES && encoding !== "base64") {
+
+  const startLine = (args.startLine as number) || undefined;
+  const endLine = (args.endLine as number) || undefined;
+  const byteOffset = typeof args.offset === "number" ? args.offset : undefined;
+  const byteLength = typeof args.length === "number" ? args.length : undefined;
+  const isPartialRead = !!(startLine || endLine || byteOffset !== undefined);
+
+  // Byte-level chunked reading — works on any file size
+  if (byteOffset !== undefined) {
+    const maxChunk = 1024 * 1024; // 1 MB max per chunk
+    const readLen = Math.min(byteLength || 65536, maxChunk);
+    const start = Math.max(0, byteOffset);
+    const end = Math.min(stat.size - 1, start + readLen - 1);
+    if (start >= stat.size) {
+      return { filePath, size: stat.size, offset: start, content: "", note: "Offset beyond end of file." };
+    }
+    const buf = Buffer.alloc(end - start + 1);
+    const fd = fs.openSync(filePath, "r");
+    try {
+      fs.readSync(fd, buf, 0, buf.length, start);
+    } finally {
+      fs.closeSync(fd);
+    }
+    const content = encoding === "base64" ? buf.toString("base64") : buf.toString(encoding);
+    return {
+      filePath,
+      size: stat.size,
+      offset: start,
+      bytesRead: buf.length,
+      hasMore: end < stat.size - 1,
+      content,
+    };
+  }
+
+  // Full-file read — enforce size limit unless line-range params are provided
+  if (stat.size > MAX_READ_BYTES && encoding !== "base64" && !isPartialRead) {
     throw new Error(
-      `File is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB). Max is ${MAX_READ_BYTES / 1024 / 1024} MB. Use startLine/endLine to read a portion.`
+      `File is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB). Max for full reads is ${MAX_READ_BYTES / 1024 / 1024} MB. Use startLine/endLine for line-based chunking or offset/length for byte-based chunking.`
     );
   }
 
@@ -403,8 +446,6 @@ async function fsReadFile(args: Record<string, unknown>): Promise<unknown> {
   }
 
   // Line range slicing
-  const startLine = (args.startLine as number) || undefined;
-  const endLine = (args.endLine as number) || undefined;
   if (startLine || endLine) {
     const lines = content.split("\n");
     const s = Math.max(0, (startLine || 1) - 1);

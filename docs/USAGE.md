@@ -29,9 +29,11 @@ All screenshots are captured from the **test environment**.
 
 ## Approval Notifications
 
-- Approval notifications now show **structured details**: the action (in readable language), the item being acted on, the location, the reason for the request, and who/what initiated it (User Chat, Scheduled Task, etc.).
 - **Default-deny** policy: unknown tools (no policy entry) always require approval — both in the agent chat loop and the gatekeeper.
-- **Voice conversations** exclude any tool that requires approval — the LLM will not attempt tool calls that cannot be approved mid-call.
+- Approval requests require an explicit reason; requests without rationale are rejected before entering approval flow.
+- For user-origin interactive requests (chat/conversation), approval is requested inline in the same conversation (reply approve/reject).
+- Approval Center (Notifications → Approvals) is reserved for proactive/email-origin requests only.
+- Approval cards show **structured details**: action, item, location, reason, and source (email source includes sender when available).
 
 ## Standing Orders
 
