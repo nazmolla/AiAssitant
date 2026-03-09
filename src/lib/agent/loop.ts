@@ -807,6 +807,15 @@ async function executeToolWithPolicy(
 
   const policy = getToolPolicy(toolCall.name);
 
+  if (policy && policy.requires_approval === 0) {
+    addLog({
+      level: "info",
+      source: "hitl",
+      message: `Approval bypassed by policy for tool \"${toolCall.name}\" (requires_approval=0).`,
+      metadata: JSON.stringify({ threadId }),
+    });
+  }
+
   if (policy && policy.requires_approval) {
     const thread = getThread(threadId);
     const preferenceDecision = thread?.user_id

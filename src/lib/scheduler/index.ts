@@ -50,6 +50,7 @@ import {
   getChannelImapState,
   updateChannelImapState,
   getAppConfig,
+  setAppConfig,
 } from "@/lib/db";
 import { simpleParser } from "mailparser";
 import {
@@ -81,7 +82,9 @@ const QUIET_HOURS_END = 8;   // 8 AM
 function buildProactiveScanMessage(
   connectedServers: string[],
   mcpToolCount: number,
-  customToolNames: string[]
+  customToolNames: string[],
+  lastToolsUsed: string[],
+  mustTryTools: string[]
 ): string {
   const now = new Date();
   const quiet = isQuietHours();
@@ -97,9 +100,17 @@ function buildProactiveScanMessage(
     ? `\n\n## Custom tools you created previously\n${customToolNames.map((n) => `- ${n}`).join("\n")}\nConsider using these if relevant.`
     : "";
 
+  const noveltySection = lastToolsUsed.length > 0
+    ? `\n\n## Novelty requirement\nLast scan used: ${lastToolsUsed.slice(0, 8).join(", ")}.\nThis scan MUST include at least one different discovery/action path. Do not only repeat last scan's exact tools unless no alternatives exist.`
+    : "";
+
+  const mustTrySection = mustTryTools.length > 0
+    ? `\n\n## Mandatory exploration candidates (policy-safe first)\nChoose at least ONE of these tools in this scan: ${mustTryTools.join(", ")}.\nIf one fails, immediately try the next candidate.`
+    : "";
+
   return `[Proactive Scan — ${now.toISOString()}]
 
-You are running as the Nexus proactive observer. This is an autonomous background scan — no human is in this conversation. Your job is to actively discover, monitor, and improve the owner's smart home and environment.${serverSection}${customSection}
+You are running as the Nexus proactive observer. This is an autonomous background scan — no human is in this conversation. Your job is to actively discover, monitor, and improve the owner's smart home and environment.${serverSection}${customSection}${noveltySection}${mustTrySection}
 
 ## Your approach — Multi-round discovery
 You MUST call tools to do real work. A scan that does not call any tools is a FAILED scan. Follow these steps:
@@ -118,9 +129,12 @@ You MUST call tools to do real work. A scan that does not call any tools is a FA
 - Anomalies or unexpected states (devices in wrong state for time of day, unusual readings)
 - Media server status, recently added content, playback state
 - Network device status
+- Camera fleet discovery and capability mapping (RTSP/ONVIF/API surfaces where available)
+- Occupancy inference opportunities using available infrastructure (motion, wifi presence, media activity, room signals)
 
 ## Rules
 - **You MUST call at least one tool** — start by calling a listing/discovery tool from the connected MCP servers above
+- **You MUST perform at least one exploratory step that was NOT in the previous scan** unless every alternative tool fails
 - **NEVER ask questions.** No human is reading this. Do not end your thoughts with questions like "Should I…?", "Would the owner prefer…?", or "Is this worth investigating?". Instead, decide and act. You are the proactive agent — make the call yourself based on context, owner preferences, time of day, and common sense.
 - If a tool fails or a service is disconnected, note it and move on — don't treat transient failures as disasters
 - Smart home / IoT events are NEVER "disaster" severity
@@ -128,7 +142,62 @@ You MUST call tools to do real work. A scan that does not call any tools is a FA
 - Combine data from multiple sources for cross-service intelligence (e.g. weather + thermostat + time of day)
 - After gathering data, ALWAYS provide a summary of what you found and any actions taken — state facts and decisions, never questions${quietNote}
 
+## Policy behavior
+- Respect tool policy settings strictly. If a tool is configured with approval OFF, execute it directly.
+- Prefer no-approval tools for broad exploration first, then escalate to approval-required tools only when necessary for meaningful progress.
+
 Begin your proactive scan now. Start by calling discovery tools on each connected MCP server.`;
+}
+
+function getToolCategory(toolName: string): "network" | "camera" | "occupancy" | "toolmaker" | "other" {
+  if (/net_scan_network|net_scan_ports|net_http_request|nmap|network/i.test(toolName)) return "network";
+  if (/camera|wyze|rtsp|onvif|hass.*camera/i.test(toolName)) return "camera";
+  if (/motion|occupancy|presence|room|hass.*sensor|wifi/i.test(toolName)) return "occupancy";
+  if (/nexus_create_tool|nexus_update_tool|custom\./i.test(toolName)) return "toolmaker";
+  return "other";
+}
+
+function getLastProactiveTools(): string[] {
+  const raw = getAppConfig("proactive_last_tools");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as string[];
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function setLastProactiveTools(tools: string[]): void {
+  setAppConfig("proactive_last_tools", JSON.stringify(tools.slice(0, 24)));
+}
+
+function buildMustTryTools(availableTools: string[], lastToolsUsed: string[]): string[] {
+  const lastSet = new Set(lastToolsUsed);
+  const candidates = availableTools.filter((t) => !lastSet.has(t));
+  return candidates.slice(0, 6);
+}
+
+function shouldRunExplorationFollowup(toolsUsed: string[], lastToolsUsed: string[]): boolean {
+  if (toolsUsed.length === 0) return true;
+  const categories = new Set(toolsUsed.map(getToolCategory));
+  const onlyOther = categories.size === 1 && categories.has("other");
+  const novelty = toolsUsed.some((t) => !lastToolsUsed.includes(t));
+  return onlyOther || !novelty;
+}
+
+function buildExplorationFollowupMessage(connectedServers: string[], mustTryTools: string[]): string {
+  const serverList = connectedServers.length > 0 ? connectedServers.join(", ") : "none";
+  return `[Proactive Exploration Follow-up]
+Previous proactive pass was too repetitive or shallow.
+
+You must run a focused exploration pass now.
+- Connected servers: ${serverList}
+- Mandatory: execute at least one network/camera/occupancy discovery action.
+- Mandatory: if available, attempt one toolmaker action (nexus_create_tool or nexus_update_tool) that improves camera/occupancy intelligence.
+- Candidate tools: ${mustTryTools.length > 0 ? mustTryTools.join(", ") : "Use any available discovery/toolmaker tools"}
+
+Do not repeat the previous summary pattern. Produce concrete discoveries, actions taken, and next automation opportunities.`;
 }
 
 let _cronJob: CronJob | null = null;
@@ -848,9 +917,17 @@ async function _runProactiveScanInner(): Promise<void> {
     const mcpTools = mcpManager.getAllTools();
     const customTools = getCustomToolDefinitions();
     const customToolNames = customTools.map((t) => t.name);
+    const lastToolsUsed = getLastProactiveTools();
+    const noApprovalCandidates = mcpTools
+      .map((t) => t.name)
+      .filter((name) => {
+        const policy = getToolPolicy(name);
+        return policy ? policy.requires_approval === 0 : false;
+      });
+    const mustTryTools = buildMustTryTools(noApprovalCandidates, lastToolsUsed);
 
     const scanThread = createThread("[proactive-scan]", defaultAdminUserId);
-    const scanMessage = buildProactiveScanMessage(connectedServers, mcpTools.length, customToolNames);
+    const scanMessage = buildProactiveScanMessage(connectedServers, mcpTools.length, customToolNames, lastToolsUsed, mustTryTools);
 
     addLog({
       level: "thought",
@@ -884,27 +961,52 @@ async function _runProactiveScanInner(): Promise<void> {
       onStatus,    // onStatus — logs proactive steps as thoughts
     );
 
+    // Force a second, focused pass when the first pass is repetitive/shallow.
+    let finalResult = result;
+    if (shouldRunExplorationFollowup(result.toolsUsed, lastToolsUsed)) {
+      addLog({
+        level: "info",
+        source: "scheduler",
+        message: "Proactive follow-up scan triggered due to low novelty/exploration depth.",
+        metadata: JSON.stringify({ firstTools: result.toolsUsed, lastToolsUsed }),
+      });
+
+      const followupThread = createThread("[proactive-scan-followup]", defaultAdminUserId);
+      finalResult = await runAgentLoop(
+        followupThread.id,
+        buildExplorationFollowupMessage(connectedServers, mustTryTools),
+        undefined,
+        undefined,
+        undefined,
+        defaultAdminUserId,
+        undefined,
+        onStatus,
+      );
+    }
+
+    setLastProactiveTools(finalResult.toolsUsed);
+
     // Log detailed scan results as thought
     addLog({
       level: "thought",
       source: "thought",
-      message: result.toolsUsed.length > 0
-        ? `[Proactive] Scan complete — used ${result.toolsUsed.length} tool(s): ${result.toolsUsed.join(", ")}.`
+      message: finalResult.toolsUsed.length > 0
+        ? `[Proactive] Scan complete — used ${finalResult.toolsUsed.length} tool(s): ${finalResult.toolsUsed.join(", ")}.`
         : "[Proactive] Scan complete — no tools were called.",
       metadata: JSON.stringify({
         threadId: scanThread.id,
-        toolsUsed: result.toolsUsed,
-        pendingApprovals: result.pendingApprovals,
+        toolsUsed: finalResult.toolsUsed,
+        pendingApprovals: finalResult.pendingApprovals,
       }),
     });
 
     // Log the actual response content so admins can see insights
-    if (result.content) {
+    if (finalResult.content) {
       addLog({
         level: "thought",
         source: "thought",
-        message: `[Proactive] Agent response:\n${result.content.slice(0, 2000)}`,
-        metadata: JSON.stringify({ threadId: scanThread.id, full: result.content.length <= 2000 }),
+        message: `[Proactive] Agent response:\n${finalResult.content.slice(0, 2000)}`,
+        metadata: JSON.stringify({ threadId: scanThread.id, full: finalResult.content.length <= 2000 }),
       });
     }
 
@@ -914,9 +1016,9 @@ async function _runProactiveScanInner(): Promise<void> {
       message: "Proactive agent scan completed.",
       metadata: JSON.stringify({
         threadId: scanThread.id,
-        toolsUsed: result.toolsUsed,
-        pendingApprovals: result.pendingApprovals,
-        responsePreview: (result.content || "").slice(0, 500),
+        toolsUsed: finalResult.toolsUsed,
+        pendingApprovals: finalResult.pendingApprovals,
+        responsePreview: (finalResult.content || "").slice(0, 500),
       }),
     });
   } catch (err) {

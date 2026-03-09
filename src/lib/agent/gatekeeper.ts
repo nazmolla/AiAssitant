@@ -71,6 +71,15 @@ export async function executeWithGatekeeper(
 
   const policy = getToolPolicy(toolCall.name);
 
+  if (policy && policy.requires_approval === 0) {
+    addLog({
+      level: "info",
+      source: "hitl",
+      message: `Approval bypassed by policy for tool \"${toolCall.name}\" (requires_approval=0).`,
+      metadata: JSON.stringify({ threadId }),
+    });
+  }
+
   // Default-deny for unknown tools: if no policy exists, require approval.
   // Built-in tools always have a policy row seeded at startup.
   // MCP tools get a policy when connected. Any tool without a policy is
