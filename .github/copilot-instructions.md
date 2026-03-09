@@ -49,3 +49,25 @@
 - Full suite: `npx jest --forceExit`.
 - Targeted: `npm run test:unit`, `npm run test:integration`, `npx jest --selectProjects component --forceExit`.
 - Component tests run in `jsdom` with `tests/helpers/setup-jsdom.ts`; preserve existing mocks when updating UI.
+
+## Copilot Workflow Enforcement (Mandatory)
+- Before any final "done" response, run an internal self-review using:
+	- `.github/prompts/task-review.prompt.md`
+	- `.github/prompts/code-review.prompt.md`
+	- `.github/prompts/workflow-enforcer.prompt.md`
+- If any review would fail, continue working and do not finalize.
+- Never claim completion without evidence for required workflow steps.
+
+### Required Completion Sequence
+1. Implement requested changes.
+2. Run tests (full suite unless user explicitly requests otherwise).
+3. Run vulnerability check (`npm audit`).
+4. Deploy via `bash deploy.sh <host> <user>`.
+5. Verify deployment health/logs/smoke checks.
+6. Commit and push.
+
+### Evidence Policy
+- Final response must include concise evidence for each required step:
+	- command run
+	- pass/fail outcome
+- If a step is skipped or fails, explicitly state it and continue from that step.

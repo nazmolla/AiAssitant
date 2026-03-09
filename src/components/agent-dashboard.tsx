@@ -413,18 +413,6 @@ export function AgentDashboard() {
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Real-time activity and diagnostics</Typography>
         </Box>
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, alignItems: "center" }}>
-          <ToggleButtonGroup
-            value={dashboardView}
-            exclusive
-            size="small"
-            onChange={(_, val: DashboardView | null) => {
-              if (!val) return;
-              setDashboardView(val);
-            }}
-          >
-            <ToggleButton value="graphs">Graphs</ToggleButton>
-            <ToggleButton value="details">Details</ToggleButton>
-          </ToggleButtonGroup>
           <TextField
             type="date"
             size="small"
@@ -450,6 +438,38 @@ export function AgentDashboard() {
             label={<Typography variant="caption">Auto-refresh</Typography>}
           />
         </Box>
+      </Box>
+
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "column", sm: "row" },
+          alignItems: { sm: "center" },
+          justifyContent: "space-between",
+          gap: 1,
+          border: 1,
+          borderColor: "divider",
+          borderRadius: 2,
+          p: 1.25,
+          bgcolor: "background.paper",
+        }}
+      >
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.6 }}>
+          Dashboard View
+        </Typography>
+        <ToggleButtonGroup
+          value={dashboardView}
+          exclusive
+          size="small"
+          fullWidth={isMobile}
+          onChange={(_, val: DashboardView | null) => {
+            if (!val) return;
+            setDashboardView(val);
+          }}
+        >
+          <ToggleButton value="graphs">Graphs</ToggleButton>
+          <ToggleButton value="details">Details</ToggleButton>
+        </ToggleButtonGroup>
       </Box>
 
       {dashboardView === "graphs" && (
