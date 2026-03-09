@@ -741,6 +741,7 @@ async function runDueScheduledTasks(
             tool_name: actionTool,
             args: JSON.stringify(actionArgs),
             reasoning: payload.reasoning || `Scheduled task execution for: ${task.task_name}`,
+            nl_request: payload.reasoning || `Approve scheduled task \"${task.task_name}\" to run ${actionTool}.`,
           });
           enqueueDigestItem(digestByUser, defaultAdminUserId, {
             level: payload.severity || "medium",

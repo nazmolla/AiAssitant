@@ -22,6 +22,7 @@ import {
   addLog,
   addMessage,
   getThread,
+  findApprovalPreferenceDecision,
 } from "@/lib/db";
 import { notifyAdmin } from "@/lib/channels/notify";
 import type { ToolCall } from "@/lib/llm";
@@ -61,6 +62,12 @@ export async function executeWithGatekeeper(
   // Use lazy import to avoid circular dependency (gatekeeper → discovery → index → gatekeeper)
   const { normalizeToolName } = await import("./discovery");
   toolCall = { ...toolCall, name: normalizeToolName(toolCall.name) };
+  const nlRequest =
+    (reasoning || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => !!line && !line.startsWith("{"))
+      ?.slice(0, 500) || null;
 
   const policy = getToolPolicy(toolCall.name);
 
@@ -69,6 +76,47 @@ export async function executeWithGatekeeper(
   // MCP tools get a policy when connected. Any tool without a policy is
   // treated as unknown and gated for safety.
   if (!policy || policy.requires_approval) {
+    const thread = getThread(threadId);
+    const preferenceDecision = thread?.user_id
+      ? findApprovalPreferenceDecision(
+          thread.user_id,
+          toolCall.name,
+          JSON.stringify(toolCall.arguments),
+          reasoning || null,
+          nlRequest
+        )
+      : null;
+
+    if (preferenceDecision === "approved") {
+      addLog({
+        level: "info",
+        source: "hitl",
+        message: `Auto-approved by saved preference for tool "${toolCall.name}".`,
+        metadata: JSON.stringify({ threadId }),
+      });
+    }
+
+    if (preferenceDecision === "rejected") {
+      addLog({
+        level: "info",
+        source: "hitl",
+        message: `Auto-rejected by saved preference for tool "${toolCall.name}".`,
+        metadata: JSON.stringify({ threadId }),
+      });
+      return { status: "error", error: `Auto-rejected by preference for ${toolCall.name}.` };
+    }
+
+    if (preferenceDecision === "ignored") {
+      addLog({
+        level: "info",
+        source: "hitl",
+        message: `Auto-ignored by saved preference for tool "${toolCall.name}".`,
+        metadata: JSON.stringify({ threadId }),
+      });
+      return { status: "executed", result: { status: "ignored", reason: "auto_ignored_by_preference" } };
+    }
+
+    if (preferenceDecision !== "approved") {
     addLog({
       level: "info",
       source: "hitl",
@@ -82,6 +130,7 @@ export async function executeWithGatekeeper(
       tool_name: toolCall.name,
       args: JSON.stringify(toolCall.arguments),
       reasoning: reasoning || null,
+      nl_request: nlRequest,
     });
 
     // Freeze the thread
@@ -93,6 +142,7 @@ export async function executeWithGatekeeper(
       tool_name: toolCall.name,
       args: toolCall.arguments,
       reasoning: reasoning || null,
+      nl_request: nlRequest,
     });
 
     // Add a system message to the thread with embedded approval data
@@ -119,6 +169,7 @@ export async function executeWithGatekeeper(
       status: "pending_approval",
       approvalId: approval.id,
     };
+    }
   }
 
   // No approval needed — execute directly

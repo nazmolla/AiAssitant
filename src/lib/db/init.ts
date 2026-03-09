@@ -27,6 +27,7 @@ const ALLOWED_TABLES = new Set([
   "user_knowledge", "owner_profile", "user_profiles", "channels",
   "users", "user_permissions", "tool_policies", "agent_logs",
   "mcp_servers", "attachments", "webhooks", "api_keys",
+  "approval_queue", "approval_preferences",
 ]);
 
 // ─── Helper: get column names for a table ─────────────────────
@@ -480,6 +481,31 @@ function ensureChannelImapUidColumns(): void {
   addColumnIfMissing("channels", "last_imap_uidvalidity", "INTEGER DEFAULT 0");
 }
 
+function ensureApprovalQueueNlRequestColumn(): void {
+  if (!tableExists("approval_queue")) return;
+  addColumnIfMissing("approval_queue", "nl_request", "TEXT");
+}
+
+function ensureApprovalPreferencesTable(): void {
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS approval_preferences (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      tool_name TEXT NOT NULL,
+      request_key TEXT NOT NULL,
+      device_key TEXT NOT NULL,
+      reason_key TEXT NOT NULL,
+      decision TEXT NOT NULL CHECK (decision IN ('approved', 'rejected', 'ignored')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, tool_name, request_key, device_key, reason_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_approval_prefs_lookup
+      ON approval_preferences(user_id, tool_name, request_key, device_key, reason_key);
+  `);
+}
+
 let _dbInitialized = false;
 
 export function initializeDatabase(): void {
@@ -498,6 +524,8 @@ export function initializeDatabase(): void {
   migrateToMultiUser();
   ensureChannelUserId();
   ensureChannelImapUidColumns();
+  ensureApprovalQueueNlRequestColumn();
+  ensureApprovalPreferencesTable();
   ensureUserAccessManagement();
   ensureProfilePreferencesColumns();
   normalizeAgentLogLevels();

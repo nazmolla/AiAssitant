@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { listPendingApprovals, listPendingApprovalsForUser, cleanStaleApprovals, getApprovalById, updateApprovalStatus, updateThreadStatus, getThreadMessages, addMessage, getThread, addLog } from "@/lib/db";
+import { listPendingApprovals, listPendingApprovalsForUser, cleanStaleApprovals, getApprovalById, updateApprovalStatus, updateThreadStatus, getThreadMessages, addMessage, getThread, addLog, upsertApprovalPreferenceFromApproval } from "@/lib/db";
 import { executeApprovedTool, continueAgentLoop } from "@/lib/agent";
 import { executeProactiveApprovedTool } from "@/lib/scheduler";
 import type { ToolCall } from "@/lib/llm";
@@ -50,13 +50,21 @@ export async function POST(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
-  const { approvalId, action } = body;
+  const { approvalId, action, rememberDecision } = body as {
+    approvalId?: string;
+    action?: "approved" | "rejected" | "ignored";
+    rememberDecision?: "approved" | "rejected" | "ignored";
+  };
 
-  if (!approvalId || !["approved", "rejected"].includes(action)) {
+  if (!approvalId || !action || !["approved", "rejected", "ignored"].includes(action)) {
     return NextResponse.json(
-      { error: "approvalId and action ('approved' | 'rejected') are required." },
+      { error: "approvalId and action ('approved' | 'rejected' | 'ignored') are required." },
       { status: 400 }
     );
+  }
+
+  if (rememberDecision && !["approved", "rejected", "ignored"].includes(rememberDecision)) {
+    return NextResponse.json({ error: "Invalid rememberDecision" }, { status: 400 });
   }
 
   // Find the approval — look up by ID directly (not just pending)
@@ -84,7 +92,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  updateApprovalStatus(approvalId, action);
+  if (rememberDecision) {
+    upsertApprovalPreferenceFromApproval(auth.user.id, approval, rememberDecision);
+  }
+
+  if (action === "ignored") {
+    updateApprovalStatus(approvalId, "rejected");
+  } else {
+    updateApprovalStatus(approvalId, action);
+  }
 
   if (action === "approved" && !approval.thread_id) {
     // Proactive approval — execute the tool directly without a thread context
@@ -167,19 +183,19 @@ export async function POST(req: NextRequest) {
   }
 
   // Rejected — unfreeze the thread (only if there's a thread to unfreeze)
-  if (action === "rejected" && approval.thread_id) {
+  if ((action === "rejected" || action === "ignored") && approval.thread_id) {
     updateThreadStatus(approval.thread_id, "active");
   }
 
   // Log proactive approval rejections for auditability
-  if (action === "rejected" && !approval.thread_id) {
+  if ((action === "rejected" || action === "ignored") && !approval.thread_id) {
     addLog({
       level: "info",
       source: "hitl",
-      message: `Proactive approval "${approval.tool_name}" rejected by ${auth.user.email}.`,
-      metadata: JSON.stringify({ approvalId, reasoning: approval.reasoning }),
+      message: `Proactive approval "${approval.tool_name}" ${action} by ${auth.user.email}.`,
+      metadata: JSON.stringify({ approvalId, reasoning: approval.reasoning, action }),
     });
   }
 
-  return NextResponse.json({ status: action });
+  return NextResponse.json({ status: action, remembered: rememberDecision ?? null });
 }

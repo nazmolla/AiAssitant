@@ -14,6 +14,9 @@ import CardActions from "@mui/material/CardActions";
 import Divider from "@mui/material/Divider";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
@@ -21,6 +24,8 @@ import InfoIcon from "@mui/icons-material/Info";
 import WarningIcon from "@mui/icons-material/Warning";
 import BuildIcon from "@mui/icons-material/Build";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
+import OpenInFullIcon from "@mui/icons-material/OpenInFull";
+import CloseIcon from "@mui/icons-material/Close";
 import { useTheme } from "@/components/theme-provider";
 
 interface ApprovalRequest {
@@ -29,6 +34,7 @@ interface ApprovalRequest {
   tool_name: string;
   args: string;
   reasoning: string | null;
+  nl_request: string | null;
   status: string;
   created_at: string;
 }
@@ -42,6 +48,115 @@ interface NotificationItem {
   metadata: string | null;
   read: number;
   created_at: string;
+}
+
+interface ApprovalGroup {
+  key: string;
+  toolName: string;
+  approvals: ApprovalRequest[];
+}
+
+function parseArgs(argsRaw: string): Record<string, unknown> {
+  try {
+    return JSON.parse(argsRaw);
+  } catch {
+    return {};
+  }
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .replace(/[._-]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function prettyToolName(toolName: string, args: Record<string, unknown>): string {
+  const parts = toolName.split(".");
+  const shortName = parts[parts.length - 1] || toolName;
+  const normalized = shortName.trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalized)) {
+    const action = (args.action as string) || (args.service as string) || (args.command as string) || "Tool Action";
+    return toTitleCase(action);
+  }
+  return toTitleCase(normalized);
+}
+
+function pickString(args: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function summarizeArgs(args: Record<string, unknown>, ignore: string[]): string {
+  const chunks: string[] = [];
+  for (const [key, value] of Object.entries(args)) {
+    if (ignore.includes(key)) continue;
+    if (value == null) continue;
+    if (typeof value === "string" && !value.trim()) continue;
+    const prettyKey = toTitleCase(key);
+    const prettyValue = typeof value === "string"
+      ? value
+      : typeof value === "number" || typeof value === "boolean"
+        ? String(value)
+        : JSON.stringify(value);
+    chunks.push(`${prettyKey}: ${prettyValue}`);
+    if (chunks.length >= 3) break;
+  }
+  return chunks.join("; ");
+}
+
+function buildApprovalDescription(approval: ApprovalRequest): string {
+  if (approval.nl_request?.trim()) {
+    return approval.nl_request.trim();
+  }
+
+  const args = parseArgs(approval.args);
+  const action = pickString(args, ["intent", "action", "service", "command", "mode"]) || prettyToolName(approval.tool_name, args);
+  const target = pickString(args, ["name", "deviceName", "entityName", "entity_id", "id", "target", "light", "device"]);
+  const area = pickString(args, ["area", "room", "zone", "group"]);
+  const reason = approval.reasoning?.trim() || pickString(args, ["reason", "because", "why"]);
+  const extras = summarizeArgs(args, [
+    "intent", "action", "service", "command", "mode",
+    "name", "deviceName", "entityName", "entity_id", "id", "target", "light", "device",
+    "area", "room", "zone", "group",
+    "reason", "because", "why",
+  ]);
+
+  const segments: string[] = [];
+  segments.push(`Approve ${toTitleCase(action)}`);
+  if (target) segments.push(`for "${target}"`);
+  if (area) segments.push(`in "${area}"`);
+  if (reason) segments.push(`because ${reason}`);
+  if (extras) segments.push(`with details (${extras})`);
+  return segments.join(" ");
+}
+
+function groupApprovals(items: ApprovalRequest[]): ApprovalGroup[] {
+  const map = new Map<string, ApprovalGroup>();
+  for (const item of items) {
+    const args = parseArgs(item.args);
+    const argsKey = JSON.stringify(args);
+    const reasoningKey = (item.reasoning || "").trim();
+    const key = `${item.tool_name}::${argsKey}::${reasoningKey}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.approvals.push(item);
+      continue;
+    }
+    map.set(key, {
+      key,
+      toolName: item.tool_name,
+      approvals: [item],
+    });
+  }
+  return Array.from(map.values()).sort((a, b) => {
+    const aTime = new Date(a.approvals[0].created_at).getTime();
+    const bTime = new Date(b.approvals[0].created_at).getTime();
+    return bTime - aTime;
+  });
 }
 
 function typeIcon(type: string) {
@@ -73,6 +188,7 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [tab, setTab] = useState(0);
   const [acting, setActing] = useState<Set<string>>(new Set());
+  const [expandedOpen, setExpandedOpen] = useState(false);
   const { formatDate } = useTheme();
 
   const fetchNotifications = useCallback(() => {
@@ -131,17 +247,17 @@ export function NotificationBell() {
 
   // ── Approval actions (same as old ApprovalInbox) ──
 
-  async function handleApprovalAction(approvalId: string, action: "approved" | "rejected") {
+  async function handleApprovalAction(approvalId: string, action: "approved" | "rejected" | "ignored", rememberDecision?: "approved" | "rejected" | "ignored") {
     setActing((prev) => new Set(prev).add(approvalId));
     try {
       const res = await fetch("/api/approvals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approvalId, action }),
+        body: JSON.stringify({ approvalId, action, rememberDecision }),
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || `Failed to ${action === "approved" ? "approve" : "deny"} (HTTP ${res.status})`);
+        alert(data.error || `Failed to ${action === "approved" ? "approve" : action} (HTTP ${res.status})`);
         return;
       }
       fetchNotifications();
@@ -183,6 +299,7 @@ export function NotificationBell() {
   }
 
   const isBusy = acting.size > 0;
+  const groupedApprovals = useMemo(() => groupApprovals(approvals), [approvals]);
 
   // Separate unread general notifications
   const unreadNotifications = useMemo(() => notifications.filter(n => !n.read), [notifications]);
@@ -227,11 +344,16 @@ export function NotificationBell() {
         {/* Header */}
         <Box sx={{ px: 2, py: 1.5, display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: 1, borderColor: "divider" }}>
           <Typography variant="subtitle1" fontWeight={700}>Notifications</Typography>
-          {(unreadNotifications.length > 0) && (
-            <Button size="small" startIcon={<DoneAllIcon />} onClick={handleMarkAllRead} sx={{ textTransform: "none", fontSize: "0.75rem" }}>
-              Mark all read
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <Button size="small" startIcon={<OpenInFullIcon />} onClick={() => setExpandedOpen(true)} sx={{ textTransform: "none", fontSize: "0.75rem" }}>
+              Open Full View
             </Button>
-          )}
+            {(unreadNotifications.length > 0) && (
+              <Button size="small" startIcon={<DoneAllIcon />} onClick={handleMarkAllRead} sx={{ textTransform: "none", fontSize: "0.75rem" }}>
+                Mark all read
+              </Button>
+            )}
+          </Box>
         </Box>
 
         {/* Tabs */}
@@ -249,9 +371,32 @@ export function NotificationBell() {
           {/* ── Tab 0: All Notifications ── */}
           {tab === 0 && (
             <Box>
-              {/* Approvals shown inline as notification cards */}
-              {approvals.map((a) => (
-                <ApprovalCard key={`approval-${a.id}`} approval={a} acting={acting} isBusy={isBusy} onAction={handleApprovalAction} formatDate={formatDate} />
+              {approvals.length > 0 && (
+                <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end", px: 2, py: 1 }}>
+                  <Button
+                    size="small" variant="contained" disabled={isBusy}
+                    onClick={() => handleBulkApproval(approvals.map(a => a.id), "approved")}
+                  >
+                    {isBusy ? "Processing..." : `Approve All (${approvals.length})`}
+                  </Button>
+                  <Button
+                    size="small" variant="outlined" disabled={isBusy}
+                    onClick={() => handleBulkApproval(approvals.map(a => a.id), "rejected")}
+                  >
+                    Reject All ({approvals.length})
+                  </Button>
+                </Box>
+              )}
+              {groupedApprovals.map((g) => (
+                <ApprovalGroupCard
+                  key={`approval-group-${g.key}`}
+                  group={g}
+                  acting={acting}
+                  isBusy={isBusy}
+                  onAction={handleApprovalAction}
+                  onBulkAction={handleBulkApproval}
+                  formatDate={formatDate}
+                />
               ))}
               {unreadNotifications.map((n) => (
                 <NotificationCard key={n.id} notification={n} onMarkRead={handleMarkRead} onDismiss={handleDismiss} formatDate={formatDate} />
@@ -276,7 +421,7 @@ export function NotificationBell() {
           {/* ── Tab 1: Approvals Only ── */}
           {tab === 1 && (
             <Box>
-              {approvals.length > 1 && (
+              {approvals.length > 0 && (
                 <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end", px: 2, py: 1 }}>
                   <Button
                     size="small" variant="contained" disabled={isBusy}
@@ -288,12 +433,20 @@ export function NotificationBell() {
                     size="small" variant="outlined" disabled={isBusy}
                     onClick={() => handleBulkApproval(approvals.map(a => a.id), "rejected")}
                   >
-                    Deny All
+                    Reject All ({approvals.length})
                   </Button>
                 </Box>
               )}
-              {approvals.map((a) => (
-                <ApprovalCard key={`approval-tab-${a.id}`} approval={a} acting={acting} isBusy={isBusy} onAction={handleApprovalAction} formatDate={formatDate} />
+              {groupedApprovals.map((g) => (
+                <ApprovalGroupCard
+                  key={`approval-tab-${g.key}`}
+                  group={g}
+                  acting={acting}
+                  isBusy={isBusy}
+                  onAction={handleApprovalAction}
+                  onBulkAction={handleBulkApproval}
+                  formatDate={formatDate}
+                />
               ))}
               {approvals.length === 0 && (
                 <Box sx={{ py: 6, textAlign: "center" }}>
@@ -305,6 +458,66 @@ export function NotificationBell() {
           )}
         </Box>
       </Popover>
+
+      <Dialog
+        open={expandedOpen}
+        onClose={() => setExpandedOpen(false)}
+        fullScreen
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+          <Typography variant="h6" fontWeight={700}>Approval Center</Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            {approvals.length > 0 && (
+              <>
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={isBusy}
+                  onClick={() => handleBulkApproval(approvals.map((a) => a.id), "approved")}
+                >
+                  {isBusy ? "Processing..." : `Approve All (${approvals.length})`}
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={isBusy}
+                  onClick={() => handleBulkApproval(approvals.map((a) => a.id), "rejected")}
+                >
+                  Reject All ({approvals.length})
+                </Button>
+              </>
+            )}
+            <IconButton onClick={() => setExpandedOpen(false)} size="small" title="Close full view">
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Grouped by tool and request payload. Expand groups to review details, rationale, and execute bulk or per-item decisions.
+          </Typography>
+          <Box>
+            {groupedApprovals.map((g) => (
+              <ApprovalGroupCard
+                key={`approval-full-${g.key}`}
+                group={g}
+                acting={acting}
+                isBusy={isBusy}
+                onAction={handleApprovalAction}
+                onBulkAction={handleBulkApproval}
+                formatDate={formatDate}
+                dense={false}
+              />
+            ))}
+            {groupedApprovals.length === 0 && (
+              <Box sx={{ py: 8, textAlign: "center" }}>
+                <Typography sx={{ fontSize: "1.5rem", mb: 0.5, opacity: 0.3 }}>✅</Typography>
+                <Typography variant="body1" color="text.secondary">No pending approvals</Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -365,62 +578,93 @@ function NotificationCard({
   );
 }
 
-function ApprovalCard({
-  approval,
+function ApprovalGroupCard({
+  group,
   acting,
   isBusy,
   onAction,
+  onBulkAction,
   formatDate,
+  dense = true,
 }: {
-  approval: ApprovalRequest;
+  group: ApprovalGroup;
   acting: Set<string>;
   isBusy: boolean;
-  onAction: (id: string, action: "approved" | "rejected") => void;
+  onAction: (id: string, action: "approved" | "rejected" | "ignored", rememberDecision?: "approved" | "rejected" | "ignored") => void;
+  onBulkAction: (ids: string[], action: "approved" | "rejected") => void;
   formatDate: (d: string) => string;
+  dense?: boolean;
 }) {
-  let parsedArgs: Record<string, unknown> = {};
-  try { parsedArgs = JSON.parse(approval.args); } catch { /* empty */ }
+  const first = group.approvals[0];
+  const parsedArgs = parseArgs(first.args);
+  const label = prettyToolName(group.toolName, parsedArgs);
+  const ids = group.approvals.map((a) => a.id);
 
   return (
-    <Card variant="outlined" sx={{ mx: 1.5, my: 1, "&:hover": { borderColor: "primary.main" }, transition: "all 0.2s" }}>
-      <CardContent sx={{ pb: 0.5, "&:last-child": { pb: 0.5 } }}>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-            <CheckCircleIcon fontSize="small" color="warning" />
-            <Typography variant="body2" fontWeight={600}>{approval.tool_name}</Typography>
-            {!approval.thread_id && (
-              <Chip label="Proactive" size="small" color="info" variant="outlined" sx={{ fontSize: "0.6rem", height: 18 }} />
-            )}
+    <Card variant="outlined" sx={{ mx: dense ? 1.5 : 0, my: 1, borderColor: "divider" }}>
+      <CardContent sx={{ pb: 1, "&:last-child": { pb: 1 } }}>
+        <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexWrap: "wrap" }}>
+            <BuildIcon fontSize="small" color="info" />
+            <Typography variant="body2" fontWeight={700}>{label}</Typography>
+            <Chip label={`${group.approvals.length} request${group.approvals.length > 1 ? "s" : ""}`} size="small" color="warning" sx={{ fontSize: "0.65rem", height: 20 }} />
           </Box>
-          <Chip label="Pending" size="small" color="warning" sx={{ fontSize: "0.6rem", height: 18 }} />
+          <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
+            <Button size="small" variant="contained" disabled={isBusy} onClick={() => onBulkAction(ids, "approved")}>Approve Group</Button>
+            <Button size="small" variant="outlined" disabled={isBusy} onClick={() => onBulkAction(ids, "rejected")}>Reject Group</Button>
+          </Box>
         </Box>
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.65rem" }}>
-          {formatDate(approval.created_at)}
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+          {buildApprovalDescription(first)}
         </Typography>
-        {approval.reasoning && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, lineHeight: 1.3 }}>
-            {approval.reasoning.length > 100 ? approval.reasoning.slice(0, 100) + "..." : approval.reasoning}
-          </Typography>
-        )}
       </CardContent>
-      <CardActions sx={{ gap: 0.5, px: 1.5, pb: 1, pt: 0.25 }}>
-        <Button
-          variant="contained" size="small"
-          disabled={acting.has(approval.id) || isBusy}
-          onClick={() => onAction(approval.id, "approved")}
-          sx={{ fontSize: "0.7rem", py: 0.25 }}
-        >
-          {acting.has(approval.id) ? "..." : "Approve"}
-        </Button>
-        <Button
-          variant="outlined" size="small"
-          disabled={acting.has(approval.id) || isBusy}
-          onClick={() => onAction(approval.id, "rejected")}
-          sx={{ fontSize: "0.7rem", py: 0.25 }}
-        >
-          Deny
-        </Button>
-      </CardActions>
+      <Divider />
+      <Box sx={{ px: 1.5, py: 1, display: "flex", flexDirection: "column", gap: 1 }}>
+        {group.approvals.map((approval) => (
+          <Box key={approval.id} sx={{ border: 1, borderColor: "divider", borderRadius: 1.5, px: 1, py: 0.75 }}>
+            <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+              <Typography variant="caption" color="text.secondary">{formatDate(approval.created_at)}</Typography>
+              <Box sx={{ display: "flex", gap: 0.75 }}>
+                <Button
+                  variant="contained"
+                  size="small"
+                  disabled={acting.has(approval.id) || isBusy}
+                  onClick={() => onAction(approval.id, "approved")}
+                  sx={{ fontSize: "0.7rem", py: 0.25 }}
+                >
+                  {acting.has(approval.id) ? "..." : "Approve"}
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  disabled={acting.has(approval.id) || isBusy}
+                  onClick={() => onAction(approval.id, "rejected")}
+                  sx={{ fontSize: "0.7rem", py: 0.25 }}
+                >
+                  Reject
+                </Button>
+                <Button
+                  variant="text"
+                  size="small"
+                  disabled={acting.has(approval.id) || isBusy}
+                  onClick={() => onAction(approval.id, "ignored")}
+                  sx={{ fontSize: "0.7rem", py: 0.25 }}
+                >
+                  Ignore
+                </Button>
+              </Box>
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+              {buildApprovalDescription(approval)}
+            </Typography>
+            <Box sx={{ display: "flex", gap: 0.5, mt: 0.75, flexWrap: "wrap" }}>
+              <Button size="small" variant="text" disabled={acting.has(approval.id) || isBusy} onClick={() => onAction(approval.id, "approved", "approved")}>Always Allow</Button>
+              <Button size="small" variant="text" disabled={acting.has(approval.id) || isBusy} onClick={() => onAction(approval.id, "ignored", "ignored")}>Always Ignore</Button>
+              <Button size="small" variant="text" disabled={acting.has(approval.id) || isBusy} onClick={() => onAction(approval.id, "rejected", "rejected")}>Always Reject</Button>
+            </Box>
+          </Box>
+        ))}
+      </Box>
     </Card>
   );
 }

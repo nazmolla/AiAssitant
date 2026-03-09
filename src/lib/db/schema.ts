@@ -177,9 +177,26 @@ CREATE TABLE IF NOT EXISTS approval_queue (
     tool_name TEXT,
     args TEXT,
     reasoning TEXT,
+    nl_request TEXT,
     status TEXT DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS approval_preferences (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tool_name TEXT NOT NULL,
+    request_key TEXT NOT NULL,
+    device_key TEXT NOT NULL,
+    reason_key TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN ('approved', 'rejected', 'ignored')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, tool_name, request_key, device_key, reason_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_approval_prefs_lookup
+ON approval_preferences(user_id, tool_name, request_key, device_key, reason_key);
 
 -- ═══ Notifications ═══
 

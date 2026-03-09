@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { encryptField, decryptField } from "./crypto";
 import { normalizeLogLevel, shouldKeepLog, type UnifiedLogLevel, isUnifiedLogLevel } from "@/lib/logging/levels";
 import { appCache, CACHE_KEYS } from "@/lib/cache";
+import { buildApprovalPreferenceSignature } from "@/lib/approvals/preference-signature";
 
 /** Thin wrapper that passes the (patchable) `getDb` import to the cache */
 function stmt(sql: string) { return _cachedStmt(sql, getDb); }
@@ -951,19 +952,20 @@ export interface ApprovalRequest {
   tool_name: string;
   args: string;
   reasoning: string | null;
+  nl_request: string | null;
   status: string;
   created_at: string;
 }
 
-export function createApprovalRequest(req: Omit<ApprovalRequest, "id" | "status" | "created_at">): ApprovalRequest {
+export function createApprovalRequest(req: Omit<ApprovalRequest, "id" | "status" | "created_at" | "nl_request"> & { nl_request?: string | null }): ApprovalRequest {
   const id = uuid();
   return getDb()
     .prepare(
-      `INSERT INTO approval_queue (id, thread_id, tool_name, args, reasoning)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO approval_queue (id, thread_id, tool_name, args, reasoning, nl_request)
+       VALUES (?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
-    .get(id, req.thread_id, req.tool_name, req.args, req.reasoning) as ApprovalRequest;
+    .get(id, req.thread_id, req.tool_name, req.args, req.reasoning, req.nl_request ?? null) as ApprovalRequest;
 }
 
 export function getApprovalById(id: string): ApprovalRequest | undefined {
@@ -1022,6 +1024,80 @@ export function cleanStaleApprovals(): number {
 
 export function updateApprovalStatus(id: string, status: "approved" | "rejected"): void {
   getDb().prepare("UPDATE approval_queue SET status = ? WHERE id = ?").run(status, id);
+}
+
+export interface ApprovalPreference {
+  id: string;
+  user_id: string;
+  tool_name: string;
+  request_key: string;
+  device_key: string;
+  reason_key: string;
+  decision: "approved" | "rejected" | "ignored";
+  created_at: string;
+  updated_at: string;
+}
+
+export function upsertApprovalPreferenceFromApproval(
+  userId: string,
+  approval: ApprovalRequest,
+  decision: "approved" | "rejected" | "ignored"
+): void {
+  const signature = buildApprovalPreferenceSignature({
+    toolName: approval.tool_name,
+    argsRaw: approval.args,
+    reasoning: approval.reasoning,
+    nlRequest: approval.nl_request,
+  });
+
+  getDb().prepare(
+    `INSERT INTO approval_preferences (id, user_id, tool_name, request_key, device_key, reason_key, decision)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, tool_name, request_key, device_key, reason_key)
+     DO UPDATE SET
+       decision = excluded.decision,
+       updated_at = CURRENT_TIMESTAMP`
+  ).run(
+    uuid(),
+    userId,
+    approval.tool_name,
+    signature.request_key,
+    signature.device_key,
+    signature.reason_key,
+    decision
+  );
+}
+
+export function findApprovalPreferenceDecision(
+  userId: string,
+  toolName: string,
+  argsRaw: string,
+  reasoning: string | null,
+  nlRequest?: string | null
+): "approved" | "rejected" | "ignored" | null {
+  const signature = buildApprovalPreferenceSignature({
+    toolName,
+    argsRaw,
+    reasoning,
+    nlRequest,
+  });
+
+  const row = getDb().prepare(
+    `SELECT decision FROM approval_preferences
+     WHERE user_id = ?
+       AND tool_name = ?
+       AND request_key = ?
+       AND device_key = ?
+       AND reason_key = ?`
+  ).get(
+    userId,
+    toolName,
+    signature.request_key,
+    signature.device_key,
+    signature.reason_key
+  ) as { decision: "approved" | "rejected" | "ignored" } | undefined;
+
+  return row?.decision ?? null;
 }
 
 // â”€â”€â”€ Agent Logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -791,16 +791,64 @@ async function executeToolWithPolicy(
   threadId: string,
   reasoning?: string
 ): Promise<import("./gatekeeper").GatekeeperResult> {
-  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg } = await import("@/lib/db");
+  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg, getThread, findApprovalPreferenceDecision } = await import("@/lib/db");
   const { executeCustomTool: execCustom } = await import("./custom-tools");
   const { normalizeToolName } = await import("./discovery");
 
   // Normalize tool name — the LLM sometimes strips the "builtin." prefix
   toolCall = { ...toolCall, name: normalizeToolName(toolCall.name) };
 
+  const nlRequest =
+    (reasoning || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => !!line && !line.startsWith("{"))
+      ?.slice(0, 500) || null;
+
   const policy = getToolPolicy(toolCall.name);
 
   if (policy && policy.requires_approval) {
+    const thread = getThread(threadId);
+    const preferenceDecision = thread?.user_id
+      ? findApprovalPreferenceDecision(
+          thread.user_id,
+          toolCall.name,
+          JSON.stringify(toolCall.arguments),
+          reasoning || null,
+          nlRequest
+        )
+      : null;
+
+    if (preferenceDecision === "approved") {
+      addLog({
+        level: "info",
+        source: "hitl",
+        message: `Auto-approved by saved preference for tool "${toolCall.name}".`,
+        metadata: JSON.stringify({ threadId }),
+      });
+    }
+
+    if (preferenceDecision === "rejected") {
+      addLog({
+        level: "info",
+        source: "hitl",
+        message: `Auto-rejected by saved preference for tool "${toolCall.name}".`,
+        metadata: JSON.stringify({ threadId }),
+      });
+      return { status: "error", error: `Auto-rejected by preference for ${toolCall.name}.` };
+    }
+
+    if (preferenceDecision === "ignored") {
+      addLog({
+        level: "info",
+        source: "hitl",
+        message: `Auto-ignored by saved preference for tool "${toolCall.name}".`,
+        metadata: JSON.stringify({ threadId }),
+      });
+      return { status: "executed", result: { status: "ignored", reason: "auto_ignored_by_preference" } };
+    }
+
+    if (preferenceDecision !== "approved") {
     addLog({
       level: "info",
       source: "hitl",
@@ -813,6 +861,7 @@ async function executeToolWithPolicy(
       tool_name: toolCall.name,
       args: JSON.stringify(toolCall.arguments),
       reasoning: reasoning || null,
+      nl_request: nlRequest,
     });
 
     const approvalMeta = JSON.stringify({
@@ -820,6 +869,7 @@ async function executeToolWithPolicy(
       tool_name: toolCall.name,
       args: toolCall.arguments,
       reasoning: reasoning || null,
+      nl_request: nlRequest,
     });
 
     updateThreadStatus(threadId, "awaiting_approval");
@@ -848,6 +898,7 @@ async function executeToolWithPolicy(
     }
 
     return { status: "pending_approval", approvalId: approval.id };
+    }
   }
 
   // No approval needed — route to the correct executor
