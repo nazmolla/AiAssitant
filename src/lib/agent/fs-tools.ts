@@ -11,6 +11,7 @@
  *  7. fs_execute_script    — Execute a shell script or command        [REQUIRES APPROVAL]
  *  8. fs_file_info         — Get metadata about a file (size, dates, permissions)
  *  9. fs_search_files      — Recursively search for files by name/pattern
+ * 10. fs_extract_text      — Extract readable text from HTML/XML/text files
  *
  * Destructive operations (update, delete, execute) are wired with HITL
  * approval policies by default.
@@ -35,6 +36,7 @@ const SCRIPT_TIMEOUT_MS = 30_000;
 
 export const FS_TOOL_NAMES = {
   READ_FILE: "builtin.fs_read_file",
+  EXTRACT_TEXT: "builtin.fs_extract_text",
   READ_DIR: "builtin.fs_read_directory",
   CREATE_FILE: "builtin.fs_create_file",
   UPDATE_FILE: "builtin.fs_update_file",
@@ -88,6 +90,37 @@ export const BUILTIN_FS_TOOLS: ToolDefinition[] = [
         length: {
           type: "number",
           description: "Optional number of bytes to read starting from offset. Default: 65536 (64 KB). Max: 1 MB.",
+        },
+      },
+      required: ["filePath"],
+    },
+  },
+  {
+    name: FS_TOOL_NAMES.EXTRACT_TEXT,
+    description:
+      "Extract readable plain text from HTML/XML/text files. Useful for large minified HTML where line-based reading is not practical. Supports byte-chunked reads via offset/length.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filePath: {
+          type: "string",
+          description: "Absolute or relative path to the file.",
+        },
+        offset: {
+          type: "number",
+          description: "Optional byte offset to start reading from (0-based).",
+        },
+        length: {
+          type: "number",
+          description: "Optional number of bytes to read from offset. Default 262144 (256 KB), max 1 MB.",
+        },
+        maxChars: {
+          type: "number",
+          description: "Maximum output characters after extraction (default 15000, max 100000).",
+        },
+        encoding: {
+          type: "string",
+          description: "Text encoding (default: 'utf-8').",
         },
       },
       required: ["filePath"],
@@ -461,6 +494,91 @@ async function fsReadFile(args: Record<string, unknown>): Promise<unknown> {
   };
 }
 
+function decodeHtmlEntities(input: string): string {
+  return input
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#x2F;/gi, "/");
+}
+
+function extractReadableText(raw: string): string {
+  return decodeHtmlEntities(
+    raw
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+async function fsExtractText(args: Record<string, unknown>): Promise<unknown> {
+  const filePath = resolvePath(args.filePath as string);
+  const encoding = (args.encoding as BufferEncoding) || "utf-8";
+  const byteOffset = typeof args.offset === "number" ? Math.max(0, args.offset) : 0;
+  const requestedLen = typeof args.length === "number" ? args.length : 262144;
+  const readLen = Math.min(Math.max(1, requestedLen), 1024 * 1024);
+  const maxChars = Math.min(Math.max(1, (args.maxChars as number) || 15000), 100000);
+
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
+  const stat = fs.statSync(filePath);
+  if (!stat.isFile()) {
+    throw new Error(`Path is not a file: ${filePath}`);
+  }
+
+  // Require chunking for very large files to avoid huge memory spikes.
+  if (stat.size > MAX_READ_BYTES && args.offset === undefined && args.length === undefined) {
+    throw new Error(
+      `File is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB) for default extraction. Provide offset/length to process it in chunks.`
+    );
+  }
+
+  if (byteOffset >= stat.size) {
+    return {
+      filePath,
+      size: stat.size,
+      offset: byteOffset,
+      bytesRead: 0,
+      hasMore: false,
+      extractedChars: 0,
+      text: "",
+    };
+  }
+
+  const end = Math.min(stat.size - 1, byteOffset + readLen - 1);
+  const buf = Buffer.alloc(end - byteOffset + 1);
+  const fd = fs.openSync(filePath, "r");
+  try {
+    fs.readSync(fd, buf, 0, buf.length, byteOffset);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  const raw = buf.toString(encoding);
+  const extracted = extractReadableText(raw);
+  const text = extracted.length > maxChars ? extracted.slice(0, maxChars) : extracted;
+
+  return {
+    filePath,
+    size: stat.size,
+    offset: byteOffset,
+    bytesRead: buf.length,
+    hasMore: end < stat.size - 1,
+    extractedChars: extracted.length,
+    text,
+  };
+}
+
 async function fsReadDirectory(args: Record<string, unknown>): Promise<unknown> {
   const dirPath = resolvePath(args.dirPath as string);
   const recursive = (args.recursive as boolean) || false;
@@ -744,6 +862,8 @@ export async function executeBuiltinFsTool(
   switch (name) {
     case FS_TOOL_NAMES.READ_FILE:
       return fsReadFile(args);
+    case FS_TOOL_NAMES.EXTRACT_TEXT:
+      return fsExtractText(args);
     case FS_TOOL_NAMES.READ_DIR:
       return fsReadDirectory(args);
     case FS_TOOL_NAMES.FILE_INFO:

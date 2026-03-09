@@ -13,6 +13,7 @@
 - **Human-in-the-Loop (HITL)** — default-deny policy enforcement with required rationale; interactive chat/voice approvals are requested inline in the same conversation; Approval Center is reserved for proactive/email-origin actions with structured details (action, item, location, reason, source); per-tool **scope** (Global or User Only) controls visibility
 - **Standing Orders Management** — view, edit, and revoke saved approval decisions (Always Allow / Always Ignore / Always Reject) from Settings → Standing Orders
 - **Browser Automation** — Playwright-powered web navigation, form filling, and screenshots
+- **Large File Tooling** — `fs_read_file` supports byte-based chunked reads (`offset`/`length`) for multi-MB files, and `fs_extract_text` extracts readable text from large HTML/XML blobs
 - **Multi-Channel** — Web chat, WhatsApp, Discord, and custom webhooks
 - **Two-Way Email Channel** — SMTP send + IMAP receive with shared inbox routing
 - **Notification Severity Thresholds** — each user controls which alert levels trigger channel notifications; smart home/IoT tools are automatically capped below `disaster`

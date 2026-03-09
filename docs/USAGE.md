@@ -35,6 +35,11 @@ All screenshots are captured from the **test environment**.
 - Approval Center (Notifications → Approvals) is reserved for proactive/email-origin requests only.
 - Approval cards show **structured details**: action, item, location, reason, and source (email source includes sender when available).
 
+## Large HTML and Document Reads
+
+- Use `fs_read_file` with `offset` and `length` for byte-level chunking when files exceed the default full-read limit.
+- Use `fs_extract_text` to strip HTML/XML markup and return readable plain text from large or minified documents.
+
 ## Standing Orders
 
 - Use **Settings → Standing Orders** to view, edit, or revoke your saved approval decisions.
