@@ -202,7 +202,8 @@ describe("PATCH /api/config/llm", () => {
     setMockUser({ id: adminId, email: "llm-admin@example.com", role: "admin" });
     const list = await GET();
     const data = await list.json();
-    providerId = data[0].id;
+    const target = data.find((p: any) => p.provider_type === "openai" && p.purpose === "chat") ?? data[0];
+    providerId = target.id;
   });
 
   test("returns 400 without id", async () => {

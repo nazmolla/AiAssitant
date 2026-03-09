@@ -4,7 +4,7 @@
  * @jest-environment jsdom
  */
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
 jest.mock("@/hooks/use-is-mobile", () => ({ useIsMobile: () => false }));
@@ -76,9 +76,13 @@ describe("AgentDashboard analytics", () => {
   test("shows full date and time in log stream", async () => {
     render(<AgentDashboard />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+
     await waitFor(() => {
       expect(screen.getByText(/Agent Log Stream/)).toBeInTheDocument();
     });
+
+    expect(screen.getByPlaceholderText(/Search logs, source, level, metadata/i)).toBeInTheDocument();
 
     // Date part + time part from ISO-backed mock formatter.
     expect(screen.getAllByText(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/).length).toBeGreaterThan(0);

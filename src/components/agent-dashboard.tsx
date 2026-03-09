@@ -35,6 +35,7 @@ interface LogEntry {
 
 type LogFilter = "all" | "verbose" | "warning" | "error" | "critical" | "thought";
 type ChartMetric = "activities" | "errors";
+type DashboardView = "graphs" | "details";
 
 interface TimeBucket {
   start: number;
@@ -146,6 +147,8 @@ export function AgentDashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showAllLogs, setShowAllLogs] = useState(false);
+  const [dashboardView, setDashboardView] = useState<DashboardView>("graphs");
+  const [searchQuery, setSearchQuery] = useState("");
   const [renderCount, setRenderCount] = useState(400);
   const [filter, setFilter] = useState<LogFilter>("all");
   const [chartMetric, setChartMetric] = useState<ChartMetric>("activities");
@@ -169,7 +172,7 @@ export function AgentDashboard() {
 
   useEffect(() => {
     setRenderCount(showAllLogs ? 400 : 200);
-  }, [showAllLogs]);
+  }, [showAllLogs, searchQuery]);
 
   useEffect(() => {
     fetchLogs();
@@ -375,7 +378,16 @@ export function AgentDashboard() {
     };
   }, [logsInRange]);
 
-  const visibleLogs = useMemo(() => drilldownLogs.slice(0, renderCount), [drilldownLogs, renderCount]);
+  const searchedLogs = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return drilldownLogs;
+    return drilldownLogs.filter((log) => {
+      const haystack = `${log.message} ${log.level} ${log.source ?? ""} ${log.metadata ?? ""}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [drilldownLogs, searchQuery]);
+
+  const visibleLogs = useMemo(() => searchedLogs.slice(0, renderCount), [searchedLogs, renderCount]);
   const isMobile = useIsMobile();
   const chartMax = useMemo(() => {
     const maxVal = chartBuckets.reduce((acc, b) => Math.max(acc, b.activities, b.errors), 0);
@@ -401,6 +413,18 @@ export function AgentDashboard() {
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Real-time activity and diagnostics</Typography>
         </Box>
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, alignItems: "center" }}>
+          <ToggleButtonGroup
+            value={dashboardView}
+            exclusive
+            size="small"
+            onChange={(_, val: DashboardView | null) => {
+              if (!val) return;
+              setDashboardView(val);
+            }}
+          >
+            <ToggleButton value="graphs">Graphs</ToggleButton>
+            <ToggleButton value="details">Details</ToggleButton>
+          </ToggleButtonGroup>
           <TextField
             type="date"
             size="small"
@@ -428,6 +452,8 @@ export function AgentDashboard() {
         </Box>
       </Box>
 
+      {dashboardView === "graphs" && (
+        <>
       {/* KPI Cards */}
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", lg: "repeat(6, 1fr)" }, gap: { xs: 1.5, sm: 2 } }}>
         {([
@@ -718,10 +744,24 @@ export function AgentDashboard() {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
+
+      {dashboardView === "details" && (
+        <>
 
       {/* Log Filters */}
       <Box sx={{ borderRadius: 2, border: 1, borderColor: "divider", p: 1.5 }}>
         <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.65rem", mb: 1, display: "block" }}>Log Filters</Typography>
+        <Box sx={{ mb: 1.25 }}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search logs, source, level, metadata..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </Box>
         <ToggleButtonGroup
           value={filter}
           exclusive
@@ -741,6 +781,13 @@ export function AgentDashboard() {
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Typography variant="caption" color="text.secondary">Filtering:</Typography>
           <Chip label={`${filter} only`} size="small" variant="outlined" onDelete={() => setFilter("all")} />
+        </Box>
+      )}
+
+      {searchQuery.trim() !== "" && (
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Typography variant="caption" color="text.secondary">Search:</Typography>
+          <Chip label={searchQuery} size="small" variant="outlined" onDelete={() => setSearchQuery("")} />
         </Box>
       )}
 
@@ -871,31 +918,33 @@ export function AgentDashboard() {
               </Box>
             )}
 
-              {drilldownLogs.length === 0 && (
+              {searchedLogs.length === 0 && (
                 <Box sx={{ textAlign: "center", py: 6 }}>
                   <Typography variant="body2" color="text.secondary">
                     {selectedSessionBucket
                       ? "No session-associated logs found in this bucket."
                       : selectedBucket
                         ? `No ${chartMetric === "errors" ? "error" : "activity"} logs found in this bucket.`
-                      : (filter !== "all" ? `No ${filter} logs found.` : "No agent logs yet. Start a conversation or enable proactive scanning.")}
+                      : (filter !== "all" ? `No ${filter} logs found.` : searchQuery.trim() !== "" ? "No logs match your search." : "No agent logs yet. Start a conversation or enable proactive scanning.")}
                   </Typography>
                 </Box>
               )}
-              {drilldownLogs.length > visibleLogs.length && (
+              {searchedLogs.length > visibleLogs.length && (
                 <Box sx={{ pt: 1, display: "flex", justifyContent: "center" }}>
                   <Button
                     variant="outlined"
                     size="small"
                     onClick={() => setRenderCount((prev) => prev + 400)}
                   >
-                    Load more logs ({drilldownLogs.length - visibleLogs.length} remaining)
+                    Load more logs ({searchedLogs.length - visibleLogs.length} remaining)
                   </Button>
                 </Box>
               )}
           </Box>
         </CardContent>
       </Card>
+        </>
+      )}
     </Box>
   );
 }
