@@ -816,7 +816,8 @@ async function executeToolWithPolicy(
     });
   }
 
-  if (policy && policy.requires_approval) {
+  // Default-deny: if no policy exists, require approval (matches gatekeeper behavior).
+  if (!policy || policy.requires_approval) {
     const thread = getThread(threadId);
     const preferenceDecision = thread?.user_id
       ? findApprovalPreferenceDecision(

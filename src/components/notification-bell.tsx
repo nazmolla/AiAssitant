@@ -35,6 +35,7 @@ interface ApprovalRequest {
   args: string;
   reasoning: string | null;
   nl_request: string | null;
+  source: string;
   status: string;
   created_at: string;
 }
@@ -71,66 +72,114 @@ function toTitleCase(value: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function prettyToolName(toolName: string, args: Record<string, unknown>): string {
+/** Map common Home Assistant / MCP tool names to readable action verbs */
+const TOOL_ACTION_MAP: Record<string, string> = {
+  hassturnon: "Turn On",
+  hassturnoff: "Turn Off",
+  hasstoggle: "Toggle",
+  hasssetvalue: "Set Value",
+  hassgetstate: "Get State",
+  hasscallservice: "Call Service",
+  hasssetbrightness: "Set Brightness",
+  hasssettemperature: "Set Temperature",
+  hasslock: "Lock",
+  hassunlock: "Unlock",
+  hassopen: "Open",
+  hassclose: "Close",
+  hassarm: "Arm",
+  hassdisarm: "Disarm",
+  hassactivatescene: "Activate Scene",
+  hassplayermediaplay: "Play Media",
+  hassplayermediastop: "Stop Media",
+  hassplayermediapause: "Pause Media",
+};
+
+function readableAction(toolName: string, args: Record<string, unknown>): string {
+  // Check explicit args for action/intent first
+  for (const key of ["intent", "action", "service", "command", "mode"]) {
+    const v = args[key];
+    if (typeof v === "string" && v.trim()) return toTitleCase(v.trim());
+  }
+  // Strip prefix (e.g. "mcp_hass_server." or "builtin.")
   const parts = toolName.split(".");
   const shortName = parts[parts.length - 1] || toolName;
-  const normalized = shortName.trim();
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalized)) {
-    const action = (args.action as string) || (args.service as string) || (args.command as string) || "Tool Action";
-    return toTitleCase(action);
+  // Check Hass tool map
+  const mapped = TOOL_ACTION_MAP[shortName.toLowerCase()];
+  if (mapped) return mapped;
+  // UUID-based MCP tool — look for action in args
+  if (/^[0-9a-f]{8}-/i.test(shortName)) {
+    const fallback = (args.action as string) || (args.service as string) || "Tool Action";
+    return toTitleCase(fallback);
   }
-  return toTitleCase(normalized);
+  return toTitleCase(shortName);
 }
 
-function pickString(args: Record<string, unknown>, keys: string[]): string | null {
-  for (const key of keys) {
-    const value = args[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
+/** Extract a human-readable device/entity name from tool arguments */
+function readableTarget(args: Record<string, unknown>): string | null {
+  // Try explicit name fields first
+  for (const key of ["name", "deviceName", "entityName", "device", "light", "target"]) {
+    const v = args[key];
+    if (typeof v === "string" && v.trim()) return toTitleCase(v.trim());
+  }
+  // Fall back to entity_id: "light.lounge_light" → "Lounge Light"
+  const entityId = args.entity_id;
+  if (typeof entityId === "string" && entityId.includes(".")) {
+    const name = entityId.split(".").slice(1).join(".");
+    return toTitleCase(name);
+  }
+  // Try plain id
+  const id = args.id;
+  if (typeof id === "string" && id.trim() && !/^[0-9a-f-]{36}$/i.test(id)) {
+    return toTitleCase(id);
   }
   return null;
 }
 
-function summarizeArgs(args: Record<string, unknown>, ignore: string[]): string {
-  const chunks: string[] = [];
-  for (const [key, value] of Object.entries(args)) {
-    if (ignore.includes(key)) continue;
-    if (value == null) continue;
-    if (typeof value === "string" && !value.trim()) continue;
-    const prettyKey = toTitleCase(key);
-    const prettyValue = typeof value === "string"
-      ? value
-      : typeof value === "number" || typeof value === "boolean"
-        ? String(value)
-        : JSON.stringify(value);
-    chunks.push(`${prettyKey}: ${prettyValue}`);
-    if (chunks.length >= 3) break;
+function readableLocation(args: Record<string, unknown>): string | null {
+  for (const key of ["area", "room", "zone", "group"]) {
+    const v = args[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
   }
-  return chunks.join("; ");
+  return null;
 }
 
-function buildApprovalDescription(approval: ApprovalRequest): string {
-  if (approval.nl_request?.trim()) {
-    return approval.nl_request.trim();
-  }
+const SOURCE_LABELS: Record<string, string> = {
+  chat: "User Chat",
+  scheduler: "Scheduled Task",
+  proactive: "Proactive",
+  voice: "Voice",
+};
 
+function readableSource(approval: ApprovalRequest): string {
+  const src = approval.source || (approval.thread_id ? "chat" : "scheduler");
+  return SOURCE_LABELS[src] || toTitleCase(src);
+}
+
+interface ApprovalDetails {
+  action: string;
+  target: string | null;
+  location: string | null;
+  reason: string | null;
+  source: string;
+}
+
+function buildApprovalDetails(approval: ApprovalRequest): ApprovalDetails {
   const args = parseArgs(approval.args);
-  const action = pickString(args, ["intent", "action", "service", "command", "mode"]) || prettyToolName(approval.tool_name, args);
-  const target = pickString(args, ["name", "deviceName", "entityName", "entity_id", "id", "target", "light", "device"]);
-  const area = pickString(args, ["area", "room", "zone", "group"]);
-  const reason = approval.reasoning?.trim() || pickString(args, ["reason", "because", "why"]);
-  const extras = summarizeArgs(args, [
-    "intent", "action", "service", "command", "mode",
-    "name", "deviceName", "entityName", "entity_id", "id", "target", "light", "device",
-    "area", "room", "zone", "group",
-    "reason", "because", "why",
-  ]);
+  return {
+    action: readableAction(approval.tool_name, args),
+    target: readableTarget(args),
+    location: readableLocation(args),
+    reason: approval.reasoning?.trim() || null,
+    source: readableSource(approval),
+  };
+}
 
-  const segments: string[] = [];
-  segments.push(`Approve ${toTitleCase(action)}`);
-  if (target) segments.push(`for "${target}"`);
-  if (area) segments.push(`in "${area}"`);
-  if (reason) segments.push(`because ${reason}`);
-  if (extras) segments.push(`with details (${extras})`);
+/** Legacy single-line description (used for group header summary) */
+function buildApprovalDescription(approval: ApprovalRequest): string {
+  const d = buildApprovalDetails(approval);
+  const segments: string[] = [d.action];
+  if (d.target) segments.push(`"${d.target}"`);
+  if (d.location) segments.push(`in ${d.location}`);
   return segments.join(" ");
 }
 
@@ -596,8 +645,7 @@ function ApprovalGroupCard({
   dense?: boolean;
 }) {
   const first = group.approvals[0];
-  const parsedArgs = parseArgs(first.args);
-  const label = prettyToolName(group.toolName, parsedArgs);
+  const firstDetails = buildApprovalDetails(first);
   const ids = group.approvals.map((a) => a.id);
 
   return (
@@ -606,7 +654,10 @@ function ApprovalGroupCard({
         <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexWrap: "wrap" }}>
             <BuildIcon fontSize="small" color="info" />
-            <Typography variant="body2" fontWeight={700}>{label}</Typography>
+            <Typography variant="body2" fontWeight={700}>{firstDetails.action}</Typography>
+            {firstDetails.target && (
+              <Chip label={firstDetails.target} size="small" color="info" variant="outlined" sx={{ fontSize: "0.65rem", height: 20 }} />
+            )}
             <Chip label={`${group.approvals.length} request${group.approvals.length > 1 ? "s" : ""}`} size="small" color="warning" sx={{ fontSize: "0.65rem", height: 20 }} />
           </Box>
           <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
@@ -620,7 +671,9 @@ function ApprovalGroupCard({
       </CardContent>
       <Divider />
       <Box sx={{ px: 1.5, py: 1, display: "flex", flexDirection: "column", gap: 1 }}>
-        {group.approvals.map((approval) => (
+        {group.approvals.map((approval) => {
+          const details = buildApprovalDetails(approval);
+          return (
           <Box key={approval.id} sx={{ border: 1, borderColor: "divider", borderRadius: 1.5, px: 1, py: 0.75 }}>
             <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
               <Typography variant="caption" color="text.secondary">{formatDate(approval.created_at)}</Typography>
@@ -654,16 +707,38 @@ function ApprovalGroupCard({
                 </Button>
               </Box>
             </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-              {buildApprovalDescription(approval)}
-            </Typography>
+            {/* Structured approval details */}
+            <Box sx={{ mt: 0.75, display: "flex", flexDirection: "column", gap: 0.25 }}>
+              <Typography variant="caption" color="text.primary">
+                <strong>Action:</strong> {details.action}
+              </Typography>
+              {details.target && (
+                <Typography variant="caption" color="text.primary">
+                  <strong>Item:</strong> {details.target}
+                </Typography>
+              )}
+              {details.location && (
+                <Typography variant="caption" color="text.primary">
+                  <strong>Location:</strong> {details.location}
+                </Typography>
+              )}
+              {details.reason && (
+                <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
+                  <strong>Reason:</strong> {details.reason.length > 200 ? details.reason.slice(0, 200) + "..." : details.reason}
+                </Typography>
+              )}
+              <Typography variant="caption" color="text.secondary">
+                <strong>Source:</strong> {details.source}
+              </Typography>
+            </Box>
             <Box sx={{ display: "flex", gap: 0.5, mt: 0.75, flexWrap: "wrap" }}>
               <Button size="small" variant="text" disabled={acting.has(approval.id) || isBusy} onClick={() => onAction(approval.id, "approved", "approved")}>Always Allow</Button>
               <Button size="small" variant="text" disabled={acting.has(approval.id) || isBusy} onClick={() => onAction(approval.id, "ignored", "ignored")}>Always Ignore</Button>
               <Button size="small" variant="text" disabled={acting.has(approval.id) || isBusy} onClick={() => onAction(approval.id, "rejected", "rejected")}>Always Reject</Button>
             </Box>
           </Box>
-        ))}
+          );
+        })}
       </Box>
     </Card>
   );

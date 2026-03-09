@@ -15,7 +15,7 @@ import {
   isWorkerAvailable,
 } from "@/lib/agent";
 import { isWorkerAvailable as checkWorkerAvailable, runLlmInWorker, type WorkerToolResult } from "@/lib/agent/worker-manager";
-import { addLog, getUserById, listToolPolicies } from "@/lib/db";
+import { addLog, getUserById, listToolPolicies, getToolPolicy } from "@/lib/db";
 
 /**
  * POST /api/conversation/respond
@@ -134,17 +134,19 @@ export async function POST(req: NextRequest) {
   const mcpSlots = Math.max(0, MAX_TOOLS_PER_REQUEST - builtinAndCustomTools.length);
   const allTools: ToolDefinition[] = [...builtinAndCustomTools, ...mcpTools.slice(0, mcpSlots)];
 
-  // Filter tools by user role — non-admin users only see global-scope tools
+  // Filter tools by user role and approval policy.
+  // Voice conversations cannot pause for approval, so tools requiring approval
+  // are excluded entirely. Unknown tools (no policy) are also excluded (default-deny).
   const isAdmin = auth.user.id ? (getUserById(auth.user.id)?.role === "admin") : true;
-  const tools: ToolDefinition[] = isAdmin
-    ? allTools
-    : (() => {
-        const policyMap = new Map(listToolPolicies().map((p) => [p.tool_name, p]));
-        return allTools.filter((t) => {
-          const policy = policyMap.get(t.name);
-          return !policy || policy.scope !== "user";
-        });
-      })();
+  const policyMap = new Map(listToolPolicies().map((p) => [p.tool_name, p]));
+  const tools: ToolDefinition[] = allTools.filter((t) => {
+    const policy = policyMap.get(t.name);
+    // Exclude tools that require approval — voice can't pause for HITL
+    if (!policy || policy.requires_approval) return false;
+    // Non-admin users only see global-scope tools
+    if (!isAdmin && policy.scope === "user") return false;
+    return true;
+  });
 
   addLog({
     level: "info",
@@ -332,6 +334,12 @@ async function executeConversationTool(
     const { normalizeToolName } = await import("@/lib/agent/discovery");
     const normalized = normalizeToolName(toolCall.name);
     const tc = { ...toolCall, name: normalized };
+
+    // Defense-in-depth: refuse any tool that requires approval (default-deny)
+    const policy = getToolPolicy(tc.name);
+    if (!policy || policy.requires_approval) {
+      return { status: "error", error: `Tool "${tc.name}" requires approval and cannot be used in voice conversations.` };
+    }
 
     let result: unknown;
 

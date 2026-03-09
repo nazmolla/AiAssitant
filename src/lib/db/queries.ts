@@ -1018,19 +1018,20 @@ export interface ApprovalRequest {
   args: string;
   reasoning: string | null;
   nl_request: string | null;
+  source: string;
   status: string;
   created_at: string;
 }
 
-export function createApprovalRequest(req: Omit<ApprovalRequest, "id" | "status" | "created_at" | "nl_request"> & { nl_request?: string | null }): ApprovalRequest {
+export function createApprovalRequest(req: Omit<ApprovalRequest, "id" | "status" | "created_at" | "nl_request" | "source"> & { nl_request?: string | null; source?: string }): ApprovalRequest {
   const id = uuid();
   return getDb()
     .prepare(
-      `INSERT INTO approval_queue (id, thread_id, tool_name, args, reasoning, nl_request)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO approval_queue (id, thread_id, tool_name, args, reasoning, nl_request, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
-    .get(id, req.thread_id, req.tool_name, req.args, req.reasoning, req.nl_request ?? null) as ApprovalRequest;
+    .get(id, req.thread_id, req.tool_name, req.args, req.reasoning, req.nl_request ?? null, req.source ?? "chat") as ApprovalRequest;
 }
 
 export function getApprovalById(id: string): ApprovalRequest | undefined {

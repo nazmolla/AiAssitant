@@ -27,6 +27,12 @@ All screenshots are captured from the **test environment**.
 - Includes table-level breakdown, managed storage totals (DB/WAL/SHM/attachments), and host resource snapshot (CPU/RAM/uptime).
 - Supports manual cleanup runs and recurring maintenance policies for logs, conversations/threads, attachments, and orphan files.
 
+## Approval Notifications
+
+- Approval notifications now show **structured details**: the action (in readable language), the item being acted on, the location, the reason for the request, and who/what initiated it (User Chat, Scheduled Task, etc.).
+- **Default-deny** policy: unknown tools (no policy entry) always require approval — both in the agent chat loop and the gatekeeper.
+- **Voice conversations** exclude any tool that requires approval — the LLM will not attempt tool calls that cannot be approved mid-call.
+
 ## Standing Orders
 
 - Use **Settings → Standing Orders** to view, edit, or revoke your saved approval decisions.

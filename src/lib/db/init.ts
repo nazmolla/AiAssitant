@@ -558,6 +558,7 @@ function ensureChannelImapUidColumns(): void {
 function ensureApprovalQueueNlRequestColumn(): void {
   if (!tableExists("approval_queue")) return;
   addColumnIfMissing("approval_queue", "nl_request", "TEXT");
+  addColumnIfMissing("approval_queue", "source", "TEXT DEFAULT 'chat'");
 }
 
 function ensureApprovalPreferencesTable(): void {

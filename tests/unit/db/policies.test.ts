@@ -144,4 +144,23 @@ describe("Approval Queue", () => {
     const pending = listPendingApprovals();
     expect(pending.find((r) => r.id === req.id)).toBeUndefined();
   });
+
+  test("createApprovalRequest stores source field", () => {
+    const chatReq = createApprovalRequest({
+      thread_id: threadId,
+      tool_name: "chat_tool",
+      args: "{}",
+      reasoning: null,
+    });
+    expect(chatReq.source).toBe("chat");
+
+    const schedReq = createApprovalRequest({
+      thread_id: null,
+      tool_name: "scheduled_tool",
+      args: "{}",
+      reasoning: "Scheduled task",
+      source: "scheduler",
+    });
+    expect(schedReq.source).toBe("scheduler");
+  });
 });
