@@ -1030,12 +1030,11 @@ export async function persistKnowledgeFromTurn(
   const payload = snippets.join("\n\n").slice(0, 8000);
   if (!payload.trim()) return;
 
-  // Determine source type from thread title — proactive scans and
-  // scheduled tasks are "proactive:", everything else is "chat:".
+  // Determine source type from typed thread metadata.
   let source = `chat:${threadId}`;
   try {
     const thread = getThread(threadId);
-    if (thread?.title?.startsWith("[proactive-scan]") || thread?.title?.startsWith("[scheduled]")) {
+    if (thread?.thread_type === "proactive" || thread?.thread_type === "scheduled") {
       source = `proactive:${threadId}`;
     }
   } catch {

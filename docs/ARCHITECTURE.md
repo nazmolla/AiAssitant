@@ -4,6 +4,12 @@
 
 ---
 
+## Thread And Knowledge Typing
+
+- Thread ownership and visibility are enforced by typed DB metadata (`threads.user_id`, `thread_type`, `is_interactive`) rather than title prefix conventions.
+- Channel conversations are resolved by structured identifiers (`channel_id`, `external_sender_id`) instead of string tags inside `title`.
+- Knowledge provenance is represented by `user_knowledge.source_type` and consumed directly by UI/API filtering.
+
 ## Architecture Diagram
 
 ```mermaid

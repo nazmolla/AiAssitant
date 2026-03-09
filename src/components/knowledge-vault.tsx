@@ -16,16 +16,16 @@ interface KnowledgeEntry {
   entity: string;
   attribute: string;
   value: string;
+  source_type: "manual" | "chat" | "proactive";
   source_context: string | null;
   last_updated: string;
 }
 
 type SourceFilter = "all" | "proactive" | "manual";
 
-function getSourceLabel(sourceContext: string | null): string {
-  if (!sourceContext) return "Manual";
-  if (sourceContext.startsWith("[proactive:")) return "Proactive";
-  if (sourceContext.startsWith("[chat:")) return "Conversation";
+function getSourceLabel(sourceType: "manual" | "chat" | "proactive"): string {
+  if (sourceType === "proactive") return "Proactive";
+  if (sourceType === "chat") return "Conversation";
   return "Manual";
 }
 
@@ -88,9 +88,9 @@ export function KnowledgeVault() {
   const filteredEntries = useMemo(() => {
     if (sourceFilter === "all") return entries;
     if (sourceFilter === "proactive") {
-      return entries.filter((entry) => (entry.source_context || "").startsWith("[proactive:"));
+      return entries.filter((entry) => entry.source_type === "proactive");
     }
-    return entries.filter((entry) => !(entry.source_context || "").startsWith("[proactive:"));
+    return entries.filter((entry) => entry.source_type !== "proactive");
   }, [entries, sourceFilter]);
 
   useEffect(() => {
@@ -138,7 +138,7 @@ export function KnowledgeVault() {
                     <div className="text-sm font-medium truncate">{entry.entity}</div>
                     <div className="text-xs text-muted-foreground/70 truncate">{entry.attribute}</div>
                   </div>
-                  <div className="text-[10px] text-muted-foreground/60 shrink-0">{getSourceLabel(entry.source_context)}</div>
+                  <div className="text-[10px] text-muted-foreground/60 shrink-0">{getSourceLabel(entry.source_type)}</div>
                 </div>
                 {editingId === entry.id ? (
                   <div className="space-y-2">
@@ -221,7 +221,7 @@ export function KnowledgeVault() {
                       )}
                     </td>
                     <td className="p-4 text-xs text-muted-foreground/70">
-                      {getSourceLabel(entry.source_context)}
+                      {getSourceLabel(entry.source_type)}
                     </td>
                     <td className="p-4 text-xs text-muted-foreground/50">
                       {formatDate(entry.last_updated, { year: "numeric", month: "short", day: "numeric" })}

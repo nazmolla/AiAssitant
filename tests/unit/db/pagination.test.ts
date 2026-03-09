@@ -72,13 +72,11 @@ describe("listThreadsPaginated", () => {
   });
 
   test("excludes proactive-scan, scheduled, and channel threads", () => {
-    createThread("[proactive-scan] test", userId);
-    createThread("[scheduled] test", userId);
-    createThread("channel:test:test", userId);
+    createThread("[proactive-scan] test", userId, { threadType: "proactive" });
+    createThread("[scheduled] test", userId, { threadType: "scheduled" });
+    createThread("channel:test:test", userId, { threadType: "channel", channelId: "test", externalSenderId: "test" });
     const result = listThreadsPaginated(userId, 200, 0);
-    expect(result.data.every((t) => !t.title?.startsWith("[proactive-scan]"))).toBe(true);
-    expect(result.data.every((t) => !t.title?.startsWith("[scheduled]"))).toBe(true);
-    expect(result.data.every((t) => !t.title?.startsWith("channel:"))).toBe(true);
+    expect(result.data.every((t) => t.thread_type === "interactive")).toBe(true);
   });
 
   test("offset beyond total returns empty data", () => {
@@ -98,6 +96,7 @@ describe("listKnowledgePaginated", () => {
         entity: `Entity ${i}`,
         attribute: `attr_${i}`,
         value: `Value ${i}`,
+        source_type: "manual",
         source_context: null,
       }, userId);
     }

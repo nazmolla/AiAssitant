@@ -105,6 +105,7 @@ CREATE TABLE user_knowledge (
     entity TEXT NOT NULL,
     attribute TEXT NOT NULL,
     value TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'manual', -- manual | chat | proactive
     source_context TEXT,
     last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -124,6 +125,10 @@ CREATE TABLE threads (
     id TEXT PRIMARY KEY,
     user_id TEXT REFERENCES users(id),
     title TEXT,
+    thread_type TEXT NOT NULL DEFAULT 'interactive', -- interactive | proactive | scheduled | channel
+    is_interactive INTEGER NOT NULL DEFAULT 1,
+    channel_id TEXT,
+    external_sender_id TEXT,
     status TEXT DEFAULT 'active',
     last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -205,6 +210,10 @@ CREATE INDEX idx_scheduled_tasks_due ON scheduled_tasks (status, next_run_at);
 > **Notifications**: The `notifications` table stores persistent in-app notifications surfaced via the bell icon in the header. Notifications are automatically created when `notifyAdmin()` is called. Types include approval requests, tool errors, proactive actions, channel errors, and system-level alerts.
 >
 > **Proactive approvals**: When `thread_id` is `NULL`, the approval was created by the proactive scheduler (no associated chat thread). These appear in the Notification Center for admins and are executed directly when approved — no agent loop continuation is needed.
+>
+> **Typed thread filtering**: User chat thread lists now filter by `threads.thread_type = 'interactive'` (and `is_interactive = 1`) instead of title-prefix matching (e.g. `[proactive-scan]`, `[scheduled]`, `channel:*`). Channel conversations are resolved using `channel_id` + `external_sender_id` columns.
+>
+> **Typed knowledge source filtering**: Knowledge entries use `user_knowledge.source_type` (`manual` / `chat` / `proactive`) for filtering and reporting, replacing source-context prefix parsing.
 >
 > **Scheduled Tasks**: User future/recurring requests and proactive-discovered actions are persisted in `scheduled_tasks`. During each background scheduler cycle, due tasks (`next_run_at <= now`) are executed, `last_run_at` / `run_count` are updated, and `next_run_at` is recalculated from `frequency` + `interval_value`.
 >

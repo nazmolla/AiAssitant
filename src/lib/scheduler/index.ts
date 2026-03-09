@@ -47,6 +47,7 @@ import {
   markScheduledTaskFailed,
   type ScheduledTaskRecord,
   getDb,
+  findActiveChannelThread,
   getChannelImapState,
   updateChannelImapState,
   getAppConfig,
@@ -422,16 +423,15 @@ function normalizeEmail(value: string): string {
 }
 
 function resolveChannelThread(channelId: string, senderId: string, userId: string | null): string {
-  const db = getDb();
-  const tag = `channel:${channelId}:${senderId}`;
+  const existing = findActiveChannelThread(channelId, senderId, userId);
 
-  const existing = db
-    .prepare("SELECT id FROM threads WHERE title = ? AND status = 'active' ORDER BY last_message_at DESC LIMIT 1")
-    .get(tag) as { id: string } | undefined;
+  if (existing?.id) return existing.id;
 
-  if (existing) return existing.id;
-
-  const thread = createThread(tag, userId ?? undefined);
+  const thread = createThread(`Channel message from ${senderId}`, userId ?? undefined, {
+    threadType: "channel",
+    channelId,
+    externalSenderId: senderId,
+  });
   return thread.id;
 }
 
@@ -812,7 +812,7 @@ async function runDueScheduledTasks(
         }
         const thread = task.thread_id
           ? { id: task.thread_id }
-          : createThread(`[scheduled] ${task.task_name}`, task.user_id);
+          : createThread(`[scheduled] ${task.task_name}`, task.user_id, { threadType: "scheduled" });
         resultingThreadId = thread.id;
         await runAgentLoop(thread.id, payload.prompt, undefined, undefined, undefined, task.user_id);
       } else if (payload.kind === "tool_call") {
@@ -951,7 +951,7 @@ async function _runProactiveScanInner(): Promise<void> {
       });
     const mustTryTools = buildMustTryTools(noApprovalCandidates, lastToolsUsed);
 
-    const scanThread = createThread("[proactive-scan]", defaultAdminUserId);
+    const scanThread = createThread("[proactive-scan]", defaultAdminUserId, { threadType: "proactive" });
     const scanMessage = buildProactiveScanMessage(connectedServers, mcpTools.length, customToolNames, lastToolsUsed, mustTryTools);
 
     addLog({
@@ -996,7 +996,7 @@ async function _runProactiveScanInner(): Promise<void> {
         metadata: JSON.stringify({ firstTools: result.toolsUsed, lastToolsUsed }),
       });
 
-      const followupThread = createThread("[proactive-scan-followup]", defaultAdminUserId);
+      const followupThread = createThread("[proactive-scan-followup]", defaultAdminUserId, { threadType: "proactive" });
       finalResult = await runAgentLoop(
         followupThread.id,
         buildExplorationFollowupMessage(connectedServers, mustTryTools),

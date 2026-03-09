@@ -28,6 +28,12 @@ interface ExtractedFact {
   value: string;
 }
 
+function getSourceType(source: string): "manual" | "chat" | "proactive" {
+  if (source.startsWith("proactive:")) return "proactive";
+  if (source.startsWith("chat:")) return "chat";
+  return "manual";
+}
+
 /**
  * Runs an LLM-powered extraction pass over raw text and stores discovered facts in the Knowledge Vault.
  */
@@ -79,6 +85,7 @@ export async function ingestKnowledgeFromText(payload: KnowledgeIngestionPayload
           entity: fact.entity,
           attribute: fact.attribute,
           value: fact.value,
+          source_type: getSourceType(payload.source),
           source_context: buildSourceContext(payload.source, text),
         },
         payload.userId

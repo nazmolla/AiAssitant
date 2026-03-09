@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS user_knowledge (
     entity TEXT NOT NULL,
     attribute TEXT NOT NULL,
     value TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'manual', -- manual | chat | proactive
     source_context TEXT,
     last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -136,9 +137,19 @@ CREATE TABLE IF NOT EXISTS threads (
     id TEXT PRIMARY KEY,
     user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     title TEXT,
+    thread_type TEXT NOT NULL DEFAULT 'interactive', -- interactive | proactive | scheduled | channel
+    is_interactive INTEGER NOT NULL DEFAULT 1,
+    channel_id TEXT,
+    external_sender_id TEXT,
     status TEXT DEFAULT 'active',
     last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_threads_user_type_updated
+ON threads(user_id, thread_type, last_message_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_threads_channel_lookup
+ON threads(thread_type, channel_id, external_sender_id, status, last_message_at DESC);
 
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

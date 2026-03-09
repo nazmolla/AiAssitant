@@ -31,7 +31,7 @@ describe("persistKnowledgeFromTurn source tagging", () => {
   const USER_ID = "user-1";
 
   test("tags regular chat threads with chat: prefix", async () => {
-    mockGetThread.mockReturnValue({ id: THREAD_ID, title: "General conversation" });
+    mockGetThread.mockReturnValue({ id: THREAD_ID, title: "General conversation", thread_type: "interactive" });
 
     await persistKnowledgeFromTurn(THREAD_ID, SNIPPETS, USER_ID);
 
@@ -41,7 +41,7 @@ describe("persistKnowledgeFromTurn source tagging", () => {
   });
 
   test("tags proactive-scan threads with proactive: prefix", async () => {
-    mockGetThread.mockReturnValue({ id: THREAD_ID, title: "[proactive-scan]" });
+    mockGetThread.mockReturnValue({ id: THREAD_ID, title: "[proactive-scan]", thread_type: "proactive" });
 
     await persistKnowledgeFromTurn(THREAD_ID, SNIPPETS, USER_ID);
 
@@ -51,7 +51,7 @@ describe("persistKnowledgeFromTurn source tagging", () => {
   });
 
   test("tags scheduled task threads with proactive: prefix", async () => {
-    mockGetThread.mockReturnValue({ id: THREAD_ID, title: "[scheduled] Daily briefing" });
+    mockGetThread.mockReturnValue({ id: THREAD_ID, title: "[scheduled] Daily briefing", thread_type: "scheduled" });
 
     await persistKnowledgeFromTurn(THREAD_ID, SNIPPETS, USER_ID);
 

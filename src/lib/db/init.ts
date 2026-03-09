@@ -221,6 +221,80 @@ function ensureUserIdColumns(): void {
   }
 }
 
+function ensureThreadClassificationColumns(): void {
+  if (!tableExists("threads")) return;
+  const db = getDb();
+
+  addColumnIfMissing("threads", "thread_type", "TEXT NOT NULL DEFAULT 'interactive'");
+  addColumnIfMissing("threads", "is_interactive", "INTEGER NOT NULL DEFAULT 1");
+  addColumnIfMissing("threads", "channel_id", "TEXT");
+  addColumnIfMissing("threads", "external_sender_id", "TEXT");
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_threads_user_type_updated
+    ON threads(user_id, thread_type, last_message_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_threads_channel_lookup
+    ON threads(thread_type, channel_id, external_sender_id, status, last_message_at DESC);
+  `);
+
+  db.prepare(
+    `UPDATE threads
+     SET thread_type = 'proactive', is_interactive = 0
+     WHERE title LIKE '[proactive-scan]%' OR title LIKE '[proactive-scan-followup]%'`
+  ).run();
+
+  db.prepare(
+    `UPDATE threads
+     SET thread_type = 'scheduled', is_interactive = 0
+     WHERE title LIKE '[scheduled]%'`
+  ).run();
+
+  db.prepare(
+    `UPDATE threads
+     SET thread_type = 'channel', is_interactive = 0
+     WHERE title LIKE 'channel:%'`
+  ).run();
+
+  db.prepare(
+    `UPDATE threads
+     SET thread_type = 'interactive', is_interactive = 1
+     WHERE thread_type NOT IN ('interactive', 'proactive', 'scheduled', 'channel') OR thread_type IS NULL`
+  ).run();
+
+  const channelRows = db.prepare(
+    `SELECT id, title
+     FROM threads
+     WHERE thread_type = 'channel' AND (channel_id IS NULL OR external_sender_id IS NULL)`
+  ).all() as { id: string; title: string | null }[];
+
+  const updateStmt = db.prepare("UPDATE threads SET channel_id = ?, external_sender_id = ? WHERE id = ?");
+  for (const row of channelRows) {
+    const title = row.title || "";
+    const match = /^channel:([^:]+):(.+)$/.exec(title);
+    if (!match) continue;
+    updateStmt.run(match[1], match[2], row.id);
+  }
+}
+
+function ensureKnowledgeSourceTypeColumn(): void {
+  if (!tableExists("user_knowledge")) return;
+  const db = getDb();
+
+  addColumnIfMissing("user_knowledge", "source_type", "TEXT NOT NULL DEFAULT 'manual'");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_user_knowledge_source_type ON user_knowledge(user_id, source_type, last_updated DESC)");
+
+  db.prepare(
+    `UPDATE user_knowledge
+     SET source_type = CASE
+       WHEN source_context LIKE '[proactive:%' THEN 'proactive'
+       WHEN source_context LIKE '[chat:%' THEN 'chat'
+       ELSE 'manual'
+     END
+     WHERE source_type IS NULL OR source_type = '' OR source_type = 'manual'`
+  ).run();
+}
+
 /**
  * Collect the names of built-in tools that require approval by default.
  */
@@ -517,6 +591,8 @@ export function initializeDatabase(): void {
   ensureMessageAttachmentsColumn();
   ensureMessageCreatedAtColumn();
   ensureUserIdColumns();
+  ensureThreadClassificationColumns();
+  ensureKnowledgeSourceTypeColumn();
   ensureMcpServerNewColumns();
   ensureScreenSharingColumn();
   ensureToolPolicyScopeColumn();

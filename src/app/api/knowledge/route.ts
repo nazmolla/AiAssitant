@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
-  const { entity, attribute, value, source_context } = body;
+  const { entity, attribute, value, source_context, source_type } = body;
 
   if (!entity || !attribute || !value) {
     return NextResponse.json(
@@ -29,7 +29,14 @@ export async function POST(req: NextRequest) {
   }
 
   upsertKnowledge(
-    { user_id: auth.user.id, entity, attribute, value, source_context: source_context || null },
+    {
+      user_id: auth.user.id,
+      entity,
+      attribute,
+      value,
+      source_type: source_type === "chat" || source_type === "proactive" ? source_type : "manual",
+      source_context: source_context || null,
+    },
     auth.user.id
   );
   return NextResponse.json({ success: true }, { status: 201 });

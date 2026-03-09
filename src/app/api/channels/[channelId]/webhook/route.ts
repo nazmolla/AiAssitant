@@ -3,6 +3,7 @@ import { runAgentLoop, type AgentResponse } from "@/lib/agent";
 import {
   getChannel,
   getDb,
+  findActiveChannelThread,
   getChannelOwnerId,
   getUserByEmail,
   isUserEnabled,
@@ -455,19 +456,14 @@ function extractMessage(
  */
 function resolveThread(channelId: string, senderId: string, userId: string | null): string {
   const db = getDb();
-  const tag = `channel:${channelId}:${senderId}`;
-
-  // Look for an existing active thread with this tag as the title
-  const existing = db
-    .prepare("SELECT id FROM threads WHERE title = ? AND status = 'active' ORDER BY last_message_at DESC LIMIT 1")
-    .get(tag) as { id: string } | undefined;
-
-  if (existing) return existing.id;
+  const existing = findActiveChannelThread(channelId, senderId, userId);
+  if (existing?.id) return existing.id;
 
   const id = uuid();
   db.prepare(
-    "INSERT INTO threads (id, user_id, title, status) VALUES (?, ?, ?, 'active')"
-  ).run(id, userId, tag);
+    `INSERT INTO threads (id, user_id, title, thread_type, is_interactive, channel_id, external_sender_id, status)
+     VALUES (?, ?, ?, 'channel', 0, ?, ?, 'active')`
+  ).run(id, userId, `Channel message from ${senderId}`, channelId, senderId);
 
   return id;
 }

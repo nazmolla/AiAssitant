@@ -658,6 +658,7 @@ export interface KnowledgeEntry {
   entity: string;
   attribute: string;
   value: string;
+  source_type: "manual" | "chat" | "proactive";
   source_context: string | null;
   last_updated: string;
 }
@@ -702,19 +703,24 @@ export function searchKnowledge(query: string, userId?: string): KnowledgeEntry[
     .all(userId, pattern, pattern, pattern, pattern, pattern, pattern) as KnowledgeEntry[];
 }
 
-export function upsertKnowledge(entry: Omit<KnowledgeEntry, "id" | "last_updated">, userId?: string): number {
+export function upsertKnowledge(
+  entry: Omit<KnowledgeEntry, "id" | "last_updated" | "source_type"> & { source_type?: KnowledgeEntry["source_type"] },
+  userId?: string
+): number {
   const uid = entry.user_id ?? userId ?? null;
+  const sourceType = entry.source_type ?? "manual";
   const row = getDb()
     .prepare(
-      `INSERT INTO user_knowledge (user_id, entity, attribute, value, source_context)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO user_knowledge (user_id, entity, attribute, value, source_type, source_context)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id, entity, attribute, value) DO UPDATE SET
          value = excluded.value,
+         source_type = excluded.source_type,
          source_context = excluded.source_context,
          last_updated = CURRENT_TIMESTAMP
        RETURNING id`
     )
-    .get(uid, entry.entity, entry.attribute, entry.value, entry.source_context) as { id: number } | undefined;
+    .get(uid, entry.entity, entry.attribute, entry.value, sourceType, entry.source_context) as { id: number } | undefined;
 
   if (!row) {
     throw new Error("Failed to upsert knowledge entry");
@@ -782,29 +788,56 @@ export interface Thread {
   id: string;
   user_id: string | null;
   title: string | null;
+  thread_type: "interactive" | "proactive" | "scheduled" | "channel";
+  is_interactive: number;
+  channel_id: string | null;
+  external_sender_id: string | null;
   status: string;
   last_message_at: string;
 }
 
-export function createThread(title?: string, userId?: string): Thread {
+export interface CreateThreadOptions {
+  threadType?: "interactive" | "proactive" | "scheduled" | "channel";
+  channelId?: string;
+  externalSenderId?: string;
+  status?: string;
+}
+
+export function createThread(title?: string, userId?: string, options?: CreateThreadOptions): Thread {
   const id = uuid();
+  const threadType = options?.threadType ?? "interactive";
+  const isInteractive = threadType === "interactive" ? 1 : 0;
+  const status = options?.status ?? "active";
   return getDb()
-    .prepare("INSERT INTO threads (id, user_id, title) VALUES (?, ?, ?) RETURNING *")
-    .get(id, userId ?? null, title || "New Thread") as Thread;
+    .prepare(
+      `INSERT INTO threads (id, user_id, title, thread_type, is_interactive, channel_id, external_sender_id, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING *`
+    )
+    .get(
+      id,
+      userId ?? null,
+      title || "New Thread",
+      threadType,
+      isInteractive,
+      options?.channelId ?? null,
+      options?.externalSenderId ?? null,
+      status
+    ) as Thread;
 }
 
 export function listThreads(userId?: string): Thread[] {
   if (userId) {
     return getDb()
-      .prepare("SELECT * FROM threads WHERE user_id = ? AND title NOT LIKE '[proactive-scan]%' AND title NOT LIKE '[scheduled]%' AND title NOT LIKE 'channel:%' ORDER BY last_message_at DESC")
+      .prepare("SELECT * FROM threads WHERE user_id = ? AND thread_type = 'interactive' AND is_interactive = 1 ORDER BY last_message_at DESC")
       .all(userId) as Thread[];
   }
   return getDb()
-    .prepare("SELECT * FROM threads WHERE title NOT LIKE '[proactive-scan]%' AND title NOT LIKE '[scheduled]%' AND title NOT LIKE 'channel:%' ORDER BY last_message_at DESC")
+    .prepare("SELECT * FROM threads WHERE thread_type = 'interactive' AND is_interactive = 1 ORDER BY last_message_at DESC")
     .all() as Thread[];
 }
 
-const THREAD_FILTER = "title NOT LIKE '[proactive-scan]%' AND title NOT LIKE '[scheduled]%' AND title NOT LIKE 'channel:%'";
+const THREAD_FILTER = "thread_type = 'interactive' AND is_interactive = 1";
 
 export function listThreadsPaginated(userId: string, limit = 50, offset = 0): PaginatedResult<Thread> {
   const db = getDb();
@@ -818,6 +851,35 @@ export function listThreadsPaginated(userId: string, limit = 50, offset = 0): Pa
 
 export function getThread(id: string): Thread | undefined {
   return stmt("SELECT * FROM threads WHERE id = ?").get(id) as Thread | undefined;
+}
+
+export function findActiveChannelThread(channelId: string, senderId: string, userId?: string | null): Thread | undefined {
+  if (userId) {
+    return getDb()
+      .prepare(
+        `SELECT * FROM threads
+         WHERE thread_type = 'channel'
+           AND channel_id = ?
+           AND external_sender_id = ?
+           AND user_id = ?
+           AND status = 'active'
+         ORDER BY last_message_at DESC
+         LIMIT 1`
+      )
+      .get(channelId, senderId, userId) as Thread | undefined;
+  }
+
+  return getDb()
+    .prepare(
+      `SELECT * FROM threads
+       WHERE thread_type = 'channel'
+         AND channel_id = ?
+         AND external_sender_id = ?
+         AND status = 'active'
+       ORDER BY last_message_at DESC
+       LIMIT 1`
+    )
+    .get(channelId, senderId) as Thread | undefined;
 }
 
 export function updateThreadStatus(id: string, status: string): void {

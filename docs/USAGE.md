@@ -8,6 +8,12 @@ This handbook is split into one overview and multiple drill-down guides so users
 
 All screenshots are captured from the **test environment**.
 
+## Typed Filtering Behavior
+
+- Chat thread lists show only interactive threads based on DB type metadata (not title text conventions).
+- Proactive and channel/system threads are persisted with explicit non-interactive types and remain excluded from regular chat lists.
+- Knowledge Vault source filters use explicit `source_type` metadata (`manual` / `chat` / `proactive`).
+
 ## Reading Path
 
 1. **Start here:** [USAGE_GETTING_STARTED.md](USAGE_GETTING_STARTED.md)

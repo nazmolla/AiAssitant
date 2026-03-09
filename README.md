@@ -32,6 +32,11 @@
 - **ESP32 Atom Echo** — standalone Arduino sketch for M5Stack Atom Echo with on-device wake-word detection (micro-wake-up) and hands-free voice interaction
 - **Multi-Format TTS** — configurable TTS output format (mp3, wav, pcm, opus, aac, flac) for flexible client support
 
+## Data Model Update
+
+- Thread visibility/routing no longer depends on parsing thread title text. It now uses typed columns: `thread_type`, `is_interactive`, `channel_id`, and `external_sender_id`.
+- Knowledge source filtering no longer parses `source_context` prefixes; it now uses `user_knowledge.source_type` (`manual` | `chat` | `proactive`).
+
 ---
 
 ## Quick Start

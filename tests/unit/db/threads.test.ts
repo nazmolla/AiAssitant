@@ -74,30 +74,28 @@ describe("Threads", () => {
   });
 
   test("listThreads excludes proactive-scan threads", () => {
-    createThread("[proactive-scan]", userId);
-    createThread("[proactive-scan] 2025-01-01", userId);
+    createThread("[proactive-scan]", userId, { threadType: "proactive" });
+    createThread("[proactive-scan] 2025-01-01", userId, { threadType: "proactive" });
     const threads = listThreads(userId);
-    expect(threads.every((t) => !t.title?.startsWith("[proactive-scan]"))).toBe(true);
+    expect(threads.every((t) => t.thread_type === "interactive")).toBe(true);
   });
 
   test("listThreads excludes scheduled threads", () => {
-    createThread("[scheduled] Daily Report", userId);
+    createThread("[scheduled] Daily Report", userId, { threadType: "scheduled" });
     const threads = listThreads(userId);
-    expect(threads.every((t) => !t.title?.startsWith("[scheduled]"))).toBe(true);
+    expect(threads.every((t) => t.thread_type === "interactive")).toBe(true);
   });
 
   test("listThreads excludes channel threads", () => {
-    createThread("channel:a3ab3b28-5212-4df4:sender@example.com", userId);
-    createThread("channel:00000000-0000-0000:test", userId);
+    createThread("channel thread 1", userId, { threadType: "channel", channelId: "a3ab3b28-5212-4df4", externalSenderId: "sender@example.com" });
+    createThread("channel thread 2", userId, { threadType: "channel", channelId: "00000000-0000-0000", externalSenderId: "test" });
     const threads = listThreads(userId);
-    expect(threads.every((t) => !t.title?.startsWith("channel:"))).toBe(true);
+    expect(threads.every((t) => t.thread_type === "interactive")).toBe(true);
   });
 
   test("listThreads without userId also excludes internal threads", () => {
     const allThreads = listThreads();
-    expect(allThreads.every((t) => !t.title?.startsWith("[proactive-scan]"))).toBe(true);
-    expect(allThreads.every((t) => !t.title?.startsWith("[scheduled]"))).toBe(true);
-    expect(allThreads.every((t) => !t.title?.startsWith("channel:"))).toBe(true);
+    expect(allThreads.every((t) => t.thread_type === "interactive")).toBe(true);
   });
 });
 

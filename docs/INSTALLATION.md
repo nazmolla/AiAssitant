@@ -78,6 +78,15 @@ npx next build --webpack
 npm start
 ```
 
+## Schema Migration Note
+
+On startup, DB initialization now backfills typed metadata columns for legacy data:
+
+- `threads.thread_type`, `threads.is_interactive`, `threads.channel_id`, `threads.external_sender_id`
+- `user_knowledge.source_type`
+
+This migration replaces legacy title/source prefix parsing in runtime filters.
+
 By default, the server listens on port `3000`. Override with `-p`:
 
 ```bash
