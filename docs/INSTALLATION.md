@@ -87,6 +87,8 @@ On startup, DB initialization now backfills typed metadata columns for legacy da
 
 This migration replaces legacy title/source prefix parsing in runtime filters.
 
+DB maintenance policies are persisted in `app_config` and can be managed through **Settings → DB Management** (admin-only). This includes recurring cleanup interval, retention windows, and cleanup toggles for logs, threads/conversations, attachments, and orphan files.
+
 By default, the server listens on port `3000`. Override with `-p`:
 
 ```bash

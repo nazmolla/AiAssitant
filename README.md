@@ -26,6 +26,7 @@
 - **Self-Extending Tools** — the agent can create its own tools at runtime, compiled and sandboxed
 - **Account Dropdown** — top-right user menu provides quick **Profile** and **Sign out** actions
 - **Unified Notification Center** — bell icon in the header aggregates approvals, tool errors, proactive actions, channel errors and system alerts; IM channels + email fallback for external delivery
+- **DB Management Center** — dedicated Settings page for DB/table size breakdown, host resource snapshot (CPU/RAM/storage), manual cleanup tools, and recurring retention jobs
 - **Security Hardened** — prompt injection defense, CSP headers, rate limiting, input validation
 - **Email Injection Hardening** — inbound email content is handled as untrusted data and guarded before agent processing
 - **Alexa Smart Home** — native integration with 14 Alexa tools for announcements, light/volume control, sensors, and DND management

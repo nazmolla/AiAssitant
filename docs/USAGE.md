@@ -14,6 +14,19 @@ All screenshots are captured from the **test environment**.
 - Proactive and channel/system threads are persisted with explicit non-interactive types and remain excluded from regular chat lists.
 - Knowledge Vault source filters use explicit `source_type` metadata (`manual` / `chat` / `proactive`).
 
+## Runtime Log Streaming
+
+- Use `GET /api/logs/stream` for live SSE log events (`log`, `cursor`, `heartbeat`).
+- Access is allowed for admin sessions or API keys granted the `logs` scope.
+- Optional query params: `sinceId`, `level`, `source`.
+- Permanent CLI consumer script: `npm run logs:stream -- <baseUrl> <apiKey> [level] [source] [sinceId]`.
+
+## DB Management Center
+
+- Use **Settings → DB Management** (admin-only) to monitor DB growth and cleanup status in one location.
+- Includes table-level breakdown, managed storage totals (DB/WAL/SHM/attachments), and host resource snapshot (CPU/RAM/uptime).
+- Supports manual cleanup runs and recurring maintenance policies for logs, conversations/threads, attachments, and orphan files.
+
 ## Reading Path
 
 1. **Start here:** [USAGE_GETTING_STARTED.md](USAGE_GETTING_STARTED.md)

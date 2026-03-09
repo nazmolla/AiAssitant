@@ -52,6 +52,7 @@ import {
   updateChannelImapState,
   getAppConfig,
   setAppConfig,
+  runDbMaintenanceIfDue,
 } from "@/lib/db";
 import { simpleParser } from "mailparser";
 import {
@@ -922,6 +923,25 @@ async function _runProactiveScanInner(): Promise<void> {
       level: "error",
       source: "scheduler",
       message: `Scheduled task run failed: ${err}`,
+      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+    });
+  }
+
+  try {
+    const maintenanceResult = runDbMaintenanceIfDue();
+    if (maintenanceResult) {
+      addLog({
+        level: "warning",
+        source: "scheduler",
+        message: "Scheduled DB maintenance run completed.",
+        metadata: JSON.stringify(maintenanceResult),
+      });
+    }
+  } catch (err) {
+    addLog({
+      level: "error",
+      source: "scheduler",
+      message: `Scheduled DB maintenance failed: ${err}`,
       metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
     });
   }

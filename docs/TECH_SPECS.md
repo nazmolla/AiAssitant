@@ -282,7 +282,9 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `GET` | `/api/mcp/tools` | Auth | List all available MCP tools |
 | `GET/POST` | `/api/approvals` | Auth | List/resolve pending approvals (O(1) JOIN query; stale approvals auto-cleaned) |
 | `GET/POST` | `/api/policies` | Auth | List/update tool policies |
-| `GET` | `/api/logs` | Auth | Fetch agent activity logs |
+| `GET` | `/api/logs` | Auth | Fetch agent activity logs (admin session or API key with `logs` scope) |
+| `GET` | `/api/logs/stream` | Auth | Stream live logs over SSE (`log`, `cursor`, `heartbeat`) |
+| `GET/PUT/POST` | `/api/config/db-management` | Admin | Get DB/resource snapshot, update recurring cleanup policy, or run cleanup immediately |
 | `GET/POST` | `/api/config/llm` | Auth | Manage LLM provider configs |
 | `GET/POST/PATCH/DELETE` | `/api/config/auth` | Admin | Manage OAuth and Discord auth providers |
 | `GET/POST/PATCH/DELETE` | `/api/config/channels` | User | Manage communication channels (user-scoped, ownership enforced) |

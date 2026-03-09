@@ -2,7 +2,15 @@
  * Unit tests — Agent Logs
  */
 import { setupTestDb, teardownTestDb } from "../../helpers/test-db";
-import { addLog, getRecentLogs, setServerMinLogLevel } from "@/lib/db/queries";
+import {
+  addLog,
+  getDbMaintenanceConfig,
+  getLogsAfterId,
+  getRecentLogs,
+  runDbMaintenance,
+  setDbMaintenanceConfig,
+  setServerMinLogLevel,
+} from "@/lib/db/queries";
 
 beforeAll(() => setupTestDb());
 afterAll(() => teardownTestDb());
@@ -77,10 +85,35 @@ describe("Agent Logs", () => {
     expect(logs.length).toBeLessThanOrEqual(10000);
   });
 
+  test("getLogsAfterId returns rows in ascending id order", () => {
+    addLog({ level: "info", source: "stream", message: "stream log one", metadata: null });
+    addLog({ level: "error", source: "stream", message: "stream log two", metadata: null });
+    const seed = getRecentLogs(1)[0];
+    const rows = getLogsAfterId(seed.id - 1, 10);
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (let i = 1; i < rows.length; i += 1) {
+      expect(rows[i].id).toBeGreaterThan(rows[i - 1].id);
+    }
+  });
+
+  test("getLogsAfterId respects level and source filters", () => {
+    addLog({ level: "warning", source: "scheduler", message: "sched warn", metadata: null });
+    addLog({ level: "error", source: "scheduler", message: "sched error", metadata: null });
+    addLog({ level: "error", source: "agent", message: "agent error", metadata: null });
+
+    const all = getRecentLogs(10000);
+    const minId = Math.max(0, Math.min(...all.map((l) => l.id)) - 1);
+
+    const rows = getLogsAfterId(minId, 50, "error", "scheduler");
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    expect(rows.every((l) => l.level === "error" && l.source === "scheduler")).toBe(true);
+  });
+
   test("addLog supports error level", () => {
     addLog({ level: "error", source: "loop", message: "LLM timeout", metadata: '{"retry":true}' });
     const logs = getRecentLogs();
-    const errorLog = logs.find((l) => l.level === "error");
+    const errorLog = logs.find((l) => l.message === "LLM timeout");
     expect(errorLog).toBeDefined();
     expect(errorLog!.source).toBe("loop");
   });
@@ -111,5 +144,45 @@ describe("Agent Logs", () => {
     expect(logs.some((l) => l.message === "Should remain")).toBe(true);
 
     setServerMinLogLevel("verbose");
+  });
+
+  test("db maintenance config can be updated and read back", () => {
+    const updated = setDbMaintenanceConfig({
+      enabled: true,
+      intervalHours: 12,
+      logsRetentionDays: 45,
+      cleanupLogs: true,
+      cleanupThreads: false,
+      cleanupAttachments: false,
+      cleanupOrphanFiles: true,
+    });
+
+    expect(updated.enabled).toBe(true);
+    expect(updated.intervalHours).toBe(12);
+    expect(updated.logsRetentionDays).toBe(45);
+    expect(updated.cleanupLogs).toBe(true);
+    expect(updated.cleanupThreads).toBe(false);
+
+    const loaded = getDbMaintenanceConfig();
+    expect(loaded.enabled).toBe(true);
+    expect(loaded.intervalHours).toBe(12);
+    expect(loaded.logsRetentionDays).toBe(45);
+  });
+
+  test("manual db maintenance run returns counts and timestamps", () => {
+    addLog({ level: "warning", source: "maintenance", message: "old log candidate", metadata: null });
+    setDbMaintenanceConfig({
+      cleanupLogs: true,
+      cleanupThreads: false,
+      cleanupAttachments: false,
+      cleanupOrphanFiles: false,
+      logsRetentionDays: 1,
+    });
+
+    const result = runDbMaintenance("manual");
+    expect(result.mode).toBe("manual");
+    expect(typeof result.startedAt).toBe("string");
+    expect(typeof result.completedAt).toBe("string");
+    expect(result.deletedLogs).toBeGreaterThanOrEqual(0);
   });
 });
