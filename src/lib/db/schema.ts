@@ -145,12 +145,6 @@ CREATE TABLE IF NOT EXISTS threads (
     last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_threads_user_type_updated
-ON threads(user_id, thread_type, last_message_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_threads_channel_lookup
-ON threads(thread_type, channel_id, external_sender_id, status, last_message_at DESC);
-
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     thread_id TEXT REFERENCES threads(id),
