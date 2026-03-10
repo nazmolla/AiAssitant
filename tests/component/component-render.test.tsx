@@ -398,3 +398,99 @@ describe("ApiKeysConfig", () => {
     }, { timeout: 3000 });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// SchedulerConfig
+// ═══════════════════════════════════════════════════════════════════
+
+describe("SchedulerConfig", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/config/scheduler")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            cron_schedule: "*/15 * * * *",
+            knowledge_maintenance: {
+              enabled: true,
+              hour: 20,
+              minute: 0,
+              poll_seconds: 60,
+            },
+          }),
+        });
+      }
+      if (url.includes("/api/scheduler/overview")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            schedules_total: 1,
+            schedules_active: 1,
+            schedules_paused: 0,
+            runs_running: 0,
+            runs_failed_24h: 0,
+            runs_success_24h: 3,
+            runs_partial_24h: 0,
+          }),
+        });
+      }
+      if (url.includes("/api/scheduler/schedules")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            data: [
+              {
+                id: "sched-1",
+                schedule_key: "legacy.task.1",
+                name: "Legacy Task",
+                trigger_type: "interval",
+                trigger_expr: "every:1:hour",
+                status: "active",
+                next_run_at: "2025-01-01T00:00:00Z",
+                last_run_at: null,
+                updated_at: "2025-01-01T00:00:00Z",
+              },
+            ],
+            total: 1,
+            hasMore: false,
+          }),
+        });
+      }
+      if (url.includes("/api/scheduler/runs")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            data: [
+              {
+                id: "run-1",
+                schedule_id: "sched-1",
+                trigger_source: "timer",
+                status: "success",
+                created_at: "2025-01-01T00:00:00Z",
+                started_at: "2025-01-01T00:01:00Z",
+                finished_at: "2025-01-01T00:01:30Z",
+                error_message: null,
+              },
+            ],
+            total: 1,
+            hasMore: false,
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  });
+
+  test("renders without throwing", async () => {
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    expect(() => render(<SchedulerConfig />)).not.toThrow();
+  });
+
+  test("shows scheduler console heading", async () => {
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    render(<SchedulerConfig />);
+    await waitFor(() => {
+      expect(screen.getByText("Scheduler Console")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+});

@@ -37,6 +37,7 @@ All screenshots are captured from the **test environment**.
 
 - Nexus now includes normalized scheduler storage for batch visibility: parent schedules, child tasks, schedule runs, task runs, claims, and timeline events.
 - Legacy `scheduled_tasks` records are backfilled into the new schedule/task model on startup so existing recurring jobs remain represented during migration.
+- Admins can use **Settings → Scheduler** as a live console to view active/paused schedules, inspect recent runs, trigger manual runs, and review task-level run status/log references.
 
 ## DB Management Center
 

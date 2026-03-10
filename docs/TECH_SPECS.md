@@ -314,6 +314,15 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `GET/PUT` | `/api/config/whisper` | Admin | Get/update local Whisper server configuration |
 | `POST` | `/api/config/whisper` | Admin | Test connectivity to local Whisper server |
 | `GET/PUT` | `/api/config/scheduler` | Admin | Get/update proactive scheduler cron schedule (stored in `app_config`) |
+| `GET` | `/api/scheduler/overview` | Admin | Unified scheduler KPI snapshot (schedule counts, 24h run outcomes, recent slices) |
+| `GET` | `/api/scheduler/schedules` | Admin | Paginated list of scheduler schedules |
+| `GET` | `/api/scheduler/schedules/[id]` | Admin | Schedule detail with task graph and recent runs |
+| `POST` | `/api/scheduler/schedules/[id]/pause` | Admin | Pause schedule dispatching |
+| `POST` | `/api/scheduler/schedules/[id]/resume` | Admin | Resume schedule dispatching |
+| `POST` | `/api/scheduler/schedules/[id]/trigger` | Admin | Queue an immediate run for a schedule |
+| `PATCH` | `/api/scheduler/schedules/[id]/tasks` | Admin | Update schedule task graph |
+| `GET` | `/api/scheduler/runs` | Admin | Paginated run history with status and schedule filters |
+| `GET` | `/api/scheduler/runs/[id]` | Admin | Run detail with task-run status and log references |
 | `GET` | `/api/admin/users` | Admin | List all users with permissions |
 | `PUT/DELETE` | `/api/admin/users` | Admin | Update user role/status or delete user |
 | `GET` | `/api/admin/users/me` | User | Get current user's role and permissions |

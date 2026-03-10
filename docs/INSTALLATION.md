@@ -70,6 +70,7 @@ If you plan to use automated job scouting and resume delivery by email, also ver
 | `PROACTIVE_CRON_SCHEDULE` | No | Cron expression for the proactive scheduler (default: every 15 min) |
 
 Knowledge maintenance settings are managed in the admin UI via **Settings → Scheduler** and stored in `app_config`.
+The same page also includes the unified scheduler operations console (overview metrics, schedule controls, run history, and task-run detail).
 
 > **LLM keys, OAuth providers, and Discord credentials** are no longer set in `.env`. Configure them at runtime through the admin UI — see [Usage Configuration](USAGE_CONFIGURATION.md#llm-providers) and [Admin Operations](USAGE_ADMIN.md#authentication-providers).
 
