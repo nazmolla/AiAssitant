@@ -2613,3 +2613,190 @@ export function addSchedulerEvent(runId: string, eventType: string, message?: st
      VALUES (?, ?, ?, ?, ?)`
   ).run(runId, taskRunId ?? null, eventType, message ?? null, metadataJson ?? null);
 }
+
+export function getSchedulerOverviewStats(): {
+  schedules_total: number;
+  schedules_active: number;
+  schedules_paused: number;
+  runs_running: number;
+  runs_failed_24h: number;
+  runs_success_24h: number;
+  runs_partial_24h: number;
+} {
+  const db = getDb();
+  const schedules = db.prepare(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+       SUM(CASE WHEN status = 'paused' THEN 1 ELSE 0 END) AS paused
+     FROM scheduler_schedules`
+  ).get() as { total: number; active: number | null; paused: number | null };
+
+  const runs = db.prepare(
+    `SELECT
+       SUM(CASE WHEN status IN ('queued', 'claimed', 'running') THEN 1 ELSE 0 END) AS running,
+       SUM(CASE WHEN status = 'failed' AND datetime(created_at) >= datetime('now', '-1 day') THEN 1 ELSE 0 END) AS failed_24h,
+       SUM(CASE WHEN status = 'success' AND datetime(created_at) >= datetime('now', '-1 day') THEN 1 ELSE 0 END) AS success_24h,
+       SUM(CASE WHEN status = 'partial_success' AND datetime(created_at) >= datetime('now', '-1 day') THEN 1 ELSE 0 END) AS partial_24h
+     FROM scheduler_runs`
+  ).get() as { running: number | null; failed_24h: number | null; success_24h: number | null; partial_24h: number | null };
+
+  return {
+    schedules_total: schedules.total || 0,
+    schedules_active: schedules.active || 0,
+    schedules_paused: schedules.paused || 0,
+    runs_running: runs.running || 0,
+    runs_failed_24h: runs.failed_24h || 0,
+    runs_success_24h: runs.success_24h || 0,
+    runs_partial_24h: runs.partial_24h || 0,
+  };
+}
+
+export function listSchedulerSchedulesPaginated(limit = 50, offset = 0, status?: string): PaginatedResult<SchedulerScheduleRecord> {
+  const db = getDb();
+  const safeLimit = Math.max(1, Math.min(200, limit));
+  const safeOffset = Math.max(0, offset);
+
+  const where = status ? "WHERE status = ?" : "";
+  const total = status
+    ? (db.prepare(`SELECT COUNT(*) AS c FROM scheduler_schedules ${where}`).get(status) as { c: number }).c
+    : (db.prepare("SELECT COUNT(*) AS c FROM scheduler_schedules").get() as { c: number }).c;
+
+  const data = status
+    ? db.prepare(`SELECT * FROM scheduler_schedules ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`).all(status, safeLimit, safeOffset)
+    : db.prepare("SELECT * FROM scheduler_schedules ORDER BY updated_at DESC LIMIT ? OFFSET ?").all(safeLimit, safeOffset);
+
+  return {
+    data: data as SchedulerScheduleRecord[],
+    total,
+    limit: safeLimit,
+    offset: safeOffset,
+    hasMore: safeOffset + (data as SchedulerScheduleRecord[]).length < total,
+  };
+}
+
+export function getSchedulerScheduleById(scheduleId: string): SchedulerScheduleRecord | null {
+  const row = stmt("SELECT * FROM scheduler_schedules WHERE id = ?").get(scheduleId) as SchedulerScheduleRecord | undefined;
+  return row || null;
+}
+
+export function listSchedulerRunsBySchedule(scheduleId: string, limit = 25): SchedulerRunRecord[] {
+  return stmt(
+    `SELECT *
+     FROM scheduler_runs
+     WHERE schedule_id = ?
+     ORDER BY created_at DESC
+     LIMIT ?`
+  ).all(scheduleId, Math.max(1, Math.min(200, limit))) as SchedulerRunRecord[];
+}
+
+export function listSchedulerRunsPaginated(limit = 50, offset = 0, status?: string, scheduleId?: string): PaginatedResult<SchedulerRunRecord> {
+  const db = getDb();
+  const safeLimit = Math.max(1, Math.min(200, limit));
+  const safeOffset = Math.max(0, offset);
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+
+  if (status) {
+    clauses.push("status = ?");
+    params.push(status);
+  }
+  if (scheduleId) {
+    clauses.push("schedule_id = ?");
+    params.push(scheduleId);
+  }
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+
+  const total = (db.prepare(`SELECT COUNT(*) AS c FROM scheduler_runs ${where}`).get(...params) as { c: number }).c;
+  const data = db.prepare(`SELECT * FROM scheduler_runs ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, safeLimit, safeOffset) as SchedulerRunRecord[];
+
+  return {
+    data,
+    total,
+    limit: safeLimit,
+    offset: safeOffset,
+    hasMore: safeOffset + data.length < total,
+  };
+}
+
+export function getSchedulerRunById(runId: string): SchedulerRunRecord | null {
+  const row = stmt("SELECT * FROM scheduler_runs WHERE id = ?").get(runId) as SchedulerRunRecord | undefined;
+  return row || null;
+}
+
+export function getSchedulerRunWithContext(runId: string): {
+  run: SchedulerRunRecord;
+  schedule: SchedulerScheduleRecord | null;
+  task_runs: SchedulerTaskRunRecord[];
+} | null {
+  const run = getSchedulerRunById(runId);
+  if (!run) return null;
+  return {
+    run,
+    schedule: getSchedulerScheduleById(run.schedule_id),
+    task_runs: getSchedulerTaskRunsForRun(runId),
+  };
+}
+
+export function updateSchedulerScheduleStatus(scheduleId: string, status: "active" | "paused" | "archived"): void {
+  getDb().prepare(
+    `UPDATE scheduler_schedules
+     SET status = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run(status, scheduleId);
+}
+
+export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
+  id?: string;
+  task_key: string;
+  name: string;
+  handler_name: string;
+  execution_mode?: "sync" | "async" | "fanout";
+  sequence_no?: number;
+  timeout_sec?: number | null;
+  retry_policy_json?: string | null;
+  enabled?: number;
+  config_json?: string | null;
+}>): void {
+  const db = getDb();
+  const insert = db.prepare(
+    `INSERT INTO scheduler_tasks (
+      id, schedule_id, task_key, name, handler_name, execution_mode,
+      sequence_no, timeout_sec, retry_policy_json, enabled, config_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const update = db.prepare(
+    `UPDATE scheduler_tasks
+     SET task_key = ?,
+         name = ?,
+         handler_name = ?,
+         execution_mode = ?,
+         sequence_no = ?,
+         timeout_sec = ?,
+         retry_policy_json = ?,
+         enabled = ?,
+         config_json = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND schedule_id = ?`
+  );
+
+  db.transaction(() => {
+    for (const task of tasks) {
+      const id = task.id || uuid();
+      const mode = task.execution_mode || "sync";
+      const seq = Number.isFinite(task.sequence_no) ? Number(task.sequence_no) : 0;
+      const enabled = task.enabled === 0 ? 0 : 1;
+      const timeout = task.timeout_sec ?? null;
+      const retry = task.retry_policy_json ?? null;
+      const config = task.config_json ?? null;
+
+      const existing = db.prepare("SELECT id FROM scheduler_tasks WHERE id = ? AND schedule_id = ?").get(id, scheduleId) as { id: string } | undefined;
+      if (existing) {
+        update.run(task.task_key, task.name, task.handler_name, mode, seq, timeout, retry, enabled, config, id, scheduleId);
+      } else {
+        insert.run(id, scheduleId, task.task_key, task.name, task.handler_name, mode, seq, timeout, retry, enabled, config);
+      }
+    }
+  })();
+}
