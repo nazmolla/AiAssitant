@@ -1,7 +1,7 @@
-import type { ScheduledTaskFrequency } from "@/lib/db";
+export type ParsedTaskFrequency = "once" | "hourly" | "daily" | "weekly" | "monthly";
 
 interface ParsedSchedule {
-  frequency: ScheduledTaskFrequency;
+  frequency: ParsedTaskFrequency;
   intervalValue: number;
   nextRunAt: Date;
 }
@@ -61,7 +61,7 @@ function parseScheduleFromText(text: string, now: Date): ParsedSchedule {
   if (everyMatch) {
     const intervalValue = Math.max(1, Number(everyMatch[1]));
     const unit = everyMatch[2];
-    const frequency: ScheduledTaskFrequency =
+    const frequency: ParsedTaskFrequency =
       unit === "hour" ? "hourly" : unit === "day" ? "daily" : unit === "week" ? "weekly" : "monthly";
     return { frequency, intervalValue, nextRunAt: now };
   }

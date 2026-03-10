@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/auth/guard";
 import { addLog, getSchedulerQueueHealthMetrics, listEnabledSchedulerTaskHandlers } from "@/lib/db";
 
 const REGISTERED_HANDLERS = new Set<string>([
-  "legacy.scheduled_task.execute",
+  "agent.prompt",
   "system.proactive.scan",
   "system.db_maintenance.run_due",
   "system.knowledge_maintenance.run_due",

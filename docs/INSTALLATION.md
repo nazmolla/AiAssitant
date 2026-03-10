@@ -102,8 +102,6 @@ Scheduler initialization also provisions unified scheduler foundation tables:
 - `scheduler_claims`
 - `scheduler_events`
 
-Legacy `scheduled_tasks` rows are backfilled into `scheduler_schedules` + `scheduler_tasks` during startup to support phased migration without losing scheduled intent.
-
 Startup also seeds system unified schedules for proactive scan, DB maintenance, knowledge maintenance, and a modeled Job Scout pipeline task graph.
 On engine startup, enabled scheduler task handlers are validated against the registered handler set and warnings are emitted for orphan handlers.
 

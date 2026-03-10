@@ -27,7 +27,7 @@ const ALLOWED_TABLES = new Set([
   "user_knowledge", "owner_profile", "user_profiles", "channels",
   "users", "user_permissions", "tool_policies", "agent_logs",
   "mcp_servers", "attachments", "webhooks", "api_keys",
-  "approval_queue", "approval_preferences", "scheduled_tasks",
+  "approval_queue", "approval_preferences",
   "scheduler_schedules", "scheduler_tasks", "scheduler_runs",
   "scheduler_task_runs", "scheduler_claims", "scheduler_events",
 ]);
@@ -665,104 +665,6 @@ function ensureApprovalPreferencesTable(): void {
   `);
 }
 
-function ensureUnifiedSchedulerBackfill(): void {
-  const db = getDb();
-  if (!tableExists("scheduled_tasks") || !tableExists("scheduler_schedules") || !tableExists("scheduler_tasks")) return;
-
-  const mapFrequencyToTriggerExpr = (frequency: string, intervalValue: number): string => {
-    const safeInterval = Number.isFinite(intervalValue) && intervalValue > 0 ? intervalValue : 1;
-    if (frequency === "hourly") return `every:${safeInterval}:hour`;
-    if (frequency === "daily") return `every:${safeInterval}:day`;
-    if (frequency === "weekly") return `every:${safeInterval}:week`;
-    if (frequency === "monthly") return `every:${safeInterval}:month`;
-    return "once";
-  };
-
-  const rows = db.prepare(
-    `SELECT id, user_id, task_name, frequency, interval_value, next_run_at, last_run_at, scope, source, task_payload, status, created_at, updated_at
-     FROM scheduled_tasks`
-  ).all() as Array<{
-    id: string;
-    user_id: string | null;
-    task_name: string;
-    frequency: string;
-    interval_value: number;
-    next_run_at: string | null;
-    last_run_at: string | null;
-    scope: string;
-    source: string;
-    task_payload: string;
-    status: string;
-    created_at: string | null;
-    updated_at: string | null;
-  }>;
-
-  if (rows.length === 0) return;
-
-  const insertSchedule = db.prepare(
-    `INSERT OR IGNORE INTO scheduler_schedules (
-      id, schedule_key, name, owner_type, owner_id, handler_type,
-      trigger_type, trigger_expr, timezone, status, max_concurrency,
-      retry_policy_json, misfire_policy, next_run_at, last_run_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'UTC', ?, 1, ?, 'run_immediately', ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))`
-  );
-
-  const insertTask = db.prepare(
-    `INSERT OR IGNORE INTO scheduler_tasks (
-      id, schedule_id, task_key, name, handler_name, execution_mode,
-      sequence_no, timeout_sec, retry_policy_json, enabled, config_json, created_at, updated_at
-    ) VALUES (?, ?, 'primary', ?, 'legacy.scheduled_task.execute', 'sync', 0, NULL, NULL, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))`
-  );
-
-  const tx = db.transaction(() => {
-    for (const row of rows) {
-      const scheduleId = `sched_legacy_${row.id}`;
-      const taskId = `sched_task_legacy_${row.id}`;
-      const scheduleKey = `legacy.scheduled_task.${row.id}`;
-      const ownerType = row.scope === "global" ? "system" : "user";
-      const triggerType = row.frequency === "once" ? "once" : "interval";
-      const scheduleStatus = row.status === "paused"
-        ? "paused"
-        : row.status === "completed"
-          ? "archived"
-          : "active";
-
-      insertSchedule.run(
-        scheduleId,
-        scheduleKey,
-        row.task_name || "Legacy Scheduled Task",
-        ownerType,
-        row.user_id,
-        "legacy.scheduled_task",
-        triggerType,
-        mapFrequencyToTriggerExpr(row.frequency || "once", row.interval_value),
-        scheduleStatus,
-        JSON.stringify({ strategy: "none", maxAttempts: 1 }),
-        row.next_run_at,
-        row.last_run_at,
-        row.created_at,
-        row.updated_at
-      );
-
-      insertTask.run(
-        taskId,
-        scheduleId,
-        row.task_name || "Legacy Scheduled Task",
-        row.status === "active" ? 1 : 0,
-        JSON.stringify({
-          legacyScheduledTaskId: row.id,
-          source: row.source,
-          payload: row.task_payload,
-        }),
-        row.created_at,
-        row.updated_at
-      );
-    }
-  });
-
-  tx();
-}
-
 function cronToIntervalExpr(cron: string): string {
   const trimmed = String(cron || "").trim();
   const everyMinute = /^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/i.exec(trimmed);
@@ -942,7 +844,6 @@ export function initializeDatabase(): void {
   ensureChannelImapUidColumns();
   ensureApprovalQueueNlRequestColumn();
   ensureApprovalPreferencesTable();
-  ensureUnifiedSchedulerBackfill();
   ensureSystemUnifiedSchedules();
   ensureUserAccessManagement();
   ensureProfilePreferencesColumns();

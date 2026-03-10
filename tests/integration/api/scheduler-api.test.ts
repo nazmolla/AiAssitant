@@ -35,7 +35,7 @@ beforeAll(() => {
     "API Test Schedule",
     "user",
     adminId,
-    "legacy.scheduled_task",
+    "agent.prompt",
     "interval",
     "every:1:hour",
     "active",
@@ -52,11 +52,11 @@ beforeAll(() => {
     "sched-api-1",
     "primary",
     "Primary Task",
-    "legacy.scheduled_task.execute",
+    "agent.prompt",
     "sync",
     0,
     1,
-    JSON.stringify({ legacyScheduledTaskId: "legacy-task-id" })
+    JSON.stringify({ prompt: "Scheduled task: API Test", userId: adminId, threadId: "thread-api-1" })
   );
 });
 
@@ -153,11 +153,11 @@ describe("scheduler API endpoints", () => {
             id: "sched-task-api-1",
             task_key: "primary",
             name: "Primary Task Updated",
-            handler_name: "legacy.scheduled_task.execute",
+            handler_name: "agent.prompt",
             execution_mode: "sync",
             sequence_no: 0,
             enabled: 1,
-            config_json: { legacyScheduledTaskId: "legacy-task-id" },
+            config_json: { prompt: "Scheduled task: API Test", userId: adminId, threadId: "thread-api-1" },
           },
         ],
       }),

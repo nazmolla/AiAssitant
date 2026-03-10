@@ -17,7 +17,7 @@ import {
   runDbMaintenanceIfDue,
   listEnabledSchedulerTaskHandlers,
 } from "@/lib/db";
-import { executeLegacyScheduledTaskById, runProactiveScan } from "@/lib/scheduler";
+import { runProactiveScan } from "@/lib/scheduler";
 import { runKnowledgeMaintenanceIfDue } from "@/lib/knowledge-maintenance";
 
 const ENGINE_POLL_MS = 10_000;
@@ -28,7 +28,7 @@ let _engineTimer: ReturnType<typeof setInterval> | null = null;
 let _engineTickRunning = false;
 
 const REGISTERED_SCHEDULER_HANDLERS = new Set<string>([
-  "legacy.scheduled_task.execute",
+  "agent.prompt",
   "system.proactive.scan",
   "system.db_maintenance.run_due",
   "system.knowledge_maintenance.run_due",
@@ -103,17 +103,24 @@ async function executeTaskRun(taskRunId: string, handlerName: string, configJson
   setSchedulerTaskRunStatus(taskRunId, "running");
 
   try {
-    if (handlerName === "legacy.scheduled_task.execute") {
-      let legacyTaskId = "";
+    if (handlerName === "agent.prompt") {
+      let prompt = "";
+      let threadId = "";
+      let userId = "";
       try {
         const parsed = JSON.parse(configJson || "{}");
-        legacyTaskId = typeof parsed.legacyScheduledTaskId === "string" ? parsed.legacyScheduledTaskId : "";
+        prompt = typeof parsed.prompt === "string" ? parsed.prompt : "";
+        threadId = typeof parsed.threadId === "string" ? parsed.threadId : "";
+        userId = typeof parsed.userId === "string" ? parsed.userId : "";
       } catch {
-        legacyTaskId = "";
+        prompt = "";
       }
-      if (!legacyTaskId) throw new Error("Missing legacyScheduledTaskId in scheduler task config.");
-      await executeLegacyScheduledTaskById(legacyTaskId);
-      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ legacyScheduledTaskId: legacyTaskId }));
+      if (!prompt || !threadId || !userId) {
+        throw new Error("Missing prompt/threadId/userId in scheduler task config for agent.prompt handler.");
+      }
+      const { runAgentLoop } = await import("@/lib/agent");
+      await runAgentLoop(threadId, prompt, undefined, undefined, undefined, userId);
+      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "agent_prompt", threadId, userId }));
       return;
     }
 

@@ -189,26 +189,6 @@ CREATE TABLE notifications (
 );
 CREATE INDEX idx_notifications_user_read ON notifications (user_id, read);
 CREATE INDEX idx_notifications_created ON notifications (created_at);
-
-CREATE TABLE scheduled_tasks (
-    id TEXT PRIMARY KEY,
-    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-    thread_id TEXT REFERENCES threads(id) ON DELETE SET NULL,
-    task_name TEXT NOT NULL,
-    frequency TEXT NOT NULL DEFAULT 'once', -- once | hourly | daily | weekly | monthly
-    interval_value INTEGER NOT NULL DEFAULT 1,
-    next_run_at DATETIME NOT NULL,
-    last_run_at DATETIME,
-    run_count INTEGER NOT NULL DEFAULT 0,
-    scope TEXT NOT NULL DEFAULT 'user',     -- user | global
-    source TEXT NOT NULL DEFAULT 'user_request', -- user_request | proactive
-    task_payload TEXT NOT NULL,             -- JSON action payload
-    status TEXT NOT NULL DEFAULT 'active',  -- active | paused | completed | failed
-    last_error TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX idx_scheduled_tasks_due ON scheduled_tasks (status, next_run_at);
 ```
 
 > **Notifications**: The `notifications` table stores persistent in-app notifications surfaced via the bell icon in the header. Notifications are automatically created when `notifyAdmin()` is called. Types include approval requests, tool errors, proactive actions, channel errors, and system-level alerts.
@@ -219,9 +199,7 @@ CREATE INDEX idx_scheduled_tasks_due ON scheduled_tasks (status, next_run_at);
 >
 > **Typed knowledge source filtering**: Knowledge entries use `user_knowledge.source_type` (`manual` / `chat` / `proactive`) for filtering and reporting, replacing source-context prefix parsing.
 >
-> **Scheduled Tasks**: User future/recurring requests and proactive-discovered actions are persisted in `scheduled_tasks`. During each background scheduler cycle, due tasks (`next_run_at <= now`) are executed, `last_run_at` / `run_count` are updated, and `next_run_at` is recalculated from `frequency` + `interval_value`.
-
-> **Unified Scheduler Foundation**: The normalized scheduler model is now available through `scheduler_schedules` (parent schedule definition), `scheduler_tasks` (child task graph), `scheduler_runs` (schedule execution history), `scheduler_task_runs` (per-task execution history), `scheduler_claims` (worker lease/heartbeat safety), and `scheduler_events` (transition timeline). Startup migration backfills legacy `scheduled_tasks` rows into schedule/task records for safe phased adoption.
+> **Unified Scheduler Foundation**: The normalized scheduler model is available through `scheduler_schedules` (parent schedule definition), `scheduler_tasks` (child task graph), `scheduler_runs` (schedule execution history), `scheduler_task_runs` (per-task execution history), `scheduler_claims` (worker lease/heartbeat safety), and `scheduler_events` (transition timeline). All scheduling behavior now executes through this model.
 
 > **Unified Scheduler Migration**: Recurring platform flows are represented as first-class schedule/task records: `system.proactive.scan`, `system.db_maintenance.run_due`, `system.knowledge_maintenance.run_due`, and a modeled `workflow.job_scout.pipeline` parent schedule with child tasks (`search`, `extract`, `prepare`, `validate`, `email`).
 

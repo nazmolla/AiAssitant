@@ -36,7 +36,6 @@ All screenshots are captured from the **test environment**.
 ## Unified Scheduler History Foundation
 
 - Nexus now includes normalized scheduler storage for batch visibility: parent schedules, child tasks, schedule runs, task runs, claims, and timeline events.
-- Legacy `scheduled_tasks` records are backfilled into the new schedule/task model on startup so existing recurring jobs remain represented during migration.
 - Admins can use **Settings → Scheduler** as a live console to view active/paused schedules, inspect recent runs, trigger manual runs, and review task-level run status/log references.
 - System recurring flows are now migrated into unified scheduler schedules/tasks: proactive scan, DB maintenance, knowledge maintenance, and a modeled Job Scout parent pipeline with child tasks.
 - For reliability monitoring, use `GET /api/scheduler/health` (admin) to inspect queue depth, recent failure rates, stale claims, and orphan handler warnings.

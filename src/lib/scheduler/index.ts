@@ -41,12 +41,6 @@ import {
   getUserById,
   getUserByEmail,
   isUserEnabled,
-  createScheduledTask,
-  listDueScheduledTasks,
-  updateScheduledTaskAfterRun,
-  markScheduledTaskFailed,
-  getScheduledTaskById,
-  type ScheduledTaskRecord,
   getDb,
   findActiveChannelThread,
   getChannelImapState,
@@ -375,43 +369,6 @@ function getToolServerId(qualifiedToolName: string): string | null {
   const dotIndex = qualifiedToolName.indexOf(".");
   if (dotIndex === -1) return null;
   return qualifiedToolName.substring(0, dotIndex);
-}
-
-type ScheduledTaskPayload =
-  | { kind: "agent_prompt"; prompt: string }
-  | { kind: "tool_call"; tool: string; args?: Record<string, unknown>; reasoning?: string; severity?: NotificationLevel };
-
-function addFrequency(date: Date, frequency: ScheduledTaskRecord["frequency"], intervalValue: number): Date | null {
-  const interval = Math.max(1, intervalValue || 1);
-  const next = new Date(date);
-  switch (frequency) {
-    case "once":
-      return null;
-    case "hourly":
-      next.setHours(next.getHours() + interval);
-      return next;
-    case "daily":
-      next.setDate(next.getDate() + interval);
-      return next;
-    case "weekly":
-      next.setDate(next.getDate() + interval * 7);
-      return next;
-    case "monthly":
-      next.setMonth(next.getMonth() + interval);
-      return next;
-    default:
-      return null;
-  }
-}
-
-function parseScheduledTaskPayload(raw: string): ScheduledTaskPayload | null {
-  try {
-    const parsed = JSON.parse(raw) as ScheduledTaskPayload;
-    if (!parsed || typeof parsed !== "object" || !("kind" in parsed)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
 }
 
 type SchedulerToolExecution =
@@ -790,108 +747,6 @@ export async function executeProactiveApprovedTool(
   return execution.result;
 }
 
-async function runDueScheduledTasks(
-  digestByUser: Map<string, SchedulerDigestItem[]>,
-  defaultAdminUserId: string | undefined,
-  mcpManager: ReturnType<typeof getMcpManager>
-): Promise<void> {
-  const dueTasks = listDueScheduledTasks(100);
-  if (dueTasks.length === 0) return;
-
-  for (const task of dueTasks) {
-    await executeLegacyScheduledTask(task, digestByUser, defaultAdminUserId, mcpManager);
-  }
-}
-
-async function executeLegacyScheduledTask(
-  task: ScheduledTaskRecord,
-  digestByUser: Map<string, SchedulerDigestItem[]>,
-  defaultAdminUserId: string | undefined,
-  mcpManager: ReturnType<typeof getMcpManager>
-): Promise<void> {
-  const payload = parseScheduledTaskPayload(task.task_payload);
-  if (!payload) {
-    markScheduledTaskFailed(task.id, "Invalid task payload JSON.");
-    return;
-  }
-
-  try {
-    let resultingThreadId: string | null = task.thread_id;
-
-    if (payload.kind === "agent_prompt") {
-      if (!task.user_id) {
-        throw new Error("Scheduled agent_prompt task requires user_id.");
-      }
-      const thread = task.thread_id
-        ? { id: task.thread_id }
-        : createThread(`[scheduled] ${task.task_name}`, task.user_id, { threadType: "scheduled" });
-      resultingThreadId = thread.id;
-      const normalizedPrompt = payload.prompt
-        .replace(/^\s*(scheduled\s*task\s*:\s*)+/i, "Scheduled task: ")
-        .trim();
-      await runAgentLoop(thread.id, normalizedPrompt, undefined, undefined, undefined, task.user_id);
-    } else if (payload.kind === "tool_call") {
-      const actionTool = payload.tool;
-      const actionArgs = payload.args || {};
-      const actionPolicy = getToolPolicy(actionTool);
-      const requiresApproval = actionPolicy ? actionPolicy.requires_approval !== 0 : true;
-
-      if (requiresApproval) {
-        const approval = createApprovalRequest({
-          thread_id: null,
-          tool_name: actionTool,
-          args: JSON.stringify(actionArgs),
-          reasoning: payload.reasoning || `Scheduled task execution for: ${task.task_name}`,
-          nl_request: payload.reasoning || `Approve scheduled task \"${task.task_name}\" to run ${actionTool}.`,
-          source: "proactive:scheduler",
-        });
-        enqueueDigestItem(digestByUser, defaultAdminUserId, {
-          level: payload.severity || "medium",
-          issue: `${actionTool} requires approval from scheduled task.`,
-          requiredAction: `Review approval ${approval.id} and approve or reject execution.`,
-          actionLocation: "Nexus Command Center → Notifications (Approvals)",
-        });
-      } else {
-        const execution = await executeSchedulerTool(actionTool, actionArgs, mcpManager);
-        if (!execution.skipped) {
-          addLog({
-            level: "info",
-            source: "scheduler",
-            message: `Scheduled tool task executed: ${actionTool}`,
-            metadata: JSON.stringify({ taskId: task.id, toolName: actionTool }),
-          });
-        }
-      }
-    }
-
-    const next = addFrequency(new Date(), task.frequency, task.interval_value);
-    updateScheduledTaskAfterRun(task.id, {
-      status: next ? "active" : "completed",
-      nextRunAt: next ? next.toISOString() : null,
-      threadId: resultingThreadId,
-      lastError: null,
-    });
-  } catch (err) {
-    const errorText = err instanceof Error ? err.message : String(err);
-    markScheduledTaskFailed(task.id, errorText);
-    addLog({
-      level: "error",
-      source: "scheduler",
-      message: `Scheduled task failed: ${task.task_name}`,
-      metadata: JSON.stringify({ taskId: task.id, error: errorText }),
-    });
-    throw err;
-  }
-}
-
-export async function executeLegacyScheduledTaskById(taskId: string): Promise<void> {
-  const task = getScheduledTaskById(taskId);
-  if (!task) throw new Error(`Legacy scheduled task not found: ${taskId}`);
-  const digestByUser = new Map<string, SchedulerDigestItem[]>();
-  const mcpManager = getMcpManager();
-  await executeLegacyScheduledTask(task, digestByUser, getDefaultAdminUserId(), mcpManager);
-}
-
 /**
  * Run a single proactive scan cycle.
  */
@@ -938,17 +793,6 @@ async function _runProactiveScanInner(): Promise<void> {
   }
 
   const mcpManager = getMcpManager();
-
-  try {
-    await runDueScheduledTasks(digestByUser, defaultAdminUserId, mcpManager);
-  } catch (err) {
-    addLog({
-      level: "error",
-      source: "scheduler",
-      message: `Scheduled task run failed: ${err}`,
-      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-    });
-  }
 
   // ── Phase: Multi-round proactive agent ─────────────────────────
   // Spin up a full agent loop so the LLM can actively call tools,
