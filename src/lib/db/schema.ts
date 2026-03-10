@@ -249,6 +249,126 @@ ON scheduled_tasks(status, next_run_at);
 CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_user
 ON scheduled_tasks(user_id, scope, status);
 
+-- ═══ Unified Scheduler Foundation ═══
+
+CREATE TABLE IF NOT EXISTS scheduler_schedules (
+    id TEXT PRIMARY KEY,
+    schedule_key TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    owner_type TEXT NOT NULL DEFAULT 'system',         -- system | user | agent
+    owner_id TEXT,
+    handler_type TEXT NOT NULL,                        -- executor routing key (agent/task/etc)
+    trigger_type TEXT NOT NULL DEFAULT 'interval',     -- cron | interval | once
+    trigger_expr TEXT NOT NULL,                        -- cron string or interval descriptor
+    timezone TEXT NOT NULL DEFAULT 'UTC',
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'archived')),
+    max_concurrency INTEGER NOT NULL DEFAULT 1,
+    retry_policy_json TEXT,
+    misfire_policy TEXT NOT NULL DEFAULT 'run_immediately' CHECK(misfire_policy IN ('run_immediately', 'skip', 'catch_up')),
+    next_run_at DATETIME,
+    last_run_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS scheduler_tasks (
+    id TEXT PRIMARY KEY,
+    schedule_id TEXT NOT NULL REFERENCES scheduler_schedules(id) ON DELETE CASCADE,
+    task_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    handler_name TEXT NOT NULL,
+    execution_mode TEXT NOT NULL DEFAULT 'sync' CHECK(execution_mode IN ('sync', 'async', 'fanout')),
+    sequence_no INTEGER NOT NULL DEFAULT 0,
+    depends_on_task_id TEXT REFERENCES scheduler_tasks(id) ON DELETE SET NULL,
+    timeout_sec INTEGER,
+    retry_policy_json TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    config_json TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(schedule_id, task_key)
+);
+
+CREATE TABLE IF NOT EXISTS scheduler_runs (
+    id TEXT PRIMARY KEY,
+    schedule_id TEXT NOT NULL REFERENCES scheduler_schedules(id) ON DELETE CASCADE,
+    trigger_source TEXT NOT NULL DEFAULT 'timer' CHECK(trigger_source IN ('timer', 'manual', 'api', 'recovery')),
+    planned_at DATETIME,
+    started_at DATETIME,
+    finished_at DATETIME,
+    status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled', 'queued', 'claimed', 'running', 'success', 'partial_success', 'failed', 'cancelled', 'timeout')),
+    attempt_no INTEGER NOT NULL DEFAULT 1,
+    correlation_id TEXT,
+    summary_json TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    created_by TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS scheduler_task_runs (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES scheduler_runs(id) ON DELETE CASCADE,
+    schedule_task_id TEXT NOT NULL REFERENCES scheduler_tasks(id) ON DELETE CASCADE,
+    started_at DATETIME,
+    finished_at DATETIME,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'skipped', 'running', 'success', 'failed', 'cancelled', 'timeout', 'retrying')),
+    attempt_no INTEGER NOT NULL DEFAULT 1,
+    output_json TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    log_ref TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS scheduler_claims (
+    run_id TEXT PRIMARY KEY REFERENCES scheduler_runs(id) ON DELETE CASCADE,
+    worker_id TEXT NOT NULL,
+    claimed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    heartbeat_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    lease_expires_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS scheduler_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT REFERENCES scheduler_runs(id) ON DELETE CASCADE,
+    task_run_id TEXT REFERENCES scheduler_task_runs(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    message TEXT,
+    metadata_json TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_schedules_status_next
+ON scheduler_schedules(status, next_run_at);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_schedules_owner
+ON scheduler_schedules(owner_type, owner_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_tasks_schedule_sequence
+ON scheduler_tasks(schedule_id, enabled, sequence_no);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_runs_schedule_status_started
+ON scheduler_runs(schedule_id, status, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_runs_status_planned
+ON scheduler_runs(status, planned_at);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_runs_correlation
+ON scheduler_runs(correlation_id);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_task_runs_run_status
+ON scheduler_task_runs(run_id, status, started_at);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_claims_lease
+ON scheduler_claims(lease_expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_events_run_created
+ON scheduler_events(run_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_events_task_run_created
+ON scheduler_events(task_run_id, created_at DESC);
+
 -- ═══ Agent Logs ═══
 
 CREATE TABLE IF NOT EXISTS agent_logs (

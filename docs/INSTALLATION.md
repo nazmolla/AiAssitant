@@ -92,6 +92,17 @@ On startup, DB initialization now backfills typed metadata columns for legacy da
 - `threads.thread_type`, `threads.is_interactive`, `threads.channel_id`, `threads.external_sender_id`
 - `user_knowledge.source_type`
 
+Scheduler initialization also provisions unified scheduler foundation tables:
+
+- `scheduler_schedules`
+- `scheduler_tasks`
+- `scheduler_runs`
+- `scheduler_task_runs`
+- `scheduler_claims`
+- `scheduler_events`
+
+Legacy `scheduled_tasks` rows are backfilled into `scheduler_schedules` + `scheduler_tasks` during startup to support phased migration without losing scheduled intent.
+
 This migration replaces legacy title/source prefix parsing in runtime filters.
 
 DB maintenance policies are persisted in `app_config` and can be managed through **Settings → DB Management** (admin-only). This includes recurring cleanup interval, retention windows, and cleanup toggles for logs, threads/conversations, attachments, and orphan files.
