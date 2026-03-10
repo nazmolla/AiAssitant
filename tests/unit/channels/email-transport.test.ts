@@ -1,4 +1,4 @@
-import { buildThemedEmailBody } from "@/lib/channels/email-transport";
+import { buildThemedEmailBody, getEmailChannelConfig, isValidPort } from "@/lib/channels/email-transport";
 
 describe("buildThemedEmailBody", () => {
   test("renders key-value lines as structured details", () => {
@@ -50,5 +50,32 @@ describe("buildThemedEmailBody", () => {
     expect(content.html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(content.html).toContain("&lt;b&gt;unsafe&lt;/b&gt;");
     expect(content.html).not.toContain("<script>");
+  });
+});
+
+describe("getEmailChannelConfig", () => {
+  test("normalizes host values and falls back to default ports for empty strings", () => {
+    const cfg = getEmailChannelConfig({
+      smtpHost: "https://smtp.example.com:587",
+      smtpPort: "",
+      smtpUser: "user@example.com",
+      smtpPass: "pass",
+      fromAddress: "from@example.com",
+      imapHost: "imap.example.com:993",
+      imapPort: "",
+      imapUser: "user@example.com",
+      imapPass: "pass",
+    });
+
+    expect(cfg.smtpHost).toBe("smtp.example.com");
+    expect(cfg.smtpPort).toBe(587);
+    expect(cfg.imapHost).toBe("imap.example.com");
+    expect(cfg.imapPort).toBe(993);
+  });
+
+  test("rejects invalid ports via isValidPort", () => {
+    expect(isValidPort(0)).toBe(false);
+    expect(isValidPort(70000)).toBe(false);
+    expect(isValidPort(587)).toBe(true);
   });
 });

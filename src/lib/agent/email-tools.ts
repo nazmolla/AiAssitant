@@ -6,6 +6,7 @@ import {
   buildThemedEmailBody,
   formatEmailConnectError,
   getEmailChannelConfig,
+  isValidPort,
   sendSmtpMail,
 } from "@/lib/channels/email-transport";
 
@@ -151,7 +152,7 @@ export async function executeBuiltinEmailTool(
 
   const emailCfg = getEmailChannelConfig(config);
 
-  if (!emailCfg.smtpHost || !Number.isFinite(emailCfg.smtpPort) || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress) {
+  if (!emailCfg.smtpHost || !isValidPort(emailCfg.smtpPort) || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress) {
     throw new Error("Email channel is missing SMTP config (smtpHost/smtpPort/smtpUser/smtpPass/fromAddress).");
   }
 

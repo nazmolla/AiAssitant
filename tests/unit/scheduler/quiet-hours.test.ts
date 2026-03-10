@@ -20,7 +20,27 @@ jest.mock("@/lib/db", () => ({
 jest.mock("@/lib/knowledge", () => ({}));
 jest.mock("@/lib/knowledge/retriever", () => ({}));
 jest.mock("mailparser", () => ({}));
-jest.mock("@/lib/channels/email-transport", () => ({}));
+jest.mock("@/lib/channels/email-transport", () => ({
+  getEmailChannelConfig: jest.fn(() => ({
+    smtpHost: "",
+    smtpPort: 587,
+    smtpSecure: null,
+    smtpUser: "",
+    smtpPass: "",
+    fromAddress: "",
+    imapHost: "",
+    imapPort: 993,
+    imapSecure: null,
+    imapUser: "",
+    imapPass: "",
+  })),
+  isValidPort: jest.fn(() => true),
+  getImapSecureCandidatesForConfig: jest.fn(() => [true]),
+  createImapClient: jest.fn(() => ({ on: jest.fn() })),
+  buildThemedEmailBody: jest.fn(() => ({ text: "", html: "" })),
+  sendSmtpMail: jest.fn(),
+  formatEmailConnectError: jest.fn((e: unknown) => String(e)),
+}));
 jest.mock("@/lib/channels/inbound-email", () => ({}));
 jest.mock("@/lib/channels/notify", () => ({}));
 

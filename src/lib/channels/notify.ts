@@ -9,7 +9,7 @@ import {
 } from "@/lib/db";
 import type { NotificationType } from "@/lib/db";
 import { sendDiscordDirectMessage } from "@/lib/channels/discord";
-import { buildThemedEmailBody, getEmailChannelConfig, sendSmtpMail } from "@/lib/channels/email-transport";
+import { buildThemedEmailBody, getEmailChannelConfig, isValidPort, sendSmtpMail } from "@/lib/channels/email-transport";
 
 type ChannelConfig = Record<string, unknown>;
 export type NotificationLevel = "low" | "medium" | "high" | "disaster";
@@ -93,7 +93,7 @@ async function sendWhatsAppText(config: ChannelConfig, to: string, text: string)
 async function sendEmailText(config: ChannelConfig, to: string, subject: string, text: string): Promise<void> {
   const emailCfg = getEmailChannelConfig(config);
 
-  if (!emailCfg.smtpHost || !Number.isFinite(emailCfg.smtpPort) || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress) {
+  if (!emailCfg.smtpHost || !isValidPort(emailCfg.smtpPort) || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress) {
     throw new Error("Email channel missing SMTP config.");
   }
 

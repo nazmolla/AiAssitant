@@ -55,6 +55,7 @@ import {
   formatEmailConnectError,
   getEmailChannelConfig,
   getImapSecureCandidatesForConfig,
+  isValidPort,
   sendSmtpMail,
 } from "@/lib/channels/email-transport";
 import { summarizeInboundUnknownEmail } from "@/lib/channels/inbound-email";
@@ -327,7 +328,7 @@ async function flushSchedulerDigestEmails(digestByUser: Map<string, SchedulerDig
 
     try {
       const cfg = getEmailChannelConfig(parseChannelConfig(emailChannel.config_json));
-      if (!cfg.smtpHost || !Number.isFinite(cfg.smtpPort) || !cfg.smtpUser || !cfg.smtpPass || !cfg.fromAddress) {
+      if (!cfg.smtpHost || !isValidPort(cfg.smtpPort) || !cfg.smtpUser || !cfg.smtpPass || !cfg.fromAddress) {
         addLog({
           level: "warn",
           source: "scheduler",
@@ -464,12 +465,13 @@ async function pollEmailChannels(
     let lastConnectErr: unknown = null;
 
     for (const secure of getImapSecureCandidatesForConfig(config)) {
-      const client = createImapClient(config, secure);
-      // Prevent ImapFlow socket errors from becoming uncaught exceptions
-      client.on('error', () => {});
-      try {
-        await client.connect();
-        connected = true;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const client = createImapClient(config, secure);
+        // Prevent ImapFlow socket errors from becoming uncaught exceptions
+        client.on('error', () => {});
+        try {
+          await client.connect();
+          connected = true;
 
         const lock = await client.getMailboxLock("INBOX");
         try {
@@ -639,12 +641,26 @@ async function pollEmailChannels(
         } finally {
           lock.release();
         }
-      } catch (err) {
-        lastConnectErr = err;
-      } finally {
-        try {
-          if (client.usable) await client.logout();
-        } catch { /* connection already closed */ }
+        } catch (err) {
+          lastConnectErr = err;
+          const transient = String(err instanceof Error ? err.message : err).toLowerCase();
+          const shouldRetry = (
+            transient.includes("eai_again") ||
+            transient.includes("timeout") ||
+            transient.includes("unexpected close") ||
+            transient.includes("econnreset")
+          );
+          if (shouldRetry && attempt === 0) {
+            await new Promise((resolve) => setTimeout(resolve, 350));
+            continue;
+          }
+        } finally {
+          try {
+            if (client.usable) await client.logout();
+          } catch { /* connection already closed */ }
+        }
+
+        if (connected) break;
       }
 
       if (connected) break;

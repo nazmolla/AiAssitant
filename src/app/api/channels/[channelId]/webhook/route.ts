@@ -19,6 +19,7 @@ import { summarizeInboundUnknownEmail } from "@/lib/channels/inbound-email";
 import {
   buildThemedEmailBody,
   getEmailChannelConfig,
+  isValidPort,
   sendSmtpMail,
 } from "@/lib/channels/email-transport";
 
@@ -200,7 +201,7 @@ async function sendEmailResponse(
   const emailCfg = getEmailChannelConfig(config);
   const toEmail = normalizeEmail(to);
 
-  if (!emailCfg.smtpHost || !emailCfg.smtpPort || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress || !toEmail) {
+    if (!emailCfg.smtpHost || !isValidPort(emailCfg.smtpPort) || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress || !toEmail) {
     addLog({ level: "warning", source: "api.channel.webhook", message: "Email response skipped due to incomplete email configuration.", metadata: JSON.stringify({ toEmail, hasSmtpHost: !!emailCfg.smtpHost, hasSmtpPort: !!emailCfg.smtpPort, hasSmtpUser: !!emailCfg.smtpUser, hasSmtpPass: !!emailCfg.smtpPass, hasFromAddress: !!emailCfg.fromAddress }) });
     return;
   }

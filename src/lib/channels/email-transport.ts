@@ -31,7 +31,32 @@ export interface EmailBodyOptions {
 
 function asString(config: Record<string, unknown>, key: string, fallback = ""): string {
   const value = config[key];
-  return typeof value === "string" ? value.trim() : fallback;
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
+function normalizeHost(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const withoutScheme = trimmed.replace(/^\w+:\/\//, "");
+  const withoutPath = withoutScheme.split("/")[0];
+  const withoutPort = withoutPath.includes(":") ? withoutPath.split(":")[0] : withoutPath;
+  return withoutPort.trim();
+}
+
+function parsePort(config: Record<string, unknown>, key: string, fallback: number): number {
+  const raw = config[key];
+  if (typeof raw === "number" && Number.isInteger(raw) && raw > 0 && raw <= 65535) return raw;
+  if (typeof raw === "string") {
+    const parsed = Number.parseInt(raw.trim(), 10);
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) return parsed;
+  }
+  return fallback;
+}
+
+export function isValidPort(port: number): boolean {
+  return Number.isInteger(port) && port > 0 && port <= 65535;
 }
 
 function escapeHtml(input: string): string {
@@ -165,14 +190,14 @@ function asOptionalBoolean(config: Record<string, unknown>, key: string): boolea
 export function getEmailChannelConfig(config: Record<string, unknown>): EmailChannelConfig {
   const smtpUser = asString(config, "smtpUser");
   return {
-    smtpHost: asString(config, "smtpHost"),
-    smtpPort: Number(asString(config, "smtpPort", "587")),
+    smtpHost: normalizeHost(asString(config, "smtpHost")),
+    smtpPort: parsePort(config, "smtpPort", 587),
     smtpSecure: asOptionalBoolean(config, "smtpSecure"),
     smtpUser,
     smtpPass: asString(config, "smtpPass"),
     fromAddress: asString(config, "fromAddress") || smtpUser,
-    imapHost: asString(config, "imapHost"),
-    imapPort: Number(asString(config, "imapPort", "993")),
+    imapHost: normalizeHost(asString(config, "imapHost")),
+    imapPort: parsePort(config, "imapPort", 993),
     imapSecure: asOptionalBoolean(config, "imapSecure"),
     imapUser: asString(config, "imapUser"),
     imapPass: asString(config, "imapPass"),
@@ -211,15 +236,35 @@ function getSmtpSecureCandidatesForConfig(cfg: EmailChannelConfig): boolean[] {
   return getSmtpSecureCandidates(cfg.smtpPort);
 }
 
+function isTransientMailError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return [
+    "eai_again",
+    "econnreset",
+    "etimedout",
+    "timeout",
+    "unexpected close",
+    "esocket",
+  ].some((token) => msg.includes(token));
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function verifySmtpConfig(cfg: EmailChannelConfig): Promise<void> {
   let lastErr: unknown = null;
   for (const secure of getSmtpSecureCandidatesForConfig(cfg)) {
-    try {
-      const transporter = createSmtpTransport(cfg, secure);
-      await transporter.verify();
-      return;
-    } catch (err) {
-      lastErr = err;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const transporter = createSmtpTransport(cfg, secure);
+        await transporter.verify();
+        return;
+      } catch (err) {
+        lastErr = err;
+        if (!isTransientMailError(err) || attempt === 1) break;
+        await sleep(350 * (attempt + 1));
+      }
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -228,12 +273,16 @@ export async function verifySmtpConfig(cfg: EmailChannelConfig): Promise<void> {
 export async function sendSmtpMail(cfg: EmailChannelConfig, mail: SendMailOptions): Promise<{ messageId?: string }> {
   let lastErr: unknown = null;
   for (const secure of getSmtpSecureCandidatesForConfig(cfg)) {
-    try {
-      const transporter = createSmtpTransport(cfg, secure);
-      const res = await transporter.sendMail(mail);
-      return { messageId: res?.messageId };
-    } catch (err) {
-      lastErr = err;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const transporter = createSmtpTransport(cfg, secure);
+        const res = await transporter.sendMail(mail);
+        return { messageId: res?.messageId };
+      } catch (err) {
+        lastErr = err;
+        if (!isTransientMailError(err) || attempt === 1) break;
+        await sleep(350 * (attempt + 1));
+      }
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));

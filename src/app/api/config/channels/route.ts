@@ -12,6 +12,7 @@ import { startDiscordBot, stopDiscordBot, isDiscordBotActive } from "@/lib/chann
 import {
   formatEmailConnectError,
   getEmailChannelConfig,
+  isValidPort,
   sendSmtpMail,
   verifySmtpConfig,
 } from "@/lib/channels/email-transport";
@@ -28,7 +29,7 @@ const VALID_CHANNEL_TYPES: ChannelType[] = [
 async function sendEmailChannelSelfTest(config: Record<string, unknown>): Promise<void> {
   const emailCfg = getEmailChannelConfig(config);
 
-  if (!emailCfg.smtpHost || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress || !Number.isFinite(emailCfg.smtpPort)) {
+  if (!emailCfg.smtpHost || !emailCfg.smtpUser || !emailCfg.smtpPass || !emailCfg.fromAddress || !isValidPort(emailCfg.smtpPort)) {
     throw new Error("Missing/invalid SMTP config. Required: smtpHost, smtpPort, smtpUser, smtpPass, fromAddress.");
   }
 

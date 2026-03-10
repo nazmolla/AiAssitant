@@ -246,6 +246,11 @@ CREATE TABLE channel_user_mappings (
 );
 ```
 
+Channel transport hardening notes:
+- Email transport normalizes SMTP/IMAP host fields (strips scheme/path/embedded port) before connection attempts.
+- SMTP/IMAP ports are validated as `1..65535`; empty or malformed values fall back to safe defaults (`587` SMTP, `993` IMAP).
+- SMTP verify/send and scheduler IMAP poll include lightweight retry handling for transient DNS/network errors (`EAI_AGAIN`, timeout, unexpected close).
+
 ### G. App Configuration (Key-Value)
 
 The `app_config` table stores application-wide settings as key-value pairs. Sensitive values are encrypted with AES-256-GCM.

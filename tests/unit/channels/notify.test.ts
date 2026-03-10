@@ -43,6 +43,7 @@ jest.mock("@/lib/channels/email-transport", () => ({
     smtpPass: "pass",
     fromAddress: "nexus@test.com",
   })),
+  isValidPort: jest.fn(() => true),
   sendSmtpMail: (...a: unknown[]) => mockSendSmtpMail(...a),
 }));
 
