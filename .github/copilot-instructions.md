@@ -30,6 +30,14 @@
 - Then deploy via the required deployment flow above, verify service health/logs, and only then commit/push.
 - Commit/PR text must reference the issue number and clearly summarize changes + testing performed.
 
+## Request-Start Issue Rule (Mandatory)
+- Before starting implementation for any new user request, create a GitHub issue first.
+- The issue must include:
+	- Full problem/feature description
+	- Clear acceptance criteria
+	- Explicit test considerations (unit/integration/component scope and expected validation)
+- Do not begin code changes until the issue is created and referenced in the workflow.
+
 ## Architecture Map (Start Here)
 - Main agent loop: `src/lib/agent/loop.ts` (Sense → Think → Act, tool execution, knowledge retrieval, HITL).
 - Worker offload path: `src/lib/agent/loop-worker.ts`, `src/lib/agent/worker-manager.ts`, `scripts/agent-worker.js`.
