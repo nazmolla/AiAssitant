@@ -220,6 +220,7 @@ Do not repeat the previous summary pattern. Produce concrete discoveries, action
 }
 
 let _cronJob: CronJob | null = null;
+let _cronSchedule: string | null = null;
 let _scanRunning = false; // Mutex: prevent overlapping proactive scans
 const _proactiveSkipWarned = new Set<string>();
 const _emailConfigWarned = new Set<string>();
@@ -1116,12 +1117,18 @@ async function _runProactiveScanInner(): Promise<void> {
  * Start the proactive scheduler cron job.
  */
 export function startScheduler(): void {
+  const dbSchedule = getAppConfig("proactive_cron_schedule");
+  const schedule = dbSchedule || process.env.PROACTIVE_CRON_SCHEDULE || "*/15 * * * *";
+
+  // Idempotent start: do not tear down/recreate a live cron job when the
+  // schedule has not changed for this process.
+  if (_cronJob && _cronSchedule === schedule) {
+    return;
+  }
+
   if (_cronJob) {
     _cronJob.stop();
   }
-
-  const dbSchedule = getAppConfig("proactive_cron_schedule");
-  const schedule = dbSchedule || process.env.PROACTIVE_CRON_SCHEDULE || "*/15 * * * *";
 
   _cronJob = new CronJob(schedule, async () => {
     try {
@@ -1137,12 +1144,13 @@ export function startScheduler(): void {
   });
 
   _cronJob.start();
+  _cronSchedule = schedule;
 
   addLog({
     level: "info",
     source: "scheduler",
     message: `Proactive scheduler started with schedule: ${schedule}`,
-    metadata: JSON.stringify({ schedule }),
+    metadata: JSON.stringify({ schedule, pid: process.pid, reason: "start" }),
   });
 }
 
@@ -1153,6 +1161,7 @@ export function stopScheduler(): void {
   if (_cronJob) {
     _cronJob.stop();
     _cronJob = null;
+    _cronSchedule = null;
     addLog({
       level: "info",
       source: "scheduler",

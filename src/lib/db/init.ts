@@ -225,10 +225,17 @@ function ensureThreadClassificationColumns(): void {
   if (!tableExists("threads")) return;
   const db = getDb();
 
-  addColumnIfMissing("threads", "thread_type", "TEXT NOT NULL DEFAULT 'interactive'");
-  addColumnIfMissing("threads", "is_interactive", "INTEGER NOT NULL DEFAULT 1");
+  // Keep ALTER TABLE additions SQLite-safe for older databases by avoiding
+  // strict NOT NULL migration patterns during column introduction.
+  addColumnIfMissing("threads", "thread_type", "TEXT");
+  addColumnIfMissing("threads", "is_interactive", "INTEGER");
   addColumnIfMissing("threads", "channel_id", "TEXT");
   addColumnIfMissing("threads", "external_sender_id", "TEXT");
+
+  const cols = getColumns("threads");
+  if (!cols.has("thread_type") || !cols.has("is_interactive")) {
+    throw new Error("Failed to ensure threads classification columns (thread_type/is_interactive). Migration could not be applied.");
+  }
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_threads_user_type_updated
@@ -254,6 +261,21 @@ function ensureThreadClassificationColumns(): void {
     `UPDATE threads
      SET thread_type = 'channel', is_interactive = 0
      WHERE title LIKE 'channel:%'`
+  ).run();
+
+  db.prepare(
+    `UPDATE threads
+     SET thread_type = 'interactive'
+     WHERE thread_type IS NULL OR trim(thread_type) = ''`
+  ).run();
+
+  db.prepare(
+    `UPDATE threads
+     SET is_interactive = CASE
+       WHEN thread_type = 'interactive' THEN 1
+       ELSE 0
+     END
+     WHERE is_interactive IS NULL`
   ).run();
 
   db.prepare(

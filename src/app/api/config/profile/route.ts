@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { getUserProfile, upsertUserProfile, addLog } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // Maximum lengths for profile fields (defence-in-depth)
 const MAX_FIELD_LEN = 500;
 const MAX_BIO_LEN = 2000;

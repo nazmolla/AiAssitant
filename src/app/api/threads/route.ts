@@ -3,20 +3,36 @@ import { requireUser } from "@/lib/auth/guard";
 import { listThreadsPaginated, createThread, addLog } from "@/lib/db";
 import { initializeDatabase } from "@/lib/db";
 
-// Ensure DB is initialized
-try {
-  initializeDatabase();
-  addLog({ level: "verbose", source: "api.threads", message: "Database initialized for threads route.", metadata: JSON.stringify({ pid: process.pid }) });
-} catch (err) {
-  addLog({
-    level: "critical",
-    source: "api.threads",
-    message: "Failed to initialize database for threads route.",
-    metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-  });
+let dbReady = false;
+
+function ensureThreadRouteDbReady(): { ok: true } | { ok: false; response: NextResponse } {
+  if (dbReady) return { ok: true };
+
+  try {
+    initializeDatabase();
+    dbReady = true;
+    addLog({
+      level: "verbose",
+      source: "api.threads",
+      message: "Database initialized for threads route.",
+      metadata: JSON.stringify({ pid: process.pid }),
+    });
+    return { ok: true };
+  } catch (err) {
+    addLog({
+      level: "critical",
+      source: "api.threads",
+      message: "Failed to initialize database for threads route.",
+      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+    });
+    return { ok: false, response: NextResponse.json({ error: "Database initialization failed." }, { status: 500 }) };
+  }
 }
 
 export async function GET(req: NextRequest) {
+  const dbState = ensureThreadRouteDbReady();
+  if (!dbState.ok) return dbState.response;
+
   try {
     const auth = await requireUser();
     if ("error" in auth) return auth.error;
@@ -39,6 +55,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const dbState = ensureThreadRouteDbReady();
+  if (!dbState.ok) return dbState.response;
+
   try {
     const auth = await requireUser();
     if ("error" in auth) return auth.error;
