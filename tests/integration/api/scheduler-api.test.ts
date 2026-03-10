@@ -214,6 +214,41 @@ describe("scheduler API endpoints", () => {
     expect(body.tasks[0].task_key).toBe("replacement");
   });
 
+  test("tasks patch rejects empty tasks when replace is false", async () => {
+    const req = new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1/tasks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tasks: [] }),
+    });
+
+    const res = await PATCH_TASKS(req, { params: Promise.resolve({ id: "sched-api-1" }) });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/must not be empty/i);
+  });
+
+  test("tasks patch rejects task missing handler_name", async () => {
+    const req = new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1/tasks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tasks: [
+          {
+            task_key: "invalid",
+            name: "Invalid Task",
+            execution_mode: "sync",
+            sequence_no: 0,
+            enabled: 1,
+          },
+        ],
+      }),
+    });
+
+    await expect(
+      PATCH_TASKS(req, { params: Promise.resolve({ id: "sched-api-1" }) })
+    ).rejects.toThrow(/missing handler_name/i);
+  });
+
   test("DELETE schedule removes schedule and cascading records", async () => {
     const db = getDb();
     db.prepare(

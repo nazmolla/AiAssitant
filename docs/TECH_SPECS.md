@@ -518,7 +518,7 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**1276 tests across 98 suites** — all passing.
+**1315 tests across 103 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|
@@ -542,7 +542,7 @@ Component tests use `jsdom` environment with the following mocks:
 | File | Tests | Coverage |
 |------|-------|----------|
 | `tests/component/full-navigation.test.tsx` | 65 | All 6 main tabs, all 11 settings pages (via chips and URL routing), loading-state guards, permission gating, admin-only visibility, UI elements, redirects |
-| `tests/component/component-render.test.tsx` | 20 | Render + content verification for all settings components (LlmConfig, ChannelsConfig, AuthConfig, UserManagement, CustomToolsConfig, LoggingConfig, WhisperConfig, ApprovalInbox, KnowledgeVault, ApiKeysConfig) |
+| `tests/component/component-render.test.tsx` | 21 | Render + content verification for settings components, including scheduler table/focus flows and scheduler detail error-state handling |
 | `tests/component/page.test.tsx` | 17 | Core page rendering, tab switching, drawer navigation |
 | `tests/component/settings-panel.test.tsx` | 4 | Settings chip selection, visibility |
 | `tests/component/conversation-tts-transition.test.tsx` | 6 | TTS → listening/idle transition, auto-listen toggle, no stuck speaking state, TTS error recovery, timing |

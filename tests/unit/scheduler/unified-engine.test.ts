@@ -110,4 +110,71 @@ describe("unified scheduler engine", () => {
     expect(taskRun?.status).toBe("success");
     expect(taskRun?.output_json).toContain("db_maintenance");
   });
+
+  test("marks run as partial_success when one task fails and one succeeds", async () => {
+    const { getDb } = require("@/lib/db/connection");
+    const db = getDb();
+    const { runUnifiedSchedulerEngineTickForTests } = require("@/lib/scheduler/unified-engine");
+
+    db.prepare(
+      `INSERT INTO scheduler_schedules (
+        id, schedule_key, name, owner_type, owner_id, handler_type, trigger_type, trigger_expr, timezone, status, max_concurrency, misfire_policy, next_run_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'UTC', ?, ?, ?, datetime('now', '-5 minutes'))`
+    ).run(
+      "sched-partial-1",
+      "workflow.partial.test",
+      "Partial Success Schedule",
+      "system",
+      null,
+      "agent.prompt",
+      "interval",
+      "every:1:hour",
+      "active",
+      1,
+      "run_immediately"
+    );
+
+    db.prepare(
+      `INSERT INTO scheduler_tasks (
+        id, schedule_id, task_key, name, handler_name, execution_mode, sequence_no, enabled, config_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      "sched-partial-task-1",
+      "sched-partial-1",
+      "invalid",
+      "Invalid Handler Task",
+      "unsupported.handler",
+      "sync",
+      0,
+      1,
+      null
+    );
+
+    db.prepare(
+      `INSERT INTO scheduler_tasks (
+        id, schedule_id, task_key, name, handler_name, execution_mode, sequence_no, enabled, config_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      "sched-partial-task-2",
+      "sched-partial-1",
+      "maintenance",
+      "Maintenance Task",
+      "system.db_maintenance.run_due",
+      "sync",
+      1,
+      1,
+      JSON.stringify({ source: "test" })
+    );
+
+    await runUnifiedSchedulerEngineTickForTests();
+
+    const run = db.prepare("SELECT * FROM scheduler_runs WHERE schedule_id = ? ORDER BY created_at DESC LIMIT 1").get("sched-partial-1") as { id: string; status: string } | undefined;
+    expect(run).toBeDefined();
+    expect(run?.status).toBe("partial_success");
+
+    const taskRuns = db.prepare("SELECT status FROM scheduler_task_runs WHERE run_id = ? ORDER BY created_at ASC").all(run!.id) as Array<{ status: string }>;
+    expect(taskRuns.length).toBe(2);
+    expect(taskRuns.some((t) => t.status === "failed")).toBe(true);
+    expect(taskRuns.some((t) => t.status === "success")).toBe(true);
+  });
 });

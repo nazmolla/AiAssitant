@@ -576,4 +576,74 @@ describe("SchedulerConfig", () => {
       expect(screen.getByText(/Focused Header View:/)).toBeInTheDocument();
     }, { timeout: 3000 });
   });
+
+  test("shows error message when loading schedule detail fails", async () => {
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/config/scheduler")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            cron_schedule: "*/15 * * * *",
+            knowledge_maintenance: { enabled: true, hour: 20, minute: 0, poll_seconds: 60 },
+          }),
+        });
+      }
+      if (url.includes("/api/scheduler/overview")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            schedules_total: 1,
+            schedules_active: 1,
+            schedules_paused: 0,
+            runs_running: 0,
+            runs_failed_24h: 0,
+            runs_success_24h: 0,
+            runs_partial_24h: 0,
+          }),
+        });
+      }
+      if (url.includes("/api/scheduler/schedules?") || url.includes("/api/scheduler/schedules&") || url.endsWith("/api/scheduler/schedules")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            data: [
+              {
+                id: "sched-fail-1",
+                schedule_key: "legacy.task.fail",
+                name: "Failing Detail Task",
+                trigger_type: "interval",
+                trigger_expr: "every:1:hour",
+                status: "active",
+                next_run_at: "2025-01-01T00:00:00Z",
+                last_run_at: null,
+                updated_at: "2025-01-01T00:00:00Z",
+              },
+            ],
+            total: 1,
+            hasMore: false,
+          }),
+        });
+      }
+      if (url.includes("/api/scheduler/schedules/sched-fail-1")) {
+        return Promise.resolve({
+          ok: false,
+          json: () => Promise.resolve({ error: "Detail endpoint failed" }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    render(<SchedulerConfig />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Failing Detail Task")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    fireEvent.click(screen.getByText("Failing Detail Task"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Detail endpoint failed")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
 });
