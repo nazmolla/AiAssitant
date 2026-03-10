@@ -3,6 +3,7 @@ import { startScheduler } from "@/lib/scheduler";
 import { getMcpManager } from "@/lib/mcp";
 import { startDiscordBot } from "@/lib/channels/discord";
 import { loadCustomToolsFromDb } from "@/lib/agent/custom-tools";
+import { startKnowledgeMaintenanceWorker } from "@/lib/knowledge-maintenance";
 
 declare global {
    
@@ -132,6 +133,7 @@ export async function bootstrapRuntime(): Promise<void> {
       // Critical path: DB + scheduler only — fast, no network I/O
       initializeDatabase();
       startScheduler();
+      startKnowledgeMaintenanceWorker();
 
       globalThis.__nexus_bootstrapped = true;
 

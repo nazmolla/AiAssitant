@@ -270,6 +270,12 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `alexa.at_main` | Amazon Alexa AT_MAIN cookie | ✅ |
 | `log_level_min` | Minimum log severity level to persist | ❌ |
 | `proactive_cron_schedule` | Cron expression for proactive scheduler interval (default: `*/15 * * * *`) | ❌ |
+| `knowledge_maintenance_enabled` | Enable/disable nightly knowledge maintenance worker (`1`/`0`) | ❌ |
+| `knowledge_maintenance_hour` | Local-hour daily run time for nightly knowledge maintenance (0-23) | ❌ |
+| `knowledge_maintenance_minute` | Local-minute daily run time for nightly knowledge maintenance (0-59) | ❌ |
+| `knowledge_maintenance_poll_seconds` | Worker poll cadence in seconds (30-300) | ❌ |
+| `knowledge_maintenance_last_run_date` | Last local date (`YYYY-MM-DD`) when nightly knowledge maintenance completed | ❌ |
+| `knowledge_maintenance_last_run_at` | ISO timestamp of last completed nightly knowledge maintenance run | ❌ |
 
 ---
 

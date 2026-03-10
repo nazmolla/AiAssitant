@@ -35,6 +35,12 @@ describe("Scheduler config API route", () => {
     const data = await res.json();
     expect(res.status).toBe(200);
     expect(data.cron_schedule).toBe("*/15 * * * *");
+    expect(data.knowledge_maintenance).toEqual({
+      enabled: true,
+      hour: 20,
+      minute: 0,
+      poll_seconds: 60,
+    });
   });
 
   test("GET returns stored schedule", async () => {
@@ -48,14 +54,32 @@ describe("Scheduler config API route", () => {
     const req = new Request("http://localhost/api/config/scheduler", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cron_schedule: "*/30 * * * *" }),
+      body: JSON.stringify({
+        cron_schedule: "*/30 * * * *",
+        knowledge_maintenance: {
+          enabled: false,
+          hour: 21,
+          minute: 30,
+          poll_seconds: 90,
+        },
+      }),
     });
     const res = await PUT(req);
     const data = await res.json();
     expect(res.status).toBe(200);
     expect(data.ok).toBe(true);
     expect(data.cron_schedule).toBe("*/30 * * * *");
+    expect(data.knowledge_maintenance).toEqual({
+      enabled: false,
+      hour: 21,
+      minute: 30,
+      poll_seconds: 90,
+    });
     expect(getAppConfig("proactive_cron_schedule")).toBe("*/30 * * * *");
+    expect(getAppConfig("knowledge_maintenance_enabled")).toBe("0");
+    expect(getAppConfig("knowledge_maintenance_hour")).toBe("21");
+    expect(getAppConfig("knowledge_maintenance_minute")).toBe("30");
+    expect(getAppConfig("knowledge_maintenance_poll_seconds")).toBe("90");
     expect(restartScheduler).toHaveBeenCalled();
   });
 

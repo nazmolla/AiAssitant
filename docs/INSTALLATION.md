@@ -69,6 +69,8 @@ If you plan to use automated job scouting and resume delivery by email, also ver
 | `DATABASE_PATH` | No | SQLite database file path (default: `nexus.db`) |
 | `PROACTIVE_CRON_SCHEDULE` | No | Cron expression for the proactive scheduler (default: every 15 min) |
 
+Knowledge maintenance settings are managed in the admin UI via **Settings → Scheduler** and stored in `app_config`.
+
 > **LLM keys, OAuth providers, and Discord credentials** are no longer set in `.env`. Configure them at runtime through the admin UI — see [Usage Configuration](USAGE_CONFIGURATION.md#llm-providers) and [Admin Operations](USAGE_ADMIN.md#authentication-providers).
 
 ---

@@ -289,6 +289,7 @@ This ensures other HTTP requests (including new tabs, API calls, and the convers
 |-----------|-------------|
 | **Multi-User Isolation** | Each user's knowledge, threads, and profile are scoped by `user_id`. No cross-user data leakage. |
 | **Proactive Intelligence** | A background scheduler polls MCP tools, writes discovered actions into a persisted scheduled-task queue, and executes due tasks by frequency. The proactive observer LLM is aware of all available tools (builtins + MCP + custom) and can create new custom tools via `builtin.nexus_create_tool` when it identifies automation opportunities. Schedule is configurable via **Settings → Scheduler** (stored in `app_config`). Proactive approvals (no chat thread) surface in the Notification Center (bell icon) and are visible to admins. |
+| **Knowledge Declutter Worker** | A dedicated Worker Thread runs evening maintenance for `user_knowledge` (dedupe + declutter) on a daily schedule. It is separate from the proactive scheduler loop and uses overlap guards to prevent concurrent maintenance runs. |
 | **Autonomous Knowledge Capture** | Every chat turn is mined for durable facts, keeping the Knowledge Vault up to date without manual entry. |
 | **Vector-Aware Reasoning** | Semantic embedding search retrieves the most relevant knowledge before responding. |
 | **Human-in-the-Loop (HITL)** | Unified tool policy system governs ALL tools (built-in, custom, and MCP) with **default-deny** enforcement — unknown tools always require approval. Approval requests must include a clear reason. For interactive user-origin actions (chat/voice), approval is requested inline in the same conversation. The Approval Center lists only proactive/email-origin actions. Approval cards show structured details: **action** (human-readable), **item** (device/entity name), **location**, **reason**, and **source** (including email sender identity when available). Per-tool **scope** (`global` = all users, `user` = admin only) remains enforced. Standing orders let users save approval preferences (Always Allow/Ignore/Reject). |
@@ -482,8 +483,10 @@ src/
 │   ├── audio.ts                # Audio utility (getAudioClient, transcribeAudio, textToSpeech)
 │   ├── cache.ts                # In-memory write-through cache (LLM providers, tool policies, users, profiles)
 │   ├── scheduler/              # Proactive cron scheduler
+│   ├── knowledge-maintenance/  # Evening knowledge dedupe worker launcher + scheduling helpers
 │   └── bootstrap.ts            # Runtime initialization
 ├── middleware.ts                # Auth + rate limiting + security middleware
 scripts/
-└── agent-worker.js             # Worker thread entry point for LLM API calls (plain JS, standalone)
+├── agent-worker.js             # Worker thread entry point for LLM API calls (plain JS, standalone)
+└── knowledge-maintenance-worker.js # Worker thread entry for nightly knowledge declutter
 ```

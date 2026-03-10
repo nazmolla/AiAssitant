@@ -24,6 +24,15 @@ All screenshots are captured from the **test environment**.
 - Optional query params: `sinceId`, `level`, `source`.
 - Permanent CLI consumer script: `npm run logs:stream -- <baseUrl> <apiKey> [level] [source] [sinceId]`.
 
+## Evening Knowledge Maintenance
+
+- Nexus runs a dedicated background worker thread (separate from the proactive scheduler) every evening to declutter and deduplicate `user_knowledge`.
+- Default run time is `20:00` local server time.
+- All settings are exposed in **Settings → Scheduler**:
+	- Enable/disable nightly maintenance
+	- Run hour/minute
+	- Worker poll interval (seconds)
+
 ## DB Management Center
 
 - Use **Settings → DB Management** (admin-only) to monitor DB growth and cleanup status in one location.

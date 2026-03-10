@@ -9,6 +9,7 @@
 - **Multi-User Isolation** — per-user knowledge, threads, channels, and profiles
 - **Proactive Intelligence** — background scheduler monitors MCP tools, creates custom tools for automation opportunities, and generates reminders; schedule configurable via Settings → Scheduler
 - **Scheduled Task Queue** — future and recurring tasks are persisted with frequency, next run, last run, source, and scope; executed automatically by the background scheduler
+- **Evening Knowledge Maintenance Worker** — dedicated worker thread runs nightly dedupe/declutter for `user_knowledge`, separate from the proactive scheduler
 - **Autonomous Knowledge Capture** — every conversation is mined for durable facts
 - **Human-in-the-Loop (HITL)** — default-deny policy enforcement with required rationale; interactive chat/voice approvals are requested inline in the same conversation; Approval Center is reserved for proactive/email-origin actions with structured details (action, item, location, reason, source); per-tool **scope** (Global or User Only) controls visibility
 - **Standing Orders Management** — view, edit, and revoke saved approval decisions (Always Allow / Always Ignore / Always Reject) from Settings → Standing Orders
