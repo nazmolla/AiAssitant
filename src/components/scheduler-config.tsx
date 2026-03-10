@@ -481,16 +481,16 @@ export function SchedulerConfig() {
               <Button variant="outline" size="sm" onClick={loadConsole}>Refresh</Button>
             </div>
 
-            <div className="overflow-x-auto rounded-lg border border-white/[0.08] bg-white/[0.01]">
-              <table className="w-full min-w-[940px] text-xs sm:text-sm">
+            <div className="max-w-full overflow-x-auto rounded-lg border border-white/[0.08] bg-white/[0.01]">
+              <table className="w-full table-fixed text-xs sm:text-sm">
                 <thead className="bg-muted/30">
                   <tr>
-                    <th className="px-3 py-2 text-left">Header Task</th>
-                    <th className="px-3 py-2 text-left">Schedule Key</th>
-                    <th className="px-3 py-2 text-left">Status</th>
-                    <th className="px-3 py-2 text-left">Trigger</th>
-                    <th className="px-3 py-2 text-left">Next Run</th>
-                    <th className="px-3 py-2 text-left">Actions</th>
+                    <th className="w-[36%] px-3 py-2 text-left">Header Task</th>
+                    <th className="hidden w-[18%] px-3 py-2 text-left md:table-cell">Schedule Key</th>
+                    <th className="w-[14%] px-3 py-2 text-left">Status</th>
+                    <th className="hidden w-[16%] px-3 py-2 text-left lg:table-cell">Trigger</th>
+                    <th className="hidden w-[12%] px-3 py-2 text-left sm:table-cell">Next Run</th>
+                    <th className="w-[22%] px-3 py-2 text-left">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -508,10 +508,10 @@ export function SchedulerConfig() {
                             setRunDetail(null);
                           }}
                         >
-                          <td className="px-3 py-2 font-medium max-w-[340px]">
+                          <td className="px-3 py-2 font-medium">
                             <div className="truncate whitespace-nowrap" title={s.name}>{s.name}</div>
                           </td>
-                          <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground/80 max-w-[260px]">
+                          <td className="hidden px-3 py-2 font-mono text-[10px] text-muted-foreground/80 md:table-cell">
                             <div className="truncate whitespace-nowrap" title={s.schedule_key}>{s.schedule_key}</div>
                           </td>
                           <td className="px-3 py-2">
@@ -519,9 +519,9 @@ export function SchedulerConfig() {
                               {s.status}
                             </span>
                           </td>
-                          <td className="px-3 py-2 max-w-[220px]"><div className="truncate whitespace-nowrap" title={`${s.trigger_type} / ${s.trigger_expr}`}>{s.trigger_type} / {s.trigger_expr}</div></td>
-                          <td className="px-3 py-2 whitespace-nowrap">{formatTs(s.next_run_at)}</td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground/80">Click row to {isOpen ? "collapse" : "expand"}</td>
+                          <td className="hidden px-3 py-2 lg:table-cell"><div className="truncate whitespace-nowrap" title={`${s.trigger_type} / ${s.trigger_expr}`}>{s.trigger_type} / {s.trigger_expr}</div></td>
+                          <td className="hidden px-3 py-2 whitespace-nowrap sm:table-cell">{formatTs(s.next_run_at)}</td>
+                          <td className="px-3 py-2 text-[11px] text-muted-foreground/80">Tap row to {isOpen ? "collapse" : "expand"}</td>
                         </tr>
 
                         {isOpen && (
@@ -535,14 +535,14 @@ export function SchedulerConfig() {
                                 <div className="rounded-lg border border-white/[0.08] bg-white/[0.01] p-3 sm:p-4">
                                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                                     <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground/80">Inline Detail: {selectedScheduleDetail.schedule.name}</h3>
-                                    <div className="flex flex-wrap gap-1">
+                                    <div className="grid w-full grid-cols-1 gap-1 sm:w-auto sm:grid-cols-3 xl:flex">
                                       {selectedScheduleDetail.schedule.status === "active" ? (
-                                        <Button variant="outline" size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "pause")}>Pause</Button>
+                                        <Button className="w-full xl:w-auto" variant="outline" size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "pause")}>Pause</Button>
                                       ) : (
-                                        <Button variant="outline" size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "resume")}>Resume</Button>
+                                        <Button className="w-full xl:w-auto" variant="outline" size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "resume")}>Resume</Button>
                                       )}
-                                      <Button size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "trigger")}>Trigger</Button>
-                                      <Button variant="outline" size="sm" onClick={openFocusedView}>Open Full Details</Button>
+                                      <Button className="w-full xl:w-auto" size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "trigger")}>Trigger</Button>
+                                      <Button className="w-full xl:w-auto" variant="outline" size="sm" onClick={openFocusedView}>Open Full Details</Button>
                                     </div>
                                   </div>
 
@@ -630,10 +630,10 @@ export function SchedulerConfig() {
                 <div className="max-h-[95vh] w-full max-w-6xl overflow-y-auto rounded-xl border border-primary/30 bg-background p-4 sm:p-5">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-primary">Focused Header View: {selectedScheduleDetail.schedule.name}</h3>
-                    <div className="flex flex-wrap gap-1">
-                      <Button variant="outline" size="sm" onClick={() => setFocusedView(false)}>Close</Button>
+                    <div className="flex w-full flex-wrap gap-1 sm:w-auto">
+                      <Button className="w-full sm:w-auto" variant="outline" size="sm" onClick={() => setFocusedView(false)}>Close</Button>
                       <select
-                        className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                        className="w-full rounded border border-white/[0.08] bg-background px-2 py-1 text-xs sm:w-auto"
                         value={runStatusFilter}
                         onChange={(e) => setRunStatusFilter(e.target.value)}
                       >
@@ -775,8 +775,9 @@ export function SchedulerConfig() {
                       </table>
                     </div>
 
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-2 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
                       <Button
+                        className="w-full sm:w-auto"
                         variant="outline"
                         size="sm"
                         onClick={() => setDetailTasks([
@@ -793,8 +794,8 @@ export function SchedulerConfig() {
                       >
                         Add Subtask
                       </Button>
-                      <Button size="sm" onClick={saveFocusedDetails} disabled={savingDetail}>Save Changes</Button>
-                      <Button variant="outline" size="sm" onClick={deleteSelectedSchedule} disabled={savingDetail}>Delete Schedule (Cascade)</Button>
+                      <Button className="w-full sm:w-auto" size="sm" onClick={saveFocusedDetails} disabled={savingDetail}>Save Changes</Button>
+                      <Button className="w-full sm:w-auto" variant="outline" size="sm" onClick={deleteSelectedSchedule} disabled={savingDetail}>Delete Schedule (Cascade)</Button>
                     </div>
                   </div>
 
