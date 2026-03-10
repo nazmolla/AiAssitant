@@ -102,7 +102,8 @@ export function SchedulerConfig() {
   const [loadingConsole, setLoadingConsole] = useState(true);
   const [consoleMessage, setConsoleMessage] = useState<string | null>(null);
   const [runStatusFilter, setRunStatusFilter] = useState<string>("all");
-  const [selectedScheduleId, setSelectedScheduleId] = useState<string>("all");
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
+  const [focusedView, setFocusedView] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runDetail, setRunDetail] = useState<SchedulerRunDetailResponse | null>(null);
   const [loadingRunDetail, setLoadingRunDetail] = useState(false);
@@ -134,31 +135,23 @@ export function SchedulerConfig() {
     setLoadingConsole(true);
     setConsoleMessage(null);
     try {
-      const runsUrl = new URL("/api/scheduler/runs", window.location.origin);
-      runsUrl.searchParams.set("limit", "30");
-      if (runStatusFilter !== "all") runsUrl.searchParams.set("status", runStatusFilter);
-      if (selectedScheduleId !== "all") runsUrl.searchParams.set("scheduleId", selectedScheduleId);
-
       const schedulesUrl = new URL("/api/scheduler/schedules", window.location.origin);
       schedulesUrl.searchParams.set("limit", "30");
 
-      const [overviewRes, schedulesRes, runsRes] = await Promise.all([
+      const [overviewRes, schedulesRes] = await Promise.all([
         fetch("/api/scheduler/overview"),
         fetch(schedulesUrl.toString()),
-        fetch(runsUrl.toString()),
       ]);
 
-      const [overviewJson, schedulesJson, runsJson] = await Promise.all([
+      const [overviewJson, schedulesJson] = await Promise.all([
         overviewRes.json().catch(() => ({})),
         schedulesRes.json().catch(() => ({})),
-        runsRes.json().catch(() => ({})),
       ]);
 
-      if (!overviewRes.ok || !schedulesRes.ok || !runsRes.ok) {
+      if (!overviewRes.ok || !schedulesRes.ok) {
         setConsoleMessage(
           (overviewJson as { error?: string }).error ||
           (schedulesJson as { error?: string }).error ||
-          (runsJson as { error?: string }).error ||
           "Failed to load scheduler console."
         );
         return;
@@ -167,9 +160,8 @@ export function SchedulerConfig() {
       setOverview(overviewJson as SchedulerOverview);
       const nextSchedules = ((schedulesJson as PaginatedResponse<SchedulerScheduleRecord>).data || []).slice(0, 20);
       setSchedules(nextSchedules);
-      setRuns(((runsJson as PaginatedResponse<SchedulerRunRecord>).data || []).slice(0, 25));
 
-      if (selectedScheduleId === "all" && nextSchedules.length > 0) {
+      if (!selectedScheduleId && nextSchedules.length > 0) {
         setSelectedScheduleId(nextSchedules[0].id);
       }
     } catch {
@@ -180,7 +172,7 @@ export function SchedulerConfig() {
   };
 
   const loadScheduleDetail = async (scheduleId: string) => {
-    if (!scheduleId || scheduleId === "all") {
+    if (!scheduleId) {
       setSelectedScheduleDetail(null);
       return;
     }
@@ -199,6 +191,28 @@ export function SchedulerConfig() {
       setSelectedScheduleDetail(null);
     } finally {
       setLoadingScheduleDetail(false);
+    }
+  };
+
+  const loadFocusedRuns = async (scheduleId: string) => {
+    if (!scheduleId) {
+      setRuns([]);
+      return;
+    }
+    try {
+      const runsUrl = new URL("/api/scheduler/runs", window.location.origin);
+      runsUrl.searchParams.set("limit", "100");
+      runsUrl.searchParams.set("scheduleId", scheduleId);
+      if (runStatusFilter !== "all") runsUrl.searchParams.set("status", runStatusFilter);
+      const res = await fetch(runsUrl.toString());
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setConsoleMessage((json as { error?: string }).error || "Failed to load schedule runs.");
+        return;
+      }
+      setRuns(((json as PaginatedResponse<SchedulerRunRecord>).data || []).slice(0, 100));
+    } catch {
+      setConsoleMessage("Failed to load schedule runs.");
     }
   };
 
@@ -265,11 +279,17 @@ export function SchedulerConfig() {
       loadConsole();
     }, 30000);
     return () => window.clearInterval(timer);
-  }, [runStatusFilter, selectedScheduleId]);
+  }, []);
 
   useEffect(() => {
+    if (!selectedScheduleId) return;
     loadScheduleDetail(selectedScheduleId);
   }, [selectedScheduleId]);
+
+  useEffect(() => {
+    if (!focusedView || !selectedScheduleId) return;
+    loadFocusedRuns(selectedScheduleId);
+  }, [focusedView, selectedScheduleId, runStatusFilter]);
 
   const save = async () => {
     setSaving(true);
@@ -339,27 +359,43 @@ export function SchedulerConfig() {
           )}
 
           <div className="space-y-4">
-            <div className="rounded-lg border border-white/[0.08] bg-white/[0.01] p-3 sm:p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground/80">Task Header</h3>
-                <Button variant="outline" size="sm" onClick={loadConsole}>Refresh</Button>
-              </div>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground/80">Header Tasks</h3>
+              <Button variant="outline" size="sm" onClick={loadConsole}>Refresh</Button>
+            </div>
 
-              <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
-                <div>
-                  <label className="mb-1 block text-[11px] uppercase tracking-wider text-muted-foreground/60">Select Schedule</label>
-                  <select
-                    className="w-full rounded border border-white/[0.08] bg-background px-2 py-2 text-xs sm:text-sm"
-                    value={selectedScheduleId}
-                    onChange={(e) => setSelectedScheduleId(e.target.value)}
-                  >
-                    <option value="all">All schedules</option>
-                    {schedules.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-                {selectedScheduleDetail?.schedule && (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {schedules.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedScheduleId(s.id);
+                    setFocusedView(false);
+                    setSelectedRunId(null);
+                    setRunDetail(null);
+                  }}
+                  className={`rounded-lg border p-3 text-left transition ${selectedScheduleId === s.id ? "border-primary/40 bg-primary/10" : "border-white/[0.08] bg-white/[0.01] hover:bg-white/[0.03]"}`}
+                >
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-medium text-sm">{s.name}</div>
+                      <div className="font-mono text-[10px] text-muted-foreground/70">{s.schedule_key}</div>
+                    </div>
+                    <span className={`inline-block rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${getScheduleBadgeClass(s.status)}`}>
+                      {s.status}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground/80">Trigger: {s.trigger_type} / {s.trigger_expr}</div>
+                  <div className="mt-1 text-xs text-muted-foreground/80">Next: {formatTs(s.next_run_at)}</div>
+                </button>
+              ))}
+            </div>
+
+            {selectedScheduleDetail?.schedule && !focusedView && (
+              <div className="rounded-lg border border-white/[0.08] bg-white/[0.01] p-3 sm:p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground/80">Inline Detail: {selectedScheduleDetail.schedule.name}</h3>
                   <div className="flex flex-wrap gap-1">
                     {selectedScheduleDetail.schedule.status === "active" ? (
                       <Button variant="outline" size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "pause")}>Pause</Button>
@@ -367,133 +403,206 @@ export function SchedulerConfig() {
                       <Button variant="outline" size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "resume")}>Resume</Button>
                     )}
                     <Button size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "trigger")}>Trigger</Button>
-                  </div>
-                )}
-              </div>
-
-              {loadingScheduleDetail && <p className="mt-3 text-xs text-muted-foreground">Loading schedule detail...</p>}
-
-              {!loadingScheduleDetail && selectedScheduleDetail?.schedule && (
-                <div className="mt-3 grid gap-2 rounded border border-white/[0.08] p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
-                  <div>
-                    <div className="text-muted-foreground/70">Name</div>
-                    <div className="font-medium text-sm">{selectedScheduleDetail.schedule.name}</div>
-                    <div className="font-mono text-[10px] text-muted-foreground/70">{selectedScheduleDetail.schedule.schedule_key}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground/70">Status</div>
-                    <span className={`inline-block rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${getScheduleBadgeClass(selectedScheduleDetail.schedule.status)}`}>
-                      {selectedScheduleDetail.schedule.status}
-                    </span>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground/70">Trigger</div>
-                    <div className="font-mono text-[11px]">{selectedScheduleDetail.schedule.trigger_type}: {selectedScheduleDetail.schedule.trigger_expr}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground/70">Timing</div>
-                    <div>Next: {formatTs(selectedScheduleDetail.schedule.next_run_at)}</div>
-                    <div>Last: {formatTs(selectedScheduleDetail.schedule.last_run_at)}</div>
+                    <Button variant="outline" size="sm" onClick={() => setFocusedView(true)}>Focus View</Button>
                   </div>
                 </div>
-              )}
 
-              {!loadingScheduleDetail && selectedScheduleId === "all" && (
-                <p className="mt-3 text-xs text-muted-foreground">Pick a schedule to view its header metadata and child tasks.</p>
-              )}
-            </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div>
+                    <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Children Tasks</h4>
+                    <div className="overflow-x-auto rounded border border-white/[0.08]">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/30">
+                          <tr>
+                            <th className="px-2 py-2 text-left">#</th>
+                            <th className="px-2 py-2 text-left">Task</th>
+                            <th className="px-2 py-2 text-left">Handler</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedScheduleDetail.tasks.map((task) => (
+                            <tr key={task.id} className="border-t border-white/[0.06]">
+                              <td className="px-2 py-2">{task.sequence_no}</td>
+                              <td className="px-2 py-2">
+                                <div className="font-medium">{task.name}</div>
+                                <div className="font-mono text-[10px] text-muted-foreground/70">{task.task_key}</div>
+                              </td>
+                              <td className="px-2 py-2 font-mono text-[10px]">{task.handler_name}</td>
+                            </tr>
+                          ))}
+                          {selectedScheduleDetail.tasks.length === 0 && (
+                            <tr><td className="px-2 py-2 text-muted-foreground" colSpan={3}>No children tasks.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
 
-            <div className="rounded-lg border border-white/[0.08] bg-white/[0.01] p-3 sm:p-4">
-              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground/80">Task Children</h3>
-              <div className="overflow-x-auto rounded border border-white/[0.08]">
-                <table className="w-full text-xs sm:text-sm">
-                  <thead className="bg-muted/30">
-                    <tr>
-                      <th className="px-2 py-2 text-left">Sequence</th>
-                      <th className="px-2 py-2 text-left">Task</th>
-                      <th className="px-2 py-2 text-left">Handler</th>
-                      <th className="px-2 py-2 text-left">Mode</th>
-                      <th className="px-2 py-2 text-left">Enabled</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(selectedScheduleDetail?.tasks || []).map((task) => (
-                      <tr key={task.id} className="border-t border-white/[0.06]">
-                        <td className="px-2 py-2">{task.sequence_no}</td>
-                        <td className="px-2 py-2">
-                          <div className="font-medium">{task.name}</div>
-                          <div className="font-mono text-[10px] text-muted-foreground/70">{task.task_key}</div>
-                        </td>
-                        <td className="px-2 py-2 font-mono text-[10px]">{task.handler_name}</td>
-                        <td className="px-2 py-2">{task.execution_mode}</td>
-                        <td className="px-2 py-2">{task.enabled === 1 ? "Yes" : "No"}</td>
-                      </tr>
-                    ))}
-                    {!loadingScheduleDetail && (selectedScheduleDetail?.tasks || []).length === 0 && (
-                      <tr>
-                        <td className="px-2 py-3 text-muted-foreground" colSpan={5}>No child tasks available for the selected schedule.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-white/[0.08] bg-white/[0.01] p-3 sm:p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground/80">Previous Task Runs</h3>
-                <div className="flex flex-wrap gap-2">
-                  <select
-                    className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
-                    value={runStatusFilter}
-                    onChange={(e) => setRunStatusFilter(e.target.value)}
-                  >
-                    <option value="all">All statuses</option>
-                    <option value="running">Running</option>
-                    <option value="queued">Queued</option>
-                    <option value="success">Success</option>
-                    <option value="partial_success">Partial Success</option>
-                    <option value="failed">Failed</option>
-                  </select>
+                  <div>
+                    <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Last Runs</h4>
+                    <div className="overflow-x-auto rounded border border-white/[0.08]">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/30">
+                          <tr>
+                            <th className="px-2 py-2 text-left">Run</th>
+                            <th className="px-2 py-2 text-left">Status</th>
+                            <th className="px-2 py-2 text-left">Started</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedScheduleDetail.recent_runs.slice(0, 6).map((r) => (
+                            <tr key={r.id} className="border-t border-white/[0.06]">
+                              <td className="px-2 py-2 font-mono text-[10px]">{r.id.slice(0, 8)}</td>
+                              <td className="px-2 py-2">
+                                <span className={`inline-block rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${getRunBadgeClass(r.status)}`}>
+                                  {r.status}
+                                </span>
+                              </td>
+                              <td className="px-2 py-2 whitespace-nowrap">{formatTs(r.started_at || r.created_at)}</td>
+                            </tr>
+                          ))}
+                          {selectedScheduleDetail.recent_runs.length === 0 && (
+                            <tr><td className="px-2 py-2 text-muted-foreground" colSpan={3}>No recent runs.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               </div>
+            )}
 
-              <div className="overflow-x-auto rounded border border-white/[0.08]">
-                <table className="w-full text-xs sm:text-sm">
-                  <thead className="bg-muted/30">
-                    <tr>
-                      <th className="px-2 py-2 text-left">Run</th>
-                      <th className="px-2 py-2 text-left">Status</th>
-                      <th className="px-2 py-2 text-left">Trigger</th>
-                      <th className="px-2 py-2 text-left">Started</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {runs.map((r) => (
-                      <tr
-                        key={r.id}
-                        className={`border-t border-white/[0.06] cursor-pointer ${selectedRunId === r.id ? "bg-white/[0.03]" : ""}`}
-                        onClick={() => loadRunDetail(r.id)}
-                      >
-                        <td className="px-2 py-2 font-mono text-[10px]">{r.id.slice(0, 8)}</td>
-                        <td className="px-2 py-2">
-                          <span className={`inline-block rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${getRunBadgeClass(r.status)}`}>
-                            {r.status}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-xs">{r.trigger_source}</td>
-                        <td className="px-2 py-2 whitespace-nowrap">{formatTs(r.started_at || r.created_at)}</td>
-                      </tr>
-                    ))}
-                    {runs.length === 0 && !loadingConsole && (
+            {selectedScheduleDetail?.schedule && focusedView && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 sm:p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-primary">Focused Header View: {selectedScheduleDetail.schedule.name}</h3>
+                  <div className="flex flex-wrap gap-1">
+                    <Button variant="outline" size="sm" onClick={() => setFocusedView(false)}>Back To Inline</Button>
+                    <select
+                      className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                      value={runStatusFilter}
+                      onChange={(e) => setRunStatusFilter(e.target.value)}
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="running">Running</option>
+                      <option value="queued">Queued</option>
+                      <option value="success">Success</option>
+                      <option value="partial_success">Partial Success</option>
+                      <option value="failed">Failed</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mb-4 overflow-x-auto rounded border border-white/[0.08]">
+                  <table className="w-full text-xs sm:text-sm">
+                    <thead className="bg-muted/30">
                       <tr>
-                        <td className="px-2 py-3 text-muted-foreground" colSpan={4}>No runs found.</td>
+                        <th className="px-2 py-2 text-left">Sequence</th>
+                        <th className="px-2 py-2 text-left">Task</th>
+                        <th className="px-2 py-2 text-left">Handler</th>
+                        <th className="px-2 py-2 text-left">Mode</th>
+                        <th className="px-2 py-2 text-left">Enabled</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {selectedScheduleDetail.tasks.map((task) => (
+                        <tr key={task.id} className="border-t border-white/[0.06]">
+                          <td className="px-2 py-2">{task.sequence_no}</td>
+                          <td className="px-2 py-2">
+                            <div className="font-medium">{task.name}</div>
+                            <div className="font-mono text-[10px] text-muted-foreground/70">{task.task_key}</div>
+                          </td>
+                          <td className="px-2 py-2 font-mono text-[10px]">{task.handler_name}</td>
+                          <td className="px-2 py-2">{task.execution_mode}</td>
+                          <td className="px-2 py-2">{task.enabled === 1 ? "Yes" : "No"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="overflow-x-auto rounded border border-white/[0.08]">
+                  <table className="w-full text-xs sm:text-sm">
+                    <thead className="bg-muted/30">
+                      <tr>
+                        <th className="px-2 py-2 text-left">Run</th>
+                        <th className="px-2 py-2 text-left">Status</th>
+                        <th className="px-2 py-2 text-left">Trigger</th>
+                        <th className="px-2 py-2 text-left">Started</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {runs.map((r) => (
+                        <tr
+                          key={r.id}
+                          className={`border-t border-white/[0.06] cursor-pointer ${selectedRunId === r.id ? "bg-white/[0.04]" : ""}`}
+                          onClick={() => loadRunDetail(r.id)}
+                        >
+                          <td className="px-2 py-2 font-mono text-[10px]">{r.id.slice(0, 8)}</td>
+                          <td className="px-2 py-2">
+                            <span className={`inline-block rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${getRunBadgeClass(r.status)}`}>
+                              {r.status}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 text-xs">{r.trigger_source}</td>
+                          <td className="px-2 py-2 whitespace-nowrap">{formatTs(r.started_at || r.created_at)}</td>
+                        </tr>
+                      ))}
+                      {runs.length === 0 && (
+                        <tr><td className="px-2 py-3 text-muted-foreground" colSpan={4}>No runs found for this header task.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-3 rounded border border-white/[0.08] p-3">
+                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Run Detail + Logs</h4>
+                  {loadingRunDetail && <p className="text-xs text-muted-foreground">Loading run detail...</p>}
+                  {!loadingRunDetail && !runDetail && <p className="text-xs text-muted-foreground">Select a run above to view task-run logs.</p>}
+                  {!loadingRunDetail && runDetail && (
+                    <div className="overflow-x-auto rounded border border-white/[0.08]">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/30">
+                          <tr>
+                            <th className="px-2 py-2 text-left">Task Run</th>
+                            <th className="px-2 py-2 text-left">Status</th>
+                            <th className="px-2 py-2 text-left">Start</th>
+                            <th className="px-2 py-2 text-left">Finish</th>
+                            <th className="px-2 py-2 text-left">Log Link</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {runDetail.task_runs.map((taskRun) => (
+                            <tr key={taskRun.id} className="border-t border-white/[0.06]">
+                              <td className="px-2 py-2 font-mono">{taskRun.id.slice(0, 8)}</td>
+                              <td className="px-2 py-2">
+                                <span className={`inline-block rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${getRunBadgeClass(taskRun.status)}`}>
+                                  {taskRun.status}
+                                </span>
+                              </td>
+                              <td className="px-2 py-2 whitespace-nowrap">{formatTs(taskRun.started_at)}</td>
+                              <td className="px-2 py-2 whitespace-nowrap">{formatTs(taskRun.finished_at)}</td>
+                              <td className="px-2 py-2">
+                                {taskRun.log_ref ? (
+                                  <a className="text-primary underline" href="/api/logs?limit=200&source=scheduler-engine" target="_blank" rel="noreferrer">
+                                    Open Logs ({taskRun.log_ref})
+                                  </a>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          {runDetail.task_runs.length === 0 && (
+                            <tr><td className="px-2 py-3 text-muted-foreground" colSpan={5}>No task-runs recorded.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {(consoleMessage || message) && (
@@ -502,67 +611,11 @@ export function SchedulerConfig() {
             </p>
           )}
 
-          <div className="rounded-lg border border-white/[0.08] p-3">
-            <h3 className="text-sm font-semibold mb-2">Run Detail</h3>
-            {loadingRunDetail && <p className="text-xs text-muted-foreground">Loading run detail...</p>}
-            {!loadingRunDetail && !runDetail && <p className="text-xs text-muted-foreground">Select a run to inspect task execution and log references.</p>}
-            {!loadingRunDetail && runDetail && (
-              <div className="space-y-3 text-xs">
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <div>
-                    <div className="text-muted-foreground/70">Run ID</div>
-                    <div className="font-mono">{runDetail.run.id}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground/70">Schedule</div>
-                    <div>{runDetail.schedule?.name || runDetail.run.schedule_id}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground/70">Status</div>
-                    <div>{runDetail.run.status}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground/70">Duration</div>
-                    <div>{formatTs(runDetail.run.started_at)} - {formatTs(runDetail.run.finished_at)}</div>
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto rounded border border-white/[0.08]">
-                  <table className="w-full text-xs">
-                    <thead className="bg-muted/30">
-                      <tr>
-                        <th className="px-2 py-2 text-left">Task Run</th>
-                        <th className="px-2 py-2 text-left">Status</th>
-                        <th className="px-2 py-2 text-left">Start</th>
-                        <th className="px-2 py-2 text-left">Finish</th>
-                        <th className="px-2 py-2 text-left">Log Ref</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {runDetail.task_runs.map((taskRun) => (
-                        <tr key={taskRun.id} className="border-t border-white/[0.06]">
-                          <td className="px-2 py-2 font-mono">{taskRun.id.slice(0, 8)}</td>
-                          <td className="px-2 py-2">
-                            <span className={`inline-block rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${getRunBadgeClass(taskRun.status)}`}>
-                              {taskRun.status}
-                            </span>
-                          </td>
-                          <td className="px-2 py-2 whitespace-nowrap">{formatTs(taskRun.started_at)}</td>
-                          <td className="px-2 py-2 whitespace-nowrap">{formatTs(taskRun.finished_at)}</td>
-                          <td className="px-2 py-2 font-mono">{taskRun.log_ref || "-"}</td>
-                        </tr>
-                      ))}
-                      {runDetail.task_runs.length === 0 && (
-                        <tr>
-                          <td className="px-2 py-3 text-muted-foreground" colSpan={5}>No task runs were recorded for this run.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
+          {!focusedView && selectedScheduleDetail?.schedule && (
+            <div className="rounded-lg border border-white/[0.08] p-3">
+              <p className="text-xs text-muted-foreground">Click <strong>Focus View</strong> on the selected header task to inspect full runs and log links.</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

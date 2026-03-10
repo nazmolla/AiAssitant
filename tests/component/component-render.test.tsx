@@ -456,6 +456,56 @@ describe("SchedulerConfig", () => {
           }),
         });
       }
+      if (url.includes("/api/scheduler/schedules/sched-1")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            schedule: {
+              id: "sched-1",
+              schedule_key: "legacy.task.1",
+              name: "Legacy Task",
+              trigger_type: "interval",
+              trigger_expr: "every:1:hour",
+              status: "active",
+              next_run_at: "2025-01-01T00:00:00Z",
+              last_run_at: null,
+              updated_at: "2025-01-01T00:00:00Z",
+            },
+            tasks: [
+              {
+                id: "task-1",
+                schedule_id: "sched-1",
+                task_key: "legacy.task.1.child",
+                name: "Legacy Child",
+                description: null,
+                handler_name: "system.legacy.child",
+                sequence_no: 1,
+                execution_mode: "sequential",
+                timeout_ms: null,
+                retry_count: 0,
+                retry_backoff_ms: null,
+                overlap_policy: "skip",
+                enabled: 1,
+                metadata_json: null,
+                created_at: "2025-01-01T00:00:00Z",
+                updated_at: "2025-01-01T00:00:00Z",
+              },
+            ],
+            recent_runs: [
+              {
+                id: "run-1",
+                schedule_id: "sched-1",
+                trigger_source: "timer",
+                status: "success",
+                created_at: "2025-01-01T00:00:00Z",
+                started_at: "2025-01-01T00:01:00Z",
+                finished_at: "2025-01-01T00:01:30Z",
+                error_message: null,
+              },
+            ],
+          }),
+        });
+      }
       if (url.includes("/api/scheduler/runs")) {
         return Promise.resolve({
           ok: true,
@@ -491,6 +541,14 @@ describe("SchedulerConfig", () => {
     render(<SchedulerConfig />);
     await waitFor(() => {
       expect(screen.getByText("Scheduler Console")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+
+  test("shows header tasks grid title", async () => {
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    render(<SchedulerConfig />);
+    await waitFor(() => {
+      expect(screen.getByText("Header Tasks")).toBeInTheDocument();
     }, { timeout: 3000 });
   });
 });

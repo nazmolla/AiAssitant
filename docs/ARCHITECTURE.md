@@ -12,7 +12,7 @@
 
 ## Scheduler Console Structure
 
-- The admin scheduler console is intentionally sectioned into three operational blocks: Task Header (selected schedule metadata + controls), Task Children (schedule task graph), and Previous Task Runs (run timeline + drill-in details).
+- The admin scheduler console starts with a Header Tasks grid. Selecting a header opens inline child tasks and recent runs; Focus View then expands to full child-task and run-history analysis with task-run log links.
 
 ## Architecture Diagram
 
