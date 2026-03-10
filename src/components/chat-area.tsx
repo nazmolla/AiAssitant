@@ -97,14 +97,70 @@ export const ChatArea = memo(function ChatArea({
   );
 
   const scheduleMeasure = useCallback(() => {
-    requestAnimationFrame(() => virtualizer.measure());
+    requestAnimationFrame(() => {
+      virtualizer.measure();
+      // Second frame catches late layout shifts (markdown/image cards/fonts).
+      requestAnimationFrame(() => virtualizer.measure());
+    });
   }, [virtualizer]);
+
+  // Safety net: any message object update (including streamed token updates)
+  // should trigger re-measure to prevent stale row offsets.
+  useEffect(() => {
+    scheduleMeasure();
+  }, [processedMessages, scheduleMeasure]);
 
   // Dynamic UI blocks (thinking/thoughts/sidebar) can change row height without
   // changing message content; re-measure to keep virtual row offsets accurate.
   useEffect(() => {
     scheduleMeasure();
   }, [scheduleMeasure, thinkingSteps.length, loading, showSidebar]);
+
+  // Re-measure when media-rich content (images/cards) finishes loading.
+  // This prevents stale virtual offsets that can cause bubbles to overlap.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const onLoad = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const tag = target.tagName;
+      if (tag === "IMG" || tag === "VIDEO" || tag === "IFRAME") {
+        scheduleMeasure();
+      }
+    };
+
+    container.addEventListener("load", onLoad, true);
+    return () => container.removeEventListener("load", onLoad, true);
+  }, [scheduleMeasure, processedMessages.length]);
+
+  // Re-measure when the chat viewport width changes (e.g., responsive layout,
+  // sidebar transitions), because text wrapping changes bubble heights.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      scheduleMeasure();
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [scheduleMeasure]);
+
+  // Web fonts can settle after first paint and change text wrapping/row heights.
+  useEffect(() => {
+    const fonts = (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts;
+    if (!fonts?.ready) return;
+    let cancelled = false;
+    fonts.ready.then(() => {
+      if (!cancelled) scheduleMeasure();
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [scheduleMeasure]);
 
   if (!activeThread) {
     return (
@@ -163,7 +219,7 @@ export const ChatArea = memo(function ChatArea({
             const { msg, attachments, approvalMeta, displayContent, thoughts } = processedMessages[pmIdx];
             return (
             <Box
-              key={msg.id}
+              key={virtualItem.key}
               ref={measureRef}
               data-index={virtualItem.index}
               sx={{
