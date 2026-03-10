@@ -205,6 +205,8 @@ CREATE INDEX idx_notifications_created ON notifications (created_at);
 
 > **Scheduler Reliability Guardrails**: Run/task-run status transitions are validated against explicit lifecycle rules before DB updates. The runtime validates enabled task handlers against a registered-handler allowlist and emits warnings for orphan handlers. Queue health metrics (queued/claimed/running, 1h failures/success, stale claims) are available through `GET /api/scheduler/health`.
 >
+> **Scheduler Console UX**: Admin scheduler operations in Settings are presented in three explicit sections to avoid ambiguous split-pane layouts: **Task Header** (selected schedule metadata + controls), **Task Children** (task graph rows), and **Previous Task Runs** (run list + drill-in task-run detail).
+>
 > **Severity capping**: Smart home / IoT tool assessments (prefixes: `builtin.alexa_`, `builtin.smart_home_`, `builtin.iot_`, `builtin.hue_`, `builtin.nest_`, `builtin.ring_`) are automatically capped at `high` severity — they can never produce `disaster`-level events.
 >
 > **Quiet hours** (10 PM – 8 AM): Audio-producing tools are blocked during nighttime. This includes announcements, media playback, TTS, and volume increases. Volume decreases/muting and read-only queries remain allowed. The enforcement is in `executeSchedulerTool()` and applies to all scheduler-initiated actions (proactive and scheduled tasks).

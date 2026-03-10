@@ -56,6 +56,22 @@ interface SchedulerRunDetailResponse {
   task_runs: SchedulerTaskRunRecord[];
 }
 
+interface SchedulerTaskRecord {
+  id: string;
+  task_key: string;
+  name: string;
+  handler_name: string;
+  execution_mode: string;
+  sequence_no: number;
+  enabled: number;
+}
+
+interface SchedulerScheduleDetailResponse {
+  schedule: SchedulerScheduleRecord;
+  tasks: SchedulerTaskRecord[];
+  recent_runs: SchedulerRunRecord[];
+}
+
 interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -90,6 +106,8 @@ export function SchedulerConfig() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runDetail, setRunDetail] = useState<SchedulerRunDetailResponse | null>(null);
   const [loadingRunDetail, setLoadingRunDetail] = useState(false);
+  const [selectedScheduleDetail, setSelectedScheduleDetail] = useState<SchedulerScheduleDetailResponse | null>(null);
+  const [loadingScheduleDetail, setLoadingScheduleDetail] = useState(false);
 
   const formatTs = (value: string | null) => {
     if (!value) return "-";
@@ -103,6 +121,12 @@ export function SchedulerConfig() {
     if (["success"].includes(status)) return "bg-green-500/20 text-green-300 border-green-400/40";
     if (["partial_success"].includes(status)) return "bg-amber-500/20 text-amber-300 border-amber-400/40";
     if (["failed", "timeout", "cancelled"].includes(status)) return "bg-red-500/20 text-red-300 border-red-400/40";
+    return "bg-slate-500/20 text-slate-300 border-slate-400/40";
+  };
+
+  const getScheduleBadgeClass = (status: ScheduleStatus) => {
+    if (status === "active") return "bg-green-500/20 text-green-300 border-green-400/40";
+    if (status === "paused") return "bg-amber-500/20 text-amber-300 border-amber-400/40";
     return "bg-slate-500/20 text-slate-300 border-slate-400/40";
   };
 
@@ -141,12 +165,40 @@ export function SchedulerConfig() {
       }
 
       setOverview(overviewJson as SchedulerOverview);
-      setSchedules(((schedulesJson as PaginatedResponse<SchedulerScheduleRecord>).data || []).slice(0, 20));
+      const nextSchedules = ((schedulesJson as PaginatedResponse<SchedulerScheduleRecord>).data || []).slice(0, 20);
+      setSchedules(nextSchedules);
       setRuns(((runsJson as PaginatedResponse<SchedulerRunRecord>).data || []).slice(0, 25));
+
+      if (selectedScheduleId === "all" && nextSchedules.length > 0) {
+        setSelectedScheduleId(nextSchedules[0].id);
+      }
     } catch {
       setConsoleMessage("Failed to load scheduler console.");
     } finally {
       setLoadingConsole(false);
+    }
+  };
+
+  const loadScheduleDetail = async (scheduleId: string) => {
+    if (!scheduleId || scheduleId === "all") {
+      setSelectedScheduleDetail(null);
+      return;
+    }
+    setLoadingScheduleDetail(true);
+    try {
+      const res = await fetch(`/api/scheduler/schedules/${scheduleId}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setConsoleMessage((data as { error?: string }).error || "Failed to load schedule detail.");
+        setSelectedScheduleDetail(null);
+        return;
+      }
+      setSelectedScheduleDetail(data as SchedulerScheduleDetailResponse);
+    } catch {
+      setConsoleMessage("Failed to load schedule detail.");
+      setSelectedScheduleDetail(null);
+    } finally {
+      setLoadingScheduleDetail(false);
     }
   };
 
@@ -215,6 +267,10 @@ export function SchedulerConfig() {
     return () => window.clearInterval(timer);
   }, [runStatusFilter, selectedScheduleId]);
 
+  useEffect(() => {
+    loadScheduleDetail(selectedScheduleId);
+  }, [selectedScheduleId]);
+
   const save = async () => {
     setSaving(true);
     setMessage(null);
@@ -282,57 +338,100 @@ export function SchedulerConfig() {
             </div>
           )}
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Schedules</h3>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-white/[0.08] bg-white/[0.01] p-3 sm:p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground/80">Task Header</h3>
                 <Button variant="outline" size="sm" onClick={loadConsole}>Refresh</Button>
               </div>
+
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                <div>
+                  <label className="mb-1 block text-[11px] uppercase tracking-wider text-muted-foreground/60">Select Schedule</label>
+                  <select
+                    className="w-full rounded border border-white/[0.08] bg-background px-2 py-2 text-xs sm:text-sm"
+                    value={selectedScheduleId}
+                    onChange={(e) => setSelectedScheduleId(e.target.value)}
+                  >
+                    <option value="all">All schedules</option>
+                    {schedules.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {selectedScheduleDetail?.schedule && (
+                  <div className="flex flex-wrap gap-1">
+                    {selectedScheduleDetail.schedule.status === "active" ? (
+                      <Button variant="outline" size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "pause")}>Pause</Button>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "resume")}>Resume</Button>
+                    )}
+                    <Button size="sm" onClick={() => controlSchedule(selectedScheduleDetail.schedule.id, "trigger")}>Trigger</Button>
+                  </div>
+                )}
+              </div>
+
+              {loadingScheduleDetail && <p className="mt-3 text-xs text-muted-foreground">Loading schedule detail...</p>}
+
+              {!loadingScheduleDetail && selectedScheduleDetail?.schedule && (
+                <div className="mt-3 grid gap-2 rounded border border-white/[0.08] p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <div className="text-muted-foreground/70">Name</div>
+                    <div className="font-medium text-sm">{selectedScheduleDetail.schedule.name}</div>
+                    <div className="font-mono text-[10px] text-muted-foreground/70">{selectedScheduleDetail.schedule.schedule_key}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground/70">Status</div>
+                    <span className={`inline-block rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${getScheduleBadgeClass(selectedScheduleDetail.schedule.status)}`}>
+                      {selectedScheduleDetail.schedule.status}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground/70">Trigger</div>
+                    <div className="font-mono text-[11px]">{selectedScheduleDetail.schedule.trigger_type}: {selectedScheduleDetail.schedule.trigger_expr}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground/70">Timing</div>
+                    <div>Next: {formatTs(selectedScheduleDetail.schedule.next_run_at)}</div>
+                    <div>Last: {formatTs(selectedScheduleDetail.schedule.last_run_at)}</div>
+                  </div>
+                </div>
+              )}
+
+              {!loadingScheduleDetail && selectedScheduleId === "all" && (
+                <p className="mt-3 text-xs text-muted-foreground">Pick a schedule to view its header metadata and child tasks.</p>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-white/[0.08] bg-white/[0.01] p-3 sm:p-4">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground/80">Task Children</h3>
               <div className="overflow-x-auto rounded border border-white/[0.08]">
                 <table className="w-full text-xs sm:text-sm">
                   <thead className="bg-muted/30">
                     <tr>
-                      <th className="px-2 py-2 text-left">Name</th>
-                      <th className="px-2 py-2 text-left">Status</th>
-                      <th className="px-2 py-2 text-left">Next Run</th>
-                      <th className="px-2 py-2 text-right">Controls</th>
+                      <th className="px-2 py-2 text-left">Sequence</th>
+                      <th className="px-2 py-2 text-left">Task</th>
+                      <th className="px-2 py-2 text-left">Handler</th>
+                      <th className="px-2 py-2 text-left">Mode</th>
+                      <th className="px-2 py-2 text-left">Enabled</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {schedules.map((s) => (
-                      <tr key={s.id} className="border-t border-white/[0.06] align-top">
+                    {(selectedScheduleDetail?.tasks || []).map((task) => (
+                      <tr key={task.id} className="border-t border-white/[0.06]">
+                        <td className="px-2 py-2">{task.sequence_no}</td>
                         <td className="px-2 py-2">
-                          <div className="font-medium">{s.name}</div>
-                          <div className="text-[10px] text-muted-foreground/70 font-mono">{s.schedule_key}</div>
-                          <button
-                            className="mt-1 text-[10px] text-primary underline"
-                            onClick={() => setSelectedScheduleId(s.id)}
-                            type="button"
-                          >
-                            Filter runs by this schedule
-                          </button>
+                          <div className="font-medium">{task.name}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground/70">{task.task_key}</div>
                         </td>
-                        <td className="px-2 py-2">
-                          <span className={`inline-block rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${getRunBadgeClass(s.status)}`}>
-                            {s.status}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 whitespace-nowrap">{formatTs(s.next_run_at)}</td>
-                        <td className="px-2 py-2 text-right">
-                          <div className="flex flex-wrap justify-end gap-1">
-                            {s.status === "active" ? (
-                              <Button variant="outline" size="sm" onClick={() => controlSchedule(s.id, "pause")}>Pause</Button>
-                            ) : (
-                              <Button variant="outline" size="sm" onClick={() => controlSchedule(s.id, "resume")}>Resume</Button>
-                            )}
-                            <Button size="sm" onClick={() => controlSchedule(s.id, "trigger")}>Trigger</Button>
-                          </div>
-                        </td>
+                        <td className="px-2 py-2 font-mono text-[10px]">{task.handler_name}</td>
+                        <td className="px-2 py-2">{task.execution_mode}</td>
+                        <td className="px-2 py-2">{task.enabled === 1 ? "Yes" : "No"}</td>
                       </tr>
                     ))}
-                    {schedules.length === 0 && !loadingConsole && (
+                    {!loadingScheduleDetail && (selectedScheduleDetail?.tasks || []).length === 0 && (
                       <tr>
-                        <td className="px-2 py-3 text-muted-foreground" colSpan={4}>No schedules found.</td>
+                        <td className="px-2 py-3 text-muted-foreground" colSpan={5}>No child tasks available for the selected schedule.</td>
                       </tr>
                     )}
                   </tbody>
@@ -340,9 +439,9 @@ export function SchedulerConfig() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">Recent Runs</h3>
+            <div className="rounded-lg border border-white/[0.08] bg-white/[0.01] p-3 sm:p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground/80">Previous Task Runs</h3>
                 <div className="flex flex-wrap gap-2">
                   <select
                     className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
@@ -355,16 +454,6 @@ export function SchedulerConfig() {
                     <option value="success">Success</option>
                     <option value="partial_success">Partial Success</option>
                     <option value="failed">Failed</option>
-                  </select>
-                  <select
-                    className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
-                    value={selectedScheduleId}
-                    onChange={(e) => setSelectedScheduleId(e.target.value)}
-                  >
-                    <option value="all">All schedules</option>
-                    {schedules.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
                   </select>
                 </div>
               </div>

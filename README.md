@@ -8,9 +8,9 @@
 
 - **Multi-User Isolation** — per-user knowledge, threads, channels, and profiles
 - **Proactive Intelligence** — background scheduler monitors MCP tools, creates custom tools for automation opportunities, and generates reminders; schedule configurable via Settings → Scheduler
-- **Scheduled Task Queue** — future and recurring tasks are persisted with frequency, next run, last run, source, and scope; executed automatically by the background scheduler
+- **Unified User Scheduling** — future and recurring user tasks are persisted as unified schedule/task records and executed by the unified scheduler engine
 - **Unified Scheduler Foundation** — normalized scheduler tables (`scheduler_schedules`, `scheduler_tasks`, `scheduler_runs`, `scheduler_task_runs`, `scheduler_claims`, `scheduler_events`) are now in place for schedule/task graph modeling and run-history tracking
-- **Unified Scheduler Console** — admin Settings → Scheduler now includes live overview metrics, schedule controls (pause/resume/trigger), run history, and task-level run detail with log references
+- **Unified Scheduler Console** — admin Settings → Scheduler now includes a clear inline layout with distinct sections for Task Header, Task Children, and Previous Task Runs, plus run-detail inspection
 - **Unified Scheduler Migration** — proactive scans, DB maintenance, and knowledge maintenance are now represented as system schedules/tasks in the unified engine; Job Scout pipeline is modeled as a parent schedule with child tasks
 - **Scheduler Reliability Guardrails** — enforced run/task-run transition rules, registered-handler validation, and scheduler health metrics API for queue/failure/stale-claim monitoring
 - **Evening Knowledge Maintenance** — nightly dedupe/declutter for `user_knowledge` runs as a unified scheduler system task with configurable hour/minute and poll cadence

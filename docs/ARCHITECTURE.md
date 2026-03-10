@@ -10,6 +10,10 @@
 - Channel conversations are resolved by structured identifiers (`channel_id`, `external_sender_id`) instead of string tags inside `title`.
 - Knowledge provenance is represented by `user_knowledge.source_type` and consumed directly by UI/API filtering.
 
+## Scheduler Console Structure
+
+- The admin scheduler console is intentionally sectioned into three operational blocks: Task Header (selected schedule metadata + controls), Task Children (schedule task graph), and Previous Task Runs (run timeline + drill-in details).
+
 ## Architecture Diagram
 
 ```mermaid

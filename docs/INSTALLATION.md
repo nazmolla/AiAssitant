@@ -104,6 +104,7 @@ Scheduler initialization also provisions unified scheduler foundation tables:
 
 Startup also seeds system unified schedules for proactive scan, DB maintenance, knowledge maintenance, and a modeled Job Scout pipeline task graph.
 On engine startup, enabled scheduler task handlers are validated against the registered handler set and warnings are emitted for orphan handlers.
+The Scheduler settings page presents unified data in distinct sections (Task Header, Task Children, Previous Task Runs) for clearer operations and run triage.
 
 This migration replaces legacy title/source prefix parsing in runtime filters.
 
