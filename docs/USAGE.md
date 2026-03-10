@@ -16,6 +16,9 @@ All screenshots are captured from the **test environment**.
 
 ## Runtime Log Streaming
 
+- One-command log pull (API-first with DB fallback): `npm run logs:pull -- --limit=100 --level=all --source=all`.
+- API mode is used when `NEXUS_BASE_URL` and `NEXUS_API_KEY` are set (or passed as `--baseUrl` and `--apiKey`).
+- If API config is missing or API request fails, the helper falls back to local `agent_logs` query in `nexus.db`.
 - Use `GET /api/logs/stream` for live SSE log events (`log`, `cursor`, `heartbeat`).
 - Access is allowed for admin sessions or API keys granted the `logs` scope.
 - Optional query params: `sinceId`, `level`, `source`.
