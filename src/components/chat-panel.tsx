@@ -21,6 +21,7 @@ export function ChatPanel() {
   const [screenShareEnabled, setScreenShareEnabled] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sendInFlightRef = useRef(false);
   const [actingApproval, setActingApproval] = useState<string | null>(null);
   const [resolvedApprovals, setResolvedApprovals] = useState<Record<string, string>>({});
   const [showSidebar, setShowSidebar] = useState(true);
@@ -605,7 +606,9 @@ export function ChatPanel() {
   }
 
   async function sendMessage() {
+    if (sendInFlightRef.current) return;
     if ((!input.trim() && pendingFiles.length === 0 && !screenSharing) || !activeThread) return;
+    sendInFlightRef.current = true;
 
     const userMsg = input;
     const filesToSend = [...pendingFiles];
@@ -671,6 +674,9 @@ export function ChatPanel() {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        // Request failed before stream confirmation â€” remove unresolved optimistic row.
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+        if (userMsg) setInput(userMsg);
         setMessages((prev) => [
           ...prev,
           { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${errData.error || res.statusText}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
@@ -685,6 +691,11 @@ export function ChatPanel() {
       let buffer = "";
       let seenUserMsg = false;
       let currentEvent = "";
+
+      const removeOptimisticIfUnresolved = () => {
+        if (seenUserMsg) return;
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      };
 
       while (true) {
         const { value, done } = await reader.read();
@@ -791,6 +802,8 @@ export function ChatPanel() {
                   audioModePlayTts(sanitizeAssistantContent(fullText, false));
                 }
               } else if (currentEvent === "error") {
+                removeOptimisticIfUnresolved();
+                if (!seenUserMsg && userMsg) setInput(userMsg);
                 setMessages((prev) => [
                   ...prev,
                   { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${data.error}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
@@ -806,12 +819,15 @@ export function ChatPanel() {
     } catch (err) {
       // Don't show abort errors (user navigated away or sent a new message)
       if (err instanceof DOMException && err.name === "AbortError") return;
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      if (userMsg) setInput(userMsg);
       setMessages((prev) => [
         ...prev,
         { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${err}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
       ]);
     } finally {
       setLoading(false);
+      sendInFlightRef.current = false;
     }
   }
 
