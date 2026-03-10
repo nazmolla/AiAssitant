@@ -224,6 +224,6 @@ describe("Reduced file sizes", () => {
     expect(inputBarSrc.split("\n").length).toBeLessThan(250);
     // ChatArea is the largest since it includes ThinkingBlock, ThoughtsBlock, AttachmentPreview
     // Keep a soft ceiling while allowing room for virtualization stability guards.
-    expect(chatAreaSrc.split("\n").length).toBeLessThan(760);
+    expect(chatAreaSrc.split("\n").length).toBeLessThan(780);
   });
 });

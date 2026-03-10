@@ -54,6 +54,10 @@ export const ChatArea = memo(function ChatArea({
   resolvedApprovals,
   onApproval,
 }: ChatAreaProps) {
+  // Reliability-first mode: avoid absolute-positioned rows to prevent
+  // visual stacking/overlap when dynamic content shifts height after render.
+  const useReliableRowLayout = true;
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const prevCountRef = useRef(0);
 
@@ -70,12 +74,19 @@ export const ChatArea = memo(function ChatArea({
     const count = processedMessages.length;
     if (count > 0 && count !== prevCountRef.current) {
       prevCountRef.current = count;
-      // Use requestAnimationFrame to let the virtualizer render the new item first
       requestAnimationFrame(() => {
+        if (useReliableRowLayout) {
+          const scroller = scrollContainerRef.current;
+          if (scroller) {
+            scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+          }
+          return;
+        }
+        // Use requestAnimationFrame to let the virtualizer render the new item first
         virtualizer.scrollToIndex(count - 1, { align: "end", behavior: "smooth" });
       });
     }
-  }, [processedMessages.length, virtualizer]);
+  }, [processedMessages.length, virtualizer, useReliableRowLayout]);
 
   // Re-measure all items when content changes (e.g., streaming tokens update content)
   const lastContentRef = useRef("");
@@ -206,15 +217,25 @@ export const ChatArea = memo(function ChatArea({
         <Typography variant="caption" color="text.secondary" noWrap>{activeThreadTitle}</Typography>
       </Box>
       <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: "auto", p: 2 }}>
+        {(() => {
+          const rowItems = useReliableRowLayout
+            ? Array.from({ length: processedMessages.length }, (_, index) => ({
+                index,
+                start: 0,
+                key: `reliable-${processedMessages[index].msg.id}-${index}`,
+              }))
+            : virtualizer.getVirtualItems();
+
+          return (
         <Box
           sx={{
             maxWidth: 720,
             mx: "auto",
             position: "relative",
-            height: virtualizer.getTotalSize(),
+            height: useReliableRowLayout ? "auto" : virtualizer.getTotalSize(),
           }}
         >
-          {virtualizer.getVirtualItems().map((virtualItem) => {
+          {rowItems.map((virtualItem) => {
             const pmIdx = virtualItem.index;
             const { msg, attachments, approvalMeta, displayContent, thoughts } = processedMessages[pmIdx];
             return (
@@ -223,11 +244,11 @@ export const ChatArea = memo(function ChatArea({
               ref={measureRef}
               data-index={virtualItem.index}
               sx={{
-                position: "absolute",
-                top: 0,
-                left: 0,
+                position: useReliableRowLayout ? "relative" : "absolute",
+                top: useReliableRowLayout ? "auto" : 0,
+                left: useReliableRowLayout ? "auto" : 0,
                 width: "100%",
-                transform: `translateY(${virtualItem.start}px)`,
+                transform: useReliableRowLayout ? "none" : `translateY(${virtualItem.start}px)`,
                 pb: 2,
               }}
             >
@@ -409,6 +430,8 @@ export const ChatArea = memo(function ChatArea({
             );
           })}
         </Box>
+          );
+        })()}
       </Box>
     </>
   );
