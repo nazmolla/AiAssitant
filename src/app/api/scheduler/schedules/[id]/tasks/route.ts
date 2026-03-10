@@ -18,8 +18,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const tasks = (body as { tasks?: Array<Record<string, unknown>> })?.tasks;
-  if (!Array.isArray(tasks) || tasks.length === 0) {
+  const replace = Boolean((body as { replace?: unknown }).replace);
+  if (!Array.isArray(tasks)) {
     return NextResponse.json({ error: "tasks[] is required" }, { status: 400 });
+  }
+  if (!replace && tasks.length === 0) {
+    return NextResponse.json({ error: "tasks[] must not be empty unless replace=true" }, { status: 400 });
   }
 
   const normalized = tasks.map((task, index) => {
@@ -43,7 +47,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
 
   try {
-    updateSchedulerTaskGraph(schedule.id, normalized);
+    updateSchedulerTaskGraph(schedule.id, normalized, replace);
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
   }
@@ -53,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     level: "warning",
     source: "api.scheduler.control",
     message: "Updated scheduler task graph.",
-    metadata: JSON.stringify({ userId: auth.user.id, scheduleId: schedule.id, taskCount: updatedTasks.length }),
+    metadata: JSON.stringify({ userId: auth.user.id, scheduleId: schedule.id, taskCount: updatedTasks.length, replace }),
   });
 
   return NextResponse.json({ ok: true, schedule_id: schedule.id, tasks: updatedTasks });

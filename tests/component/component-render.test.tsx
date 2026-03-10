@@ -20,7 +20,7 @@
  * @jest-environment jsdom
  */
 import React from "react";
-import { render, screen, act, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, act, waitFor, cleanup, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
 // ── Common mocks ──────────────────────────────────────────────────
@@ -434,28 +434,6 @@ describe("SchedulerConfig", () => {
           }),
         });
       }
-      if (url.includes("/api/scheduler/schedules")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            data: [
-              {
-                id: "sched-1",
-                schedule_key: "legacy.task.1",
-                name: "Legacy Task",
-                trigger_type: "interval",
-                trigger_expr: "every:1:hour",
-                status: "active",
-                next_run_at: "2025-01-01T00:00:00Z",
-                last_run_at: null,
-                updated_at: "2025-01-01T00:00:00Z",
-              },
-            ],
-            total: 1,
-            hasMore: false,
-          }),
-        });
-      }
       if (url.includes("/api/scheduler/schedules/sched-1")) {
         return Promise.resolve({
           ok: true,
@@ -506,6 +484,28 @@ describe("SchedulerConfig", () => {
           }),
         });
       }
+      if (url.includes("/api/scheduler/schedules")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            data: [
+              {
+                id: "sched-1",
+                schedule_key: "legacy.task.1",
+                name: "Legacy Task",
+                trigger_type: "interval",
+                trigger_expr: "every:1:hour",
+                status: "active",
+                next_run_at: "2025-01-01T00:00:00Z",
+                last_run_at: null,
+                updated_at: "2025-01-01T00:00:00Z",
+              },
+            ],
+            total: 1,
+            hasMore: false,
+          }),
+        });
+      }
       if (url.includes("/api/scheduler/runs")) {
         return Promise.resolve({
           ok: true,
@@ -549,6 +549,31 @@ describe("SchedulerConfig", () => {
     render(<SchedulerConfig />);
     await waitFor(() => {
       expect(screen.getByText("Header Tasks")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+
+  test("shows row-grid columns for header tasks", async () => {
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    render(<SchedulerConfig />);
+    await waitFor(() => {
+      expect(screen.getByText("Header Task")).toBeInTheDocument();
+      expect(screen.getByText("Schedule Key")).toBeInTheDocument();
+      expect(screen.getByText("Next Run")).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+
+  test("opens focused detail modal from row action", async () => {
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    render(<SchedulerConfig />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Open Full Details")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    fireEvent.click(screen.getByText("Open Full Details"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Focused Header View:/)).toBeInTheDocument();
     }, { timeout: 3000 });
   });
 });

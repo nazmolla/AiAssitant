@@ -2660,6 +2660,37 @@ export function updateSchedulerScheduleByKey(scheduleKey: string, args: {
   );
 }
 
+export function updateSchedulerScheduleById(scheduleId: string, args: {
+  name?: string;
+  trigger_type?: "cron" | "interval" | "once";
+  trigger_expr?: string;
+  status?: "active" | "paused" | "archived";
+  next_run_at?: string | null;
+}): void {
+  getDb().prepare(
+    `UPDATE scheduler_schedules
+     SET name = COALESCE(?, name),
+         trigger_type = COALESCE(?, trigger_type),
+         trigger_expr = COALESCE(?, trigger_expr),
+         status = COALESCE(?, status),
+         next_run_at = COALESCE(?, next_run_at),
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run(
+    args.name ?? null,
+    args.trigger_type ?? null,
+    args.trigger_expr ?? null,
+    args.status ?? null,
+    args.next_run_at === undefined ? null : args.next_run_at,
+    scheduleId,
+  );
+}
+
+export function deleteSchedulerScheduleById(scheduleId: string): number {
+  const result = getDb().prepare("DELETE FROM scheduler_schedules WHERE id = ?").run(scheduleId);
+  return result.changes;
+}
+
 export function upsertSchedulerScheduleByKey(args: {
   schedule_key: string;
   name: string;
@@ -2791,7 +2822,7 @@ export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
   retry_policy_json?: string | null;
   enabled?: number;
   config_json?: string | null;
-}>): void {
+}>, replace = false): void {
   const db = getDb();
   const insert = db.prepare(
     `INSERT INTO scheduler_tasks (
@@ -2815,8 +2846,10 @@ export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
   );
 
   db.transaction(() => {
+    const seenIds: string[] = [];
     for (const task of tasks) {
       const id = task.id || uuid();
+      seenIds.push(id);
       const mode = task.execution_mode || "sync";
       const seq = Number.isFinite(task.sequence_no) ? Number(task.sequence_no) : 0;
       const enabled = task.enabled === 0 ? 0 : 1;
@@ -2829,6 +2862,15 @@ export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
         update.run(task.task_key, task.name, task.handler_name, mode, seq, timeout, retry, enabled, config, id, scheduleId);
       } else {
         insert.run(id, scheduleId, task.task_key, task.name, task.handler_name, mode, seq, timeout, retry, enabled, config);
+      }
+    }
+
+    if (replace) {
+      if (seenIds.length === 0) {
+        db.prepare("DELETE FROM scheduler_tasks WHERE schedule_id = ?").run(scheduleId);
+      } else {
+        const placeholders = seenIds.map(() => "?").join(",");
+        db.prepare(`DELETE FROM scheduler_tasks WHERE schedule_id = ? AND id NOT IN (${placeholders})`).run(scheduleId, ...seenIds);
       }
     }
   })();
