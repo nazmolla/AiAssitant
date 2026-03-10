@@ -105,6 +105,7 @@ Scheduler initialization also provisions unified scheduler foundation tables:
 Legacy `scheduled_tasks` rows are backfilled into `scheduler_schedules` + `scheduler_tasks` during startup to support phased migration without losing scheduled intent.
 
 Startup also seeds system unified schedules for proactive scan, DB maintenance, knowledge maintenance, and a modeled Job Scout pipeline task graph.
+On engine startup, enabled scheduler task handlers are validated against the registered handler set and warnings are emitted for orphan handlers.
 
 This migration replaces legacy title/source prefix parsing in runtime filters.
 

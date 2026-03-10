@@ -15,6 +15,7 @@ import {
   updateSchedulerScheduleAfterDispatch,
   type SchedulerScheduleRecord,
   runDbMaintenanceIfDue,
+  listEnabledSchedulerTaskHandlers,
 } from "@/lib/db";
 import { executeLegacyScheduledTaskById, runProactiveScan } from "@/lib/scheduler";
 import { runKnowledgeMaintenanceIfDue } from "@/lib/knowledge-maintenance";
@@ -25,6 +26,31 @@ const WORKER_ID = `scheduler-worker-${process.pid}`;
 
 let _engineTimer: ReturnType<typeof setInterval> | null = null;
 let _engineTickRunning = false;
+
+const REGISTERED_SCHEDULER_HANDLERS = new Set<string>([
+  "legacy.scheduled_task.execute",
+  "system.proactive.scan",
+  "system.db_maintenance.run_due",
+  "system.knowledge_maintenance.run_due",
+  "workflow.job_scout.search",
+  "workflow.job_scout.extract",
+  "workflow.job_scout.prepare",
+  "workflow.job_scout.validate",
+  "workflow.job_scout.email",
+]);
+
+function validateRegisteredHandlers(): void {
+  const handlers = listEnabledSchedulerTaskHandlers();
+  const unknown = handlers.filter((h) => !REGISTERED_SCHEDULER_HANDLERS.has(h.handler_name));
+  if (unknown.length === 0) return;
+
+  addLog({
+    level: "error",
+    source: "scheduler-engine",
+    message: "Found enabled scheduler tasks with unregistered handlers.",
+    metadata: JSON.stringify({ unknown }),
+  });
+}
 
 function computeNextRunAt(schedule: SchedulerScheduleRecord): string | null {
   if (schedule.trigger_type === "once") return null;
@@ -143,6 +169,11 @@ async function executeRunnableRun(): Promise<void> {
     let failures = 0;
 
     for (const taskRun of taskRuns) {
+      if (taskRun.status !== "pending" && taskRun.status !== "retrying") {
+        addSchedulerEvent(claimed.id, "task_skipped", `Skipped task-run ${taskRun.id} in terminal state ${taskRun.status}`, taskRun.id);
+        continue;
+      }
+
       heartbeatSchedulerClaim(claimed.id, WORKER_ID, CLAIM_LEASE_SECONDS);
 
       const task = getSchedulerTasksForSchedule(claimed.schedule_id).find((t) => t.id === taskRun.schedule_task_id);
@@ -189,6 +220,8 @@ export async function runUnifiedSchedulerEngineTickForTests(): Promise<void> {
 
 export function startUnifiedSchedulerEngine(): void {
   if (_engineTimer) return;
+
+  validateRegisteredHandlers();
 
   _engineTimer = setInterval(() => {
     engineTick().catch((err) => {

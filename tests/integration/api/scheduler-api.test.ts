@@ -5,6 +5,7 @@ installAuthMocks();
 import { NextRequest } from "next/server";
 import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db";
 import { GET as GET_OVERVIEW } from "@/app/api/scheduler/overview/route";
+import { GET as GET_HEALTH } from "@/app/api/scheduler/health/route";
 import { GET as GET_SCHEDULES } from "@/app/api/scheduler/schedules/route";
 import { GET as GET_SCHEDULE } from "@/app/api/scheduler/schedules/[id]/route";
 import { POST as POST_PAUSE } from "@/app/api/scheduler/schedules/[id]/pause/route";
@@ -90,6 +91,16 @@ describe("scheduler API endpoints", () => {
     expect(body).toHaveProperty("recent_runs");
   });
 
+  test("GET health returns metrics and warning hooks", async () => {
+    const res = await GET_HEALTH(new NextRequest("http://localhost/api/scheduler/health"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty("metrics");
+    expect(body).toHaveProperty("warnings");
+    expect(Array.isArray(body.warnings)).toBe(true);
+    expect(body).toHaveProperty("status");
+  });
+
   test("GET schedules returns paginated data", async () => {
     const res = await GET_SCHEDULES(new NextRequest("http://localhost/api/scheduler/schedules?limit=10&offset=0"));
     expect(res.status).toBe(200);
@@ -99,7 +110,7 @@ describe("scheduler API endpoints", () => {
   });
 
   test("GET schedule detail returns schedule, tasks, recent_runs", async () => {
-    const res = await GET_SCHEDULE(new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1"), { params: { id: "sched-api-1" } });
+    const res = await GET_SCHEDULE(new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1"), { params: Promise.resolve({ id: "sched-api-1" }) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.schedule.id).toBe("sched-api-1");
@@ -108,15 +119,15 @@ describe("scheduler API endpoints", () => {
   });
 
   test("pause and resume schedule", async () => {
-    const pauseRes = await POST_PAUSE(new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1/pause", { method: "POST" }), { params: { id: "sched-api-1" } });
+    const pauseRes = await POST_PAUSE(new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1/pause", { method: "POST" }), { params: Promise.resolve({ id: "sched-api-1" }) });
     expect(pauseRes.status).toBe(200);
 
-    const resumeRes = await POST_RESUME(new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1/resume", { method: "POST" }), { params: { id: "sched-api-1" } });
+    const resumeRes = await POST_RESUME(new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1/resume", { method: "POST" }), { params: Promise.resolve({ id: "sched-api-1" }) });
     expect(resumeRes.status).toBe(200);
   });
 
   test("trigger creates queued run and tasks", async () => {
-    const triggerRes = await POST_TRIGGER(new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1/trigger", { method: "POST" }), { params: { id: "sched-api-1" } });
+    const triggerRes = await POST_TRIGGER(new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1/trigger", { method: "POST" }), { params: Promise.resolve({ id: "sched-api-1" }) });
     expect(triggerRes.status).toBe(200);
     const body = await triggerRes.json();
     expect(body).toHaveProperty("run_id");
@@ -126,7 +137,7 @@ describe("scheduler API endpoints", () => {
     const runsBody = await runsRes.json();
     expect(runsBody.total).toBeGreaterThanOrEqual(1);
 
-    const runRes = await GET_RUN(new NextRequest(`http://localhost/api/scheduler/runs/${body.run_id}`), { params: { id: body.run_id } });
+    const runRes = await GET_RUN(new NextRequest(`http://localhost/api/scheduler/runs/${body.run_id}`), { params: Promise.resolve({ id: body.run_id }) });
     expect(runRes.status).toBe(200);
     const runBody = await runRes.json();
     expect(runBody.run.id).toBe(body.run_id);
@@ -152,7 +163,7 @@ describe("scheduler API endpoints", () => {
       }),
     });
 
-    const res = await PATCH_TASKS(req, { params: { id: "sched-api-1" } });
+    const res = await PATCH_TASKS(req, { params: Promise.resolve({ id: "sched-api-1" }) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.tasks)).toBe(true);

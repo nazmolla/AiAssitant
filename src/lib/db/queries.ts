@@ -2312,6 +2312,42 @@ export type SchedulerTaskRunStatus =
   | "timeout"
   | "retrying";
 
+const SCHEDULER_RUN_TERMINAL = new Set<SchedulerRunStatus>(["success", "partial_success", "failed", "cancelled", "timeout"]);
+const SCHEDULER_TASK_RUN_TERMINAL = new Set<SchedulerTaskRunStatus>(["success", "failed", "cancelled", "timeout", "skipped"]);
+
+const SCHEDULER_RUN_TRANSITIONS: Record<SchedulerRunStatus, SchedulerRunStatus[]> = {
+  scheduled: ["queued", "cancelled"],
+  queued: ["claimed", "running", "cancelled", "timeout"],
+  claimed: ["running", "failed", "cancelled", "timeout"],
+  running: ["success", "partial_success", "failed", "cancelled", "timeout"],
+  success: [],
+  partial_success: [],
+  failed: [],
+  cancelled: [],
+  timeout: [],
+};
+
+const SCHEDULER_TASK_RUN_TRANSITIONS: Record<SchedulerTaskRunStatus, SchedulerTaskRunStatus[]> = {
+  pending: ["running", "skipped", "cancelled", "timeout", "retrying"],
+  skipped: [],
+  running: ["success", "failed", "cancelled", "timeout", "retrying"],
+  success: [],
+  failed: ["retrying"],
+  cancelled: [],
+  timeout: ["retrying"],
+  retrying: ["running", "failed", "cancelled", "timeout"],
+};
+
+export function isValidSchedulerRunTransition(from: SchedulerRunStatus, to: SchedulerRunStatus): boolean {
+  if (from === to) return true;
+  return SCHEDULER_RUN_TRANSITIONS[from]?.includes(to) || false;
+}
+
+export function isValidSchedulerTaskRunTransition(from: SchedulerTaskRunStatus, to: SchedulerTaskRunStatus): boolean {
+  if (from === to) return true;
+  return SCHEDULER_TASK_RUN_TRANSITIONS[from]?.includes(to) || false;
+}
+
 export interface SchedulerScheduleRecord {
   id: string;
   schedule_key: string;
@@ -2583,7 +2619,19 @@ export function releaseSchedulerClaim(runId: string): void {
 }
 
 export function setSchedulerRunStatus(runId: string, status: SchedulerRunStatus, errorMessage?: string | null): void {
-  const isTerminal = status === "success" || status === "partial_success" || status === "failed" || status === "cancelled" || status === "timeout";
+  const current = stmt("SELECT status FROM scheduler_runs WHERE id = ?").get(runId) as { status: SchedulerRunStatus } | undefined;
+  if (!current) return;
+  if (!isValidSchedulerRunTransition(current.status, status)) {
+    addLog({
+      level: "warning",
+      source: "scheduler.state",
+      message: "Rejected invalid scheduler run status transition.",
+      metadata: JSON.stringify({ runId, from: current.status, to: status }),
+    });
+    return;
+  }
+
+  const isTerminal = SCHEDULER_RUN_TERMINAL.has(status);
   getDb().prepare(
     `UPDATE scheduler_runs
      SET status = ?,
@@ -2595,7 +2643,19 @@ export function setSchedulerRunStatus(runId: string, status: SchedulerRunStatus,
 }
 
 export function setSchedulerTaskRunStatus(taskRunId: string, status: SchedulerTaskRunStatus, outputJson?: string | null, errorMessage?: string | null): void {
-  const isTerminal = status === "success" || status === "failed" || status === "cancelled" || status === "timeout" || status === "skipped";
+  const current = stmt("SELECT status FROM scheduler_task_runs WHERE id = ?").get(taskRunId) as { status: SchedulerTaskRunStatus } | undefined;
+  if (!current) return;
+  if (!isValidSchedulerTaskRunTransition(current.status, status)) {
+    addLog({
+      level: "warning",
+      source: "scheduler.state",
+      message: "Rejected invalid scheduler task-run status transition.",
+      metadata: JSON.stringify({ taskRunId, from: current.status, to: status }),
+    });
+    return;
+  }
+
+  const isTerminal = SCHEDULER_TASK_RUN_TERMINAL.has(status);
   getDb().prepare(
     `UPDATE scheduler_task_runs
      SET status = ?,
@@ -2875,4 +2935,57 @@ export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
       }
     }
   })();
+}
+
+export function listEnabledSchedulerTaskHandlers(): Array<{ handler_name: string; count: number }> {
+  return stmt(
+    `SELECT handler_name, COUNT(*) as count
+     FROM scheduler_tasks
+     WHERE enabled = 1
+     GROUP BY handler_name`
+  ).all() as Array<{ handler_name: string; count: number }>;
+}
+
+export function getSchedulerQueueHealthMetrics(): {
+  queued: number;
+  claimed: number;
+  running: number;
+  failed_1h: number;
+  success_1h: number;
+  partial_1h: number;
+  stale_claims: number;
+} {
+  const queue = stmt(
+    `SELECT
+       SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued,
+       SUM(CASE WHEN status = 'claimed' THEN 1 ELSE 0 END) AS claimed,
+       SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running,
+       SUM(CASE WHEN status = 'failed' AND datetime(created_at) >= datetime('now', '-1 hour') THEN 1 ELSE 0 END) AS failed_1h,
+       SUM(CASE WHEN status = 'success' AND datetime(created_at) >= datetime('now', '-1 hour') THEN 1 ELSE 0 END) AS success_1h,
+       SUM(CASE WHEN status = 'partial_success' AND datetime(created_at) >= datetime('now', '-1 hour') THEN 1 ELSE 0 END) AS partial_1h
+     FROM scheduler_runs`
+  ).get() as {
+    queued: number | null;
+    claimed: number | null;
+    running: number | null;
+    failed_1h: number | null;
+    success_1h: number | null;
+    partial_1h: number | null;
+  };
+
+  const staleClaims = stmt(
+    `SELECT COUNT(*) AS c
+     FROM scheduler_claims
+     WHERE datetime(lease_expires_at) <= datetime('now')`
+  ).get() as { c: number };
+
+  return {
+    queued: queue.queued || 0,
+    claimed: queue.claimed || 0,
+    running: queue.running || 0,
+    failed_1h: queue.failed_1h || 0,
+    success_1h: queue.success_1h || 0,
+    partial_1h: queue.partial_1h || 0,
+    stale_claims: staleClaims.c || 0,
+  };
 }

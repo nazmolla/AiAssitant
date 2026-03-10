@@ -224,6 +224,8 @@ CREATE INDEX idx_scheduled_tasks_due ON scheduled_tasks (status, next_run_at);
 > **Unified Scheduler Foundation**: The normalized scheduler model is now available through `scheduler_schedules` (parent schedule definition), `scheduler_tasks` (child task graph), `scheduler_runs` (schedule execution history), `scheduler_task_runs` (per-task execution history), `scheduler_claims` (worker lease/heartbeat safety), and `scheduler_events` (transition timeline). Startup migration backfills legacy `scheduled_tasks` rows into schedule/task records for safe phased adoption.
 
 > **Unified Scheduler Migration**: Recurring platform flows are represented as first-class schedule/task records: `system.proactive.scan`, `system.db_maintenance.run_due`, `system.knowledge_maintenance.run_due`, and a modeled `workflow.job_scout.pipeline` parent schedule with child tasks (`search`, `extract`, `prepare`, `validate`, `email`).
+
+> **Scheduler Reliability Guardrails**: Run/task-run status transitions are validated against explicit lifecycle rules before DB updates. The runtime validates enabled task handlers against a registered-handler allowlist and emits warnings for orphan handlers. Queue health metrics (queued/claimed/running, 1h failures/success, stale claims) are available through `GET /api/scheduler/health`.
 >
 > **Severity capping**: Smart home / IoT tool assessments (prefixes: `builtin.alexa_`, `builtin.smart_home_`, `builtin.iot_`, `builtin.hue_`, `builtin.nest_`, `builtin.ring_`) are automatically capped at `high` severity — they can never produce `disaster`-level events.
 >
@@ -325,6 +327,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `PATCH` | `/api/scheduler/schedules/[id]/tasks` | Admin | Update schedule task graph |
 | `GET` | `/api/scheduler/runs` | Admin | Paginated run history with status and schedule filters |
 | `GET` | `/api/scheduler/runs/[id]` | Admin | Run detail with task-run status and log references |
+| `GET` | `/api/scheduler/health` | Admin | Queue health metrics, stale-claim counts, and orphan handler warnings |
 | `GET` | `/api/admin/users` | Admin | List all users with permissions |
 | `PUT/DELETE` | `/api/admin/users` | Admin | Update user role/status or delete user |
 | `GET` | `/api/admin/users/me` | User | Get current user's role and permissions |
