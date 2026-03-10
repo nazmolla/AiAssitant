@@ -2291,6 +2291,96 @@ export interface ScheduledTaskRecord {
   updated_at: string;
 }
 
+export type SchedulerRunStatus =
+  | "scheduled"
+  | "queued"
+  | "claimed"
+  | "running"
+  | "success"
+  | "partial_success"
+  | "failed"
+  | "cancelled"
+  | "timeout";
+
+export type SchedulerTaskRunStatus =
+  | "pending"
+  | "skipped"
+  | "running"
+  | "success"
+  | "failed"
+  | "cancelled"
+  | "timeout"
+  | "retrying";
+
+export interface SchedulerScheduleRecord {
+  id: string;
+  schedule_key: string;
+  name: string;
+  owner_type: string;
+  owner_id: string | null;
+  handler_type: string;
+  trigger_type: "cron" | "interval" | "once";
+  trigger_expr: string;
+  timezone: string;
+  status: "active" | "paused" | "archived";
+  max_concurrency: number;
+  retry_policy_json: string | null;
+  misfire_policy: string;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SchedulerRunRecord {
+  id: string;
+  schedule_id: string;
+  trigger_source: "timer" | "manual" | "api" | "recovery";
+  planned_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  status: SchedulerRunStatus;
+  attempt_no: number;
+  correlation_id: string | null;
+  summary_json: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface SchedulerTaskRecord {
+  id: string;
+  schedule_id: string;
+  task_key: string;
+  name: string;
+  handler_name: string;
+  execution_mode: "sync" | "async" | "fanout";
+  sequence_no: number;
+  depends_on_task_id: string | null;
+  timeout_sec: number | null;
+  retry_policy_json: string | null;
+  enabled: number;
+  config_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SchedulerTaskRunRecord {
+  id: string;
+  run_id: string;
+  schedule_task_id: string;
+  started_at: string | null;
+  finished_at: string | null;
+  status: SchedulerTaskRunStatus;
+  attempt_no: number;
+  output_json: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  log_ref: string | null;
+  created_at: string;
+}
+
 export function createScheduledTask(task: {
   userId?: string | null;
   threadId?: string | null;
@@ -2363,4 +2453,163 @@ export function markScheduledTaskFailed(taskId: string, error: string): void {
          updated_at = CURRENT_TIMESTAMP
      WHERE id = ?`
   ).run(error, taskId);
+}
+
+export function getScheduledTaskById(taskId: string): ScheduledTaskRecord | null {
+  const row = stmt("SELECT * FROM scheduled_tasks WHERE id = ?").get(taskId) as ScheduledTaskRecord | undefined;
+  return row || null;
+}
+
+export function listDueSchedulerSchedules(limit = 20): SchedulerScheduleRecord[] {
+  return stmt(
+    `SELECT s.*
+     FROM scheduler_schedules s
+     WHERE s.status = 'active'
+       AND s.next_run_at IS NOT NULL
+       AND datetime(s.next_run_at) <= datetime('now')
+       AND NOT EXISTS (
+         SELECT 1
+         FROM scheduler_runs r
+         WHERE r.schedule_id = s.id
+           AND r.status IN ('queued', 'claimed', 'running')
+       )
+     ORDER BY s.next_run_at ASC
+     LIMIT ?`
+  ).all(limit) as SchedulerScheduleRecord[];
+}
+
+export function listRunnableSchedulerRuns(limit = 10): SchedulerRunRecord[] {
+  return stmt(
+    `SELECT *
+     FROM scheduler_runs
+     WHERE status = 'queued'
+     ORDER BY created_at ASC
+     LIMIT ?`
+  ).all(limit) as SchedulerRunRecord[];
+}
+
+export function getSchedulerTasksForSchedule(scheduleId: string): SchedulerTaskRecord[] {
+  return stmt(
+    `SELECT *
+     FROM scheduler_tasks
+     WHERE schedule_id = ? AND enabled = 1
+     ORDER BY sequence_no ASC, created_at ASC`
+  ).all(scheduleId) as SchedulerTaskRecord[];
+}
+
+export function getSchedulerTaskRunsForRun(runId: string): SchedulerTaskRunRecord[] {
+  return stmt(
+    `SELECT tr.*
+     FROM scheduler_task_runs tr
+     JOIN scheduler_tasks t ON t.id = tr.schedule_task_id
+     WHERE tr.run_id = ?
+     ORDER BY t.sequence_no ASC, tr.created_at ASC`
+  ).all(runId) as SchedulerTaskRunRecord[];
+}
+
+export function createSchedulerRun(scheduleId: string, triggerSource: "timer" | "manual" | "api" | "recovery" = "timer"): SchedulerRunRecord {
+  const id = uuid();
+  const correlationId = uuid();
+  return getDb().prepare(
+    `INSERT INTO scheduler_runs (
+      id, schedule_id, trigger_source, planned_at, status, attempt_no, correlation_id
+    ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'queued', 1, ?)
+    RETURNING *`
+  ).get(id, scheduleId, triggerSource, correlationId) as SchedulerRunRecord;
+}
+
+export function createSchedulerTaskRun(runId: string, scheduleTaskId: string): SchedulerTaskRunRecord {
+  const id = uuid();
+  return getDb().prepare(
+    `INSERT INTO scheduler_task_runs (
+      id, run_id, schedule_task_id, status, attempt_no
+    ) VALUES (?, ?, ?, 'pending', 1)
+    RETURNING *`
+  ).get(id, runId, scheduleTaskId) as SchedulerTaskRunRecord;
+}
+
+export function updateSchedulerScheduleAfterDispatch(scheduleId: string, nextRunAt: string | null): void {
+  getDb().prepare(
+    `UPDATE scheduler_schedules
+     SET next_run_at = ?,
+         last_run_at = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run(nextRunAt, scheduleId);
+}
+
+export function tryClaimSchedulerRun(runId: string, workerId: string, leaseSeconds = 60): boolean {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    const activeClaim = db.prepare(
+      `SELECT run_id
+       FROM scheduler_claims
+       WHERE run_id = ? AND datetime(lease_expires_at) > datetime('now')`
+    ).get(runId) as { run_id: string } | undefined;
+    if (activeClaim) return false;
+
+    db.prepare("DELETE FROM scheduler_claims WHERE run_id = ?").run(runId);
+    db.prepare(
+      `INSERT INTO scheduler_claims (run_id, worker_id, claimed_at, heartbeat_at, lease_expires_at)
+       VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, datetime('now', ?))`
+    ).run(runId, workerId, `+${Math.max(1, leaseSeconds)} seconds`);
+
+    const update = db.prepare(
+      `UPDATE scheduler_runs
+       SET status = 'claimed'
+       WHERE id = ? AND status = 'queued'`
+    ).run(runId);
+
+    if (update.changes === 0) {
+      db.prepare("DELETE FROM scheduler_claims WHERE run_id = ?").run(runId);
+      return false;
+    }
+    return true;
+  });
+  return tx();
+}
+
+export function heartbeatSchedulerClaim(runId: string, workerId: string, leaseSeconds = 60): void {
+  getDb().prepare(
+    `UPDATE scheduler_claims
+     SET heartbeat_at = CURRENT_TIMESTAMP,
+         lease_expires_at = datetime('now', ?)
+     WHERE run_id = ? AND worker_id = ?`
+  ).run(`+${Math.max(1, leaseSeconds)} seconds`, runId, workerId);
+}
+
+export function releaseSchedulerClaim(runId: string): void {
+  getDb().prepare("DELETE FROM scheduler_claims WHERE run_id = ?").run(runId);
+}
+
+export function setSchedulerRunStatus(runId: string, status: SchedulerRunStatus, errorMessage?: string | null): void {
+  const isTerminal = status === "success" || status === "partial_success" || status === "failed" || status === "cancelled" || status === "timeout";
+  getDb().prepare(
+    `UPDATE scheduler_runs
+     SET status = ?,
+         started_at = CASE WHEN ? = 'running' AND started_at IS NULL THEN CURRENT_TIMESTAMP ELSE started_at END,
+         finished_at = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE finished_at END,
+         error_message = CASE WHEN ? IS NOT NULL THEN ? ELSE error_message END
+     WHERE id = ?`
+  ).run(status, status, isTerminal ? 1 : 0, errorMessage ?? null, errorMessage ?? null, runId);
+}
+
+export function setSchedulerTaskRunStatus(taskRunId: string, status: SchedulerTaskRunStatus, outputJson?: string | null, errorMessage?: string | null): void {
+  const isTerminal = status === "success" || status === "failed" || status === "cancelled" || status === "timeout" || status === "skipped";
+  getDb().prepare(
+    `UPDATE scheduler_task_runs
+     SET status = ?,
+         started_at = CASE WHEN ? = 'running' AND started_at IS NULL THEN CURRENT_TIMESTAMP ELSE started_at END,
+         finished_at = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE finished_at END,
+         output_json = CASE WHEN ? IS NOT NULL THEN ? ELSE output_json END,
+         error_message = CASE WHEN ? IS NOT NULL THEN ? ELSE error_message END
+     WHERE id = ?`
+  ).run(status, status, isTerminal ? 1 : 0, outputJson ?? null, outputJson ?? null, errorMessage ?? null, errorMessage ?? null, taskRunId);
+}
+
+export function addSchedulerEvent(runId: string, eventType: string, message?: string, taskRunId?: string | null, metadataJson?: string | null): void {
+  getDb().prepare(
+    `INSERT INTO scheduler_events (run_id, task_run_id, event_type, message, metadata_json)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(runId, taskRunId ?? null, eventType, message ?? null, metadataJson ?? null);
 }
