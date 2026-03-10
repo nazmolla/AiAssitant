@@ -11,7 +11,8 @@
 - **Scheduled Task Queue** — future and recurring tasks are persisted with frequency, next run, last run, source, and scope; executed automatically by the background scheduler
 - **Unified Scheduler Foundation** — normalized scheduler tables (`scheduler_schedules`, `scheduler_tasks`, `scheduler_runs`, `scheduler_task_runs`, `scheduler_claims`, `scheduler_events`) are now in place for schedule/task graph modeling and run-history tracking
 - **Unified Scheduler Console** — admin Settings → Scheduler now includes live overview metrics, schedule controls (pause/resume/trigger), run history, and task-level run detail with log references
-- **Evening Knowledge Maintenance Worker** — dedicated worker thread runs nightly dedupe/declutter for `user_knowledge`, separate from the proactive scheduler
+- **Unified Scheduler Migration** — proactive scans, DB maintenance, and knowledge maintenance are now represented as system schedules/tasks in the unified engine; Job Scout pipeline is modeled as a parent schedule with child tasks
+- **Evening Knowledge Maintenance** — nightly dedupe/declutter for `user_knowledge` runs as a unified scheduler system task with configurable hour/minute and poll cadence
 - **Autonomous Knowledge Capture** — every conversation is mined for durable facts
 - **Human-in-the-Loop (HITL)** — default-deny policy enforcement with required rationale; interactive chat/voice approvals are requested inline in the same conversation; Approval Center is reserved for proactive/email-origin actions with structured details (action, item, location, reason, source); per-tool **scope** (Global or User Only) controls visibility
 - **Standing Orders Management** — view, edit, and revoke saved approval decisions (Always Allow / Always Ignore / Always Reject) from Settings → Standing Orders

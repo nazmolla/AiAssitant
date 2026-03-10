@@ -104,6 +104,8 @@ Scheduler initialization also provisions unified scheduler foundation tables:
 
 Legacy `scheduled_tasks` rows are backfilled into `scheduler_schedules` + `scheduler_tasks` during startup to support phased migration without losing scheduled intent.
 
+Startup also seeds system unified schedules for proactive scan, DB maintenance, knowledge maintenance, and a modeled Job Scout pipeline task graph.
+
 This migration replaces legacy title/source prefix parsing in runtime filters.
 
 DB maintenance policies are persisted in `app_config` and can be managed through **Settings → DB Management** (admin-only). This includes recurring cleanup interval, retention windows, and cleanup toggles for logs, threads/conversations, attachments, and orphan files.

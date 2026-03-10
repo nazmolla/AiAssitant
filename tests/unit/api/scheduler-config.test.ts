@@ -3,19 +3,14 @@
  */
 import { setupTestDb, teardownTestDb } from "../../helpers/test-db";
 import { getAppConfig, setAppConfig } from "@/lib/db/queries";
+import { getDb } from "@/lib/db/connection";
 
 // Mock auth
 jest.mock("@/lib/auth", () => ({
   requireAdmin: jest.fn(() => ({ userId: "admin-1" })),
 }));
 
-// Mock restartScheduler
-jest.mock("@/lib/scheduler", () => ({
-  restartScheduler: jest.fn(),
-}));
-
 import { GET, PUT } from "@/app/api/config/scheduler/route";
-import { restartScheduler } from "@/lib/scheduler";
 
 describe("Scheduler config API route", () => {
   beforeAll(() => {
@@ -50,7 +45,7 @@ describe("Scheduler config API route", () => {
     expect(data.cron_schedule).toBe("*/5 * * * *");
   });
 
-  test("PUT updates schedule and restarts scheduler", async () => {
+  test("PUT updates schedule and syncs unified scheduler records", async () => {
     const req = new Request("http://localhost/api/config/scheduler", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -80,7 +75,25 @@ describe("Scheduler config API route", () => {
     expect(getAppConfig("knowledge_maintenance_hour")).toBe("21");
     expect(getAppConfig("knowledge_maintenance_minute")).toBe("30");
     expect(getAppConfig("knowledge_maintenance_poll_seconds")).toBe("90");
-    expect(restartScheduler).toHaveBeenCalled();
+
+    const db = getDb();
+    const proactive = db.prepare("SELECT trigger_type, trigger_expr, status FROM scheduler_schedules WHERE schedule_key = 'system.proactive.scan'").get() as {
+      trigger_type: string;
+      trigger_expr: string;
+      status: string;
+    } | undefined;
+    expect(proactive).toBeDefined();
+    expect(proactive?.trigger_type).toBe("interval");
+    expect(proactive?.trigger_expr).toBe("every:30:minute");
+    expect(proactive?.status).toBe("active");
+
+    const knowledge = db.prepare("SELECT trigger_expr, status FROM scheduler_schedules WHERE schedule_key = 'system.knowledge_maintenance.run_due'").get() as {
+      trigger_expr: string;
+      status: string;
+    } | undefined;
+    expect(knowledge).toBeDefined();
+    expect(knowledge?.trigger_expr).toBe("every:90:second");
+    expect(knowledge?.status).toBe("paused");
   });
 
   test("PUT rejects invalid cron expression", async () => {

@@ -2680,6 +2680,82 @@ export function getSchedulerScheduleById(scheduleId: string): SchedulerScheduleR
   return row || null;
 }
 
+export function updateSchedulerScheduleByKey(scheduleKey: string, args: {
+  trigger_type?: "cron" | "interval" | "once";
+  trigger_expr?: string;
+  status?: "active" | "paused" | "archived";
+  next_run_at?: string;
+}): void {
+  getDb().prepare(
+    `UPDATE scheduler_schedules
+     SET trigger_type = COALESCE(?, trigger_type),
+         trigger_expr = COALESCE(?, trigger_expr),
+         status = COALESCE(?, status),
+         next_run_at = COALESCE(?, next_run_at),
+         updated_at = CURRENT_TIMESTAMP
+     WHERE schedule_key = ?`
+  ).run(
+    args.trigger_type ?? null,
+    args.trigger_expr ?? null,
+    args.status ?? null,
+    args.next_run_at ?? null,
+    scheduleKey
+  );
+}
+
+export function upsertSchedulerScheduleByKey(args: {
+  schedule_key: string;
+  name: string;
+  handler_type: string;
+  trigger_type: "cron" | "interval" | "once";
+  trigger_expr: string;
+  status: "active" | "paused" | "archived";
+  owner_type?: string;
+  owner_id?: string | null;
+  max_concurrency?: number;
+  retry_policy_json?: string | null;
+  misfire_policy?: string;
+  next_run_at?: string | null;
+}): void {
+  const existing = getDb().prepare("SELECT id FROM scheduler_schedules WHERE schedule_key = ?").get(args.schedule_key) as { id: string } | undefined;
+  const id = existing?.id || uuid();
+
+  getDb().prepare(
+    `INSERT INTO scheduler_schedules (
+      id, schedule_key, name, owner_type, owner_id, handler_type,
+      trigger_type, trigger_expr, timezone, status, max_concurrency,
+      retry_policy_json, misfire_policy, next_run_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'UTC', ?, ?, ?, ?, ?)
+    ON CONFLICT(schedule_key) DO UPDATE SET
+      name = excluded.name,
+      owner_type = excluded.owner_type,
+      owner_id = excluded.owner_id,
+      handler_type = excluded.handler_type,
+      trigger_type = excluded.trigger_type,
+      trigger_expr = excluded.trigger_expr,
+      status = excluded.status,
+      max_concurrency = excluded.max_concurrency,
+      retry_policy_json = excluded.retry_policy_json,
+      misfire_policy = excluded.misfire_policy,
+      next_run_at = COALESCE(excluded.next_run_at, scheduler_schedules.next_run_at),
+      updated_at = CURRENT_TIMESTAMP`
+  ).run(
+    id,
+    args.schedule_key,
+    args.name,
+    args.owner_type || "system",
+    args.owner_id ?? null,
+    args.handler_type,
+    args.trigger_type,
+    args.trigger_expr,
+    args.status,
+    Math.max(1, args.max_concurrency || 1),
+    args.retry_policy_json ?? JSON.stringify({ strategy: "none", maxAttempts: 1 }),
+    args.misfire_policy || "run_immediately",
+    args.next_run_at ?? null,
+  );
+}
+
 export function listSchedulerRunsBySchedule(scheduleId: string, limit = 25): SchedulerRunRecord[] {
   return stmt(
     `SELECT *

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { getAppConfig, setAppConfig, addLog } from "@/lib/db";
-import { restartScheduler } from "@/lib/scheduler";
+import { getAppConfig, setAppConfig, addLog, upsertSchedulerScheduleByKey } from "@/lib/db";
 
 const CRON_REGEX = /^(\*(?:\/\d+)?|[0-9,\-\/]+)\s+(\*(?:\/\d+)?|[0-9,\-\/]+)\s+(\*(?:\/\d+)?|[0-9,\-\/]+)\s+(\*(?:\/\d+)?|[0-9,\-\/]+)\s+(\*(?:\/\d+)?|[0-9,\-\/]+)$/;
 const CONFIG_KEY = "proactive_cron_schedule";
@@ -27,6 +26,16 @@ function readKnowledgeMaintenanceConfig() {
     minute: clampInt(getAppConfig(KM_MINUTE_KEY), 0, 0, 59),
     poll_seconds: clampInt(getAppConfig(KM_POLL_SECONDS_KEY), 60, 30, 300),
   };
+}
+
+function cronToIntervalExpr(cron: string): string {
+  const trimmed = cron.trim();
+  const everyMinute = /^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/i.exec(trimmed);
+  if (everyMinute) return `every:${Math.max(1, Number(everyMinute[1]))}:minute`;
+  if (trimmed === "0 * * * *") return "every:1:hour";
+  if (trimmed === "0 0 * * *") return "every:1:day";
+  if (trimmed === "0 0 * * 0") return "every:1:week";
+  return "every:15:minute";
 }
 
 export async function GET() {
@@ -74,7 +83,26 @@ export async function PUT(req: Request) {
     setAppConfig(KM_HOUR_KEY, String(kmHour));
     setAppConfig(KM_MINUTE_KEY, String(kmMinute));
     setAppConfig(KM_POLL_SECONDS_KEY, String(kmPollSeconds));
-    restartScheduler();
+
+    upsertSchedulerScheduleByKey({
+      schedule_key: "system.proactive.scan",
+      name: "System Proactive Scan",
+      handler_type: "system.proactive",
+      trigger_type: "interval",
+      trigger_expr: cronToIntervalExpr(schedule),
+      status: "active",
+      next_run_at: new Date().toISOString(),
+    });
+
+    upsertSchedulerScheduleByKey({
+      schedule_key: "system.knowledge_maintenance.run_due",
+      name: "System Knowledge Maintenance",
+      handler_type: "system.knowledge_maintenance",
+      trigger_type: "interval",
+      trigger_expr: `every:${Math.max(30, kmPollSeconds)}:second`,
+      status: kmEnabled ? "active" : "paused",
+      next_run_at: new Date().toISOString(),
+    });
 
     const knowledgeMaintenance = {
       enabled: kmEnabled,

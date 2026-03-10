@@ -763,6 +763,160 @@ function ensureUnifiedSchedulerBackfill(): void {
   tx();
 }
 
+function cronToIntervalExpr(cron: string): string {
+  const trimmed = String(cron || "").trim();
+  const everyMinute = /^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/i.exec(trimmed);
+  if (everyMinute) return `every:${Math.max(1, Number(everyMinute[1]))}:minute`;
+  if (trimmed === "0 * * * *") return "every:1:hour";
+  if (trimmed === "0 0 * * *") return "every:1:day";
+  if (trimmed === "0 0 * * 0") return "every:1:week";
+  return "every:15:minute";
+}
+
+function ensureSystemUnifiedSchedules(): void {
+  const db = getDb();
+  if (!tableExists("scheduler_schedules") || !tableExists("scheduler_tasks")) return;
+
+  const proactiveCron = db.prepare("SELECT value FROM app_config WHERE key = 'proactive_cron_schedule'").get() as { value?: string } | undefined;
+  const kmEnabledRow = db.prepare("SELECT value FROM app_config WHERE key = 'knowledge_maintenance_enabled'").get() as { value?: string } | undefined;
+  const kmPollRow = db.prepare("SELECT value FROM app_config WHERE key = 'knowledge_maintenance_poll_seconds'").get() as { value?: string } | undefined;
+
+  const proactiveExpr = cronToIntervalExpr(proactiveCron?.value || "*/15 * * * *");
+  const kmEnabledRaw = String(kmEnabledRow?.value || "1").trim().toLowerCase();
+  const kmEnabled = kmEnabledRaw !== "0" && kmEnabledRaw !== "false" && kmEnabledRaw !== "no";
+  const kmPollSeconds = Math.max(30, Math.min(300, Number.parseInt(String(kmPollRow?.value || "60"), 10) || 60));
+
+  const upsertSchedule = db.prepare(
+    `INSERT INTO scheduler_schedules (
+      id, schedule_key, name, owner_type, owner_id, handler_type,
+      trigger_type, trigger_expr, timezone, status, max_concurrency,
+      retry_policy_json, misfire_policy, next_run_at
+    ) VALUES (?, ?, ?, 'system', NULL, ?, 'interval', ?, 'UTC', ?, 1, ?, 'run_immediately', datetime('now'))
+    ON CONFLICT(schedule_key) DO UPDATE SET
+      name = excluded.name,
+      trigger_type = excluded.trigger_type,
+      trigger_expr = excluded.trigger_expr,
+      status = excluded.status,
+      updated_at = CURRENT_TIMESTAMP`
+  );
+
+  const upsertTask = db.prepare(
+    `INSERT INTO scheduler_tasks (
+      id, schedule_id, task_key, name, handler_name, execution_mode,
+      sequence_no, enabled, config_json
+    ) VALUES (?, ?, ?, ?, ?, 'sync', ?, 1, ?)
+    ON CONFLICT(schedule_id, task_key) DO UPDATE SET
+      name = excluded.name,
+      handler_name = excluded.handler_name,
+      execution_mode = excluded.execution_mode,
+      sequence_no = excluded.sequence_no,
+      enabled = excluded.enabled,
+      config_json = excluded.config_json,
+      updated_at = CURRENT_TIMESTAMP`
+  );
+
+  const ensureByKey = (scheduleKey: string): string => {
+    const existing = db.prepare("SELECT id FROM scheduler_schedules WHERE schedule_key = ?").get(scheduleKey) as { id: string } | undefined;
+    return existing?.id || uuid();
+  };
+
+  const tx = db.transaction(() => {
+    const proactiveId = ensureByKey("system.proactive.scan");
+    upsertSchedule.run(
+      proactiveId,
+      "system.proactive.scan",
+      "System Proactive Scan",
+      "system.proactive",
+      proactiveExpr,
+      "active",
+      JSON.stringify({ strategy: "none", maxAttempts: 1 })
+    );
+    upsertTask.run(
+      `sched_task_${proactiveId}_primary`,
+      proactiveId,
+      "primary",
+      "Run proactive scan",
+      "system.proactive.scan",
+      0,
+      JSON.stringify({ source: "unified" })
+    );
+
+    const dbMaintId = ensureByKey("system.db_maintenance.run_due");
+    upsertSchedule.run(
+      dbMaintId,
+      "system.db_maintenance.run_due",
+      "System DB Maintenance",
+      "system.db_maintenance",
+      "every:1:hour",
+      "active",
+      JSON.stringify({ strategy: "none", maxAttempts: 1 })
+    );
+    upsertTask.run(
+      `sched_task_${dbMaintId}_primary`,
+      dbMaintId,
+      "primary",
+      "Run DB maintenance if due",
+      "system.db_maintenance.run_due",
+      0,
+      JSON.stringify({ source: "unified" })
+    );
+
+    const kmId = ensureByKey("system.knowledge_maintenance.run_due");
+    upsertSchedule.run(
+      kmId,
+      "system.knowledge_maintenance.run_due",
+      "System Knowledge Maintenance",
+      "system.knowledge_maintenance",
+      `every:${kmPollSeconds}:second`,
+      kmEnabled ? "active" : "paused",
+      JSON.stringify({ strategy: "none", maxAttempts: 1 })
+    );
+    upsertTask.run(
+      `sched_task_${kmId}_primary`,
+      kmId,
+      "primary",
+      "Run knowledge maintenance if due",
+      "system.knowledge_maintenance.run_due",
+      0,
+      JSON.stringify({ source: "unified" })
+    );
+
+    const jobScoutId = ensureByKey("workflow.job_scout.pipeline");
+    upsertSchedule.run(
+      jobScoutId,
+      "workflow.job_scout.pipeline",
+      "Job Scout Pipeline",
+      "workflow.job_scout",
+      "every:1:day",
+      "paused",
+      JSON.stringify({ strategy: "none", maxAttempts: 1 })
+    );
+
+    const pipelineTasks = [
+      { key: "search", name: "Search listings", handler: "workflow.job_scout.search" },
+      { key: "extract", name: "Extract role details", handler: "workflow.job_scout.extract" },
+      { key: "prepare", name: "Prepare tailored resume", handler: "workflow.job_scout.prepare" },
+      { key: "validate", name: "Validate shortlist", handler: "workflow.job_scout.validate" },
+      { key: "email", name: "Send digest email", handler: "workflow.job_scout.email" },
+    ];
+
+    for (let i = 0; i < pipelineTasks.length; i += 1) {
+      const task = pipelineTasks[i];
+      upsertTask.run(
+        `sched_task_${jobScoutId}_${task.key}`,
+        jobScoutId,
+        task.key,
+        task.name,
+        task.handler,
+        i,
+        JSON.stringify({ source: "unified" })
+      );
+    }
+  });
+
+  tx();
+}
+
 let _dbInitialized = false;
 
 export function initializeDatabase(): void {
@@ -789,6 +943,7 @@ export function initializeDatabase(): void {
   ensureApprovalQueueNlRequestColumn();
   ensureApprovalPreferencesTable();
   ensureUnifiedSchedulerBackfill();
+  ensureSystemUnifiedSchedules();
   ensureUserAccessManagement();
   ensureProfilePreferencesColumns();
   normalizeAgentLogLevels();

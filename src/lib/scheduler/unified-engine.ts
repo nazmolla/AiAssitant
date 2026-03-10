@@ -14,8 +14,10 @@ import {
   tryClaimSchedulerRun,
   updateSchedulerScheduleAfterDispatch,
   type SchedulerScheduleRecord,
+  runDbMaintenanceIfDue,
 } from "@/lib/db";
-import { executeLegacyScheduledTaskById } from "@/lib/scheduler";
+import { executeLegacyScheduledTaskById, runProactiveScan } from "@/lib/scheduler";
+import { runKnowledgeMaintenanceIfDue } from "@/lib/knowledge-maintenance";
 
 const ENGINE_POLL_MS = 10_000;
 const CLAIM_LEASE_SECONDS = 60;
@@ -28,13 +30,15 @@ function computeNextRunAt(schedule: SchedulerScheduleRecord): string | null {
   if (schedule.trigger_type === "once") return null;
 
   if (schedule.trigger_type === "interval") {
-    const match = /^every:(\d+):(hour|day|week|month)$/.exec(schedule.trigger_expr || "");
+    const match = /^every:(\d+):(second|minute|hour|day|week|month)$/.exec(schedule.trigger_expr || "");
     if (!match) return null;
 
     const interval = Math.max(1, Number(match[1] || 1));
     const unit = match[2];
     const now = new Date();
 
+    if (unit === "second") now.setSeconds(now.getSeconds() + interval);
+    if (unit === "minute") now.setMinutes(now.getMinutes() + interval);
     if (unit === "hour") now.setHours(now.getHours() + interval);
     if (unit === "day") now.setDate(now.getDate() + interval);
     if (unit === "week") now.setDate(now.getDate() + interval * 7);
@@ -84,6 +88,37 @@ async function executeTaskRun(taskRunId: string, handlerName: string, configJson
       if (!legacyTaskId) throw new Error("Missing legacyScheduledTaskId in scheduler task config.");
       await executeLegacyScheduledTaskById(legacyTaskId);
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ legacyScheduledTaskId: legacyTaskId }));
+      return;
+    }
+
+    if (handlerName === "system.proactive.scan") {
+      await runProactiveScan();
+      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "proactive_scan" }));
+      return;
+    }
+
+    if (handlerName === "system.db_maintenance.run_due") {
+      const result = runDbMaintenanceIfDue();
+      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "db_maintenance", result }));
+      return;
+    }
+
+    if (handlerName === "system.knowledge_maintenance.run_due") {
+      const result = runKnowledgeMaintenanceIfDue();
+      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "knowledge_maintenance", result }));
+      return;
+    }
+
+    if (handlerName.startsWith("workflow.job_scout.")) {
+      // Job Scout pipeline tasks are represented in unified scheduler and will be
+      // wired to concrete executors in a follow-up issue.
+      addLog({
+        level: "info",
+        source: "scheduler-engine",
+        message: `Job Scout pipeline placeholder executed: ${handlerName}`,
+        metadata: configJson,
+      });
+      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "job_scout_pipeline", handlerName }));
       return;
     }
 

@@ -222,6 +222,8 @@ CREATE INDEX idx_scheduled_tasks_due ON scheduled_tasks (status, next_run_at);
 > **Scheduled Tasks**: User future/recurring requests and proactive-discovered actions are persisted in `scheduled_tasks`. During each background scheduler cycle, due tasks (`next_run_at <= now`) are executed, `last_run_at` / `run_count` are updated, and `next_run_at` is recalculated from `frequency` + `interval_value`.
 
 > **Unified Scheduler Foundation**: The normalized scheduler model is now available through `scheduler_schedules` (parent schedule definition), `scheduler_tasks` (child task graph), `scheduler_runs` (schedule execution history), `scheduler_task_runs` (per-task execution history), `scheduler_claims` (worker lease/heartbeat safety), and `scheduler_events` (transition timeline). Startup migration backfills legacy `scheduled_tasks` rows into schedule/task records for safe phased adoption.
+
+> **Unified Scheduler Migration**: Recurring platform flows are represented as first-class schedule/task records: `system.proactive.scan`, `system.db_maintenance.run_due`, `system.knowledge_maintenance.run_due`, and a modeled `workflow.job_scout.pipeline` parent schedule with child tasks (`search`, `extract`, `prepare`, `validate`, `email`).
 >
 > **Severity capping**: Smart home / IoT tool assessments (prefixes: `builtin.alexa_`, `builtin.smart_home_`, `builtin.iot_`, `builtin.hue_`, `builtin.nest_`, `builtin.ring_`) are automatically capped at `high` severity — they can never produce `disaster`-level events.
 >
