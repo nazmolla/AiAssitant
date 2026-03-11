@@ -31,6 +31,7 @@ import HeadsetMicIcon from "@mui/icons-material/HeadsetMic";
 import Avatar from "@mui/material/Avatar";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import { useTheme, THEMES } from "@/components/theme-provider";
+import { AppPageBackbone } from "@/components/app-page-backbone";
 
 /* ── Lazy-loaded tab components (code-split into separate chunks) ── */
 const ChatPanel = dynamic(() => import("@/components/chat-panel").then(m => ({ default: m.ChatPanel })), { ssr: false });
@@ -322,14 +323,14 @@ export default function HomePage() {
         </Box>
         {activeTab === "conversation" && <ConversationMode />}
         {activeTab === "dashboard" && (
-          <Box sx={{ flex: 1, overflow: "auto", p: { xs: 1.5, sm: 3 } }}>
-            <Box sx={{ maxWidth: 1000, mx: "auto" }}><AgentDashboard /></Box>
-          </Box>
+          <AppPageBackbone>
+            <AgentDashboard />
+          </AppPageBackbone>
         )}
         {activeTab === "knowledge" && (
-          <Box sx={{ flex: 1, overflow: "auto", p: { xs: 1.5, sm: 3 } }}>
-            <Box sx={{ maxWidth: 1000, mx: "auto" }}><KnowledgeVault /></Box>
-          </Box>
+          <AppPageBackbone>
+            <KnowledgeVault />
+          </AppPageBackbone>
         )}
         {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} isUserMetaLoading={isUserMetaLoading} activePage={settingsPage} onNavigate={navigateToSettings} />}
       </Box>
@@ -471,8 +472,8 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
       </Box>
 
       {/* Content */}
-      <Box sx={{ flex: 1, overflowY: "auto", p: { xs: 1.5, sm: 3 } }}>
-        <Box sx={{ maxWidth: active === "scheduler" ? 1500 : 900, mx: "auto", width: "100%" }}>
+      <AppPageBackbone>
+        <Box sx={{ width: "100%" }}>
           {isUserMetaLoading ? (
             <Box sx={{ py: 8, display: "flex", justifyContent: "center" }}>
               <CircularProgress size={28} />
@@ -503,7 +504,7 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
             </>
           )}
         </Box>
-      </Box>
+      </AppPageBackbone>
     </Box>
   );
 }
