@@ -1,4 +1,20 @@
-import { setupTestDb, teardownTestDb } from "../../helpers/test-db";
+// Mock the agent loop so job scout steps don't try to make real LLM calls.
+jest.mock("@/lib/agent", () => ({
+  runAgentLoop: jest.fn(async () => ({
+    content: "Mock agent response",
+    toolsUsed: 1,
+    pendingApprovals: [],
+  })),
+}));
+
+// Mock scheduler sub-modules that would touch real services.
+jest.mock("@/lib/scheduler", () => ({
+  runProactiveScan: jest.fn().mockResolvedValue(undefined),
+  runEmailReadBatch: jest.fn().mockResolvedValue(undefined),
+  executeProactiveApprovedTool: jest.fn(),
+}));
+
+import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db";
 
 describe("unified scheduler engine", () => {
   beforeEach(() => {
@@ -15,6 +31,9 @@ describe("unified scheduler engine", () => {
     const db = getDb();
     const { runUnifiedSchedulerEngineTickForTests } = require("@/lib/scheduler/unified-engine");
 
+    // Job scout steps require an owner_id to create the pipeline thread.
+    const userId = seedTestUser({ email: "engine-unit-test@test.com", role: "user" });
+
     db.prepare(
       `INSERT INTO scheduler_schedules (
         id, schedule_key, name, owner_type, owner_id, handler_type, trigger_type, trigger_expr, timezone, status, max_concurrency, misfire_policy, next_run_at
@@ -23,8 +42,8 @@ describe("unified scheduler engine", () => {
       "sched-test-1",
       "workflow.job_scout.pipeline.test",
       "Job Scout Test Schedule",
-      "system",
-      null,
+      "user",
+      userId,
       "workflow.job_scout",
       "once",
       "once",
