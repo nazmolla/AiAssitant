@@ -560,6 +560,7 @@ export function SchedulerConfig() {
                         checked={allVisibleSelected}
                         disabled={schedules.length === 0}
                         onChange={toggleSelectAllSchedules}
+                        className="h-4 w-4 cursor-pointer accent-primary align-middle disabled:cursor-not-allowed disabled:opacity-50"
                       />
                     </th>
                     <th className="w-[36%] px-3 py-2 text-left">Header Task</th>
@@ -591,6 +592,7 @@ export function SchedulerConfig() {
                               checked={selectedScheduleIds.includes(s.id)}
                               onClick={(e) => e.stopPropagation()}
                               onChange={() => toggleScheduleSelection(s.id)}
+                              className="h-4 w-4 cursor-pointer accent-primary align-middle"
                             />
                           </td>
                           <td className="px-3 py-2 font-medium">

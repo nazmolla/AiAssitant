@@ -4,7 +4,7 @@
  * 
  * Deletes old scheduler_schedules records with:
  *   - trigger_type = 'once'
- *   - owner_type = 'system'
+ *   - AND either owner_type = 'system' OR schedule_key prefixed with legacy.scheduled_task
  * 
  * These are leftover from the migration to the unified scheduler engine.
  * Safe to run multiple times (idempotent) as it checks app_config marker.
@@ -44,7 +44,11 @@ async function main() {
     // Count legacy records before cleanup
     const countBefore = db.prepare(`
       SELECT COUNT(*) as count FROM scheduler_schedules
-      WHERE trigger_type = 'once' AND owner_type = 'system'
+      WHERE trigger_type = 'once'
+        AND (
+          owner_type = 'system'
+          OR schedule_key LIKE 'legacy.scheduled_task%'
+        )
     `);
     const before = countBefore.get() as { count: number };
     console.log(`Legacy records found: ${before.count}`);
@@ -55,7 +59,11 @@ async function main() {
       // Delete legacy records
       const deleteStmt = db.prepare(`
         DELETE FROM scheduler_schedules
-        WHERE trigger_type = 'once' AND owner_type = 'system'
+        WHERE trigger_type = 'once'
+          AND (
+            owner_type = 'system'
+            OR schedule_key LIKE 'legacy.scheduled_task%'
+          )
       `);
       const deleted = deleteStmt.run();
       console.log(`✓ Deleted: ${deleted.changes} records\n`);
@@ -64,11 +72,11 @@ async function main() {
     // Mark cleanup as complete
     const now = new Date().toISOString();
     const upsertConfig = db.prepare(`
-      INSERT INTO app_config (key, value, created_at, updated_at)
-      VALUES (?, ?, datetime('now'), datetime('now'))
-      ON CONFLICT(key) DO UPDATE SET 
+      INSERT INTO app_config (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET
         value = excluded.value,
-        updated_at = datetime('now')
+        updated_at = CURRENT_TIMESTAMP
     `);
     upsertConfig.run(APP_CONFIG_KEY, now);
     console.log(`✓ Marked cleanup complete in app_config\n`);
