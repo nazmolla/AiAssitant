@@ -209,6 +209,12 @@ CREATE INDEX idx_notifications_created ON notifications (created_at);
 >
 > **Scheduler Console UX**: Admin scheduler operations in Settings now follow a progressive flow: **Header Tasks Grid** (top-level schedules only), **Inline Expansion** (selected header shows child tasks + recent runs), and **Focused Header View** (full child-task table, full run history, and task-run log links).
 >
+> **Scheduler bulk selection**: The Header Tasks grid supports **Select All / Deselect All** for currently visible schedules, including a header checkbox and top action button for bulk delete workflows.
+>
+> **Timezone-consistent timestamps**: Scheduler and other operational UI surfaces use the shared theme/provider date formatter so timestamps follow the signed-in user timezone preference consistently with the dashboard.
+>
+> **One-time legacy run-once cleanup**: On runtime bootstrap, legacy migrated scheduler rows with `trigger_type='once'` and `owner_type='system'` are removed once, protected by `app_config` marker key `scheduler.cleanup_legacy_system_once_v1`.
+>
 > **Severity capping**: Smart home / IoT tool assessments (prefixes: `builtin.alexa_`, `builtin.smart_home_`, `builtin.iot_`, `builtin.hue_`, `builtin.nest_`, `builtin.ring_`) are automatically capped at `high` severity — they can never produce `disaster`-level events.
 >
 > **Quiet hours** (10 PM – 8 AM): Audio-producing tools are blocked during nighttime. This includes announcements, media playback, TTS, and volume increases. Volume decreases/muting and read-only queries remain allowed. The enforcement is in `executeSchedulerTool()` and applies to all scheduler-initiated actions (proactive and scheduled tasks).

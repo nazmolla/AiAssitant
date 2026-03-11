@@ -24,6 +24,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import MarkdownMessage from "./markdown-message";
 import type { AttachmentMeta, ThinkingStep, ThoughtStep, ProcessedMessage } from "./chat-panel-types";
 import { sanitizeToolContent, sanitizeAssistantContent } from "./chat-panel-types";
+import { useTheme } from "@/components/theme-provider";
 
 export interface ChatAreaProps {
   processedMessages: ProcessedMessage[];
@@ -54,6 +55,7 @@ export const ChatArea = memo(function ChatArea({
   resolvedApprovals,
   onApproval,
 }: ChatAreaProps) {
+  const { formatDate } = useTheme();
   // Reliability-first mode: avoid absolute-positioned rows to prevent
   // visual stacking/overlap when dynamic content shifts height after render.
   const useReliableRowLayout = true;
@@ -352,7 +354,7 @@ export const ChatArea = memo(function ChatArea({
                       textAlign: msg.role === "user" ? "right" : "left",
                     }}
                   >
-                    {new Date(msg.created_at).toLocaleString(undefined, {
+                    {formatDate(msg.created_at, {
                       month: "short",
                       day: "numeric",
                       hour: "2-digit",

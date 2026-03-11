@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 
 interface CustomTool {
@@ -17,6 +18,7 @@ interface CustomTool {
 }
 
 export function CustomToolsConfig() {
+  const { formatDate } = useTheme();
   const [tools, setTools] = useState<CustomTool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -224,7 +226,14 @@ export function CustomToolsConfig() {
                       </div>
 
                       <p className="text-[10px] text-muted-foreground/30">
-                        Created: {new Date(tool.created_at).toLocaleString()}
+                        Created: {formatDate(tool.created_at, {
+                          year: "numeric",
+                          month: "2-digit",
+                          day: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                        })}
                       </p>
                     </div>
                   )}

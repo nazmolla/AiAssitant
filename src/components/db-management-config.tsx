@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useTheme } from "@/components/theme-provider";
 
 interface DbMaintenanceConfig {
   enabled: boolean;
@@ -86,6 +87,7 @@ function LabeledToggle({ label, checked, onChange }: { label: string; checked: b
 }
 
 export function DbManagementConfig() {
+  const { formatDate } = useTheme();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -290,7 +292,14 @@ export function DbManagementConfig() {
           </div>
 
           <div className="text-xs text-muted-foreground">
-            Last scheduled/manual run: {config.lastRunAt ? new Date(config.lastRunAt).toLocaleString() : "never"}
+            Last scheduled/manual run: {config.lastRunAt ? formatDate(config.lastRunAt, {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }) : "never"}
           </div>
 
           <div className="flex flex-wrap gap-2">

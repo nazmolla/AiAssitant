@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useTheme } from "@/components/theme-provider";
 
 type ScheduleStatus = "active" | "paused" | "archived";
 type RunStatus = "scheduled" | "queued" | "claimed" | "running" | "success" | "partial_success" | "failed" | "cancelled" | "timeout";
@@ -79,6 +80,7 @@ interface PaginatedResponse<T> {
 }
 
 export function SchedulerConfig() {
+  const { formatDate } = useTheme();
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
 
   const [overview, setOverview] = useState<SchedulerOverview | null>(null);
@@ -114,11 +116,32 @@ export function SchedulerConfig() {
 
   const clearScheduleSelection = () => setSelectedScheduleIds([]);
 
+  const visibleScheduleIds = schedules.map((s) => s.id);
+  const allVisibleSelected = visibleScheduleIds.length > 0 && visibleScheduleIds.every((id) => selectedScheduleIds.includes(id));
+
+  const toggleSelectAllSchedules = () => {
+    setSelectedScheduleIds((prev) => {
+      if (allVisibleSelected) {
+        return prev.filter((id) => !visibleScheduleIds.includes(id));
+      }
+      const next = new Set(prev);
+      for (const id of visibleScheduleIds) next.add(id);
+      return Array.from(next);
+    });
+  };
+
   const formatTs = (value: string | null) => {
     if (!value) return "-";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return value;
-    return d.toLocaleString();
+    return formatDate(value, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
   };
 
   const getRunBadgeClass = (status: string) => {
@@ -507,6 +530,14 @@ export function SchedulerConfig() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={toggleSelectAllSchedules}
+                  disabled={schedules.length === 0}
+                >
+                  {allVisibleSelected ? "Deselect All" : "Select All"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={bulkDeleteSchedules}
                   disabled={selectedScheduleIds.length === 0 || savingDetail}
                 >
@@ -522,7 +553,15 @@ export function SchedulerConfig() {
               <table className="w-full table-fixed text-xs sm:text-sm">
                 <thead className="bg-muted/30">
                   <tr>
-                    <th className="w-[5%] px-2 py-2 text-left">Sel</th>
+                    <th className="w-[5%] px-2 py-2 text-left">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all schedules"
+                        checked={allVisibleSelected}
+                        disabled={schedules.length === 0}
+                        onChange={toggleSelectAllSchedules}
+                      />
+                    </th>
                     <th className="w-[36%] px-3 py-2 text-left">Header Task</th>
                     <th className="hidden w-[18%] px-3 py-2 text-left md:table-cell">Schedule Key</th>
                     <th className="w-[14%] px-3 py-2 text-left">Status</th>

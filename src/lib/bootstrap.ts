@@ -1,4 +1,4 @@
-import { initializeDatabase, listMcpServers, addLog, listChannels } from "@/lib/db";
+import { initializeDatabase, listMcpServers, addLog, listChannels, getDb } from "@/lib/db";
 import { startUnifiedSchedulerEngine } from "@/lib/scheduler/unified-engine";
 import { getMcpManager } from "@/lib/mcp";
 import { startDiscordBot } from "@/lib/channels/discord";
@@ -42,6 +42,51 @@ async function startDiscordBots(): Promise<void> {
         metadata: JSON.stringify({ channelId: ch.id }),
       });
     }
+  }
+}
+
+/**
+ * One-time cleanup for legacy migrated run-once schedules that were owned by
+ * the old system scheduler.
+ */
+function cleanupLegacySystemRunOnceSchedulesOnce(): void {
+  const db = getDb();
+  const cleanupKey = "scheduler.cleanup_legacy_system_once_v1";
+
+  try {
+    const marker = db.prepare("SELECT value FROM app_config WHERE key = ?").get(cleanupKey) as { value?: string } | undefined;
+    if (marker?.value === "1") return;
+
+    const deleted = db.prepare(
+      `DELETE FROM scheduler_schedules
+       WHERE trigger_type = 'once'
+         AND owner_type = 'system'`
+    ).run();
+
+    db.prepare(
+      `INSERT INTO app_config (key, value, updated_at)
+       VALUES (?, '1', CURRENT_TIMESTAMP)
+       ON CONFLICT(key) DO UPDATE SET
+         value = excluded.value,
+         updated_at = CURRENT_TIMESTAMP`
+    ).run(cleanupKey);
+
+    const removed = Number(deleted.changes || 0);
+    if (removed > 0) {
+      addLog({
+        level: "info",
+        source: "scheduler.cleanup",
+        message: "Removed legacy system run-once schedules during one-time startup cleanup.",
+        metadata: JSON.stringify({ removed, cleanupKey }),
+      });
+    }
+  } catch (err) {
+    addLog({
+      level: "warning",
+      source: "scheduler.cleanup",
+      message: `Legacy run-once schedule cleanup failed: ${err}`,
+      metadata: JSON.stringify({ cleanupKey }),
+    });
   }
 }
 
@@ -131,6 +176,7 @@ export async function bootstrapRuntime(): Promise<void> {
 
       // Critical path: DB + scheduler only — fast, no network I/O
       initializeDatabase();
+      cleanupLegacySystemRunOnceSchedulesOnce();
       startUnifiedSchedulerEngine();
 
       globalThis.__nexus_bootstrapped = true;
