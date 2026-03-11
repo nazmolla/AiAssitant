@@ -36,6 +36,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 MAX_BACKUPS=5          # keep last N DB backups on server
 HEALTH_WAIT=10         # seconds to wait after start before health check
 STEPS=11
+ALLOW_SMOKE_FAIL="${DEPLOY_ALLOW_SMOKE_FAIL:-0}"   # set to 1 only for emergency/non-blocking smoke checks
 
 # ── Helpers ────────────────────────────────────────────────────────
 rcmd()  { ssh -o LogLevel=ERROR "${REMOTE}" "$@" 2>/dev/null; }
@@ -59,6 +60,9 @@ echo "════════════════════════�
 echo "  Nexus Agent — Deploy"
 echo "  Target: ${REMOTE}:${REMOTE_DIR}"
 echo "  Time:   $(date '+%Y-%m-%d %H:%M:%S')"
+if [ "${ALLOW_SMOKE_FAIL}" = "1" ]; then
+  echo "  Mode:   DEPLOY_ALLOW_SMOKE_FAIL=1 (smoke failures will be non-blocking)"
+fi
 echo "═══════════════════════════════════════════"
 
 # ── 1. Local: lint + tests + version bump ─────────────────────────
@@ -184,8 +188,8 @@ echo "  ✓ Source extracted, DB intact"
 
 # ── 6. Remote: install dependencies (all — dev deps needed for build) ──
 step 6 "Installing dependencies..."
-rcmd "cd ${REMOTE_DIR} && npm install --loglevel=error 2>&1 | tail -5" \
-  || fail "npm install failed"
+rcmd "cd ${REMOTE_DIR} && npm ci --loglevel=error 2>&1 | tail -5" \
+  || fail "npm ci failed"
 rcmd "cd ${REMOTE_DIR} && test -x node_modules/.bin/next" \
   || fail "next binary missing after install"
 echo "  ✓ Dependencies installed"
@@ -298,7 +302,11 @@ echo "${SMOKE_RESULT}"
 if echo "${SMOKE_RESULT}" | grep -q '0 failed'; then
   echo "  ✓ All smoke tests passed"
 else
-  echo "  ⚠ Smoke tests had failures (non-blocking)"
+  if [ "${ALLOW_SMOKE_FAIL}" = "1" ]; then
+    echo "  ⚠ Smoke tests had failures (override active: non-blocking)"
+  else
+    fail "Smoke tests failed — deployment blocked. Set DEPLOY_ALLOW_SMOKE_FAIL=1 only for emergency override."
+  fi
 fi
 
 # ── 11. Remote: post-deploy DB validation ─────────────────────────

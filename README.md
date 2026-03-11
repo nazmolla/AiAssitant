@@ -74,6 +74,25 @@ bash deploy.sh <host> <user>
 
 The script handles tests, build, safe packaging, remote DB backup, install, restart, and HTTPS verification. It also excludes `*.db` files so the production database is never overwritten.
 
+## CI And Branch Policy
+
+- Required workflow: `.github/workflows/ci-quality-gate.yml`
+- Required checks before merge to `main`:
+	- Lint (`npm run lint`)
+	- Jest suite (`npx jest --forceExit`)
+	- Vulnerability audit (`npm audit --audit-level=moderate`)
+- Enforce branch protection on `main`:
+	- Require pull requests
+	- Require at least 1 approval
+	- Require status checks from CI Quality Gate
+	- Restrict direct pushes to `main`
+
+### Deployment Safety Controls
+
+- Deterministic install in deploy: `npm ci`
+- Smoke tests are blocking by default
+- Emergency override only: set `DEPLOY_ALLOW_SMOKE_FAIL=1`
+
 ---
 
 ## Documentation
