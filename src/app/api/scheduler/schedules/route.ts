@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/guard";
 import { addLog, createSchedulerSchedule, listSchedulerSchedulesPaginated, updateSchedulerTaskGraph } from "@/lib/db";
 import { getBatchJob, type BatchJobType, type BatchJobSubTaskTemplate } from "@/lib/scheduler/batch-jobs";
-import { computeSchedulerNextRunAt } from "@/lib/scheduler/next-run";
+import { computeSchedulerNextRunAt, normalizeSchedulerIntervalExpr } from "@/lib/scheduler/next-run";
 
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin();
@@ -41,19 +41,29 @@ export async function POST(req: NextRequest) {
 
   const name = typeof (body as { name?: unknown }).name === "string" ? String((body as { name: string }).name).trim() : undefined;
   const triggerType = String((body as { trigger_type?: unknown }).trigger_type || "interval").trim() as "cron" | "interval" | "once";
-  const triggerExpr = String((body as { trigger_expr?: unknown }).trigger_expr || "").trim();
+  const triggerExprInput = String((body as { trigger_expr?: unknown }).trigger_expr || "").trim();
   const parameters = ((body as { parameters?: unknown }).parameters || {}) as Record<string, string>;
   const tasks = ((body as { tasks?: unknown }).tasks || undefined) as BatchJobSubTaskTemplate[] | undefined;
 
   if (!["cron", "interval", "once"].includes(triggerType)) {
     return NextResponse.json({ error: "trigger_type must be one of cron|interval|once" }, { status: 400 });
   }
-  if (!triggerExpr) {
+  if (!triggerExprInput) {
     return NextResponse.json({ error: "trigger_expr is required" }, { status: 400 });
   }
 
+  const normalizedTriggerExpr = triggerType === "interval"
+    ? normalizeSchedulerIntervalExpr(triggerExprInput)
+    : triggerExprInput;
+  if (triggerType === "interval" && !normalizedTriggerExpr) {
+    return NextResponse.json(
+      { error: "Invalid interval trigger_expr. Use formats like every:10:minute, every 10 minute, or 10 minute." },
+      { status: 400 },
+    );
+  }
+
   const job = getBatchJob(batchType);
-  const built = job.build({ name, trigger_type: triggerType, trigger_expr: triggerExpr, parameters, tasks });
+  const built = job.build({ name, trigger_type: triggerType, trigger_expr: normalizedTriggerExpr || triggerExprInput, parameters, tasks });
   const nextRunAt = computeSchedulerNextRunAt(built.trigger_type, built.trigger_expr);
 
   const schedule = createSchedulerSchedule({
@@ -88,10 +98,10 @@ export async function POST(req: NextRequest) {
   );
 
   addLog({
-    level: "warning",
+    level: "info",
     source: "api.scheduler.schedules",
-    message: "Created scheduler batch instance.",
-    metadata: JSON.stringify({ userId: auth.user.id, scheduleId: schedule.id, batchType }),
+    message: `Created ${batchType} batch schedule \"${schedule.name}\" (${schedule.id.slice(0, 8)}).`,
+    metadata: JSON.stringify({ userId: auth.user.id, scheduleId: schedule.id, batchType, triggerType: schedule.trigger_type, triggerExpr: schedule.trigger_expr }),
   });
 
   return NextResponse.json({ ok: true, schedule_id: schedule.id, schedule_key: schedule.schedule_key });

@@ -590,6 +590,54 @@ describe("SchedulerConfig", () => {
     expect(screen.getByDisplayValue("Legacy Task Updated")).toBeInTheDocument();
   });
 
+  test("normalizes interval expression when saving focused schedule", async () => {
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    render(<SchedulerConfig />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Open Full Details")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    fireEvent.click(screen.getByText("Open Full Details"));
+
+    const triggerExprInput = await screen.findByDisplayValue("every:1:hour");
+    fireEvent.change(triggerExprInput, { target: { value: "every:10minute" } });
+    fireEvent.click(screen.getByText("Save Changes"));
+
+    await waitFor(() => {
+      const putCall = (global.fetch as jest.Mock).mock.calls.find(
+        ([url, init]) =>
+          String(url).includes("/api/scheduler/schedules/sched-1") &&
+          init &&
+          typeof init === "object" &&
+          (init as RequestInit).method === "PUT"
+      );
+      expect(putCall).toBeTruthy();
+      const payload = JSON.parse(String(((putCall as [string, RequestInit])[1]).body || "{}")) as { trigger_expr?: string };
+      expect(payload.trigger_expr).toBe("every:10:minute");
+    }, { timeout: 3000 });
+  });
+
+  test("closes focused detail overlay on Escape", async () => {
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    render(<SchedulerConfig />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Open Full Details")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    fireEvent.click(screen.getByText("Open Full Details"));
+    await waitFor(() => {
+      expect(screen.getByText(/Focused Header View:/)).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Focused Header View:/)).not.toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+
   test("renders focused runs table in compact scroll container", async () => {
     const { SchedulerConfig } = await import("@/components/scheduler-config");
     render(<SchedulerConfig />);

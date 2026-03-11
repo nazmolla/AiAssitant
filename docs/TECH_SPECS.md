@@ -224,6 +224,8 @@ CREATE INDEX idx_notifications_created ON notifications (created_at);
 >
 > **Batch scheduler modal and multi-instance model**: Batch scheduling now uses a dedicated modal editor with three collapsible sections (**Parameters**, **Recurrence**, **Sub tasks**) and top-end **OK/Cancel** actions (Escape closes the modal). Backend creation is now explicit via `POST /api/scheduler/schedules` with typed batch jobs (`proactive`, `knowledge`, `cleanup`) so multiple independent instances per batch type are supported.
 
+> **Focused header edit UX hardening**: The focused schedule editor now supports Escape-to-close and normalizes lenient interval expressions (for example `every:10minute`, `every 10 minute`, `10 minute`) into canonical `every:<n>:<unit>` format before persistence.
+
 > **Recurring schedule due-time seeding**: Scheduler create/update APIs now compute and persist `next_run_at` for active recurring schedules (`interval` currently supported), including recurrence edits and re-activation updates. This prevents recurring batches from stalling due to a missing due timestamp.
 >
 > **Dedicated email reading batch**: Incoming email processing is now schedulable as an independent batch type (`email`) using handler `system.email.read_incoming`. Email polling/auto-response is removed from the regular proactive scan path so it can be tuned and scheduled separately.

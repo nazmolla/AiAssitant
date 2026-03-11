@@ -63,10 +63,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const updatedTasks = getSchedulerTasksForSchedule(schedule.id);
   addLog({
-    level: "warning",
+    level: "info",
     source: "api.scheduler.control",
-    message: "Updated scheduler task graph.",
-    metadata: JSON.stringify({ userId: auth.user.id, scheduleId: schedule.id, taskCount: updatedTasks.length, replace }),
+    message: `Updated task graph for schedule \"${schedule.name}\" (${schedule.id.slice(0, 8)}).`,
+    metadata: JSON.stringify({
+      userId: auth.user.id,
+      scheduleId: schedule.id,
+      taskCount: updatedTasks.length,
+      replace,
+      taskKeys: updatedTasks.map((task) => task.task_key),
+    }),
   });
 
   return NextResponse.json({ ok: true, schedule_id: schedule.id, tasks: updatedTasks });

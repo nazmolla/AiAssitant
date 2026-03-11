@@ -22,6 +22,7 @@ import {
 } from "@/lib/db";
 import { runEmailReadBatch, runProactiveScan } from "@/lib/scheduler";
 import { runKnowledgeMaintenanceIfDue } from "@/lib/knowledge-maintenance";
+import { computeSchedulerNextRunAt } from "@/lib/scheduler/next-run";
 
 interface SchedulerLogContext {
   scheduleId?: string;
@@ -63,30 +64,6 @@ function validateRegisteredHandlers(): void {
   });
 }
 
-function computeNextRunAt(schedule: SchedulerScheduleRecord): string | null {
-  if (schedule.trigger_type === "once") return null;
-
-  if (schedule.trigger_type === "interval") {
-    const match = /^every:(\d+):(second|minute|hour|day|week|month)$/.exec(schedule.trigger_expr || "");
-    if (!match) return null;
-
-    const interval = Math.max(1, Number(match[1] || 1));
-    const unit = match[2];
-    const now = new Date();
-
-    if (unit === "second") now.setSeconds(now.getSeconds() + interval);
-    if (unit === "minute") now.setMinutes(now.getMinutes() + interval);
-    if (unit === "hour") now.setHours(now.getHours() + interval);
-    if (unit === "day") now.setDate(now.getDate() + interval);
-    if (unit === "week") now.setDate(now.getDate() + interval * 7);
-    if (unit === "month") now.setMonth(now.getMonth() + interval);
-    return now.toISOString();
-  }
-
-  // Cron scheduling will be enabled in a follow-up phase.
-  return null;
-}
-
 function dispatchDueSchedules(): void {
   const due = listDueSchedulerSchedules(25);
   if (due.length === 0) return;
@@ -98,13 +75,16 @@ function dispatchDueSchedules(): void {
       createSchedulerTaskRun(run.id, task.id);
     }
 
-    updateSchedulerScheduleAfterDispatch(schedule.id, computeNextRunAt(schedule));
+    updateSchedulerScheduleAfterDispatch(
+      schedule.id,
+      computeSchedulerNextRunAt(schedule.trigger_type as "cron" | "interval" | "once", schedule.trigger_expr),
+    );
     addSchedulerEvent(run.id, "run_dispatched", `Dispatched ${tasks.length} task(s)`, null, JSON.stringify({ scheduleId: schedule.id }));
 
     addLog({
       level: "info",
       source: "scheduler-engine",
-      message: `Dispatched scheduler run ${run.id}`,
+      message: `Dispatched run ${run.id.slice(0, 8)} for schedule \"${schedule.name}\" with ${tasks.length} task(s).`,
       metadata: JSON.stringify({ scheduleId: schedule.id, runId: run.id, tasks: tasks.length, correlationId: run.correlation_id }),
     });
   }

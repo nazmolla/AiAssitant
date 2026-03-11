@@ -1,8 +1,32 @@
+export function normalizeSchedulerIntervalExpr(triggerExpr: string): string | null {
+  const input = (triggerExpr || "").trim().toLowerCase();
+  if (!input) return null;
+
+  const strict = /^every:(\d+):(second|minute|hour|day|week|month)$/i.exec(input);
+  if (strict) return `every:${Math.max(1, Number(strict[1]))}:${strict[2]}`;
+
+  const missingColon = /^every:(\d+)(second|minute|hour|day|week|month)$/i.exec(input);
+  if (missingColon) return `every:${Math.max(1, Number(missingColon[1]))}:${missingColon[2]}`;
+
+  const spaced = /^every\s+(\d+)\s*(second|minute|hour|day|week|month)s?$/i.exec(input);
+  if (spaced) return `every:${Math.max(1, Number(spaced[1]))}:${spaced[2]}`;
+
+  const short = /^(\d+)\s*(second|minute|hour|day|week|month)s?$/i.exec(input);
+  if (short) return `every:${Math.max(1, Number(short[1]))}:${short[2]}`;
+
+  return null;
+}
+
+export function isValidSchedulerIntervalExpr(triggerExpr: string): boolean {
+  return normalizeSchedulerIntervalExpr(triggerExpr) !== null;
+}
+
 export function computeSchedulerNextRunAt(triggerType: "cron" | "interval" | "once", triggerExpr: string): string | null {
   if (triggerType === "once") return null;
 
   if (triggerType === "interval") {
-    const match = /^every:(\d+):(second|minute|hour|day|week|month)$/.exec(triggerExpr || "");
+    const normalized = normalizeSchedulerIntervalExpr(triggerExpr || "");
+    const match = /^every:(\d+):(second|minute|hour|day|week|month)$/.exec(normalized || "");
     if (!match) return null;
 
     const interval = Math.max(1, Number(match[1] || 1));

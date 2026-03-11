@@ -104,6 +104,25 @@ function parseTaskConfig(configJson?: string | null): { task_type: "handler" | "
   }
 }
 
+function normalizeIntervalExprInput(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return value.trim();
+
+  const strict = /^every:(\d+):(second|minute|hour|day|week|month)$/i.exec(trimmed);
+  if (strict) return `every:${Math.max(1, Number(strict[1]))}:${strict[2]}`;
+
+  const missingColon = /^every:(\d+)(second|minute|hour|day|week|month)$/i.exec(trimmed);
+  if (missingColon) return `every:${Math.max(1, Number(missingColon[1]))}:${missingColon[2]}`;
+
+  const spaced = /^every\s+(\d+)\s*(second|minute|hour|day|week|month)s?$/i.exec(trimmed);
+  if (spaced) return `every:${Math.max(1, Number(spaced[1]))}:${spaced[2]}`;
+
+  const short = /^(\d+)\s*(second|minute|hour|day|week|month)s?$/i.exec(trimmed);
+  if (short) return `every:${Math.max(1, Number(short[1]))}:${short[2]}`;
+
+  return value.trim();
+}
+
 export function SchedulerConfig() {
   const { formatDate } = useTheme();
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
@@ -341,19 +360,26 @@ export function SchedulerConfig() {
     setConsoleMessage(null);
     try {
       const id = selectedScheduleDetail.schedule.id;
+      const normalizedTriggerExpr = detailTriggerType === "interval"
+        ? normalizeIntervalExprInput(detailTriggerExpr)
+        : detailTriggerExpr.trim();
       const scheduleRes = await fetch(`/api/scheduler/schedules/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: detailName.trim(),
           trigger_type: detailTriggerType,
-          trigger_expr: detailTriggerExpr.trim(),
+          trigger_expr: normalizedTriggerExpr,
         }),
       });
       const scheduleJson = await scheduleRes.json().catch(() => ({}));
       if (!scheduleRes.ok) {
         setConsoleMessage((scheduleJson as { error?: string }).error || "Failed to update schedule.");
         return;
+      }
+      const returnedExpr = (scheduleJson as { schedule?: { trigger_expr?: string } }).schedule?.trigger_expr;
+      if (typeof returnedExpr === "string") {
+        setDetailTriggerExpr(returnedExpr);
       }
 
       const tasksRes = await fetch(`/api/scheduler/schedules/${id}/tasks`, {
@@ -608,6 +634,20 @@ export function SchedulerConfig() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFocusedRuns is recreated each render; adding it would cause an infinite fetch loop
   }, [focusedView, selectedScheduleId, runStatusFilter]);
 
+  useEffect(() => {
+    if (!focusedView) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setFocusedView(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [focusedView]);
+
   return (
     <div className="w-full space-y-4">
       <Card>
@@ -836,7 +876,7 @@ export function SchedulerConfig() {
             </div>
 
             {selectedScheduleDetail?.schedule && focusedView && (
-              <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 p-4 sm:p-8">
+              <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 p-4 sm:p-8" role="dialog" aria-modal="true">
                 <div className="max-h-[95vh] w-full max-w-6xl overflow-y-auto rounded-xl border border-primary/30 bg-background p-4 sm:p-5">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-primary">Focused Header View: {selectedScheduleDetail.schedule.name}</h3>
