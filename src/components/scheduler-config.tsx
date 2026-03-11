@@ -448,6 +448,7 @@ export function SchedulerConfig() {
       loadConsole();
     }, 30000);
     return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once polling interval; adding loadConsole would reset timer on every render
   }, []);
 
   useEffect(() => {
@@ -458,6 +459,7 @@ export function SchedulerConfig() {
   useEffect(() => {
     if (!focusedView || !selectedScheduleId) return;
     loadFocusedRuns(selectedScheduleId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFocusedRuns is recreated each render; adding it would cause an infinite fetch loop
   }, [focusedView, selectedScheduleId, runStatusFilter]);
 
   return (

@@ -68,11 +68,13 @@
 
 ### Required Completion Sequence
 1. Implement requested changes.
-2. Run tests (full suite unless user explicitly requests otherwise).
-3. Run vulnerability check (`npm audit`).
-4. Deploy via `bash deploy.sh <host> <user>`.
-5. Verify deployment health/logs/smoke checks.
-6. Commit and push.
+2. Run lint locally — `npm run lint -- --max-warnings 0` must return 0 errors AND 0 warnings.
+3. Run tests locally — `npx jest --forceExit` full suite.
+4. Run vulnerability check — `npm audit --audit-level=moderate`.
+5. Commit and push to `main`.
+6. **Wait for the CI quality gate to pass** — check the GitHub Actions run triggered by the push; do NOT proceed until the run is green.
+7. Deploy via `bash deploy.sh <host> <user>` **only after step 6 is green**.
+8. Verify deployment health/logs/smoke checks.
 
 ### Evidence Policy
 - Final response must include concise evidence for each required step:

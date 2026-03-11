@@ -134,6 +134,7 @@ export function LlmConfig() {
     if ((purpose === "tts" || purpose === "stt") && !AUDIO_CAPABLE_PROVIDERS.has(providerType)) {
       setPurpose("chat");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- purpose is read only to guard resets; including it would create a feedback loop with setPurpose
   }, [providerType]);
 
   const currentFields = useMemo(() => {

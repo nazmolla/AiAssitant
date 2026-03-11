@@ -175,6 +175,7 @@ export function ProfileConfig() {
           <div className="flex items-center gap-4">
             <div className="relative h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border border-white/[0.08] shrink-0">
               {profile.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element -- avatar_url is an arbitrary user-supplied URL; listing all user domains in next.config is not feasible
                 <img src={profile.avatar_url} alt="Avatar" className="h-full w-full object-cover" />
               ) : (
                 <span className="text-2xl font-bold text-primary/60">

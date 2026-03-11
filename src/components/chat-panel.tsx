@@ -495,6 +495,7 @@ export function ChatPanel() {
     }
     window.addEventListener("approval-resolved", handleApprovalResolved);
     return () => window.removeEventListener("approval-resolved", handleApprovalResolved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchThreadsDebounced is a stable debounced ref; listing it recreates the listener on every render
   }, [activeThread]);
 
   async function createThread() {

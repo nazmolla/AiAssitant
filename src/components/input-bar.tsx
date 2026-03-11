@@ -74,6 +74,7 @@ export const InputBar = memo(function InputBar({
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, px: 1.5, py: 1, borderRadius: 2, bgcolor: "error.main", color: "error.contrastText", opacity: 0.9 }}>
             <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "white", animation: "pulse 1.5s infinite" }} />
             <Typography variant="caption" sx={{ fontWeight: 500 }}>Sharing your screen</Typography>
+            {/* eslint-disable-next-line @next/next/no-img-element -- live screen-share frames use an imperative ref; next/image cannot manage ref-assigned src */}
             <img
               ref={frameImgRef}
               alt="Screen preview"
@@ -119,6 +120,7 @@ export const InputBar = memo(function InputBar({
                 size="small"
                 variant="outlined"
                 icon={pf.previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- previewUrl is a blob: object URL; next/image does not support blob: URLs
                   <img
                     src={pf.previewUrl}
                     alt={pf.file.name}

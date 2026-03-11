@@ -61,6 +61,7 @@ export const ChatArea = memo(function ChatArea({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const prevCountRef = useRef(0);
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns unstable function refs by design; memoization is not applicable here
   const virtualizer = useVirtualizer({
     count: processedMessages.length,
     getScrollElement: () => scrollContainerRef.current,
