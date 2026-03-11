@@ -123,6 +123,34 @@ function normalizeIntervalExprInput(value: string): string {
   return value.trim();
 }
 
+const INTERVAL_OPTIONS: { value: string; label: string }[] = [
+  { value: "every:1:minute", label: "Every 1 minute" },
+  { value: "every:2:minute", label: "Every 2 minutes" },
+  { value: "every:5:minute", label: "Every 5 minutes" },
+  { value: "every:10:minute", label: "Every 10 minutes" },
+  { value: "every:15:minute", label: "Every 15 minutes" },
+  { value: "every:30:minute", label: "Every 30 minutes" },
+  { value: "every:1:hour", label: "Every 1 hour" },
+  { value: "every:2:hour", label: "Every 2 hours" },
+  { value: "every:6:hour", label: "Every 6 hours" },
+  { value: "every:12:hour", label: "Every 12 hours" },
+  { value: "every:1:day", label: "Every day" },
+  { value: "every:1:week", label: "Every week" },
+];
+
+const CRON_OPTIONS: { value: string; label: string }[] = [
+  { value: "* * * * *", label: "Every minute" },
+  { value: "*/5 * * * *", label: "Every 5 minutes" },
+  { value: "*/15 * * * *", label: "Every 15 minutes" },
+  { value: "*/30 * * * *", label: "Every 30 minutes" },
+  { value: "0 * * * *", label: "Every hour (on the hour)" },
+  { value: "0 */2 * * *", label: "Every 2 hours" },
+  { value: "0 */6 * * *", label: "Every 6 hours" },
+  { value: "0 0 * * *", label: "Daily at midnight" },
+  { value: "0 9 * * 1-5", label: "Weekdays at 9am" },
+  { value: "0 0 * * 0", label: "Weekly on Sunday" },
+];
+
 export function SchedulerConfig() {
   const { formatDate } = useTheme();
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
@@ -909,18 +937,52 @@ export function SchedulerConfig() {
                       <select
                         className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
                         value={detailTriggerType}
-                        onChange={(e) => setDetailTriggerType(e.target.value as "cron" | "interval" | "once")}
+                        onChange={(e) => {
+                          const newType = e.target.value as "cron" | "interval" | "once";
+                          setDetailTriggerType(newType);
+                          if (newType === "interval") setDetailTriggerExpr("every:10:minute");
+                          else if (newType === "cron") setDetailTriggerExpr("0 * * * *");
+                          else setDetailTriggerExpr("");
+                        }}
                       >
                         <option value="interval">interval</option>
                         <option value="cron">cron</option>
                         <option value="once">once</option>
                       </select>
-                      <input
-                        className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
-                        value={detailTriggerExpr}
-                        onChange={(e) => setDetailTriggerExpr(e.target.value)}
-                        placeholder="Trigger expression"
-                      />
+                      {detailTriggerType === "interval" ? (
+                        <select
+                          className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                          value={detailTriggerExpr}
+                          onChange={(e) => setDetailTriggerExpr(e.target.value)}
+                        >
+                          {detailTriggerExpr && !INTERVAL_OPTIONS.some((o) => o.value === detailTriggerExpr) && (
+                            <option value={detailTriggerExpr}>{detailTriggerExpr}</option>
+                          )}
+                          {INTERVAL_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                      ) : detailTriggerType === "cron" ? (
+                        <select
+                          className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                          value={detailTriggerExpr}
+                          onChange={(e) => setDetailTriggerExpr(e.target.value)}
+                        >
+                          {detailTriggerExpr && !CRON_OPTIONS.some((o) => o.value === detailTriggerExpr) && (
+                            <option value={detailTriggerExpr}>{detailTriggerExpr}</option>
+                          )}
+                          {CRON_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                          value={detailTriggerExpr}
+                          onChange={(e) => setDetailTriggerExpr(e.target.value)}
+                          placeholder="ISO 8601 datetime"
+                        />
+                      )}
                     </div>
 
                     <div className="mt-3 overflow-x-auto rounded border border-white/[0.08]">
@@ -1296,18 +1358,52 @@ export function SchedulerConfig() {
                   <select
                     className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
                     value={detailTriggerType}
-                    onChange={(e) => setDetailTriggerType(e.target.value as "cron" | "interval" | "once")}
+                    onChange={(e) => {
+                      const newType = e.target.value as "cron" | "interval" | "once";
+                      setDetailTriggerType(newType);
+                      if (newType === "interval") setDetailTriggerExpr("every:10:minute");
+                      else if (newType === "cron") setDetailTriggerExpr("0 * * * *");
+                      else setDetailTriggerExpr("");
+                    }}
                   >
                     <option value="interval">interval</option>
                     <option value="cron">cron</option>
                     <option value="once">once</option>
                   </select>
-                  <input
-                    className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
-                    value={detailTriggerExpr}
-                    onChange={(e) => setDetailTriggerExpr(e.target.value)}
-                    placeholder="Trigger expression"
-                  />
+                  {detailTriggerType === "interval" ? (
+                    <select
+                      className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                      value={detailTriggerExpr}
+                      onChange={(e) => setDetailTriggerExpr(e.target.value)}
+                    >
+                      {detailTriggerExpr && !INTERVAL_OPTIONS.some((o) => o.value === detailTriggerExpr) && (
+                        <option value={detailTriggerExpr}>{detailTriggerExpr}</option>
+                      )}
+                      {INTERVAL_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  ) : detailTriggerType === "cron" ? (
+                    <select
+                      className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                      value={detailTriggerExpr}
+                      onChange={(e) => setDetailTriggerExpr(e.target.value)}
+                    >
+                      {detailTriggerExpr && !CRON_OPTIONS.some((o) => o.value === detailTriggerExpr) && (
+                        <option value={detailTriggerExpr}>{detailTriggerExpr}</option>
+                      )}
+                      {CRON_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                      value={detailTriggerExpr}
+                      onChange={(e) => setDetailTriggerExpr(e.target.value)}
+                      placeholder="ISO 8601 datetime"
+                    />
+                  )}
                 </div>
               </div>
             </Collapse>

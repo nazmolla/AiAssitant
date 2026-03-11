@@ -600,8 +600,8 @@ describe("SchedulerConfig", () => {
 
     fireEvent.click(screen.getByText("Open Full Details"));
 
-    const triggerExprInput = await screen.findByDisplayValue("every:1:hour");
-    fireEvent.change(triggerExprInput, { target: { value: "every:10minute" } });
+    const triggerExprSelect = await screen.findByDisplayValue("Every 1 hour");
+    fireEvent.change(triggerExprSelect, { target: { value: "every:10:minute" } });
     fireEvent.click(screen.getByText("Save Changes"));
 
     await waitFor(() => {
