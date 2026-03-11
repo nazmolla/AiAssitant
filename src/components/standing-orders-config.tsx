@@ -343,7 +343,7 @@ export function StandingOrdersConfig() {
       </Card>
 
       {/* Confirm delete all dialog */}
-      <Dialog open={confirmDeleteAll} onClose={() => setConfirmDeleteAll(false)}>
+      <Dialog open={confirmDeleteAll} onClose={() => setConfirmDeleteAll(false)} fullWidth maxWidth="lg">
         <DialogTitle>Clear All Standing Orders?</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
