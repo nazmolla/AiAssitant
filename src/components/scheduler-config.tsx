@@ -4,9 +4,14 @@ import { Fragment, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import Collapse from "@mui/material/Collapse";
 
 type ScheduleStatus = "active" | "paused" | "archived";
 type RunStatus = "scheduled" | "queued" | "claimed" | "running" | "success" | "partial_success" | "failed" | "cancelled" | "timeout";
+type BatchJobType = "proactive" | "knowledge" | "cleanup";
 
 interface SchedulerOverview {
   schedules_total: number;
@@ -22,6 +27,10 @@ interface SchedulerScheduleRecord {
   id: string;
   schedule_key: string;
   name: string;
+  handler_type?: string;
+  owner_type?: string;
+  owner_id?: string | null;
+  retry_policy_json?: string | null;
   trigger_type: string;
   trigger_expr: string;
   status: ScheduleStatus;
@@ -64,6 +73,8 @@ interface SchedulerTaskRecord {
   handler_name: string;
   execution_mode: string;
   sequence_no: number;
+  depends_on_task_id?: string | null;
+  config_json?: string | null;
   enabled: number;
 }
 
@@ -82,6 +93,10 @@ interface PaginatedResponse<T> {
 export function SchedulerConfig() {
   const { formatDate } = useTheme();
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [batchModalType, setBatchModalType] = useState<BatchJobType>("proactive");
+  const [batchParameters, setBatchParameters] = useState<Record<string, string>>({});
+  const [tabExpanded, setTabExpanded] = useState({ parameters: true, recurrence: true, subtasks: true });
 
   const [overview, setOverview] = useState<SchedulerOverview | null>(null);
   const [schedules, setSchedules] = useState<SchedulerScheduleRecord[]>([]);
@@ -105,10 +120,19 @@ export function SchedulerConfig() {
     task_key: string;
     name: string;
     handler_name: string;
+    task_type?: "handler" | "prompt";
+    prompt?: string;
+    depends_on_task_key?: string | null;
     execution_mode: "sync" | "async" | "fanout";
     sequence_no: number;
     enabled: number;
   }>>([]);
+
+  const batchParameterDefs: Record<BatchJobType, Array<{ key: string; label: string; type: "text" | "number" | "select"; options?: string[]; defaultValue?: string }>> = {
+    proactive: [{ key: "severity", label: "Minimum Severity", type: "select", options: ["low", "medium", "high", "disaster"], defaultValue: "high" }],
+    knowledge: [{ key: "pollSeconds", label: "Poll Seconds", type: "number", defaultValue: "60" }],
+    cleanup: [{ key: "logLevel", label: "Log Level", type: "select", options: ["verbose", "info", "warning", "error"], defaultValue: "warning" }],
+  };
 
   const toggleScheduleSelection = (id: string) => {
     setSelectedScheduleIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -403,50 +427,147 @@ export function SchedulerConfig() {
     }
   };
 
-  const openBatchModalByKey = async (batchType: "proactive" | "knowledge" | "cleanup") => {
-    const match = schedules.find((s) => {
-      const blob = `${s.schedule_key} ${s.name}`.toLowerCase();
-      if (batchType === "proactive") return blob.includes("proactive") || blob.includes("observer");
-      if (batchType === "knowledge") return blob.includes("knowledge") && blob.includes("maintenance");
-      return blob.includes("cleanup") || blob.includes("maintenance") || blob.includes("db");
-    });
+  const openBatchCreateModal = (batchType: BatchJobType) => {
+    setBatchModalType(batchType);
+    setDetailName(`${batchType.charAt(0).toUpperCase()}${batchType.slice(1)} Batch`);
+    setDetailTriggerType("interval");
+    setDetailTriggerExpr(batchType === "proactive" ? "every:10:minute" : batchType === "knowledge" ? "every:1:hour" : "every:1:day");
+    const defaults = Object.fromEntries((batchParameterDefs[batchType] || []).map((p) => [p.key, p.defaultValue || ""]));
+    setBatchParameters(defaults);
+    setDetailTasks([
+      {
+        task_key: "task_1",
+        name: "Primary Task",
+        handler_name: batchType === "cleanup" ? "agent.prompt" : batchType === "knowledge" ? "system.knowledge_maintenance.run_due" : "system.proactive.scan",
+        task_type: batchType === "cleanup" ? "prompt" : "handler",
+        prompt: batchType === "cleanup" ? "Perform log cleanup based on selected log level." : "",
+        execution_mode: "sync",
+        sequence_no: 0,
+        enabled: 1,
+        depends_on_task_key: null,
+      },
+    ]);
+    setBatchModalOpen(true);
+  };
 
-    if (!match) {
-      setConsoleMessage("No matching batch schedule found. Create or refresh schedules first.");
+  const openBatchEditModal = () => {
+    if (!selectedScheduleDetail?.schedule) {
+      setConsoleMessage("Select a schedule first, then open batch editor.");
       return;
     }
+    const schedule = selectedScheduleDetail.schedule;
+    const inferredType: BatchJobType = schedule.handler_type?.includes("knowledge")
+      ? "knowledge"
+      : schedule.handler_type?.includes("cleanup") || schedule.schedule_key.includes("cleanup")
+        ? "cleanup"
+        : "proactive";
 
-    setSelectedScheduleId(match.id);
-    setFocusedView(false);
-    setSelectedRunId(null);
-    setRunDetail(null);
-    await loadScheduleDetail(match.id);
+    setBatchModalType(inferredType);
+    setDetailName(schedule.name);
+    setDetailTriggerType(schedule.trigger_type as "cron" | "interval" | "once");
+    setDetailTriggerExpr(schedule.trigger_expr);
 
-    const fresh = await fetch(`/api/scheduler/schedules/${match.id}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null) as SchedulerScheduleDetailResponse | null;
-
-    if (!fresh?.schedule) {
-      setConsoleMessage("Failed to open batch configuration modal.");
-      return;
-    }
-
-    setSelectedScheduleDetail(fresh);
-    setDetailName(fresh.schedule.name);
-    setDetailTriggerType(fresh.schedule.trigger_type as "cron" | "interval" | "once");
-    setDetailTriggerExpr(fresh.schedule.trigger_expr);
-    setDetailTasks(
-      fresh.tasks.map((t) => ({
+    setDetailTasks(selectedScheduleDetail.tasks.map((t) => {
+      let config: Record<string, unknown> = {};
+      try { config = t.config_json ? JSON.parse(t.config_json) as Record<string, unknown> : {}; } catch { config = {}; }
+      return {
         id: t.id,
         task_key: t.task_key,
         name: t.name,
         handler_name: t.handler_name,
+        task_type: (config.task_type as "handler" | "prompt") || (t.handler_name === "agent.prompt" ? "prompt" : "handler"),
+        prompt: typeof config.prompt === "string" ? config.prompt : "",
         execution_mode: (t.execution_mode as "sync" | "async" | "fanout") || "sync",
         sequence_no: t.sequence_no,
         enabled: t.enabled,
-      }))
-    );
-    setFocusedView(true);
+        depends_on_task_key: null,
+      };
+    }));
+
+    setBatchParameters({});
+    setBatchModalOpen(true);
+  };
+
+  const saveBatchModal = async () => {
+    setSavingDetail(true);
+    setConsoleMessage(null);
+    try {
+      let scheduleId = selectedScheduleDetail?.schedule?.id || null;
+
+      if (!scheduleId || !batchModalOpen || !selectedScheduleDetail?.schedule || detailName !== selectedScheduleDetail.schedule.name) {
+        const createRes = await fetch("/api/scheduler/schedules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            batch_type: batchModalType,
+            name: detailName.trim(),
+            trigger_type: detailTriggerType,
+            trigger_expr: detailTriggerExpr.trim(),
+            parameters: batchParameters,
+            tasks: detailTasks,
+          }),
+        });
+        const createJson = await createRes.json().catch(() => ({}));
+        if (!createRes.ok) {
+          setConsoleMessage((createJson as { error?: string }).error || "Failed to create batch schedule.");
+          return;
+        }
+        scheduleId = (createJson as { schedule_id: string }).schedule_id;
+      } else {
+        const scheduleRes = await fetch(`/api/scheduler/schedules/${scheduleId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: detailName.trim(),
+            trigger_type: detailTriggerType,
+            trigger_expr: detailTriggerExpr.trim(),
+          }),
+        });
+        const scheduleJson = await scheduleRes.json().catch(() => ({}));
+        if (!scheduleRes.ok) {
+          setConsoleMessage((scheduleJson as { error?: string }).error || "Failed to update schedule.");
+          return;
+        }
+
+        const tasksRes = await fetch(`/api/scheduler/schedules/${scheduleId}/tasks`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            replace: true,
+            tasks: detailTasks.map((t, index) => ({
+              id: t.id,
+              task_key: t.task_key.trim(),
+              name: t.name.trim(),
+              handler_name: t.handler_name.trim(),
+              task_type: t.task_type || (t.handler_name === "agent.prompt" ? "prompt" : "handler"),
+              prompt: t.prompt || "",
+              execution_mode: t.execution_mode,
+              sequence_no: Number.isFinite(t.sequence_no) ? t.sequence_no : index,
+              depends_on_task_key: t.depends_on_task_key || null,
+              enabled: t.enabled === 0 ? 0 : 1,
+              config_json: { parameters: batchParameters },
+            })),
+          }),
+        });
+        const tasksJson = await tasksRes.json().catch(() => ({}));
+        if (!tasksRes.ok) {
+          setConsoleMessage((tasksJson as { error?: string }).error || "Failed to update subtasks.");
+          return;
+        }
+      }
+
+      setBatchModalOpen(false);
+      await loadConsole();
+      if (scheduleId) {
+        setSelectedScheduleId(scheduleId);
+        await loadScheduleDetail(scheduleId);
+      }
+      setConsoleMessage("Batch schedule saved.");
+    } catch {
+      setConsoleMessage("Failed to save batch schedule.");
+    } finally {
+      setSavingDetail(false);
+    }
   };
 
   const controlSchedule = async (scheduleId: string, action: "pause" | "resume" | "trigger") => {
@@ -996,13 +1117,152 @@ export function SchedulerConfig() {
           <div className="space-y-2 text-sm">
             <p className="text-muted-foreground/70">Use links below to open the recurrence modal and define frequency/recurrence/subtasks.</p>
             <div className="flex flex-wrap gap-3">
-              <button className="text-primary underline" onClick={() => openBatchModalByKey("proactive")}>Configure Proactive Scheduler</button>
-              <button className="text-primary underline" onClick={() => openBatchModalByKey("knowledge")}>Configure Knowledge Maintenance</button>
-              <button className="text-primary underline" onClick={() => openBatchModalByKey("cleanup")}>Configure Log Cleanup / Maintenance</button>
+              <button className="text-primary underline" onClick={() => openBatchCreateModal("proactive")}>New Proactive Scheduler</button>
+              <button className="text-primary underline" onClick={() => openBatchCreateModal("knowledge")}>New Knowledge Maintenance</button>
+              <button className="text-primary underline" onClick={() => openBatchCreateModal("cleanup")}>New Log Cleanup / Maintenance</button>
+              <button className="text-primary underline" onClick={openBatchEditModal}>Edit Selected Scheduler</button>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={batchModalOpen}
+        onClose={() => setBatchModalOpen(false)}
+        fullWidth
+        maxWidth="lg"
+      >
+        <DialogTitle>
+          <div className="flex items-center justify-between gap-2">
+            <span>Batch Scheduler - {batchModalType}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setBatchModalOpen(false)}>Cancel</Button>
+              <Button size="sm" onClick={saveBatchModal} disabled={savingDetail}>OK</Button>
+            </div>
+          </div>
+        </DialogTitle>
+        <DialogContent dividers>
+          <div className="space-y-3">
+            <button
+              className="w-full rounded border border-white/[0.08] px-3 py-2 text-left text-sm"
+              onClick={() => setTabExpanded((prev) => ({ ...prev, parameters: !prev.parameters }))}
+            >
+              Parameters
+            </button>
+            <Collapse in={tabExpanded.parameters}>
+              <div className="rounded border border-white/[0.08] p-3">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(batchParameterDefs[batchModalType] || []).map((param) => (
+                    <div key={param.key} className="space-y-1">
+                      <label className="text-xs text-muted-foreground">{param.label}</label>
+                      <input
+                        className="w-full rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                        value={batchParameters[param.key] ?? ""}
+                        onChange={(e) => setBatchParameters((prev) => ({ ...prev, [param.key]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Collapse>
+
+            <button
+              className="w-full rounded border border-white/[0.08] px-3 py-2 text-left text-sm"
+              onClick={() => setTabExpanded((prev) => ({ ...prev, recurrence: !prev.recurrence }))}
+            >
+              Recurrence
+            </button>
+            <Collapse in={tabExpanded.recurrence}>
+              <div className="rounded border border-white/[0.08] p-3">
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <input
+                    className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                    value={detailName}
+                    onChange={(e) => setDetailName(e.target.value)}
+                    placeholder="Schedule name"
+                  />
+                  <select
+                    className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                    value={detailTriggerType}
+                    onChange={(e) => setDetailTriggerType(e.target.value as "cron" | "interval" | "once")}
+                  >
+                    <option value="interval">interval</option>
+                    <option value="cron">cron</option>
+                    <option value="once">once</option>
+                  </select>
+                  <input
+                    className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                    value={detailTriggerExpr}
+                    onChange={(e) => setDetailTriggerExpr(e.target.value)}
+                    placeholder="Trigger expression"
+                  />
+                </div>
+              </div>
+            </Collapse>
+
+            <button
+              className="w-full rounded border border-white/[0.08] px-3 py-2 text-left text-sm"
+              onClick={() => setTabExpanded((prev) => ({ ...prev, subtasks: !prev.subtasks }))}
+            >
+              Sub tasks
+            </button>
+            <Collapse in={tabExpanded.subtasks}>
+              <div className="space-y-2 rounded border border-white/[0.08] p-3">
+                {detailTasks.map((task, idx) => (
+                  <div key={task.id || `${task.task_key}-${idx}`} className="grid gap-2 rounded border border-white/[0.08] p-2 sm:grid-cols-6">
+                    <input className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs" value={task.task_key} onChange={(e) => setDetailTasks((prev) => prev.map((t, i) => i === idx ? { ...t, task_key: e.target.value } : t))} placeholder="Task key" />
+                    <input className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs" value={task.name} onChange={(e) => setDetailTasks((prev) => prev.map((t, i) => i === idx ? { ...t, name: e.target.value } : t))} placeholder="Task name" />
+                    <select className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs" value={task.task_type || "handler"} onChange={(e) => setDetailTasks((prev) => prev.map((t, i) => i === idx ? { ...t, task_type: e.target.value as "handler" | "prompt", handler_name: e.target.value === "prompt" ? "agent.prompt" : t.handler_name } : t))}>
+                      <option value="handler">handler</option>
+                      <option value="prompt">prompt</option>
+                    </select>
+                    <input className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs" value={task.handler_name} onChange={(e) => setDetailTasks((prev) => prev.map((t, i) => i === idx ? { ...t, handler_name: e.target.value } : t))} placeholder="Handler" />
+                    <select className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs" value={task.depends_on_task_key || ""} onChange={(e) => setDetailTasks((prev) => prev.map((t, i) => i === idx ? { ...t, depends_on_task_key: e.target.value || null } : t))}>
+                      <option value="">No dependency</option>
+                      {detailTasks.filter((_, depIdx) => depIdx !== idx).map((dep) => (
+                        <option key={dep.task_key} value={dep.task_key}>{dep.task_key}</option>
+                      ))}
+                    </select>
+                    <input className="rounded border border-white/[0.08] bg-background px-2 py-1 text-xs" type="number" value={task.sequence_no} onChange={(e) => setDetailTasks((prev) => prev.map((t, i) => i === idx ? { ...t, sequence_no: Number(e.target.value) || 0 } : t))} placeholder="Order" />
+                    {(task.task_type || "handler") === "prompt" && (
+                      <textarea
+                        className="sm:col-span-6 rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                        value={task.prompt || ""}
+                        onChange={(e) => setDetailTasks((prev) => prev.map((t, i) => i === idx ? { ...t, prompt: e.target.value } : t))}
+                        placeholder="Prompt text"
+                        rows={3}
+                      />
+                    )}
+                    <div className="sm:col-span-6 flex justify-end">
+                      <Button variant="outline" size="sm" onClick={() => setDetailTasks((prev) => prev.filter((_, i) => i !== idx))}>Remove</Button>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDetailTasks((prev) => ([
+                    ...prev,
+                    {
+                      task_key: `task_${prev.length + 1}`,
+                      name: `Task ${prev.length + 1}`,
+                      handler_name: "",
+                      task_type: "handler",
+                      prompt: "",
+                      execution_mode: "sync",
+                      sequence_no: prev.length,
+                      enabled: 1,
+                      depends_on_task_key: null,
+                    },
+                  ]))}
+                >
+                  Add Sub task
+                </Button>
+              </div>
+            </Collapse>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

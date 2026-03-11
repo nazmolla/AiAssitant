@@ -2731,6 +2731,50 @@ export function deleteSchedulerScheduleById(scheduleId: string): number {
   return result.changes;
 }
 
+export function createSchedulerSchedule(args: {
+  schedule_key: string;
+  name: string;
+  handler_type: string;
+  trigger_type: "cron" | "interval" | "once";
+  trigger_expr: string;
+  status?: "active" | "paused" | "archived";
+  owner_type?: string;
+  owner_id?: string | null;
+  max_concurrency?: number;
+  retry_policy_json?: string | null;
+  misfire_policy?: string;
+  next_run_at?: string | null;
+}): SchedulerScheduleRecord {
+  const id = uuid();
+  getDb().prepare(
+    `INSERT INTO scheduler_schedules (
+      id, schedule_key, name, owner_type, owner_id, handler_type,
+      trigger_type, trigger_expr, timezone, status, max_concurrency,
+      retry_policy_json, misfire_policy, next_run_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'UTC', ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    args.schedule_key,
+    args.name,
+    args.owner_type || "user",
+    args.owner_id ?? null,
+    args.handler_type,
+    args.trigger_type,
+    args.trigger_expr,
+    args.status || "active",
+    Math.max(1, args.max_concurrency || 1),
+    args.retry_policy_json ?? JSON.stringify({ strategy: "none", maxAttempts: 1 }),
+    args.misfire_policy || "run_immediately",
+    args.next_run_at ?? null,
+  );
+
+  const created = getSchedulerScheduleById(id);
+  if (!created) {
+    throw new Error("Failed to create scheduler schedule");
+  }
+  return created;
+}
+
 export function upsertSchedulerScheduleByKey(args: {
   schedule_key: string;
   name: string;
@@ -2858,6 +2902,8 @@ export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
   handler_name: string;
   execution_mode?: "sync" | "async" | "fanout";
   sequence_no?: number;
+  depends_on_task_id?: string | null;
+  depends_on_task_key?: string | null;
   timeout_sec?: number | null;
   retry_policy_json?: string | null;
   enabled?: number;
@@ -2867,8 +2913,8 @@ export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
   const insert = db.prepare(
     `INSERT INTO scheduler_tasks (
       id, schedule_id, task_key, name, handler_name, execution_mode,
-      sequence_no, timeout_sec, retry_policy_json, enabled, config_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      sequence_no, depends_on_task_id, timeout_sec, retry_policy_json, enabled, config_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const update = db.prepare(
     `UPDATE scheduler_tasks
@@ -2877,6 +2923,7 @@ export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
          handler_name = ?,
          execution_mode = ?,
          sequence_no = ?,
+         depends_on_task_id = ?,
          timeout_sec = ?,
          retry_policy_json = ?,
          enabled = ?,
@@ -2887,21 +2934,28 @@ export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
 
   db.transaction(() => {
     const seenIds: string[] = [];
+    const keyToId = new Map<string, string>();
     for (const task of tasks) {
       const id = task.id || uuid();
       seenIds.push(id);
+      keyToId.set(task.task_key, id);
+    }
+
+    for (const task of tasks) {
+      const id = (task.id && seenIds.includes(task.id)) ? task.id : keyToId.get(task.task_key) || uuid();
       const mode = task.execution_mode || "sync";
       const seq = Number.isFinite(task.sequence_no) ? Number(task.sequence_no) : 0;
       const enabled = task.enabled === 0 ? 0 : 1;
       const timeout = task.timeout_sec ?? null;
       const retry = task.retry_policy_json ?? null;
       const config = task.config_json ?? null;
+      const dependsId = task.depends_on_task_id ?? (task.depends_on_task_key ? keyToId.get(task.depends_on_task_key) ?? null : null);
 
       const existing = db.prepare("SELECT id FROM scheduler_tasks WHERE id = ? AND schedule_id = ?").get(id, scheduleId) as { id: string } | undefined;
       if (existing) {
-        update.run(task.task_key, task.name, task.handler_name, mode, seq, timeout, retry, enabled, config, id, scheduleId);
+        update.run(task.task_key, task.name, task.handler_name, mode, seq, dependsId, timeout, retry, enabled, config, id, scheduleId);
       } else {
-        insert.run(id, scheduleId, task.task_key, task.name, task.handler_name, mode, seq, timeout, retry, enabled, config);
+        insert.run(id, scheduleId, task.task_key, task.name, task.handler_name, mode, seq, dependsId, timeout, retry, enabled, config);
       }
     }
 

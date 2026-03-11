@@ -2,7 +2,9 @@ import {
   addLog,
   addSchedulerEvent,
   createSchedulerRun,
+  createThread,
   createSchedulerTaskRun,
+  getSchedulerScheduleById,
   getSchedulerTasksForSchedule,
   getSchedulerTaskRunsForRun,
   heartbeatSchedulerClaim,
@@ -99,7 +101,7 @@ function dispatchDueSchedules(): void {
   }
 }
 
-async function executeTaskRun(taskRunId: string, handlerName: string, configJson: string | null): Promise<void> {
+async function executeTaskRun(taskRunId: string, handlerName: string, configJson: string | null, scheduleId: string): Promise<void> {
   setSchedulerTaskRunStatus(taskRunId, "running");
 
   try {
@@ -115,8 +117,22 @@ async function executeTaskRun(taskRunId: string, handlerName: string, configJson
       } catch {
         prompt = "";
       }
-      if (!prompt || !threadId || !userId) {
-        throw new Error("Missing prompt/threadId/userId in scheduler task config for agent.prompt handler.");
+      if (!prompt) {
+        throw new Error("Missing prompt in scheduler task config for agent.prompt handler.");
+      }
+
+      if (!userId) {
+        const schedule = getSchedulerScheduleById(scheduleId);
+        userId = schedule?.owner_id || "";
+      }
+      if (!userId) {
+        throw new Error("Missing userId for scheduler agent prompt task. Set schedule owner or task config userId.");
+      }
+
+      if (!threadId) {
+        const schedule = getSchedulerScheduleById(scheduleId);
+        const title = schedule ? `Batch Job: ${schedule.name}` : "Batch Job";
+        threadId = createThread(title, userId).id;
       }
       const { runAgentLoop } = await import("@/lib/agent");
       await runAgentLoop(threadId, prompt, undefined, undefined, undefined, userId);
@@ -173,6 +189,7 @@ async function executeRunnableRun(): Promise<void> {
     addSchedulerEvent(claimed.id, "run_started", "Scheduler run execution started");
 
     const taskRuns = getSchedulerTaskRunsForRun(claimed.id);
+    const taskRunByTaskId = new Map(taskRuns.map((taskRun) => [taskRun.schedule_task_id, taskRun]));
     let failures = 0;
 
     for (const taskRun of taskRuns) {
@@ -190,8 +207,17 @@ async function executeRunnableRun(): Promise<void> {
         continue;
       }
 
+      if (task.depends_on_task_id) {
+        const dependencyRun = taskRunByTaskId.get(task.depends_on_task_id);
+        if (!dependencyRun || dependencyRun.status !== "success") {
+          setSchedulerTaskRunStatus(taskRun.id, "skipped", null, "Dependency did not complete successfully.");
+          addSchedulerEvent(claimed.id, "task_skipped", `Skipped ${taskRun.id} due to dependency state.`, taskRun.id);
+          continue;
+        }
+      }
+
       try {
-        await executeTaskRun(taskRun.id, task.handler_name, task.config_json);
+        await executeTaskRun(taskRun.id, task.handler_name, task.config_json, claimed.schedule_id);
       } catch {
         failures += 1;
         // Keep processing remaining tasks for partial-success visibility.

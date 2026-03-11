@@ -29,20 +29,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const normalized = tasks.map((task, index) => {
     const task_key = String(task.task_key || `task_${index + 1}`).trim();
     const name = String(task.name || task_key).trim();
+    const taskType = task.task_type === "prompt" ? "prompt" : "handler";
     const handler_name = String(task.handler_name || "").trim();
-    if (!handler_name) throw new Error(`Task ${task_key} missing handler_name`);
+    if (taskType !== "prompt" && !handler_name) throw new Error(`Task ${task_key} missing handler_name`);
+
+    const providedConfig = (task.config_json && typeof task.config_json === "object") ? task.config_json as Record<string, unknown> : {};
+    const prompt = typeof task.prompt === "string" ? task.prompt.trim() : undefined;
 
     return {
       id: typeof task.id === "string" ? task.id : undefined,
       task_key,
       name,
-      handler_name,
+      handler_name: taskType === "prompt" ? "agent.prompt" : handler_name,
       execution_mode: (task.execution_mode as "sync" | "async" | "fanout") || "sync",
       sequence_no: Number.isFinite(task.sequence_no as number) ? Number(task.sequence_no) : index,
+      depends_on_task_key: typeof task.depends_on_task_key === "string" ? task.depends_on_task_key : null,
       timeout_sec: task.timeout_sec as number | null | undefined,
       retry_policy_json: task.retry_policy_json ? JSON.stringify(task.retry_policy_json) : null,
       enabled: task.enabled === 0 ? 0 : 1,
-      config_json: task.config_json ? JSON.stringify(task.config_json) : null,
+      config_json: JSON.stringify({
+        ...providedConfig,
+        task_type: taskType,
+        prompt: prompt || (typeof providedConfig.prompt === "string" ? providedConfig.prompt : undefined),
+      }),
     };
   });
 

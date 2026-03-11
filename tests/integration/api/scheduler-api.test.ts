@@ -6,7 +6,7 @@ import { NextRequest } from "next/server";
 import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db";
 import { GET as GET_OVERVIEW } from "@/app/api/scheduler/overview/route";
 import { GET as GET_HEALTH } from "@/app/api/scheduler/health/route";
-import { GET as GET_SCHEDULES } from "@/app/api/scheduler/schedules/route";
+import { GET as GET_SCHEDULES, POST as POST_SCHEDULES } from "@/app/api/scheduler/schedules/route";
 import { DELETE as DELETE_SCHEDULE, GET as GET_SCHEDULE, PUT as PUT_SCHEDULE } from "@/app/api/scheduler/schedules/[id]/route";
 import { POST as POST_PAUSE } from "@/app/api/scheduler/schedules/[id]/pause/route";
 import { POST as POST_RESUME } from "@/app/api/scheduler/schedules/[id]/resume/route";
@@ -107,6 +107,41 @@ describe("scheduler API endpoints", () => {
     const body = await res.json();
     expect(Array.isArray(body.data)).toBe(true);
     expect(body.total).toBeGreaterThanOrEqual(1);
+  });
+
+  test("POST schedules creates independent instances for same batch type", async () => {
+    const req1 = new NextRequest("http://localhost/api/scheduler/schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        batch_type: "cleanup",
+        name: "Cleanup Batch One",
+        trigger_type: "interval",
+        trigger_expr: "every:1:day",
+      }),
+    });
+    const req2 = new NextRequest("http://localhost/api/scheduler/schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        batch_type: "cleanup",
+        name: "Cleanup Batch Two",
+        trigger_type: "interval",
+        trigger_expr: "every:1:day",
+      }),
+    });
+
+    const res1 = await POST_SCHEDULES(req1);
+    const res2 = await POST_SCHEDULES(req2);
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
+
+    const body1 = await res1.json();
+    const body2 = await res2.json();
+    expect(body1.schedule_id).toBeDefined();
+    expect(body2.schedule_id).toBeDefined();
+    expect(body1.schedule_id).not.toBe(body2.schedule_id);
+    expect(body1.schedule_key).not.toBe(body2.schedule_key);
   });
 
   test("GET schedule detail returns schedule, tasks, recent_runs", async () => {
@@ -212,6 +247,43 @@ describe("scheduler API endpoints", () => {
     const body = await res.json();
     expect(body.tasks.length).toBe(1);
     expect(body.tasks[0].task_key).toBe("replacement");
+  });
+
+  test("tasks patch accepts prompt tasks without explicit handler and supports dependency keys", async () => {
+    const req = new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1/tasks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        replace: true,
+        tasks: [
+          {
+            task_key: "prompt_1",
+            name: "Prompt Task",
+            task_type: "prompt",
+            prompt: "Run cleanup prompt",
+            execution_mode: "sync",
+            sequence_no: 0,
+            enabled: 1,
+          },
+          {
+            task_key: "followup",
+            name: "Followup",
+            handler_name: "system.db_maintenance.run_due",
+            execution_mode: "sync",
+            sequence_no: 1,
+            depends_on_task_key: "prompt_1",
+            enabled: 1,
+          },
+        ],
+      }),
+    });
+
+    const res = await PATCH_TASKS(req, { params: Promise.resolve({ id: "sched-api-1" }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.tasks.length).toBe(2);
+    expect(body.tasks[0].handler_name).toBe("agent.prompt");
+    expect(body.tasks[1].depends_on_task_id).toBeTruthy();
   });
 
   test("tasks patch rejects empty tasks when replace is false", async () => {
