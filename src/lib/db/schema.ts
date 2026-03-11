@@ -13,6 +13,17 @@ CREATE TABLE IF NOT EXISTS users (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ═══ Multi-Email Support (issue #82) ═══
+
+CREATE TABLE IF NOT EXISTS user_emails (
+    id TEXT PRIMARY KEY,                -- UUID
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email TEXT UNIQUE NOT NULL,         -- Additional email address (must be globally unique)
+    added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_user_emails_user ON user_emails(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_emails_email ON user_emails(email COLLATE NOCASE);
+
 -- ═══ Identity & Configuration (legacy — kept for migration) ═══
 
 CREATE TABLE IF NOT EXISTS identity_config (

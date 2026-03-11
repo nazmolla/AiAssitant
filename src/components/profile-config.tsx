@@ -63,6 +63,9 @@ export function ProfileConfig() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [langInput, setLangInput] = useState("");
+  const [newEmailInput, setNewEmailInput] = useState("");
+  const [secondaryEmails, setSecondaryEmails] = useState<string[]>([]);
+  const [emailsLoading, setEmailsLoading] = useState(false);
   const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
   const { theme, setTheme, font, setFont, timezone, setTimezone } = useTheme();
@@ -101,6 +104,19 @@ export function ProfileConfig() {
         try { localStorage.setItem("nexus_tts_voice", merged.tts_voice); } catch { /* noop */ }
       }
     }
+    // Load secondary emails
+    try {
+      setEmailsLoading(true);
+      const emailRes = await fetch("/api/config/user-emails");
+      const emailData = await emailRes.json();
+      if (emailData?.secondary) {
+        setSecondaryEmails(emailData.secondary);
+      }
+    } catch {
+      // Ignore email loading errors
+    } finally {
+      setEmailsLoading(false);
+    }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
@@ -122,6 +138,46 @@ export function ProfileConfig() {
 
   const removeLang = (l: string) =>
     update("languages", JSON.stringify(languages.filter((x) => x !== l)));
+
+  const addSecondaryEmail = async () => {
+    const v = newEmailInput.trim().toLowerCase();
+    if (!v || secondaryEmails.includes(v)) return;
+
+    try {
+      const res = await fetch("/api/config/user-emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: v }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSecondaryEmails([...secondaryEmails, v]);
+        setNewEmailInput("");
+      } else {
+        console.error("Failed to add email:", data.error);
+      }
+    } catch (err) {
+      console.error("Error adding email:", err);
+    }
+  };
+
+  const removeSecondaryEmail = async (e: string) => {
+    try {
+      const res = await fetch("/api/config/user-emails", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: e }),
+      });
+      if (res.ok) {
+        setSecondaryEmails(secondaryEmails.filter((x) => x !== e));
+      } else {
+        const data = await res.json();
+        console.error("Failed to remove email:", data.error);
+      }
+    } catch (err) {
+      console.error("Error removing email:", err);
+    }
+  };
 
   const playVoicePreview = async (voiceId: string) => {
     // Stop any playing preview
@@ -291,6 +347,43 @@ export function ProfileConfig() {
               onChange={(e) => update("twitter", e.target.value)}
               placeholder="https://twitter.com/yourname"
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Additional Email Addresses */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg font-display">Additional Email Addresses</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground/70">
+            Register additional email addresses to receive messages and inbound emails for any of them.
+          </p>
+          <div className="flex flex-col gap-2">
+            {secondaryEmails.map((email) => (
+              <div key={email} className="flex items-center justify-between gap-2 px-3 py-2 bg-secondary/30 rounded-lg border border-white/[0.06]">
+                <span className="text-sm">{email}</span>
+                <button
+                  onClick={() => removeSecondaryEmail(email)}
+                  className="text-xs text-destructive hover:text-destructive/80 underline"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              value={newEmailInput}
+              onChange={(e) => setNewEmailInput(e.target.value)}
+              placeholder="name@example.com"
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSecondaryEmail())}
+            />
+            <Button variant="outline" size="sm" onClick={addSecondaryEmail} disabled={emailsLoading}>
+              Add
+            </Button>
           </div>
         </CardContent>
       </Card>

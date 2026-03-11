@@ -46,7 +46,15 @@ const AUTH_CACHE_TTL_MS = 300_000; // 5 minutes
 export function getUserByEmail(email: string): UserRecord | undefined {
   return appCache.get(
     `${CACHE_KEYS.USER_BY_EMAIL_PREFIX}${email.toLowerCase()}`,
-    () => stmt("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(email) as UserRecord | undefined,
+    () => stmt(`
+      SELECT u.* FROM users u
+      WHERE LOWER(u.email) = LOWER(?)
+      UNION
+      SELECT u.* FROM users u
+      INNER JOIN user_emails ue ON u.id = ue.user_id
+      WHERE LOWER(ue.email) = LOWER(?)
+      LIMIT 1
+    `).get(email, email) as UserRecord | undefined,
     AUTH_CACHE_TTL_MS
   );
 }
@@ -57,6 +65,25 @@ export function getUserByExternalSub(subId: string): UserRecord | undefined {
     () => stmt("SELECT * FROM users WHERE external_sub_id = ?").get(subId) as UserRecord | undefined,
     AUTH_CACHE_TTL_MS
   );
+}
+
+export function getUserEmailsByUserId(userId: string): string[] {
+  const rows = stmt("SELECT email FROM user_emails WHERE user_id = ? ORDER BY added_at ASC").all(userId) as Array<{ email: string }>;
+  return rows.map(row => row.email);
+}
+
+export function addUserEmail(userId: string, email: string): void {
+  stmt("INSERT INTO user_emails (id, user_id, email) VALUES (?, ?, ?)").run(uuid(), userId, email.toLowerCase());
+  // Invalidate user cache and email-based lookup cache
+  invalidateUserCaches(userId);
+  appCache.invalidate(`${CACHE_KEYS.USER_BY_EMAIL_PREFIX}${email.toLowerCase()}`);
+}
+
+export function removeUserEmail(userId: string, email: string): void {
+  stmt("DELETE FROM user_emails WHERE user_id = ? AND email = ?").run(userId, email.toLowerCase());
+  // Invalidate user cache and email-based lookup cache
+  invalidateUserCaches(userId);
+  appCache.invalidate(`${CACHE_KEYS.USER_BY_EMAIL_PREFIX}${email.toLowerCase()}`);
 }
 
 export function createUser(args: {
@@ -223,6 +250,15 @@ function invalidateUserCaches(userId: string, known?: UserRecord): void {
   }
   if (user?.external_sub_id) {
     appCache.invalidate(`${CACHE_KEYS.USER_BY_SUB_PREFIX}${user.external_sub_id}`);
+  }
+  // Also invalidate secondary emails cache entries
+  try {
+    const secondaryEmails = stmt("SELECT email FROM user_emails WHERE user_id = ?").all(userId) as Array<{ email: string }>;
+    for (const record of secondaryEmails) {
+      appCache.invalidate(`${CACHE_KEYS.USER_BY_EMAIL_PREFIX}${record.email.toLowerCase()}`);
+    }
+  } catch {
+    // user_emails table may not exist during initialization
   }
 }
 

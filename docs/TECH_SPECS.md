@@ -44,6 +44,17 @@ CREATE TABLE users (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE user_emails (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email TEXT UNIQUE NOT NULL,
+    added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_user_emails_user ON user_emails(user_id);
+CREATE INDEX idx_user_emails_email ON user_emails(email COLLATE NOCASE);
+
+> **Multi-email support**: Users can register additional email addresses to receive messages and inbound emails for any of them. All registered emails (primary + secondary) are treated equally by the authentication layer (`getUserByEmail()` performs UNION query on both `users.email` and `user_emails.email` tables). Secondary emails are managed through the profile settings UI and `/api/config/user-emails` API. No email verification is required — the system trusts account owner access. Cache invalidation automatically handles multi-email lookups to ensure fresh data after additions/removals.
+
 CREATE TABLE user_permissions (
     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     can_knowledge BOOLEAN DEFAULT 1,
@@ -299,6 +310,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `GET/POST/PATCH/DELETE` | `/api/config/auth` | Admin | Manage OAuth and Discord auth providers |
 | `GET/POST/PATCH/DELETE` | `/api/config/channels` | User | Manage communication channels (user-scoped, ownership enforced) |
 | `GET/PUT` | `/api/config/profile` | User | Get/update user profile (user-scoped) |
+| `GET/POST/DELETE` | `/api/config/user-emails` | User | Get/add/remove secondary email addresses for multi-email support |
 | `GET/PUT` | `/api/config/alexa` | Admin | Get masked / store encrypted Alexa Smart Home credentials |
 | `GET/POST/PUT/DELETE` | `/api/config/custom-tools` | Admin | Manage agent-created custom tools |
 | `POST` | `/api/channels/[channelId]/webhook` | Webhook | Receive inbound messages from channels |
