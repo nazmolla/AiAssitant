@@ -550,7 +550,7 @@ export async function runAgentLoop(
     iterations++;
     await yieldLoop(); // yield event loop between iterations so other requests can be served
 
-    onStatus?.({ step: "Generating response", detail: `Sending to ${orchestration.providerLabel}${iterations > 1 ? ` (iteration ${iterations})` : ""}` });
+    onStatus?.({ step: "Generating response", detail: `Sending to ${orchestration.providerLabel} with ${tools.length} tool(s)${iterations > 1 ? ` (iteration ${iterations})` : ""}` });
     let response: ChatResponse;
     try {
       response = await provider.chat(

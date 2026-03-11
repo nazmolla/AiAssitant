@@ -1039,11 +1039,16 @@ async function _runProactiveScanInner(): Promise<void> {
       }),
     });
   } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
     addLog({
       level: "error",
       source: "scheduler",
-      message: `Proactive agent scan failed: ${err}`,
-      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+      message: `Proactive agent scan LLM invocation failed: ${errorMsg}`,
+      metadata: JSON.stringify({
+        error: errorMsg,
+        phase: "agent_loop_invocation",
+        scanStartTime: new Date().toISOString(),
+      }),
     });
   }
 
