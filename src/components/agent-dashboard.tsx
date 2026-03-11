@@ -178,7 +178,10 @@ export function AgentDashboard() {
     fetchLogs();
     const shouldAutoRefresh = autoRefresh && !showAllLogs;
     if (shouldAutoRefresh) {
-      const interval = setInterval(fetchLogs, 15000);
+      const interval = setInterval(() => {
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+        fetchLogs();
+      }, 30000);
       return () => clearInterval(interval);
     }
   }, [autoRefresh, showAllLogs, fetchLogs]);

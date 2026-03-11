@@ -40,7 +40,10 @@ export function ApprovalInbox() {
 
   useEffect(() => {
     fetchApprovals();
-    const interval = setInterval(fetchApprovals, 15000);
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      fetchApprovals();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
