@@ -11,7 +11,7 @@ import Collapse from "@mui/material/Collapse";
 
 type ScheduleStatus = "active" | "paused" | "archived";
 type RunStatus = "scheduled" | "queued" | "claimed" | "running" | "success" | "partial_success" | "failed" | "cancelled" | "timeout";
-type BatchJobType = "proactive" | "knowledge" | "cleanup";
+type BatchJobType = "proactive" | "knowledge" | "cleanup" | "email";
 
 interface SchedulerOverview {
   schedules_total: number;
@@ -132,6 +132,7 @@ export function SchedulerConfig() {
     proactive: [{ key: "severity", label: "Minimum Severity", type: "select", options: ["low", "medium", "high", "disaster"], defaultValue: "high" }],
     knowledge: [{ key: "pollSeconds", label: "Poll Seconds", type: "number", defaultValue: "60" }],
     cleanup: [{ key: "logLevel", label: "Log Level", type: "select", options: ["verbose", "info", "warning", "error"], defaultValue: "warning" }],
+    email: [{ key: "maxMessages", label: "Max Messages Per Run", type: "number", defaultValue: "25" }],
   };
 
   const toggleScheduleSelection = (id: string) => {
@@ -431,14 +432,29 @@ export function SchedulerConfig() {
     setBatchModalType(batchType);
     setDetailName(`${batchType.charAt(0).toUpperCase()}${batchType.slice(1)} Batch`);
     setDetailTriggerType("interval");
-    setDetailTriggerExpr(batchType === "proactive" ? "every:10:minute" : batchType === "knowledge" ? "every:1:hour" : "every:1:day");
+    setDetailTriggerExpr(
+      batchType === "proactive"
+        ? "every:10:minute"
+        : batchType === "knowledge"
+          ? "every:1:hour"
+          : batchType === "cleanup"
+            ? "every:1:day"
+            : "every:5:minute"
+    );
     const defaults = Object.fromEntries((batchParameterDefs[batchType] || []).map((p) => [p.key, p.defaultValue || ""]));
     setBatchParameters(defaults);
     setDetailTasks([
       {
         task_key: "task_1",
         name: "Primary Task",
-        handler_name: batchType === "cleanup" ? "agent.prompt" : batchType === "knowledge" ? "system.knowledge_maintenance.run_due" : "system.proactive.scan",
+        handler_name:
+          batchType === "cleanup"
+            ? "agent.prompt"
+            : batchType === "knowledge"
+              ? "system.knowledge_maintenance.run_due"
+              : batchType === "email"
+                ? "system.email.read_incoming"
+                : "system.proactive.scan",
         task_type: batchType === "cleanup" ? "prompt" : "handler",
         prompt: batchType === "cleanup" ? "Perform log cleanup based on selected log level." : "",
         execution_mode: "sync",
@@ -458,6 +474,8 @@ export function SchedulerConfig() {
     const schedule = selectedScheduleDetail.schedule;
     const inferredType: BatchJobType = schedule.handler_type?.includes("knowledge")
       ? "knowledge"
+      : schedule.handler_type?.includes("email") || schedule.schedule_key.includes("email")
+        ? "email"
       : schedule.handler_type?.includes("cleanup") || schedule.schedule_key.includes("cleanup")
         ? "cleanup"
         : "proactive";
@@ -1110,7 +1128,7 @@ export function SchedulerConfig() {
         <CardHeader>
           <CardTitle className="text-base font-display">Batch Scheduling</CardTitle>
           <CardDescription className="text-muted-foreground/60">
-            Open recurrence modal configuration for proactive observer, knowledge maintenance, and cleanup flows.
+            Open recurrence modal configuration for proactive observer, knowledge maintenance, cleanup, and email reading flows.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -1120,6 +1138,7 @@ export function SchedulerConfig() {
               <button className="text-primary underline" onClick={() => openBatchCreateModal("proactive")}>New Proactive Scheduler</button>
               <button className="text-primary underline" onClick={() => openBatchCreateModal("knowledge")}>New Knowledge Maintenance</button>
               <button className="text-primary underline" onClick={() => openBatchCreateModal("cleanup")}>New Log Cleanup / Maintenance</button>
+              <button className="text-primary underline" onClick={() => openBatchCreateModal("email")}>New Email Reading Batch</button>
               <button className="text-primary underline" onClick={openBatchEditModal}>Edit Selected Scheduler</button>
             </div>
           </div>

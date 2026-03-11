@@ -222,6 +222,8 @@ CREATE INDEX idx_notifications_created ON notifications (created_at);
 >
 > **Batch scheduler modal and multi-instance model**: Batch scheduling now uses a dedicated modal editor with three collapsible sections (**Parameters**, **Recurrence**, **Sub tasks**) and top-end **OK/Cancel** actions (Escape closes the modal). Backend creation is now explicit via `POST /api/scheduler/schedules` with typed batch jobs (`proactive`, `knowledge`, `cleanup`) so multiple independent instances per batch type are supported.
 >
+> **Dedicated email reading batch**: Incoming email processing is now schedulable as an independent batch type (`email`) using handler `system.email.read_incoming`. Email polling/auto-response is removed from the regular proactive scan path so it can be tuned and scheduled separately.
+>
 > **Scheduler bulk selection**: The Header Tasks grid supports **Select All / Deselect All** for currently visible schedules, including a header checkbox and top action button for bulk delete workflows.
 >
 > **Timezone-consistent timestamps**: Scheduler and other operational UI surfaces use the shared theme/provider date formatter so timestamps follow the signed-in user timezone preference consistently with the dashboard.

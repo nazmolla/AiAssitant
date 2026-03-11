@@ -19,7 +19,7 @@ import {
   runDbMaintenanceIfDue,
   listEnabledSchedulerTaskHandlers,
 } from "@/lib/db";
-import { runProactiveScan } from "@/lib/scheduler";
+import { runEmailReadBatch, runProactiveScan } from "@/lib/scheduler";
 import { runKnowledgeMaintenanceIfDue } from "@/lib/knowledge-maintenance";
 
 const ENGINE_POLL_MS = 10_000;
@@ -32,6 +32,7 @@ let _engineTickRunning = false;
 const REGISTERED_SCHEDULER_HANDLERS = new Set<string>([
   "agent.prompt",
   "system.proactive.scan",
+  "system.email.read_incoming",
   "system.db_maintenance.run_due",
   "system.knowledge_maintenance.run_due",
   "workflow.job_scout.search",
@@ -143,6 +144,12 @@ async function executeTaskRun(taskRunId: string, handlerName: string, configJson
     if (handlerName === "system.proactive.scan") {
       await runProactiveScan();
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "proactive_scan" }));
+      return;
+    }
+
+    if (handlerName === "system.email.read_incoming") {
+      await runEmailReadBatch();
+      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "email_read_incoming" }));
       return;
     }
 

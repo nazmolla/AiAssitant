@@ -217,6 +217,7 @@ Do not repeat the previous summary pattern. Produce concrete discoveries, action
 let _cronJob: CronJob | null = null;
 let _cronSchedule: string | null = null;
 let _scanRunning = false; // Mutex: prevent overlapping proactive scans
+let _emailBatchRunning = false; // Mutex: prevent overlapping email batch runs
 const _proactiveSkipWarned = new Set<string>();
 const _emailConfigWarned = new Set<string>();
 
@@ -763,6 +764,49 @@ export async function executeProactiveApprovedTool(
   return execution.result;
 }
 
+export async function runEmailReadBatch(): Promise<void> {
+  if (_emailBatchRunning) {
+    addLog({
+      level: "info",
+      source: "email",
+      message: "Skipping email read batch — previous run still active.",
+      metadata: null,
+    });
+    return;
+  }
+
+  _emailBatchRunning = true;
+  const digestByUser = new Map<string, SchedulerDigestItem[]>();
+  const defaultAdminUserId = getDefaultAdminUserId();
+
+  addLog({
+    level: "info",
+    source: "email",
+    message: "Email read batch started.",
+    metadata: JSON.stringify({ adminUserId: defaultAdminUserId }),
+  });
+
+  try {
+    await pollEmailChannels(digestByUser, defaultAdminUserId);
+    await flushSchedulerDigestEmails(digestByUser);
+    addLog({
+      level: "info",
+      source: "email",
+      message: "Email read batch completed.",
+      metadata: JSON.stringify({ digestUserCount: digestByUser.size }),
+    });
+  } catch (err) {
+    addLog({
+      level: "error",
+      source: "email",
+      message: `Email read batch failed: ${err}`,
+      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+    });
+  } finally {
+    _emailBatchRunning = false;
+  }
+}
+
 /**
  * Run a single proactive scan cycle.
  */
@@ -796,17 +840,6 @@ async function _runProactiveScanInner(): Promise<void> {
     message: "Proactive scan started.",
     metadata: JSON.stringify({ adminUserId: defaultAdminUserId }),
   });
-
-  try {
-    await pollEmailChannels(digestByUser, defaultAdminUserId);
-  } catch (err) {
-    addLog({
-      level: "error",
-      source: "email",
-      message: `Email polling cycle failed: ${err}`,
-      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-    });
-  }
 
   const mcpManager = getMcpManager();
 

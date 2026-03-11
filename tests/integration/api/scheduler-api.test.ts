@@ -144,6 +144,30 @@ describe("scheduler API endpoints", () => {
     expect(body1.schedule_key).not.toBe(body2.schedule_key);
   });
 
+  test("POST schedules accepts dedicated email batch type", async () => {
+    const req = new NextRequest("http://localhost/api/scheduler/schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        batch_type: "email",
+        name: "Email Reader Batch",
+        trigger_type: "interval",
+        trigger_expr: "every:5:minute",
+      }),
+    });
+
+    const res = await POST_SCHEDULES(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.schedule_id).toBeDefined();
+
+    const db = getDb();
+    const task = db
+      .prepare("SELECT handler_name FROM scheduler_tasks WHERE schedule_id = ? ORDER BY sequence_no LIMIT 1")
+      .get(body.schedule_id) as { handler_name: string } | undefined;
+    expect(task?.handler_name).toBe("system.email.read_incoming");
+  });
+
   test("GET schedule detail returns schedule, tasks, recent_runs", async () => {
     const res = await GET_SCHEDULE(new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1"), { params: Promise.resolve({ id: "sched-api-1" }) });
     expect(res.status).toBe(200);
