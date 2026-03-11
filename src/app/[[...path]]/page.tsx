@@ -471,7 +471,7 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
 
       {/* Content */}
       <Box sx={{ flex: 1, overflowY: "auto", p: { xs: 1.5, sm: 3 } }}>
-        <Box sx={{ maxWidth: 900, mx: "auto" }}>
+        <Box sx={{ maxWidth: active === "scheduler" ? 1500 : 900, mx: "auto", width: "100%" }}>
           {isUserMetaLoading ? (
             <Box sx={{ py: 8, display: "flex", justifyContent: "center" }}>
               <CircularProgress size={28} />

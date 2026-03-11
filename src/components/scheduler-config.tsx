@@ -78,23 +78,8 @@ interface PaginatedResponse<T> {
   hasMore: boolean;
 }
 
-const PRESETS = [
-  { label: "Every 5 min", value: "*/5 * * * *" },
-  { label: "Every 15 min", value: "*/15 * * * *" },
-  { label: "Every 30 min", value: "*/30 * * * *" },
-  { label: "Hourly", value: "0 * * * *" },
-  { label: "Every 6 hours", value: "0 */6 * * *" },
-  { label: "Daily at midnight", value: "0 0 * * *" },
-];
-
 export function SchedulerConfig() {
-  const [schedule, setSchedule] = useState("*/15 * * * *");
-  const [kmEnabled, setKmEnabled] = useState(true);
-  const [kmHour, setKmHour] = useState(20);
-  const [kmMinute, setKmMinute] = useState(0);
-  const [kmPollSeconds, setKmPollSeconds] = useState(60);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
 
   const [overview, setOverview] = useState<SchedulerOverview | null>(null);
   const [schedules, setSchedules] = useState<SchedulerScheduleRecord[]>([]);
@@ -122,6 +107,12 @@ export function SchedulerConfig() {
     sequence_no: number;
     enabled: number;
   }>>([]);
+
+  const toggleScheduleSelection = (id: string) => {
+    setSelectedScheduleIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const clearScheduleSelection = () => setSelectedScheduleIds([]);
 
   const formatTs = (value: string | null) => {
     if (!value) return "-";
@@ -353,6 +344,88 @@ export function SchedulerConfig() {
     }
   };
 
+  const bulkDeleteSchedules = async () => {
+    if (selectedScheduleIds.length === 0) return;
+    const ok = window.confirm(`Delete ${selectedScheduleIds.length} selected schedules with cascade? This cannot be undone.`);
+    if (!ok) return;
+
+    setSavingDetail(true);
+    setConsoleMessage(null);
+    try {
+      const results = await Promise.all(
+        selectedScheduleIds.map(async (id) => {
+          const res = await fetch(`/api/scheduler/schedules/${id}`, { method: "DELETE" });
+          return { id, ok: res.ok };
+        })
+      );
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length > 0) {
+        setConsoleMessage(`Deleted ${results.length - failed.length}/${results.length} schedules. ${failed.length} failed.`);
+      } else {
+        setConsoleMessage(`Deleted ${results.length} schedules with cascade.`);
+      }
+
+      setFocusedView(false);
+      setSelectedScheduleId(null);
+      setSelectedScheduleDetail(null);
+      setRuns([]);
+      setRunDetail(null);
+      setSelectedRunId(null);
+      clearScheduleSelection();
+      await loadConsole();
+    } catch {
+      setConsoleMessage("Failed to delete selected schedules.");
+    } finally {
+      setSavingDetail(false);
+    }
+  };
+
+  const openBatchModalByKey = async (batchType: "proactive" | "knowledge" | "cleanup") => {
+    const match = schedules.find((s) => {
+      const blob = `${s.schedule_key} ${s.name}`.toLowerCase();
+      if (batchType === "proactive") return blob.includes("proactive") || blob.includes("observer");
+      if (batchType === "knowledge") return blob.includes("knowledge") && blob.includes("maintenance");
+      return blob.includes("cleanup") || blob.includes("maintenance") || blob.includes("db");
+    });
+
+    if (!match) {
+      setConsoleMessage("No matching batch schedule found. Create or refresh schedules first.");
+      return;
+    }
+
+    setSelectedScheduleId(match.id);
+    setFocusedView(false);
+    setSelectedRunId(null);
+    setRunDetail(null);
+    await loadScheduleDetail(match.id);
+
+    const fresh = await fetch(`/api/scheduler/schedules/${match.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null) as SchedulerScheduleDetailResponse | null;
+
+    if (!fresh?.schedule) {
+      setConsoleMessage("Failed to open batch configuration modal.");
+      return;
+    }
+
+    setSelectedScheduleDetail(fresh);
+    setDetailName(fresh.schedule.name);
+    setDetailTriggerType(fresh.schedule.trigger_type as "cron" | "interval" | "once");
+    setDetailTriggerExpr(fresh.schedule.trigger_expr);
+    setDetailTasks(
+      fresh.tasks.map((t) => ({
+        id: t.id,
+        task_key: t.task_key,
+        name: t.name,
+        handler_name: t.handler_name,
+        execution_mode: (t.execution_mode as "sync" | "async" | "fanout") || "sync",
+        sequence_no: t.sequence_no,
+        enabled: t.enabled,
+      }))
+    );
+    setFocusedView(true);
+  };
+
   const controlSchedule = async (scheduleId: string, action: "pause" | "resume" | "trigger") => {
     setConsoleMessage(null);
     try {
@@ -368,27 +441,6 @@ export function SchedulerConfig() {
       setConsoleMessage(`Failed to ${action} schedule.`);
     }
   };
-
-  const load = async () => {
-    try {
-      const res = await fetch("/api/config/scheduler");
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data?.cron_schedule) setSchedule(data.cron_schedule);
-      if (data?.knowledge_maintenance) {
-        setKmEnabled(Boolean(data.knowledge_maintenance.enabled));
-        setKmHour(Number(data.knowledge_maintenance.hour ?? 20));
-        setKmMinute(Number(data.knowledge_maintenance.minute ?? 0));
-        setKmPollSeconds(Number(data.knowledge_maintenance.poll_seconds ?? 60));
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
 
   useEffect(() => {
     loadConsole();
@@ -408,38 +460,8 @@ export function SchedulerConfig() {
     loadFocusedRuns(selectedScheduleId);
   }, [focusedView, selectedScheduleId, runStatusFilter]);
 
-  const save = async () => {
-    setSaving(true);
-    setMessage(null);
-    try {
-      const res = await fetch("/api/config/scheduler", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cron_schedule: schedule,
-          knowledge_maintenance: {
-            enabled: kmEnabled,
-            hour: kmHour,
-            minute: kmMinute,
-            poll_seconds: kmPollSeconds,
-          },
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setMessage(data?.error || "Failed to save scheduler config.");
-      } else {
-        setMessage("Scheduler and knowledge maintenance settings updated.");
-      }
-    } catch {
-      setMessage("Failed to save scheduler config.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-4">
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-display">Scheduler Console</CardTitle>
@@ -476,15 +498,29 @@ export function SchedulerConfig() {
           )}
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground/80">Header Tasks</h3>
-              <Button variant="outline" size="sm" onClick={loadConsole}>Refresh</Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={loadConsole}>Refresh</Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={bulkDeleteSchedules}
+                  disabled={selectedScheduleIds.length === 0 || savingDetail}
+                >
+                  Delete Selected ({selectedScheduleIds.length})
+                </Button>
+                {selectedScheduleIds.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={clearScheduleSelection}>Clear Selection</Button>
+                )}
+              </div>
             </div>
 
             <div className="max-w-full overflow-x-auto rounded-lg border border-white/[0.08] bg-white/[0.01]">
               <table className="w-full table-fixed text-xs sm:text-sm">
                 <thead className="bg-muted/30">
                   <tr>
+                    <th className="w-[5%] px-2 py-2 text-left">Sel</th>
                     <th className="w-[36%] px-3 py-2 text-left">Header Task</th>
                     <th className="hidden w-[18%] px-3 py-2 text-left md:table-cell">Schedule Key</th>
                     <th className="w-[14%] px-3 py-2 text-left">Status</th>
@@ -508,6 +544,14 @@ export function SchedulerConfig() {
                             setRunDetail(null);
                           }}
                         >
+                          <td className="px-2 py-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedScheduleIds.includes(s.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={() => toggleScheduleSelection(s.id)}
+                            />
+                          </td>
                           <td className="px-3 py-2 font-medium">
                             <div className="truncate whitespace-nowrap" title={s.name}>{s.name}</div>
                           </td>
@@ -526,7 +570,7 @@ export function SchedulerConfig() {
 
                         {isOpen && (
                           <tr className="border-t border-white/[0.06] bg-white/[0.02]">
-                            <td className="px-3 py-3" colSpan={6}>
+                            <td className="px-3 py-3" colSpan={7}>
                               {!hasDetail && loadingScheduleDetail && (
                                 <p className="text-xs text-muted-foreground">Loading inline details...</p>
                               )}
@@ -618,7 +662,7 @@ export function SchedulerConfig() {
                   })}
                   {schedules.length === 0 && (
                     <tr>
-                      <td className="px-3 py-3 text-muted-foreground" colSpan={6}>No header tasks found.</td>
+                      <td className="px-3 py-3 text-muted-foreground" colSpan={7}>No header tasks found.</td>
                     </tr>
                   )}
                 </tbody>
@@ -884,9 +928,9 @@ export function SchedulerConfig() {
             )}
           </div>
 
-          {(consoleMessage || message) && (
-            <p className={`text-xs ${(consoleMessage || message || "").includes("Failed") ? "text-red-400" : "text-green-400"}`}>
-              {consoleMessage || message}
+          {consoleMessage && (
+            <p className={`text-xs ${consoleMessage.includes("Failed") ? "text-red-400" : "text-green-400"}`}>
+              {consoleMessage}
             </p>
           )}
 
@@ -900,126 +944,20 @@ export function SchedulerConfig() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-display">Proactive Scheduler</CardTitle>
+          <CardTitle className="text-base font-display">Batch Scheduling</CardTitle>
           <CardDescription className="text-muted-foreground/60">
-            Configure how often the proactive observer scans for updates and actions.
+            Open recurrence modal configuration for proactive observer, knowledge maintenance, and cleanup flows.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div>
-            <label className="text-[11px] font-medium text-muted-foreground/60 mb-1.5 block uppercase tracking-wider">
-              Cron Schedule
-            </label>
-            <input
-              type="text"
-              value={schedule}
-              onChange={(e) => setSchedule(e.target.value)}
-              placeholder="*/15 * * * *"
-              className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-            <p className="text-[10px] text-muted-foreground/50 mt-1">
-              Standard 5-field cron: minute hour day-of-month month day-of-week
-            </p>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-medium text-muted-foreground/60 mb-1.5 block uppercase tracking-wider">
-              Quick Presets
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.value}
-                  onClick={() => setSchedule(p.value)}
-                  className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
-                    schedule === p.value
-                      ? "bg-primary/20 border-primary/40 text-primary"
-                      : "border-white/[0.08] text-muted-foreground hover:bg-white/[0.04]"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
+          <div className="space-y-2 text-sm">
+            <p className="text-muted-foreground/70">Use links below to open the recurrence modal and define frequency/recurrence/subtasks.</p>
+            <div className="flex flex-wrap gap-3">
+              <button className="text-primary underline" onClick={() => openBatchModalByKey("proactive")}>Configure Proactive Scheduler</button>
+              <button className="text-primary underline" onClick={() => openBatchModalByKey("knowledge")}>Configure Knowledge Maintenance</button>
+              <button className="text-primary underline" onClick={() => openBatchModalByKey("cleanup")}>Configure Log Cleanup / Maintenance</button>
             </div>
           </div>
-
-          {message && (
-            <p className={`text-xs ${message.includes("Failed") || message.includes("Invalid") ? "text-red-400" : "text-green-400"}`}>
-              {message}
-            </p>
-          )}
-
-          <div className="flex justify-end">
-            <Button onClick={save} disabled={saving}>
-              {saving ? "Saving..." : "Save & Restart Scheduler"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-display">Knowledge Maintenance</CardTitle>
-          <CardDescription className="text-muted-foreground/60">
-            Configure nightly knowledge declutter and deduplication in a separate background worker thread.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              checked={kmEnabled}
-              onChange={(e) => setKmEnabled(e.target.checked)}
-              className="h-4 w-4"
-            />
-            Enable nightly knowledge maintenance
-          </label>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-[11px] font-medium text-muted-foreground/60 mb-1.5 block uppercase tracking-wider">
-                Run Hour (0-23)
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={23}
-                value={kmHour}
-                onChange={(e) => setKmHour(Math.max(0, Math.min(23, Number(e.target.value) || 0)))}
-                className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-muted-foreground/60 mb-1.5 block uppercase tracking-wider">
-                Run Minute (0-59)
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={59}
-                value={kmMinute}
-                onChange={(e) => setKmMinute(Math.max(0, Math.min(59, Number(e.target.value) || 0)))}
-                className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-muted-foreground/60 mb-1.5 block uppercase tracking-wider">
-                Poll Seconds (30-300)
-              </label>
-              <input
-                type="number"
-                min={30}
-                max={300}
-                value={kmPollSeconds}
-                onChange={(e) => setKmPollSeconds(Math.max(30, Math.min(300, Number(e.target.value) || 60)))}
-                className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-          </div>
-
-          <p className="text-[10px] text-muted-foreground/50">
-            Maintenance runs once per day after the configured local time and removes empty/duplicate knowledge rows.
-          </p>
         </CardContent>
       </Card>
     </div>
