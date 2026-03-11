@@ -108,9 +108,10 @@ export default function HomePage() {
     router.push("/settings/profile");
   }, [router]);
 
-  const signOutFromMenu = useCallback(() => {
-    signOut({ callbackUrl: "/auth/signin" });
-  }, []);
+  const signOutFromMenu = useCallback(async () => {
+    await signOut({ redirect: false });
+    router.push("/auth/signin");
+  }, [router]);
   const [perms, setPerms] = useState<Record<string, number>>({
     chat: 1, knowledge: 1, dashboard: 1,
     mcp_servers: 1, channels: 1, llm_config: 1, screen_sharing: 1,

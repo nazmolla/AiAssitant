@@ -25,6 +25,11 @@ export default function SignInPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [oauthProviders, setOauthProviders] = useState<Array<{ id: string; name: string }>>([]);
 
+  const withCurrentOrigin = (path: string): string => {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    return `${window.location.origin}${normalizedPath}`;
+  };
+
   useEffect(() => {
     getProviders().then((providers) => {
       if (!providers) return;
@@ -41,7 +46,7 @@ export default function SignInPage() {
       email,
       password,
       redirect: false,
-      callbackUrl: "/",
+      callbackUrl: withCurrentOrigin("/"),
     });
 
     setIsSubmitting(false);
@@ -78,7 +83,7 @@ export default function SignInPage() {
                   key={provider.id}
                   fullWidth
                   variant="outlined"
-                  onClick={() => signIn(provider.id, { callbackUrl: "/" })}
+                  onClick={() => signIn(provider.id, { callbackUrl: withCurrentOrigin("/") })}
                 >
                   Sign in with {provider.name}
                 </Button>
