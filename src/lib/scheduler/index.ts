@@ -600,6 +600,7 @@ async function pollEmailChannels(
               const isKnownUser = !!mappedUser && isUserEnabled(mappedUser.id);
 
               if (!isKnownUser) {
+                const ownerUserId = channel.user_id ?? defaultAdminUserId;
                 const unknownEmailSummary = summarizeInboundUnknownEmail(fromAddress, subject, textBody || "");
                 addLog({
                   level: unknownEmailSummary.level === "low" ? "info" : "warn",
@@ -614,11 +615,63 @@ async function pollEmailChannels(
                     textPreview,
                   }, context)),
                 });
+
+                if (ownerUserId) {
+                  try {
+                    const triageThreadId = resolveChannelThread(channel.id, fromAddress, ownerUserId);
+                    const triagePrompt = `${buildGuardedInboundEmailPrompt(fromAddress, subject, textBody || "")}
+
+This sender is not registered as a local user.
+Do not send a direct reply to the sender.
+Triage this email for the owner: summarize intent, risk level, and recommended next action.`;
+
+                    const triageResult = await runAgentLoop(
+                      triageThreadId,
+                      triagePrompt,
+                      undefined,
+                      undefined,
+                      undefined,
+                      ownerUserId,
+                    );
+
+                    addContextLog(
+                      "info",
+                      "email",
+                      "Unknown-sender email triaged by agent loop.",
+                      {
+                        channelId: channel.id,
+                        from: fromAddress,
+                        subject,
+                        userId: ownerUserId,
+                        threadId: triageThreadId,
+                        toolsUsed: triageResult.toolsUsed,
+                        pendingApprovals: triageResult.pendingApprovals,
+                        responsePreview: (triageResult.content || "").slice(0, 600),
+                      },
+                      context,
+                    );
+                  } catch (triageErr) {
+                    addLog({
+                      level: "error",
+                      source: "email",
+                      message: `Unknown-sender email triage failed: ${triageErr}`,
+                      metadata: JSON.stringify(mergeBatchContext({
+                        channelId: channel.id,
+                        from: fromAddress,
+                        subject,
+                        error: triageErr instanceof Error ? triageErr.message : String(triageErr),
+                      }, context)),
+                    });
+                  }
+                }
+
                 try {
-                  enqueueDigestItem(digestByUser, channel.user_id ?? defaultAdminUserId, {
+                  enqueueDigestItem(digestByUser, ownerUserId, {
                     level: unknownEmailSummary.level,
                     issue: `Inbound email from unknown sender (${fromAddress}).`,
-                    requiredAction: "Review summary and decide whether to onboard, ignore, or reply.",
+                    requiredAction: ownerUserId
+                      ? "Review agent triage and decide whether to onboard, ignore, or reply manually."
+                      : "Review summary and decide whether to onboard, ignore, or reply manually.",
                     actionLocation: "Nexus Command Center → Channels / Logs",
                   });
                 } catch (enqueueErr) {
