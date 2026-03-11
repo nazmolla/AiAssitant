@@ -510,19 +510,17 @@ describe("SchedulerConfig", () => {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
-            data: [
-              {
-                id: "run-1",
-                schedule_id: "sched-1",
-                trigger_source: "timer",
-                status: "success",
-                created_at: "2025-01-01T00:00:00Z",
-                started_at: "2025-01-01T00:01:00Z",
-                finished_at: "2025-01-01T00:01:30Z",
-                error_message: null,
-              },
-            ],
-            total: 1,
+            data: Array.from({ length: 12 }, (_, index) => ({
+              id: `run-${index + 1}`,
+              schedule_id: "sched-1",
+              trigger_source: "timer",
+              status: "success",
+              created_at: "2025-01-01T00:00:00Z",
+              started_at: "2025-01-01T00:01:00Z",
+              finished_at: "2025-01-01T00:01:30Z",
+              error_message: null,
+            })),
+            total: 12,
             hasMore: false,
           }),
         });
@@ -575,6 +573,37 @@ describe("SchedulerConfig", () => {
     await waitFor(() => {
       expect(screen.getByText(/Focused Header View:/)).toBeInTheDocument();
     }, { timeout: 3000 });
+  });
+
+  test("allows editing schedule fields in focused modal", async () => {
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    render(<SchedulerConfig />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Open Full Details")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    fireEvent.click(screen.getByText("Open Full Details"));
+
+    const scheduleNameInput = await screen.findByDisplayValue("Legacy Task");
+    fireEvent.change(scheduleNameInput, { target: { value: "Legacy Task Updated" } });
+    expect(screen.getByDisplayValue("Legacy Task Updated")).toBeInTheDocument();
+  });
+
+  test("renders focused runs table in compact scroll container", async () => {
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    render(<SchedulerConfig />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Open Full Details")).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    fireEvent.click(screen.getByText("Open Full Details"));
+
+    const runsScrollContainer = await screen.findByTestId("focused-runs-scroll");
+    expect(runsScrollContainer).toBeInTheDocument();
+    expect(runsScrollContainer).toHaveClass("overflow-y-auto");
+    expect(runsScrollContainer).toHaveStyle({ maxHeight: "234px" });
   });
 
   test("shows error message when loading schedule detail fails", async () => {

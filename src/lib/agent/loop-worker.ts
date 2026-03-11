@@ -54,6 +54,7 @@ import {
   type AgentResponse,
 } from "./loop";
 import { executeWithGatekeeper } from "./gatekeeper";
+import { buildCappedToolList } from "./tool-cap";
 
 /* ── Re-export for convenience ──────────────────────────────────── */
 export type { AgentResponse } from "./loop";
@@ -178,14 +179,12 @@ async function _runViaWorker(
   const mcpTools = mcpManager.getAllTools();
   const { getCustomToolDefinitions } = await import("./custom-tools");
   const customTools = getCustomToolDefinitions();
-  const builtinAndCustomTools = [
+  const builtinTools = [
     ...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS,
     ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...BUILTIN_FILE_TOOLS,
-    ...BUILTIN_ALEXA_TOOLS, ...customTools,
+    ...BUILTIN_ALEXA_TOOLS,
   ];
-  // Cap total tools at 128 — builtin/custom take priority, then MCP fills remaining slots
-  const mcpSlots = Math.max(0, 128 - builtinAndCustomTools.length);
-  const allTools = [...builtinAndCustomTools, ...mcpTools.slice(0, mcpSlots)];
+  const allTools = buildCappedToolList(builtinTools, customTools, mcpTools);
 
   const isAdmin = userId ? (getUserById(userId)?.role === "admin") : true;
   const tools = isAdmin

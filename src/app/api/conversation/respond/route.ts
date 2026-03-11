@@ -15,6 +15,7 @@ import {
   isWorkerAvailable,
 } from "@/lib/agent";
 import { isWorkerAvailable as checkWorkerAvailable, runLlmInWorker, type WorkerToolResult } from "@/lib/agent/worker-manager";
+import { buildCappedToolList, MAX_TOOLS_PER_REQUEST } from "@/lib/agent/tool-cap";
 import { addLog, getUserById, listToolPolicies, getToolPolicy } from "@/lib/db";
 
 /**
@@ -63,8 +64,6 @@ After using a tool, summarize what happened conversationally.`;
 const MAX_HISTORY_MESSAGES = 30;
 /** Max tool iterations per request */
 const MAX_TOOL_ITERATIONS = 10;
-/** Max tools per LLM request (OpenAI hard limit is 128) */
-const MAX_TOOLS_PER_REQUEST = 128;
 /** Hard timeout for the entire conversation turn (including tool calls) */
 const TURN_TIMEOUT_MS = 60_000; // 60 seconds
 
@@ -138,7 +137,7 @@ export async function POST(req: NextRequest) {
   await yieldLoop();
   const mcpTools = getMcpManager().getAllTools();
   const customTools = getCustomToolDefinitions();
-  const builtinAndCustomTools: ToolDefinition[] = [
+  const builtinTools: ToolDefinition[] = [
     ...BUILTIN_WEB_TOOLS,
     ...BUILTIN_BROWSER_TOOLS,
     ...BUILTIN_FS_TOOLS,
@@ -146,11 +145,8 @@ export async function POST(req: NextRequest) {
     ...BUILTIN_EMAIL_TOOLS,
     ...BUILTIN_FILE_TOOLS,
     ...BUILTIN_ALEXA_TOOLS,
-    ...customTools,
   ];
-  // Cap total tools at MAX_TOOLS_PER_REQUEST — builtin/custom take priority, then MCP fills remaining slots
-  const mcpSlots = Math.max(0, MAX_TOOLS_PER_REQUEST - builtinAndCustomTools.length);
-  const allTools: ToolDefinition[] = [...builtinAndCustomTools, ...mcpTools.slice(0, mcpSlots)];
+  const allTools: ToolDefinition[] = buildCappedToolList(builtinTools, customTools, mcpTools, MAX_TOOLS_PER_REQUEST);
 
   // Filter tools by user role and approval policy.
   // Unknown tools (no policy) are excluded (default-deny).

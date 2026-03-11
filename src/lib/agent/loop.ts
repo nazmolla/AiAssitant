@@ -51,6 +51,7 @@ import path from "path";
 import crypto from "crypto";
 import { notifyAdmin } from "@/lib/channels/notify";
 import { parseScheduledTasksFromUserMessage } from "@/lib/scheduler/task-parser";
+import { buildCappedToolList } from "./tool-cap";
 
 /** Yield the event loop so other HTTP requests can be served between heavy operations */
 const yieldLoop = () => new Promise<void>((r) => setImmediate(r));
@@ -135,7 +136,6 @@ function isUntrustedToolOutput(toolName: string): boolean {
 }
 
 const MAX_TOOL_ITERATIONS = 25;
-const MAX_TOOLS_PER_REQUEST = 128;
 
 const INLINE_APPROVAL_MARKER = "<!-- INLINE_APPROVAL:";
 
@@ -245,10 +245,8 @@ export async function runAgentLoop(
   // Load custom (agent-created) tools
   const { getCustomToolDefinitions } = await import("./custom-tools");
   const customTools = getCustomToolDefinitions();
-  const builtinAndCustomTools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...BUILTIN_FILE_TOOLS, ...BUILTIN_ALEXA_TOOLS, ...customTools];
-  // Cap total tools at MAX_TOOLS_PER_REQUEST — builtin/custom take priority, then MCP fills remaining slots
-  const mcpSlots = Math.max(0, MAX_TOOLS_PER_REQUEST - builtinAndCustomTools.length);
-  const allTools = [...builtinAndCustomTools, ...mcpTools.slice(0, mcpSlots)];
+  const builtinTools = [...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS, ...BUILTIN_NETWORK_TOOLS, ...BUILTIN_EMAIL_TOOLS, ...BUILTIN_FILE_TOOLS, ...BUILTIN_ALEXA_TOOLS];
+  const allTools = buildCappedToolList(builtinTools, customTools, mcpTools);
 
   // Filter tools by scope: non-admin users only see tools with scope = 'global'
   const isAdmin = userId ? (getUserById(userId)?.role === "admin") : true;

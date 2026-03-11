@@ -76,6 +76,32 @@ describe("GET /api/logs", () => {
     expect(data.every((l: any) => l.source === "thought")).toBe(true);
   });
 
+  test("supports scheduler metadata filters (scheduleId/runId/taskRunId)", async () => {
+    addLog({
+      level: "info",
+      source: "scheduler-engine",
+      message: "Task run completed",
+      metadata: JSON.stringify({ scheduleId: "sched-logs-1", runId: "run-logs-1", taskRunId: "task-logs-1", handlerName: "system.email.read_incoming" }),
+    });
+    addLog({
+      level: "info",
+      source: "scheduler-engine",
+      message: "Task run completed",
+      metadata: JSON.stringify({ scheduleId: "sched-logs-2", runId: "run-logs-2", taskRunId: "task-logs-2", handlerName: "system.proactive.scan" }),
+    });
+
+    setMockUser({ id: adminId, email: "log-admin@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/logs?source=all&scheduleId=sched-logs-1&runId=run-logs-1&taskRunId=task-logs-1");
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(1);
+    expect(data.every((l: any) => String(l.metadata || "").includes("\"runId\":\"run-logs-1\""))).toBe(true);
+    expect(data.every((l: any) => String(l.metadata || "").includes("\"taskRunId\":\"task-logs-1\""))).toBe(true);
+    expect(data.every((l: any) => String(l.metadata || "").includes("\"scheduleId\":\"sched-logs-1\""))).toBe(true);
+  });
+
   test("respects limit query parameter", async () => {
     setMockUser({ id: adminId, email: "log-admin@example.com", role: "admin" });
     const req = new NextRequest("http://localhost/api/logs?limit=1");

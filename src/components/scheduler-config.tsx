@@ -74,6 +74,7 @@ interface SchedulerTaskRecord {
   execution_mode: string;
   sequence_no: number;
   depends_on_task_id?: string | null;
+  depends_on_task_key?: string | null;
   config_json?: string | null;
   enabled: number;
 }
@@ -88,6 +89,19 @@ interface PaginatedResponse<T> {
   data: T[];
   total: number;
   hasMore: boolean;
+}
+
+function parseTaskConfig(configJson?: string | null): { task_type: "handler" | "prompt"; prompt?: string } {
+  if (!configJson) return { task_type: "handler" };
+  try {
+    const parsed = JSON.parse(configJson) as { task_type?: unknown; prompt?: unknown };
+    return {
+      task_type: parsed.task_type === "prompt" ? "prompt" : "handler",
+      prompt: typeof parsed.prompt === "string" ? parsed.prompt : undefined,
+    };
+  } catch {
+    return { task_type: "handler" };
+  }
 }
 
 export function SchedulerConfig() {
@@ -127,6 +141,8 @@ export function SchedulerConfig() {
     sequence_no: number;
     enabled: number;
   }>>([]);
+  const focusedRunsVisibleRows = 5;
+  const focusedRunsRowHeightPx = 38;
 
   const batchParameterDefs: Record<BatchJobType, Array<{ key: string; label: string; type: "text" | "number" | "select"; options?: string[]; defaultValue?: string }>> = {
     proactive: [],
@@ -293,19 +309,26 @@ export function SchedulerConfig() {
 
   const openFocusedView = () => {
     if (!selectedScheduleDetail?.schedule) return;
+    const idToTaskKey = new Map(selectedScheduleDetail.tasks.map((task) => [task.id, task.task_key]));
     setDetailName(selectedScheduleDetail.schedule.name);
     setDetailTriggerType(selectedScheduleDetail.schedule.trigger_type as "cron" | "interval" | "once");
     setDetailTriggerExpr(selectedScheduleDetail.schedule.trigger_expr);
     setDetailTasks(
-      selectedScheduleDetail.tasks.map((t) => ({
-        id: t.id,
-        task_key: t.task_key,
-        name: t.name,
-        handler_name: t.handler_name,
-        execution_mode: (t.execution_mode as "sync" | "async" | "fanout") || "sync",
-        sequence_no: t.sequence_no,
-        enabled: t.enabled,
-      }))
+      selectedScheduleDetail.tasks.map((task) => {
+        const config = parseTaskConfig(task.config_json);
+        return {
+          id: task.id,
+          task_key: task.task_key,
+          name: task.name,
+          handler_name: config.task_type === "prompt" ? "agent.prompt" : task.handler_name,
+          task_type: config.task_type,
+          prompt: config.prompt || "",
+          depends_on_task_key: task.depends_on_task_key ?? (task.depends_on_task_id ? (idToTaskKey.get(task.depends_on_task_id) || null) : null),
+          execution_mode: (task.execution_mode as "sync" | "async" | "fanout") || "sync",
+          sequence_no: task.sequence_no,
+          enabled: task.enabled,
+        };
+      })
     );
     setFocusedView(true);
     setSelectedRunId(null);
@@ -343,6 +366,9 @@ export function SchedulerConfig() {
             task_key: t.task_key.trim(),
             name: t.name.trim(),
             handler_name: t.handler_name.trim(),
+            task_type: t.task_type === "prompt" ? "prompt" : "handler",
+            prompt: t.task_type === "prompt" ? (t.prompt || "") : undefined,
+            depends_on_task_key: t.depends_on_task_key || null,
             execution_mode: t.execution_mode,
             sequence_no: Number.isFinite(t.sequence_no) ? t.sequence_no : index,
             enabled: t.enabled === 0 ? 0 : 1,
@@ -864,7 +890,9 @@ export function SchedulerConfig() {
                             <th className="px-2 py-2 text-left">#</th>
                             <th className="px-2 py-2 text-left">Task Key</th>
                             <th className="px-2 py-2 text-left">Task Name</th>
+                            <th className="px-2 py-2 text-left">Type</th>
                             <th className="px-2 py-2 text-left">Handler</th>
+                            <th className="px-2 py-2 text-left">Depends On</th>
                             <th className="px-2 py-2 text-left">Mode</th>
                             <th className="px-2 py-2 text-left">Enabled</th>
                             <th className="px-2 py-2 text-left">Remove</th>
@@ -872,7 +900,8 @@ export function SchedulerConfig() {
                         </thead>
                         <tbody>
                           {detailTasks.map((task, idx) => (
-                            <tr key={task.id || `${task.task_key}-${idx}`} className="border-t border-white/[0.06]">
+                            <Fragment key={task.id || `${task.task_key}-${idx}`}>
+                            <tr className="border-t border-white/[0.06]">
                               <td className="px-2 py-2">
                                 <input
                                   className="w-14 rounded border border-white/[0.08] bg-background px-1 py-1"
@@ -908,15 +937,51 @@ export function SchedulerConfig() {
                                 />
                               </td>
                               <td className="px-2 py-2">
+                                <select
+                                  className="rounded border border-white/[0.08] bg-background px-1 py-1"
+                                  value={task.task_type || "handler"}
+                                  onChange={(e) => {
+                                    const next = [...detailTasks];
+                                    const taskType = e.target.value === "prompt" ? "prompt" : "handler";
+                                    next[idx] = {
+                                      ...next[idx],
+                                      task_type: taskType,
+                                      handler_name: taskType === "prompt" ? "agent.prompt" : next[idx].handler_name,
+                                    };
+                                    setDetailTasks(next);
+                                  }}
+                                >
+                                  <option value="handler">handler</option>
+                                  <option value="prompt">prompt</option>
+                                </select>
+                              </td>
+                              <td className="px-2 py-2">
                                 <input
                                   className="w-full rounded border border-white/[0.08] bg-background px-1 py-1"
                                   value={task.handler_name}
+                                  disabled={(task.task_type || "handler") === "prompt"}
                                   onChange={(e) => {
                                     const next = [...detailTasks];
                                     next[idx] = { ...next[idx], handler_name: e.target.value };
                                     setDetailTasks(next);
                                   }}
                                 />
+                              </td>
+                              <td className="px-2 py-2">
+                                <select
+                                  className="w-full rounded border border-white/[0.08] bg-background px-1 py-1"
+                                  value={task.depends_on_task_key || ""}
+                                  onChange={(e) => {
+                                    const next = [...detailTasks];
+                                    next[idx] = { ...next[idx], depends_on_task_key: e.target.value || null };
+                                    setDetailTasks(next);
+                                  }}
+                                >
+                                  <option value="">No dependency</option>
+                                  {detailTasks.filter((_, depIdx) => depIdx !== idx).map((depTask) => (
+                                    <option key={`${depTask.task_key}-${depTask.sequence_no}`} value={depTask.task_key}>{depTask.task_key}</option>
+                                  ))}
+                                </select>
                               </td>
                               <td className="px-2 py-2">
                                 <select
@@ -954,6 +1019,29 @@ export function SchedulerConfig() {
                                 </Button>
                               </td>
                             </tr>
+                          {((task.task_type || "handler") === "prompt") && (
+                            <tr className="border-t border-white/[0.06]">
+                              <td className="px-2 py-2 text-[10px] text-muted-foreground" colSpan={9}>Prompt</td>
+                            </tr>
+                          )}
+                          {((task.task_type || "handler") === "prompt") && (
+                            <tr className="border-t border-white/[0.06]">
+                              <td className="px-2 py-2" colSpan={9}>
+                                <textarea
+                                  className="w-full rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                                  value={task.prompt || ""}
+                                  onChange={(e) => {
+                                    const next = [...detailTasks];
+                                    next[idx] = { ...next[idx], prompt: e.target.value };
+                                    setDetailTasks(next);
+                                  }}
+                                  rows={3}
+                                  placeholder="Prompt text"
+                                />
+                              </td>
+                            </tr>
+                          )}
+                            </Fragment>
                           ))}
                         </tbody>
                       </table>
@@ -970,6 +1058,9 @@ export function SchedulerConfig() {
                             task_key: `task_${detailTasks.length + 1}`,
                             name: `Task ${detailTasks.length + 1}`,
                             handler_name: "",
+                            task_type: "handler",
+                            prompt: "",
+                            depends_on_task_key: null,
                             execution_mode: "sync",
                             sequence_no: detailTasks.length,
                             enabled: 1,
@@ -983,7 +1074,11 @@ export function SchedulerConfig() {
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto rounded border border-white/[0.08]">
+                  <div
+                    data-testid="focused-runs-scroll"
+                    className="overflow-x-auto overflow-y-auto rounded border border-white/[0.08]"
+                    style={{ maxHeight: `${focusedRunsVisibleRows * focusedRunsRowHeightPx + 44}px` }}
+                  >
                     <table className="w-full text-xs sm:text-sm">
                       <thead className="bg-muted/30">
                         <tr>
@@ -1045,13 +1140,14 @@ export function SchedulerConfig() {
                                 <td className="px-2 py-2 whitespace-nowrap">{formatTs(taskRun.started_at)}</td>
                                 <td className="px-2 py-2 whitespace-nowrap">{formatTs(taskRun.finished_at)}</td>
                                 <td className="px-2 py-2">
-                                  {taskRun.log_ref ? (
-                                    <a className="text-primary underline" href="/api/logs?limit=200&source=scheduler-engine" target="_blank" rel="noreferrer">
-                                      Open Logs ({taskRun.log_ref})
-                                    </a>
-                                  ) : (
-                                    <span className="text-muted-foreground">-</span>
-                                  )}
+                                  <a
+                                    className="text-primary underline"
+                                    href={`/dashboard?dashboardView=details&logScheduleId=${encodeURIComponent(runDetail.run.schedule_id)}&logRunId=${encodeURIComponent(runDetail.run.id)}&logTaskRunId=${encodeURIComponent(taskRun.id)}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    Open Filtered Logs
+                                  </a>
                                 </td>
                               </tr>
                             ))}

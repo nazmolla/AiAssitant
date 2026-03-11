@@ -11,6 +11,7 @@ import {
   listDueSchedulerSchedules,
   listRunnableSchedulerRuns,
   releaseSchedulerClaim,
+  setSchedulerTaskRunLogRef,
   setSchedulerRunStatus,
   setSchedulerTaskRunStatus,
   tryClaimSchedulerRun,
@@ -21,6 +22,13 @@ import {
 } from "@/lib/db";
 import { runEmailReadBatch, runProactiveScan } from "@/lib/scheduler";
 import { runKnowledgeMaintenanceIfDue } from "@/lib/knowledge-maintenance";
+
+interface SchedulerLogContext {
+  scheduleId?: string;
+  runId?: string;
+  taskRunId?: string;
+  handlerName?: string;
+}
 
 const ENGINE_POLL_MS = 10_000;
 const CLAIM_LEASE_SECONDS = 60;
@@ -97,12 +105,40 @@ function dispatchDueSchedules(): void {
       level: "info",
       source: "scheduler-engine",
       message: `Dispatched scheduler run ${run.id}`,
-      metadata: JSON.stringify({ scheduleId: schedule.id, tasks: tasks.length, correlationId: run.correlation_id }),
+      metadata: JSON.stringify({ scheduleId: schedule.id, runId: run.id, tasks: tasks.length, correlationId: run.correlation_id }),
     });
   }
 }
 
-async function executeTaskRun(taskRunId: string, handlerName: string, configJson: string | null, scheduleId: string): Promise<void> {
+function serializeLogRef(context: SchedulerLogContext): string {
+  const parts = [
+    context.scheduleId ? `scheduleId=${encodeURIComponent(context.scheduleId)}` : "",
+    context.runId ? `runId=${encodeURIComponent(context.runId)}` : "",
+    context.taskRunId ? `taskRunId=${encodeURIComponent(context.taskRunId)}` : "",
+    context.handlerName ? `handlerName=${encodeURIComponent(context.handlerName)}` : "",
+  ].filter(Boolean);
+  return parts.join("&");
+}
+
+function logSchedulerExecution(level: "verbose" | "info" | "warning" | "error", message: string, context: SchedulerLogContext, details?: Record<string, unknown>): void {
+  addLog({
+    level,
+    source: "scheduler-engine",
+    message,
+    metadata: JSON.stringify({
+      scheduleId: context.scheduleId || null,
+      runId: context.runId || null,
+      taskRunId: context.taskRunId || null,
+      handlerName: context.handlerName || null,
+      ...(details || {}),
+    }),
+  });
+}
+
+async function executeTaskRun(taskRunId: string, runId: string, handlerName: string, configJson: string | null, scheduleId: string): Promise<void> {
+  const context: SchedulerLogContext = { scheduleId, runId, taskRunId, handlerName };
+  setSchedulerTaskRunLogRef(taskRunId, serializeLogRef(context));
+  logSchedulerExecution("info", "Starting scheduler task-run execution.", context);
   setSchedulerTaskRunStatus(taskRunId, "running");
 
   try {
@@ -137,30 +173,38 @@ async function executeTaskRun(taskRunId: string, handlerName: string, configJson
       }
       const { runAgentLoop } = await import("@/lib/agent");
       await runAgentLoop(threadId, prompt, undefined, undefined, undefined, userId);
+      logSchedulerExecution("info", "Scheduler prompt task completed successfully.", context, { threadId, userId });
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "agent_prompt", threadId, userId }));
       return;
     }
 
     if (handlerName === "system.proactive.scan") {
-      await runProactiveScan();
+      await runProactiveScan({ scheduleId, runId, taskRunId, handlerName });
+      logSchedulerExecution("info", "Proactive scan task completed successfully.", context);
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "proactive_scan" }));
       return;
     }
 
     if (handlerName === "system.email.read_incoming") {
-      await runEmailReadBatch();
+      await runEmailReadBatch({ scheduleId, runId, taskRunId, handlerName });
+      logSchedulerExecution("info", "Email read task completed successfully.", context);
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "email_read_incoming" }));
       return;
     }
 
     if (handlerName === "system.db_maintenance.run_due") {
       const result = runDbMaintenanceIfDue();
+      logSchedulerExecution("info", "DB maintenance task completed.", context, {
+        maintenanceSkipped: result === null,
+        ...(result || {}),
+      });
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "db_maintenance", result }));
       return;
     }
 
     if (handlerName === "system.knowledge_maintenance.run_due") {
       const result = runKnowledgeMaintenanceIfDue();
+      logSchedulerExecution("info", "Knowledge maintenance task completed.", context, result as unknown as Record<string, unknown>);
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "knowledge_maintenance", result }));
       return;
     }
@@ -172,7 +216,7 @@ async function executeTaskRun(taskRunId: string, handlerName: string, configJson
         level: "info",
         source: "scheduler-engine",
         message: `Job Scout pipeline placeholder executed: ${handlerName}`,
-        metadata: configJson,
+        metadata: JSON.stringify({ ...context, configJson }),
       });
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "job_scout_pipeline", handlerName }));
       return;
@@ -181,6 +225,7 @@ async function executeTaskRun(taskRunId: string, handlerName: string, configJson
     throw new Error(`Unsupported scheduler handler: ${handlerName}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    logSchedulerExecution("error", "Scheduler task-run failed.", context, { error: message });
     setSchedulerTaskRunStatus(taskRunId, "failed", null, message);
     throw err;
   }
@@ -193,6 +238,9 @@ async function executeRunnableRun(): Promise<void> {
 
   try {
     setSchedulerRunStatus(claimed.id, "running");
+    logSchedulerExecution("info", "Scheduler run claimed and started.", { scheduleId: claimed.schedule_id, runId: claimed.id }, {
+      triggerSource: claimed.trigger_source,
+    });
     addSchedulerEvent(claimed.id, "run_started", "Scheduler run execution started");
 
     const taskRuns = getSchedulerTaskRunsForRun(claimed.id);
@@ -224,7 +272,7 @@ async function executeRunnableRun(): Promise<void> {
       }
 
       try {
-        await executeTaskRun(taskRun.id, task.handler_name, task.config_json, claimed.schedule_id);
+        await executeTaskRun(taskRun.id, claimed.id, task.handler_name, task.config_json, claimed.schedule_id);
       } catch {
         failures += 1;
         // Keep processing remaining tasks for partial-success visibility.
@@ -233,10 +281,16 @@ async function executeRunnableRun(): Promise<void> {
 
     const finalStatus = failures === 0 ? "success" : failures < taskRuns.length ? "partial_success" : "failed";
     setSchedulerRunStatus(claimed.id, finalStatus);
+    logSchedulerExecution("info", "Scheduler run completed.", { scheduleId: claimed.schedule_id, runId: claimed.id }, {
+      finalStatus,
+      failures,
+      taskCount: taskRuns.length,
+    });
     addSchedulerEvent(claimed.id, "run_finished", `Run completed with status ${finalStatus}`, null, JSON.stringify({ failures, taskCount: taskRuns.length }));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     setSchedulerRunStatus(claimed.id, "failed", message);
+    logSchedulerExecution("error", "Scheduler run failed.", { scheduleId: claimed.schedule_id, runId: claimed.id }, { error: message });
     addSchedulerEvent(claimed.id, "run_failed", message);
   } finally {
     releaseSchedulerClaim(claimed.id);

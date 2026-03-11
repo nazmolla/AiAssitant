@@ -257,6 +257,40 @@ interface SchedulerDigestItem {
   actionLocation: string;
 }
 
+export interface SchedulerBatchExecutionContext {
+  scheduleId?: string;
+  runId?: string;
+  taskRunId?: string;
+  handlerName?: string;
+}
+
+function mergeBatchContext(metadata: Record<string, unknown> | undefined, context?: SchedulerBatchExecutionContext): Record<string, unknown> {
+  return {
+    ...(metadata || {}),
+    ...(context ? {
+      scheduleId: context.scheduleId || null,
+      runId: context.runId || null,
+      taskRunId: context.taskRunId || null,
+      handlerName: context.handlerName || null,
+    } : {}),
+  };
+}
+
+function addContextLog(
+  level: "verbose" | "info" | "warning" | "error" | "thought" | "warn",
+  source: string,
+  message: string,
+  metadata?: Record<string, unknown>,
+  context?: SchedulerBatchExecutionContext,
+): void {
+  addLog({
+    level,
+    source,
+    message,
+    metadata: JSON.stringify(mergeBatchContext(metadata, context)),
+  });
+}
+
 const NOTIFICATION_LEVEL_ORDER: NotificationLevel[] = ["disaster", "high", "medium", "low"];
 
 function shouldIncludeForThreshold(userThreshold: NotificationLevel, eventLevel: NotificationLevel): boolean {
@@ -427,7 +461,8 @@ function buildGuardedInboundEmailPrompt(fromAddress: string, subject: string, bo
 
 async function pollEmailChannels(
   digestByUser: Map<string, SchedulerDigestItem[]>,
-  defaultAdminUserId?: string
+  defaultAdminUserId?: string,
+  context?: SchedulerBatchExecutionContext,
 ): Promise<void> {
   const emailChannels = listChannels().filter((c) => c.channel_type === "email" && !!c.enabled);
   if (emailChannels.length === 0) return;
@@ -539,6 +574,22 @@ async function pollEmailChannels(
                 : "";
               const subject = (parsed.subject || "New Email").trim();
               const textBody = (parsed.text || parsed.html || "").toString().trim();
+              const textPreview = truncateText(sanitizeInboundEmailText(textBody || ""), 1200);
+
+              addContextLog(
+                "info",
+                "email",
+                "Inbound email received for scheduler processing.",
+                {
+                  channelId: channel.id,
+                  uid: msg.uid,
+                  from: fromAddress || null,
+                  subject,
+                  textLength: textBody.length,
+                  textPreview,
+                },
+                context,
+              );
 
               if (!fromAddress) {
                 await markSeen(msg.uid);
@@ -554,13 +605,14 @@ async function pollEmailChannels(
                   level: unknownEmailSummary.level === "low" ? "info" : "warn",
                   source: "email",
                   message: `Inbound email from unregistered sender (${unknownEmailSummary.category}).`,
-                  metadata: JSON.stringify({
+                  metadata: JSON.stringify(mergeBatchContext({
                     channelId: channel.id,
                     from: fromAddress,
                     subject,
                     level: unknownEmailSummary.level,
                     summary: unknownEmailSummary.summary,
-                  }),
+                    textPreview,
+                  }, context)),
                 });
                 try {
                   enqueueDigestItem(digestByUser, channel.user_id ?? defaultAdminUserId, {
@@ -596,6 +648,23 @@ async function pollEmailChannels(
                 mappedUser!.id
               );
 
+              addContextLog(
+                "info",
+                "email",
+                "Inbound email processed by agent loop.",
+                {
+                  channelId: channel.id,
+                  from: fromAddress,
+                  subject,
+                  userId: mappedUser!.id,
+                  threadId,
+                  toolsUsed: result.toolsUsed,
+                  pendingApprovals: result.pendingApprovals,
+                  responsePreview: (result.content || "").slice(0, 600),
+                },
+                context,
+              );
+
               try {
                 const responseSubject = `Re: ${subject}`;
                 const responseBody = (result.content || "").trim() || "No response content.";
@@ -607,13 +676,25 @@ async function pollEmailChannels(
                   text: themed.text,
                   html: themed.html,
                 });
+                addContextLog(
+                  "info",
+                  "email",
+                  "SMTP reply sent for inbound email.",
+                  {
+                    channelId: channel.id,
+                    to: fromAddress,
+                    subject: responseSubject,
+                    responsePreview: responseBody.slice(0, 600),
+                  },
+                  context,
+                );
               } catch (smtpErr) {
                 const smtpMsg = formatEmailConnectError(smtpErr);
                 addLog({
                   level: "error",
                   source: "email",
                   message: `Failed sending SMTP reply for channel "${channel.label}": ${smtpMsg}`,
-                  metadata: JSON.stringify({ channelId: channel.id, from: fromAddress }),
+                  metadata: JSON.stringify(mergeBatchContext({ channelId: channel.id, from: fromAddress, subject }, context)),
                 });
               }
 
@@ -623,7 +704,7 @@ async function pollEmailChannels(
                 level: "error",
                 source: "email",
                 message: `Failed processing inbound email on channel "${channel.label}": ${messageErr}`,
-                metadata: JSON.stringify({ channelId: channel.id }),
+                metadata: JSON.stringify(mergeBatchContext({ channelId: channel.id, uid: msg.uid }, context)),
               });
             } finally {
               // Persist UID after EACH message so a mid-fetch disconnect
@@ -673,7 +754,7 @@ async function pollEmailChannels(
         level: "error",
         source: "email",
         message: `IMAP poll failed for email channel "${channel.label}": ${errMsg}`,
-        metadata: JSON.stringify({ channelId: channel.id }),
+        metadata: JSON.stringify(mergeBatchContext({ channelId: channel.id }, context)),
       });
     }
   }
@@ -764,14 +845,9 @@ export async function executeProactiveApprovedTool(
   return execution.result;
 }
 
-export async function runEmailReadBatch(): Promise<void> {
+export async function runEmailReadBatch(context?: SchedulerBatchExecutionContext): Promise<void> {
   if (_emailBatchRunning) {
-    addLog({
-      level: "info",
-      source: "email",
-      message: "Skipping email read batch — previous run still active.",
-      metadata: null,
-    });
+    addContextLog("info", "email", "Skipping email read batch — previous run still active.", undefined, context);
     return;
   }
 
@@ -779,29 +855,14 @@ export async function runEmailReadBatch(): Promise<void> {
   const digestByUser = new Map<string, SchedulerDigestItem[]>();
   const defaultAdminUserId = getDefaultAdminUserId();
 
-  addLog({
-    level: "info",
-    source: "email",
-    message: "Email read batch started.",
-    metadata: JSON.stringify({ adminUserId: defaultAdminUserId }),
-  });
+  addContextLog("info", "email", "Email read batch started.", { adminUserId: defaultAdminUserId }, context);
 
   try {
-    await pollEmailChannels(digestByUser, defaultAdminUserId);
+    await pollEmailChannels(digestByUser, defaultAdminUserId, context);
     await flushSchedulerDigestEmails(digestByUser);
-    addLog({
-      level: "info",
-      source: "email",
-      message: "Email read batch completed.",
-      metadata: JSON.stringify({ digestUserCount: digestByUser.size }),
-    });
+    addContextLog("info", "email", "Email read batch completed.", { digestUserCount: digestByUser.size }, context);
   } catch (err) {
-    addLog({
-      level: "error",
-      source: "email",
-      message: `Email read batch failed: ${err}`,
-      metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-    });
+    addContextLog("error", "email", `Email read batch failed: ${err}`, { error: err instanceof Error ? err.message : String(err) }, context);
   } finally {
     _emailBatchRunning = false;
   }
@@ -810,14 +871,14 @@ export async function runEmailReadBatch(): Promise<void> {
 /**
  * Run a single proactive scan cycle.
  */
-export async function runProactiveScan(): Promise<void> {
+export async function runProactiveScan(context?: SchedulerBatchExecutionContext): Promise<void> {
   // ── Mutex: skip if a previous scan is still running ────────
   if (_scanRunning) {
     addLog({
       level: "info",
       source: "scheduler",
       message: "Skipping proactive scan — previous scan still running.",
-      metadata: null,
+      metadata: JSON.stringify(mergeBatchContext({}, context)),
     });
     return;
   }

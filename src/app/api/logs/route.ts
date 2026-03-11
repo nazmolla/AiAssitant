@@ -33,8 +33,18 @@ export async function GET(req: NextRequest) {
 
   const level = isUnifiedLogLevel(levelParam) ? levelParam : "all";
   const source = sourceParam || "all";
+  const runId = (searchParams.get("runId") || "").trim();
+  const taskRunId = (searchParams.get("taskRunId") || "").trim();
+  const scheduleId = (searchParams.get("scheduleId") || "").trim();
+  const handlerName = (searchParams.get("handlerName") || "").trim();
 
-  const logs = getRecentLogs(limit, level, source);
+  const metadataContains: string[] = [];
+  if (runId) metadataContains.push(`\"runId\":\"${runId}\"`);
+  if (taskRunId) metadataContains.push(`\"taskRunId\":\"${taskRunId}\"`);
+  if (scheduleId) metadataContains.push(`\"scheduleId\":\"${scheduleId}\"`);
+  if (handlerName) metadataContains.push(`\"handlerName\":\"${handlerName}\"`);
+
+  const logs = getRecentLogs(limit, level, source, metadataContains);
   return NextResponse.json(logs);
 }
 

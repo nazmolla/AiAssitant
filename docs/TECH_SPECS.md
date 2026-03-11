@@ -217,6 +217,8 @@ CREATE INDEX idx_notifications_created ON notifications (created_at);
 > **Unified Scheduler Migration**: Recurring platform flows are represented as first-class schedule/task records: `system.proactive.scan`, `system.db_maintenance.run_due`, `system.knowledge_maintenance.run_due`, and a modeled `workflow.job_scout.pipeline` parent schedule with child tasks (`search`, `extract`, `prepare`, `validate`, `email`).
 
 > **Scheduler Reliability Guardrails**: Run/task-run status transitions are validated against explicit lifecycle rules before DB updates. The runtime validates enabled task handlers against a registered-handler allowlist and emits warnings for orphan handlers. Queue health metrics (queued/claimed/running, 1h failures/success, stale claims) are available through `GET /api/scheduler/health`.
+
+> **Run-scoped batch logging**: Scheduler execution logs now include structured correlation metadata (`scheduleId`, `runId`, `taskRunId`, `handlerName`) and task-run `log_ref` pointers so run-detail log links can resolve to filtered logs for the selected batch run/task.
 >
 > **Scheduler Console UX**: Admin scheduler operations in Settings now follow a progressive flow: **Header Tasks Grid** (top-level schedules only), **Inline Expansion** (selected header shows child tasks + recent runs), and **Focused Header View** (full child-task table, full run history, and task-run log links).
 >

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
@@ -144,6 +145,7 @@ function toPct(value: number): string {
 }
 
 export function AgentDashboard() {
+  const searchParams = useSearchParams();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showAllLogs, setShowAllLogs] = useState(false);
@@ -163,12 +165,31 @@ export function AgentDashboard() {
   const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
   const { formatDate } = useTheme();
 
+  const deepLinkRunId = (searchParams?.get("logRunId") || "").trim();
+  const deepLinkTaskRunId = (searchParams?.get("logTaskRunId") || "").trim();
+  const deepLinkScheduleId = (searchParams?.get("logScheduleId") || "").trim();
+  const deepLinkView = (searchParams?.get("dashboardView") || "").trim();
+
+  useEffect(() => {
+    if (deepLinkView === "details") {
+      setDashboardView("details");
+    }
+  }, [deepLinkView]);
+
   const fetchLogs = useCallback(() => {
-    fetch("/api/logs?limit=all&level=all&source=all")
+    const url = new URL("/api/logs", window.location.origin);
+    url.searchParams.set("limit", "all");
+    url.searchParams.set("level", "all");
+    url.searchParams.set("source", "all");
+    if (deepLinkRunId) url.searchParams.set("runId", deepLinkRunId);
+    if (deepLinkTaskRunId) url.searchParams.set("taskRunId", deepLinkTaskRunId);
+    if (deepLinkScheduleId) url.searchParams.set("scheduleId", deepLinkScheduleId);
+
+    fetch(url.toString())
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setLogs(d); })
       .catch(console.error);
-  }, []);
+  }, [deepLinkRunId, deepLinkTaskRunId, deepLinkScheduleId]);
 
   useEffect(() => {
     setRenderCount(showAllLogs ? 400 : 200);

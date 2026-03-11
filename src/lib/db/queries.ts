@@ -1350,11 +1350,36 @@ export function addLog(log: AgentLogInput): void {
   ).run(normalizedLevel, normalizedSource, log.message, log.metadata);
 }
 
-export function getRecentLogs(limit = 100, level?: UnifiedLogLevel | "all", source?: string | "all"): AgentLog[] {
+export function getRecentLogs(limit = 100, level?: UnifiedLogLevel | "all", source?: string | "all", metadataContains?: string[]): AgentLog[] {
   const filterByLevel = !!level && level !== "all";
   const filterBySource = !!source && source !== "all";
+  const metadataTokens = (metadataContains || []).filter((token) => typeof token === "string" && token.trim().length > 0);
+  const filterByMetadata = metadataTokens.length > 0;
   // PERF-17: Clamp to sensible bounds to prevent unbounded queries
   const safeLimit = (!Number.isFinite(limit) || limit <= 0) ? 1000 : Math.min(limit, 10000);
+  if (filterByMetadata) {
+    const clauses: string[] = [];
+    const args: Array<string | number> = [];
+
+    if (filterByLevel) {
+      clauses.push("level = ?");
+      args.push(level!);
+    }
+    if (filterBySource) {
+      clauses.push("source = ?");
+      args.push(source!);
+    }
+    for (const token of metadataTokens) {
+      clauses.push("metadata LIKE ?");
+      args.push(`%${token}%`);
+    }
+
+    args.push(safeLimit);
+    return stmt(
+      `SELECT * FROM agent_logs WHERE ${clauses.join(" AND ")} ORDER BY created_at DESC LIMIT ?`
+    ).all(...args) as AgentLog[];
+  }
+
   if (filterByLevel && filterBySource) {
     return stmt(
       "SELECT * FROM agent_logs WHERE level = ? AND source = ? ORDER BY created_at DESC LIMIT ?"
@@ -2602,6 +2627,14 @@ export function setSchedulerTaskRunStatus(taskRunId: string, status: SchedulerTa
          error_message = CASE WHEN ? IS NOT NULL THEN ? ELSE error_message END
      WHERE id = ?`
   ).run(status, status, isTerminal ? 1 : 0, outputJson ?? null, outputJson ?? null, errorMessage ?? null, errorMessage ?? null, taskRunId);
+}
+
+export function setSchedulerTaskRunLogRef(taskRunId: string, logRef: string | null): void {
+  getDb().prepare(
+    `UPDATE scheduler_task_runs
+     SET log_ref = ?
+     WHERE id = ?`
+  ).run(logRef, taskRunId);
 }
 
 export function addSchedulerEvent(runId: string, eventType: string, message?: string, taskRunId?: string | null, metadataJson?: string | null): void {

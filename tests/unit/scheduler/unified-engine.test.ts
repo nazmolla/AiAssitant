@@ -55,9 +55,17 @@ describe("unified scheduler engine", () => {
     expect(run).toBeDefined();
     expect(run?.status).toBe("success");
 
-    const taskRun = db.prepare("SELECT * FROM scheduler_task_runs WHERE run_id = (SELECT id FROM scheduler_runs WHERE schedule_id = ? ORDER BY created_at DESC LIMIT 1)").get("sched-test-1") as { status: string } | undefined;
+    const taskRun = db.prepare("SELECT * FROM scheduler_task_runs WHERE run_id = (SELECT id FROM scheduler_runs WHERE schedule_id = ? ORDER BY created_at DESC LIMIT 1)").get("sched-test-1") as { status: string; log_ref: string | null } | undefined;
     expect(taskRun).toBeDefined();
     expect(taskRun?.status).toBe("success");
+    expect(taskRun?.log_ref).toContain("scheduleId=sched-test-1");
+    expect(taskRun?.log_ref).toContain("runId=");
+    expect(taskRun?.log_ref).toContain("taskRunId=");
+
+    const contextualLogs = db.prepare(
+      "SELECT metadata FROM agent_logs WHERE source = 'scheduler-engine' AND metadata LIKE '%\"runId\"%' ORDER BY id DESC LIMIT 10"
+    ).all() as Array<{ metadata: string | null }>;
+    expect(contextualLogs.length).toBeGreaterThan(0);
   });
 
   test("executes system DB maintenance handler through unified task runner", async () => {
