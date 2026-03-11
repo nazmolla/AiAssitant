@@ -107,7 +107,8 @@ export async function POST(
       const filePath = pathMod.join(ATTACHMENTS_DIR, att.storagePath);
       // Prevent path traversal: ensure resolved path stays within ATTACHMENTS_DIR
       const resolvedPath = pathMod.resolve(filePath);
-      if (!resolvedPath.startsWith(pathMod.resolve(ATTACHMENTS_DIR))) {
+      // Guard with separator to prevent prefix-confusion (e.g. ATTACHMENTS_DIR + ".evil/")
+      if (!resolvedPath.startsWith(pathMod.resolve(ATTACHMENTS_DIR) + pathMod.sep)) {
         contentParts.push({ type: "text", text: `📎 File "${att.filename}" has an invalid storage path.` });
         continue;
       }

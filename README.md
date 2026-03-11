@@ -6,6 +6,7 @@
 
 ## Key Features
 
+- **Security and Performance Remediation (Mar 2026)** — path traversal guards hardened with separator-safe checks, webhook route now rate-limited by middleware (while preserving webhook secret auth), HSTS header enabled, attachment downloads streamed instead of full-buffer reads, knowledge search capped to bounded result sets, FS tool operations moved to async I/O, and log SSE DB polling reduced from 1s to 2s.
 - **Multi-User Isolation** — per-user knowledge, threads, channels, and profiles
 - **Proactive Intelligence** — background scheduler monitors MCP tools, creates custom tools for automation opportunities, and generates reminders; schedule configurable via Settings → Scheduler
 - **Unified User Scheduling** — future and recurring user tasks are persisted as unified schedule/task records and executed by the unified scheduler engine

@@ -30,6 +30,7 @@ describe("Middleware Matcher Config", () => {
     "/api/admin",
     "/api/audio",
     "/api/conversation",
+    "/api/channels",  // rate-limited here; webhook sub-paths bypass JWT via middleware
   ];
 
   // Exact routes (no wildcard)
@@ -37,7 +38,6 @@ describe("Middleware Matcher Config", () => {
 
   // Routes intentionally NOT in the matcher
   const excludedRoutes = [
-    "/api/channels", // uses webhook secret auth
     "/api/client-error", // intentionally unauthenticated
     "/api/auth", // NextAuth handles its own auth
   ];

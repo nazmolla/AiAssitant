@@ -19,6 +19,7 @@
 
 import type { ToolDefinition } from "@/lib/llm";
 import * as fs from "fs";
+import { promises as fsp } from "fs";
 import * as path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -372,19 +373,19 @@ function matchPattern(name: string, pattern: string): boolean {
   return regex.test(name);
 }
 
-/** Recursively walk a directory, collecting entries. */
-function walkDir(
+/** Recursively walk a directory, collecting entries (async, bounded). */
+async function walkDirAsync(
   dir: string,
   pattern: string | undefined,
   maxEntries: number,
   results: Array<{ path: string; type: "file" | "directory"; size: number }>,
   level = 0
-): void {
+): Promise<void> {
   if (results.length >= maxEntries || level > 20) return;
 
   let entries: fs.Dirent[];
   try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
+    entries = await fsp.readdir(dir, { withFileTypes: true });
   } catch {
     return;
   }
@@ -394,14 +395,14 @@ function walkDir(
 
     const fullPath = path.join(dir, entry.name);
 
-    // Skip node_modules, .git, etc.
+    // Skip heavy/system dirs
     if (entry.isDirectory() && (entry.name === "node_modules" || entry.name === ".git")) continue;
 
     const matches = !pattern || matchPattern(entry.name, pattern);
     if (matches) {
       let size = 0;
       try {
-        size = entry.isFile() ? fs.statSync(fullPath).size : 0;
+        size = entry.isFile() ? (await fsp.stat(fullPath)).size : 0;
       } catch {}
       results.push({
         path: fullPath,
@@ -411,7 +412,7 @@ function walkDir(
     }
 
     if (entry.isDirectory()) {
-      walkDir(fullPath, pattern, maxEntries, results, level + 1);
+      await walkDirAsync(fullPath, pattern, maxEntries, results, level + 1);
     }
   }
 }
@@ -422,11 +423,12 @@ async function fsReadFile(args: Record<string, unknown>): Promise<unknown> {
   const filePath = resolvePath(args.filePath as string);
   const encoding = (args.encoding as BufferEncoding) || "utf-8";
 
-  if (!fs.existsSync(filePath)) {
+  let stat: fs.Stats;
+  try {
+    stat = await fsp.stat(filePath);
+  } catch {
     throw new Error(`File not found: ${filePath}`);
   }
-
-  const stat = fs.statSync(filePath);
   if (!stat.isFile()) {
     throw new Error(`Path is not a file: ${filePath}`);
   }
@@ -447,11 +449,11 @@ async function fsReadFile(args: Record<string, unknown>): Promise<unknown> {
       return { filePath, size: stat.size, offset: start, content: "", note: "Offset beyond end of file." };
     }
     const buf = Buffer.alloc(end - start + 1);
-    const fd = fs.openSync(filePath, "r");
+    const fh = await fsp.open(filePath, "r");
     try {
-      fs.readSync(fd, buf, 0, buf.length, start);
+      await fh.read(buf, 0, buf.length, start);
     } finally {
-      fs.closeSync(fd);
+      await fh.close();
     }
     const content = encoding === "base64" ? buf.toString("base64") : buf.toString(encoding);
     return {
@@ -473,9 +475,9 @@ async function fsReadFile(args: Record<string, unknown>): Promise<unknown> {
 
   let content: string;
   if (encoding === "base64") {
-    content = fs.readFileSync(filePath).toString("base64");
+    content = (await fsp.readFile(filePath)).toString("base64");
   } else {
-    content = fs.readFileSync(filePath, encoding);
+    content = await fsp.readFile(filePath, encoding);
   }
 
   // Line range slicing
@@ -527,11 +529,12 @@ async function fsExtractText(args: Record<string, unknown>): Promise<unknown> {
   const readLen = Math.min(Math.max(1, requestedLen), 1024 * 1024);
   const maxChars = Math.min(Math.max(1, (args.maxChars as number) || 15000), 100000);
 
-  if (!fs.existsSync(filePath)) {
+  let stat: fs.Stats;
+  try {
+    stat = await fsp.stat(filePath);
+  } catch {
     throw new Error(`File not found: ${filePath}`);
   }
-
-  const stat = fs.statSync(filePath);
   if (!stat.isFile()) {
     throw new Error(`Path is not a file: ${filePath}`);
   }
@@ -557,11 +560,11 @@ async function fsExtractText(args: Record<string, unknown>): Promise<unknown> {
 
   const end = Math.min(stat.size - 1, byteOffset + readLen - 1);
   const buf = Buffer.alloc(end - byteOffset + 1);
-  const fd = fs.openSync(filePath, "r");
+  const fh = await fsp.open(filePath, "r");
   try {
-    fs.readSync(fd, buf, 0, buf.length, byteOffset);
+    await fh.read(buf, 0, buf.length, byteOffset);
   } finally {
-    fs.closeSync(fd);
+    await fh.close();
   }
 
   const raw = buf.toString(encoding);
@@ -584,35 +587,39 @@ async function fsReadDirectory(args: Record<string, unknown>): Promise<unknown> 
   const recursive = (args.recursive as boolean) || false;
   const pattern = args.pattern as string | undefined;
 
-  if (!fs.existsSync(dirPath)) {
+  let dirStat: fs.Stats;
+  try {
+    dirStat = await fsp.stat(dirPath);
+  } catch {
     throw new Error(`Directory not found: ${dirPath}`);
   }
-  const stat = fs.statSync(dirPath);
-  if (!stat.isDirectory()) {
+  if (!dirStat.isDirectory()) {
     throw new Error(`Path is not a directory: ${dirPath}`);
   }
 
   if (recursive) {
     const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
-    walkDir(dirPath, pattern, 500, results);
+    await walkDirAsync(dirPath, pattern, 500, results);
     return { dirPath, entryCount: results.length, entries: results };
   }
 
-  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  const items = entries
-    .filter((e) => !pattern || matchPattern(e.name, pattern))
-    .map((e) => {
-      const fp = path.join(dirPath, e.name);
-      let size = 0;
-      try {
-        size = e.isFile() ? fs.statSync(fp).size : 0;
-      } catch {}
-      return {
-        name: e.name,
-        type: e.isDirectory() ? "directory" : "file",
-        size,
-      };
-    });
+  const entries = await fsp.readdir(dirPath, { withFileTypes: true });
+  const items = await Promise.all(
+    entries
+      .filter((e) => !pattern || matchPattern(e.name, pattern))
+      .map(async (e) => {
+        const fp = path.join(dirPath, e.name);
+        let size = 0;
+        try {
+          size = e.isFile() ? (await fsp.stat(fp)).size : 0;
+        } catch {}
+        return {
+          name: e.name,
+          type: e.isDirectory() ? "directory" : "file",
+          size,
+        };
+      })
+  );
 
   return { dirPath, entryCount: items.length, entries: items };
 }
@@ -620,11 +627,12 @@ async function fsReadDirectory(args: Record<string, unknown>): Promise<unknown> 
 async function fsFileInfo(args: Record<string, unknown>): Promise<unknown> {
   const targetPath = resolvePath(args.targetPath as string);
 
-  if (!fs.existsSync(targetPath)) {
+  let stat: fs.Stats;
+  try {
+    stat = await fsp.stat(targetPath);
+  } catch {
     throw new Error(`Path not found: ${targetPath}`);
   }
-
-  const stat = fs.statSync(targetPath);
   return {
     path: targetPath,
     type: stat.isDirectory() ? "directory" : stat.isFile() ? "file" : "other",
@@ -642,12 +650,14 @@ async function fsSearchFiles(args: Record<string, unknown>): Promise<unknown> {
   const pattern = args.pattern as string;
   const maxResults = Math.min((args.maxResults as number) || 50, 200);
 
-  if (!fs.existsSync(dirPath)) {
+  try {
+    await fsp.access(dirPath);
+  } catch {
     throw new Error(`Directory not found: ${dirPath}`);
   }
 
   const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
-  walkDir(dirPath, pattern, maxResults, results);
+  await walkDirAsync(dirPath, pattern, maxResults, results);
 
   return {
     dirPath,
@@ -662,23 +672,26 @@ async function fsCreateFile(args: Record<string, unknown>): Promise<unknown> {
   const content = args.content as string;
   const encoding = (args.encoding as BufferEncoding) || "utf-8";
 
-  if (fs.existsSync(filePath)) {
+  try {
+    await fsp.access(filePath);
     throw new Error(
       `File already exists: ${filePath}. Use fs_update_file to modify an existing file.`
     );
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
 
   // Ensure parent directories exist
   const dir = path.dirname(filePath);
-  fs.mkdirSync(dir, { recursive: true });
+  await fsp.mkdir(dir, { recursive: true });
 
   if (encoding === "base64") {
-    fs.writeFileSync(filePath, Buffer.from(content, "base64"));
+    await fsp.writeFile(filePath, Buffer.from(content, "base64"));
   } else {
-    fs.writeFileSync(filePath, content, encoding);
+    await fsp.writeFile(filePath, content, encoding);
   }
 
-  const stat = fs.statSync(filePath);
+  const stat = await fsp.stat(filePath);
   return {
     filePath,
     size: stat.size,
@@ -689,10 +702,13 @@ async function fsCreateFile(args: Record<string, unknown>): Promise<unknown> {
 async function fsUpdateFile(args: Record<string, unknown>): Promise<unknown> {
   const filePath = resolvePath(args.filePath as string);
 
-  if (!fs.existsSync(filePath)) {
+  let fileStat: fs.Stats;
+  try {
+    fileStat = await fsp.stat(filePath);
+  } catch {
     throw new Error(`File not found: ${filePath}`);
   }
-  if (!fs.statSync(filePath).isFile()) {
+  if (!fileStat.isFile()) {
     throw new Error(`Path is not a file: ${filePath}`);
   }
 
@@ -700,14 +716,14 @@ async function fsUpdateFile(args: Record<string, unknown>): Promise<unknown> {
   if (args.search !== undefined) {
     const search = args.search as string;
     const replace = args.replace as string ?? "";
-    const existing = fs.readFileSync(filePath, "utf-8");
+    const existing = await fsp.readFile(filePath, "utf-8");
 
     if (!existing.includes(search)) {
       throw new Error(`Search string not found in file: ${filePath}`);
     }
 
     const updated = existing.replace(search, replace);
-    fs.writeFileSync(filePath, updated, "utf-8");
+    await fsp.writeFile(filePath, updated, "utf-8");
 
     return {
       filePath,
@@ -720,8 +736,8 @@ async function fsUpdateFile(args: Record<string, unknown>): Promise<unknown> {
   // Mode 2: Append
   if (args.appendContent !== undefined) {
     const appendContent = args.appendContent as string;
-    fs.appendFileSync(filePath, appendContent, "utf-8");
-    const stat = fs.statSync(filePath);
+    await fsp.appendFile(filePath, appendContent, "utf-8");
+    const stat = await fsp.stat(filePath);
     return {
       filePath,
       mode: "append",
@@ -732,7 +748,7 @@ async function fsUpdateFile(args: Record<string, unknown>): Promise<unknown> {
   // Mode 3: Full overwrite
   if (args.content !== undefined) {
     const content = args.content as string;
-    fs.writeFileSync(filePath, content, "utf-8");
+    await fsp.writeFile(filePath, content, "utf-8");
     return {
       filePath,
       mode: "overwrite",
@@ -746,15 +762,18 @@ async function fsUpdateFile(args: Record<string, unknown>): Promise<unknown> {
 async function fsDeleteFile(args: Record<string, unknown>): Promise<unknown> {
   const filePath = resolvePath(args.filePath as string);
 
-  if (!fs.existsSync(filePath)) {
+  let fileStat: fs.Stats;
+  try {
+    fileStat = await fsp.stat(filePath);
+  } catch {
     throw new Error(`File not found: ${filePath}`);
   }
-  if (!fs.statSync(filePath).isFile()) {
+  if (!fileStat.isFile()) {
     throw new Error(`Path is not a file: ${filePath}`);
   }
 
-  const size = fs.statSync(filePath).size;
-  fs.unlinkSync(filePath);
+  const size = fileStat.size;
+  await fsp.unlink(filePath);
 
   return {
     filePath,
@@ -766,18 +785,21 @@ async function fsDeleteFile(args: Record<string, unknown>): Promise<unknown> {
 async function fsDeleteDirectory(args: Record<string, unknown>): Promise<unknown> {
   const dirPath = resolvePath(args.dirPath as string);
 
-  if (!fs.existsSync(dirPath)) {
+  let dirStat: fs.Stats;
+  try {
+    dirStat = await fsp.stat(dirPath);
+  } catch {
     throw new Error(`Directory not found: ${dirPath}`);
   }
-  if (!fs.statSync(dirPath).isDirectory()) {
+  if (!dirStat.isDirectory()) {
     throw new Error(`Path is not a directory: ${dirPath}`);
   }
 
-  // Count contents before deletion
+  // Count contents before deletion (walkDir is bounded / sync — acceptable for pre-delete audit)
   const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
-  walkDir(dirPath, undefined, 1000, results);
+  await walkDirAsync(dirPath, undefined, 1000, results);
 
-  fs.rmSync(dirPath, { recursive: true, force: true });
+  await fsp.rm(dirPath, { recursive: true, force: true });
 
   return {
     dirPath,
@@ -809,8 +831,12 @@ async function fsExecuteScript(args: Record<string, unknown>): Promise<unknown> 
     }
   }
 
-  if (cwd && !fs.existsSync(cwd)) {
-    throw new Error(`Working directory not found: ${cwd}`);
+  if (cwd) {
+    try {
+      await fsp.access(cwd);
+    } catch {
+      throw new Error(`Working directory not found: ${cwd}`);
+    }
   }
 
   // Explicit shell — this is an intentional HITL-approved script runner.

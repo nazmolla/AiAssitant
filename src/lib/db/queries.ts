@@ -696,15 +696,19 @@ export function searchKnowledge(query: string, userId?: string): KnowledgeEntry[
   if (!userId) return [];
   const pattern = `%${query}%`;
   // UNION ALL allows SQLite to use the user_id index for both branches
-  // instead of a full table scan with OR
+  // instead of a full table scan with OR.
+  // LIMIT 100 caps the result set to prevent runaway scans on large tables.
   return getDb()
     .prepare(
-      `SELECT * FROM user_knowledge
-       WHERE user_id = ? AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
-       UNION ALL
-       SELECT * FROM user_knowledge
-       WHERE user_id IS NULL AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
-       ORDER BY last_updated DESC`
+      `SELECT * FROM (
+         SELECT * FROM user_knowledge
+         WHERE user_id = ? AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
+         UNION ALL
+         SELECT * FROM user_knowledge
+         WHERE user_id IS NULL AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
+       )
+       ORDER BY last_updated DESC
+       LIMIT 100`
     )
     .all(userId, pattern, pattern, pattern, pattern, pattern, pattern) as KnowledgeEntry[];
 }

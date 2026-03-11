@@ -8,6 +8,8 @@
 
 | Layer | Component | Details |
 |-------|-----------|---------|
+| Security Hardening (Mar 2026) | Path + transport controls | Attachment path guards now enforce separator-safe base checks (`base + path.sep`) across API/channel code paths; middleware matcher includes `/api/channels/:path*` for global rate limiting with explicit webhook JWT bypass logic; `Strict-Transport-Security` is enabled globally. |
+| Performance Hardening (Mar 2026) | I/O + query + stream tuning | Attachment API now streams files (`createReadStream`) instead of `readFileSync`; `searchKnowledge()` now applies `LIMIT 100`; FS tools use async `fs/promises` for read/write/stat/delete/search paths; `/api/logs/stream` polling interval increased from 1000ms to 2000ms. |
 | Runtime | Node.js | v20+ (LTS). Tested on x86-64 and ARM64. |
 | Language | TypeScript | v5.x, Strict Mode |
 | Database | SQLite | `better-sqlite3` — zero-config, single-file persistence. **Application cache** (`src/lib/cache.ts`) — in-memory write-through cache with 60s TTL and explicit invalidation for LLM providers, tool policies, user records, profiles, auth lookups (by-email/by-sub with 5-min TTL), channels, auth providers, and MCP servers (decrypted, per-user where applicable) to avoid redundant synchronous DB queries on every request. **Provider instance cache** (`src/lib/llm/orchestrator.ts`) — module-level Map keyed by config hash with 10s TTL; avoids re-constructing SDK clients on every chat request. **Embedding result cache** (`src/lib/llm/embeddings.ts`) — LRU Map keyed by SHA-256 text hash with 1-hour TTL, max 500 entries; eliminates redundant embedding API calls (100-500 ms each). |

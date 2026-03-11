@@ -372,7 +372,8 @@ function resolveAttachmentPath(storagePath: string): string {
     .replace(/^\.\/+/, "")
     .replace(/^\/+/, "");
   const absolute = path.resolve(DATA_DIR, normalized);
-  if (!absolute.startsWith(DATA_DIR)) {
+  // Guard with separator to prevent prefix-confusion (e.g. DATA_DIR + ".evil/")
+  if (!absolute.startsWith(DATA_DIR + path.sep)) {
     throw new Error("Invalid attachment path");
   }
   return absolute;

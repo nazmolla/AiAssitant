@@ -46,6 +46,7 @@ const nextConfig = {
             ].join('; '),
           },
           { key: 'X-DNS-Prefetch-Control', value: 'off' },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
         ],
       },
     ];

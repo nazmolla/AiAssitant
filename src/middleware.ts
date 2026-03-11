@@ -55,6 +55,13 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // --- Inbound channel webhooks use their own secret-based auth ---
+  // They must still pass rate-limiting (above) but do not carry a JWT session.
+  const WEBHOOK_PATTERN = /^\/api\/channels\/[^/]+\/webhook\/?$/;
+  if (WEBHOOK_PATTERN.test(req.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
   // --- Check auth via JWT token (Edge-compatible, no DB access needed) ---
   const isApiRoute = req.nextUrl.pathname.startsWith("/api/");
 
@@ -88,5 +95,6 @@ export const config = {
     "/api/audio/:path*",
     "/api/conversation/:path*",
     "/api/notifications",
+    "/api/channels/:path*",
   ],
 };

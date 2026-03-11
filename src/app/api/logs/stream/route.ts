@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
         sendLogs(initial);
       }
 
-      pollTimer = setInterval(tick, 1000);
+      pollTimer = setInterval(tick, 2000); // 2s — halves per-client DB load vs 1s
       heartbeatTimer = setInterval(() => {
         send(toSse("heartbeat", { sinceId: cursor, ts: Date.now() }));
       }, 15000);

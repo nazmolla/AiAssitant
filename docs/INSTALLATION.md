@@ -44,7 +44,10 @@ Open [http://localhost:3000](http://localhost:3000) to access the Command Center
 
 ```bash
 npx jest --forceExit
+npm audit
 ```
+
+Expected state (Mar 2026 baseline): `npm audit` reports `found 0 vulnerabilities` and production responses include `Strict-Transport-Security`.
 
 Then open the **Dashboard** tab and verify:
 

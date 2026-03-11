@@ -22,6 +22,7 @@ All screenshots are captured from the **test environment**.
 - Use `GET /api/logs/stream` for live SSE log events (`log`, `cursor`, `heartbeat`).
 - Access is allowed for admin sessions or API keys granted the `logs` scope.
 - Optional query params: `sinceId`, `level`, `source`.
+- Server-side log polling cadence is 2 seconds per client (updated Mar 2026 to reduce DB load under concurrent dashboards).
 - Permanent CLI consumer script: `npm run logs:stream -- <baseUrl> <apiKey> [level] [source] [sinceId]`.
 
 ## Evening Knowledge Maintenance

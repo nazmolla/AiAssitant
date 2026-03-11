@@ -6,6 +6,10 @@
 
 ## Thread And Knowledge Typing
 
+- Security boundary hardening (Mar 2026): all attachment path resolution guards now use separator-safe prefix checks (`base + path.sep`) to prevent path-prefix confusion bypasses.
+- Middleware coverage (Mar 2026): `/api/channels/:path*` is now included for rate limiting; webhook calls continue to bypass JWT checks via explicit webhook-path middleware exception and rely on route-level webhook secret validation.
+- Transport hardening (Mar 2026): global HSTS response header is enabled and attachment delivery uses stream-based responses to avoid event-loop blocking and large heap buffers.
+
 - Thread ownership and visibility are enforced by typed DB metadata (`threads.user_id`, `thread_type`, `is_interactive`) rather than title prefix conventions.
 - Channel conversations are resolved by structured identifiers (`channel_id`, `external_sender_id`) instead of string tags inside `title`.
 - Knowledge provenance is represented by `user_knowledge.source_type` and consumed directly by UI/API filtering.

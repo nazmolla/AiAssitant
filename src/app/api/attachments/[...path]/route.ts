@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { getThread } from "@/lib/db";
 import fs from "fs";
+import { stat as fsStat } from "fs/promises";
 import path from "path";
+import { Readable } from "stream";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const ALLOWED_SUBDIRS = ["attachments", "screenshots"];
@@ -30,8 +32,9 @@ export async function GET(
     resolvedPath = path.join(DATA_DIR, "attachments", relativePath);
   }
 
-  // Prevent directory traversal
-  if (!resolvedPath.startsWith(DATA_DIR)) {
+  // Prevent directory traversal — use separator to avoid prefix-confusion attacks
+  // (e.g. /data.evil would pass startsWith('/data') without the sep guard)
+  if (!resolvedPath.startsWith(DATA_DIR + path.sep)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -53,7 +56,12 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const buffer = fs.readFileSync(resolvedPath);
+  // Guard against serving directories
+  const fileStat = await fsStat(resolvedPath);
+  if (!fileStat.isFile()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const ext = path.extname(resolvedPath).toLowerCase();
 
   const mimeMap: Record<string, string> = {
@@ -82,9 +90,14 @@ export async function GET(
   // Sanitize filename for Content-Disposition header to prevent header injection
   const safeFilename = path.basename(resolvedPath).replace(/["\r\n]/g, "_");
 
-  return new NextResponse(buffer, {
+  // Stream the file — avoids loading large files entirely into heap memory
+  const nodeStream = fs.createReadStream(resolvedPath);
+  const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+
+  return new NextResponse(webStream, {
     headers: {
       "Content-Type": contentType,
+      "Content-Length": String(fileStat.size),
       "Content-Disposition": `inline; filename="${safeFilename}"`,
       "Cache-Control": "private, max-age=3600",
       "X-Content-Type-Options": "nosniff",
