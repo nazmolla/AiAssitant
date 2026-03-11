@@ -1,0 +1,71 @@
+name: "Feature request"
+description: "Use this format for all new implementation requests."
+title: "feat: <short feature summary>"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Feature Request
+
+        Use this template exactly to keep issue quality consistent.
+
+  - type: textarea
+    id: problem_description
+    attributes:
+      label: Description
+      description: Describe what is needed and why.
+      placeholder: |
+        Allow users to add multiple email addresses to their account. When the agent receives messages from any registered address, it should map them to the same user.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use Case
+      description: Real-world scenario(s) this feature solves.
+      placeholder: |
+        User has multiple email accounts (personal/work/freelance) and wants the system to treat all of them as the same identity.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Provide a numbered checklist of outcomes.
+      placeholder: |
+        1. Database schema includes required table/columns/indexes.
+        2. Auth lookup resolves primary + secondary identity records.
+        3. Core runtime flows support the new behavior.
+        4. UI supports management of the new data.
+        5. API endpoints support CRUD with proper authorization.
+        6. Unit/integration tests cover key paths.
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical_notes
+    attributes:
+      label: Technical Notes
+      description: Constraints, compatibility notes, implementation hints.
+      placeholder: |
+        - Keep backward compatibility for existing data.
+        - Define any ownership/verification rules.
+        - Note caching or performance considerations.
+        - Call out any migration needs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_considerations
+    attributes:
+      label: Test Considerations
+      description: List unit/integration/component validation expected before merge.
+      placeholder: |
+        - Unit tests for lookup and data operations.
+        - Integration tests for API routes and auth behavior.
+        - Component tests for relevant UI flows.
+    validations:
+      required: true

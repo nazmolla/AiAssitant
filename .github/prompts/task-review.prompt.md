@@ -20,6 +20,7 @@ Review checklist:
 
 2. Workflow compliance
 - Confirm required sequence was followed for this repo:
+  0) create issue with Feature Request or Bug Report template sections ((Feature Request or Bug Report), Use Case, Acceptance Criteria, Technical Notes, Test Considerations)
   1) implement
   2) tests
   3) npm audit

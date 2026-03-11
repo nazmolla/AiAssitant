@@ -36,6 +36,16 @@
 	- Full problem/feature description
 	- Clear acceptance criteria
 	- Explicit test considerations (unit/integration/component scope and expected validation)
+- Issue format is mandatory and must follow one of the repository templates:
+	- **Feature Request template** (same structure as issue #82) for new features
+	- **Bug Report template** for fixes/regressions
+	- Both templates must include the same core structure:
+	- `Feature Request` **or** `Bug Report`
+	- `Use Case`
+	- `Acceptance Criteria` (numbered checklist)
+	- `Technical Notes`
+	- `Test Considerations`
+- Do not use free-form issue bodies when opening new work items.
 - Do not begin code changes until the issue is created and referenced in the workflow.
 
 ## Architecture Map (Start Here)

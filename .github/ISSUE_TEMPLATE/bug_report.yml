@@ -1,0 +1,69 @@
+name: "Bug report"
+description: "Use this format for all bug fixes and regressions."
+title: "fix: <short bug summary>"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Bug Report
+
+        Use this template exactly to keep issue quality consistent.
+
+  - type: textarea
+    id: bug_description
+    attributes:
+      label: Description
+      description: Describe the bug and expected behavior.
+      placeholder: |
+        The scheduler UI shows inconsistent local time formatting across sections. Expected all timestamps to follow the signed-in user's timezone settings.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use Case
+      description: Explain who is affected and when this occurs.
+      placeholder: |
+        Admin users reviewing schedules and runs need consistent local timestamps to avoid operational mistakes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Provide a numbered checklist of outcomes.
+      placeholder: |
+        1. Root cause is identified and fixed.
+        2. Affected flows display correct behavior end-to-end.
+        3. No regressions introduced in adjacent areas.
+        4. Relevant tests cover the fix.
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical_notes
+    attributes:
+      label: Technical Notes
+      description: Root-cause notes, constraints, migration/risk details.
+      placeholder: |
+        - Identify root cause location(s).
+        - Note backward-compatibility impact.
+        - Call out performance/security considerations.
+        - Mention any one-time cleanup or migration.
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_considerations
+    attributes:
+      label: Test Considerations
+      description: List unit/integration/component checks required before merge.
+      placeholder: |
+        - Unit tests for fixed logic paths.
+        - Integration tests for route/service behavior.
+        - Component tests for affected UI behavior.
+    validations:
+      required: true
