@@ -46,12 +46,15 @@ export abstract class BatchJob {
   abstract readonly defaultName: string;
   abstract readonly defaultTriggerType: "cron" | "interval" | "once";
   abstract readonly defaultTriggerExpr: string;
-  abstract readonly parameterDefinitions: BatchJobParameterDefinition[];
 
   protected abstract createDefaultTasks(parameters: Record<string, string>): BatchJobSubTaskTemplate[];
 
+  getParameterDefinitions(): BatchJobParameterDefinition[] {
+    return [];
+  }
+
   build(input: BatchJobBuildInput): BatchJobBuildResult {
-    const parameters = this.withDefaults(input.parameters || {});
+    const parameters = input.parameters || {};
     const tasks = input.tasks && input.tasks.length > 0 ? input.tasks : this.createDefaultTasks(parameters);
 
     return {
@@ -64,16 +67,6 @@ export abstract class BatchJob {
       tasks,
     };
   }
-
-  private withDefaults(input: Record<string, string>): Record<string, string> {
-    const next: Record<string, string> = { ...input };
-    for (const def of this.parameterDefinitions) {
-      if (!next[def.key] && def.defaultValue !== undefined) {
-        next[def.key] = def.defaultValue;
-      }
-    }
-    return next;
-  }
 }
 
 class ProactiveBatchJob extends BatchJob {
@@ -81,11 +74,8 @@ class ProactiveBatchJob extends BatchJob {
   readonly defaultName = "Proactive Batch";
   readonly defaultTriggerType = "interval" as const;
   readonly defaultTriggerExpr = "every:10:minute";
-  readonly parameterDefinitions: BatchJobParameterDefinition[] = [
-    { key: "severity", label: "Minimum Severity", type: "select", options: ["low", "medium", "high", "disaster"], defaultValue: "high" },
-  ];
 
-  protected createDefaultTasks(parameters: Record<string, string>): BatchJobSubTaskTemplate[] {
+  protected createDefaultTasks(_parameters: Record<string, string>): BatchJobSubTaskTemplate[] {
     return [
       {
         task_key: "scan",
@@ -94,7 +84,6 @@ class ProactiveBatchJob extends BatchJob {
         execution_mode: "sync",
         sequence_no: 0,
         enabled: 1,
-        config_json: { severity: parameters.severity || "high" },
       },
     ];
   }
@@ -105,9 +94,12 @@ class KnowledgeBatchJob extends BatchJob {
   readonly defaultName = "Knowledge Maintenance Batch";
   readonly defaultTriggerType = "interval" as const;
   readonly defaultTriggerExpr = "every:1:hour";
-  readonly parameterDefinitions: BatchJobParameterDefinition[] = [
-    { key: "pollSeconds", label: "Poll Seconds", type: "number", defaultValue: "60" },
-  ];
+
+  override getParameterDefinitions(): BatchJobParameterDefinition[] {
+    return [
+      { key: "pollSeconds", label: "Poll Seconds", type: "number", defaultValue: "60" },
+    ];
+  }
 
   protected createDefaultTasks(parameters: Record<string, string>): BatchJobSubTaskTemplate[] {
     return [
@@ -129,9 +121,12 @@ class CleanupBatchJob extends BatchJob {
   readonly defaultName = "Log Cleanup Batch";
   readonly defaultTriggerType = "interval" as const;
   readonly defaultTriggerExpr = "every:1:day";
-  readonly parameterDefinitions: BatchJobParameterDefinition[] = [
-    { key: "logLevel", label: "Log Level", type: "select", options: ["verbose", "info", "warning", "error"], defaultValue: "warning" },
-  ];
+
+  override getParameterDefinitions(): BatchJobParameterDefinition[] {
+    return [
+      { key: "logLevel", label: "Log Level", type: "select", options: ["verbose", "info", "warning", "error"], defaultValue: "warning" },
+    ];
+  }
 
   protected createDefaultTasks(parameters: Record<string, string>): BatchJobSubTaskTemplate[] {
     return [
@@ -164,9 +159,12 @@ class EmailBatchJob extends BatchJob {
   readonly defaultName = "Email Reading Batch";
   readonly defaultTriggerType = "interval" as const;
   readonly defaultTriggerExpr = "every:5:minute";
-  readonly parameterDefinitions: BatchJobParameterDefinition[] = [
-    { key: "maxMessages", label: "Max Messages Per Run", type: "number", defaultValue: "25" },
-  ];
+
+  override getParameterDefinitions(): BatchJobParameterDefinition[] {
+    return [
+      { key: "maxMessages", label: "Max Messages Per Run", type: "number", defaultValue: "25" },
+    ];
+  }
 
   protected createDefaultTasks(parameters: Record<string, string>): BatchJobSubTaskTemplate[] {
     return [
@@ -198,7 +196,7 @@ export function listBatchJobs(): Array<{ type: BatchJobType; defaultName: string
   return Object.values(REGISTRY).map((job) => ({
     type: job.type,
     defaultName: job.defaultName,
-    parameterDefinitions: job.parameterDefinitions,
+    parameterDefinitions: job.getParameterDefinitions(),
     defaultTriggerType: job.defaultTriggerType,
     defaultTriggerExpr: job.defaultTriggerExpr,
   }));

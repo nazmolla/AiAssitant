@@ -129,7 +129,7 @@ export function SchedulerConfig() {
   }>>([]);
 
   const batchParameterDefs: Record<BatchJobType, Array<{ key: string; label: string; type: "text" | "number" | "select"; options?: string[]; defaultValue?: string }>> = {
-    proactive: [{ key: "severity", label: "Minimum Severity", type: "select", options: ["low", "medium", "high", "disaster"], defaultValue: "high" }],
+    proactive: [],
     knowledge: [{ key: "pollSeconds", label: "Poll Seconds", type: "number", defaultValue: "60" }],
     cleanup: [{ key: "logLevel", label: "Log Level", type: "select", options: ["verbose", "info", "warning", "error"], defaultValue: "warning" }],
     email: [{ key: "maxMessages", label: "Max Messages Per Run", type: "number", defaultValue: "25" }],
@@ -213,9 +213,12 @@ export function SchedulerConfig() {
       const nextSchedules = ((schedulesJson as PaginatedResponse<SchedulerScheduleRecord>).data || []).slice(0, 20);
       setSchedules(nextSchedules);
 
-      if (!selectedScheduleId && nextSchedules.length > 0) {
-        setSelectedScheduleId(nextSchedules[0].id);
-      }
+      setSelectedScheduleId((prev) => {
+        if (nextSchedules.length === 0) return null;
+        if (!prev) return nextSchedules[0].id;
+        const stillExists = nextSchedules.some((schedule) => schedule.id === prev);
+        return stillExists ? prev : nextSchedules[0].id;
+      });
     } catch {
       setConsoleMessage("Failed to load scheduler console.");
     } finally {
@@ -466,46 +469,6 @@ export function SchedulerConfig() {
     setBatchModalOpen(true);
   };
 
-  const openBatchEditModal = () => {
-    if (!selectedScheduleDetail?.schedule) {
-      setConsoleMessage("Select a schedule first, then open batch editor.");
-      return;
-    }
-    const schedule = selectedScheduleDetail.schedule;
-    const inferredType: BatchJobType = schedule.handler_type?.includes("knowledge")
-      ? "knowledge"
-      : schedule.handler_type?.includes("email") || schedule.schedule_key.includes("email")
-        ? "email"
-      : schedule.handler_type?.includes("cleanup") || schedule.schedule_key.includes("cleanup")
-        ? "cleanup"
-        : "proactive";
-
-    setBatchModalType(inferredType);
-    setDetailName(schedule.name);
-    setDetailTriggerType(schedule.trigger_type as "cron" | "interval" | "once");
-    setDetailTriggerExpr(schedule.trigger_expr);
-
-    setDetailTasks(selectedScheduleDetail.tasks.map((t) => {
-      let config: Record<string, unknown> = {};
-      try { config = t.config_json ? JSON.parse(t.config_json) as Record<string, unknown> : {}; } catch { config = {}; }
-      return {
-        id: t.id,
-        task_key: t.task_key,
-        name: t.name,
-        handler_name: t.handler_name,
-        task_type: (config.task_type as "handler" | "prompt") || (t.handler_name === "agent.prompt" ? "prompt" : "handler"),
-        prompt: typeof config.prompt === "string" ? config.prompt : "",
-        execution_mode: (t.execution_mode as "sync" | "async" | "fanout") || "sync",
-        sequence_no: t.sequence_no,
-        enabled: t.enabled,
-        depends_on_task_key: null,
-      };
-    }));
-
-    setBatchParameters({});
-    setBatchModalOpen(true);
-  };
-
   const saveBatchModal = async () => {
     setSavingDetail(true);
     setConsoleMessage(null);
@@ -606,11 +569,6 @@ export function SchedulerConfig() {
 
   useEffect(() => {
     loadConsole();
-    const timer = window.setInterval(() => {
-      loadConsole();
-    }, 30000);
-    return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once polling interval; adding loadConsole would reset timer on every render
   }, []);
 
   useEffect(() => {
@@ -1139,7 +1097,6 @@ export function SchedulerConfig() {
               <button className="text-primary underline" onClick={() => openBatchCreateModal("knowledge")}>New Knowledge Maintenance</button>
               <button className="text-primary underline" onClick={() => openBatchCreateModal("cleanup")}>New Log Cleanup / Maintenance</button>
               <button className="text-primary underline" onClick={() => openBatchCreateModal("email")}>New Email Reading Batch</button>
-              <button className="text-primary underline" onClick={openBatchEditModal}>Edit Selected Scheduler</button>
             </div>
           </div>
         </CardContent>
