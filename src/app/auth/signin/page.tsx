@@ -78,7 +78,7 @@ export default function SignInPage() {
                   key={provider.id}
                   fullWidth
                   variant="outlined"
-                  onClick={() => signIn(provider.id, { callbackUrl: `${window.location.origin}/` })}
+                  onClick={() => signIn(provider.id, { callbackUrl: "/" })}
                 >
                   Sign in with {provider.name}
                 </Button>

@@ -109,7 +109,7 @@ export default function HomePage() {
   }, [router]);
 
   const signOutFromMenu = useCallback(() => {
-    signOut({ callbackUrl: `${window.location.origin}/auth/signin` });
+    signOut({ callbackUrl: "/auth/signin" });
   }, []);
   const [perms, setPerms] = useState<Record<string, number>>({
     chat: 1, knowledge: 1, dashboard: 1,
