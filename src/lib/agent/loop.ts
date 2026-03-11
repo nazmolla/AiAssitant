@@ -553,6 +553,16 @@ export async function runAgentLoop(
     onStatus?.({ step: "Generating response", detail: `Sending to ${orchestration.providerLabel}${iterations > 1 ? ` (iteration ${iterations})` : ""}` });
     let response: ChatResponse;
     try {
+      if (tools.length > 0 && iterations === 1) {
+        // Log tool count on first iteration for debugging
+        const { addLog } = await import("@/lib/db/queries");
+        addLog({
+          level: "debug",
+          source: "agent",
+          message: `Invoking ${orchestration.providerLabel} with ${tools.length} tools`,
+          metadata: JSON.stringify({ toolNames: tools.map((t) => t.name).slice(0, 20) }),
+        });
+      }
       response = await provider.chat(
         chatMessages,
         tools.length > 0 ? tools : undefined,
