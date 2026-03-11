@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/guard";
 import { addLog, createSchedulerSchedule, listSchedulerSchedulesPaginated, updateSchedulerTaskGraph } from "@/lib/db";
 import { getBatchJob, type BatchJobType, type BatchJobSubTaskTemplate } from "@/lib/scheduler/batch-jobs";
+import { computeSchedulerNextRunAt } from "@/lib/scheduler/next-run";
 
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin();
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
 
   const job = getBatchJob(batchType);
   const built = job.build({ name, trigger_type: triggerType, trigger_expr: triggerExpr, parameters, tasks });
+  const nextRunAt = computeSchedulerNextRunAt(built.trigger_type, built.trigger_expr);
 
   const schedule = createSchedulerSchedule({
     schedule_key: built.schedule_key,
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
     owner_type: "user",
     owner_id: auth.user.id,
     status: "active",
+    next_run_at: nextRunAt,
   });
 
   updateSchedulerTaskGraph(

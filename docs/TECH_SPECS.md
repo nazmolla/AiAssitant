@@ -221,6 +221,8 @@ CREATE INDEX idx_notifications_created ON notifications (created_at);
 > **Scheduler Console UX**: Admin scheduler operations in Settings now follow a progressive flow: **Header Tasks Grid** (top-level schedules only), **Inline Expansion** (selected header shows child tasks + recent runs), and **Focused Header View** (full child-task table, full run history, and task-run log links).
 >
 > **Batch scheduler modal and multi-instance model**: Batch scheduling now uses a dedicated modal editor with three collapsible sections (**Parameters**, **Recurrence**, **Sub tasks**) and top-end **OK/Cancel** actions (Escape closes the modal). Backend creation is now explicit via `POST /api/scheduler/schedules` with typed batch jobs (`proactive`, `knowledge`, `cleanup`) so multiple independent instances per batch type are supported.
+
+> **Recurring schedule due-time seeding**: Scheduler create/update APIs now compute and persist `next_run_at` for active recurring schedules (`interval` currently supported), including recurrence edits and re-activation updates. This prevents recurring batches from stalling due to a missing due timestamp.
 >
 > **Dedicated email reading batch**: Incoming email processing is now schedulable as an independent batch type (`email`) using handler `system.email.read_incoming`. Email polling/auto-response is removed from the regular proactive scan path so it can be tuned and scheduled separately.
 >

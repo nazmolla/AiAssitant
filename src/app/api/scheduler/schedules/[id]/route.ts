@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/guard";
 import { addLog, deleteSchedulerScheduleById, getSchedulerScheduleById, getSchedulerTasksForSchedule, listSchedulerRunsBySchedule, updateSchedulerScheduleById } from "@/lib/db";
+import { computeSchedulerNextRunAt } from "@/lib/scheduler/next-run";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -52,11 +53,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "status must be one of active|paused|archived" }, { status: 400 });
   }
 
+  const effectiveTriggerType = (triggerType !== undefined ? String(triggerType) : schedule.trigger_type) as "cron" | "interval" | "once";
+  const effectiveTriggerExpr = triggerExpr !== undefined ? triggerExpr : schedule.trigger_expr;
+  const effectiveStatus = (status !== undefined ? String(status) : schedule.status) as "active" | "paused" | "archived";
+
+  const recurrenceWasUpdated = triggerType !== undefined || triggerExpr !== undefined;
+  const activatedByUpdate = status !== undefined && String(status) === "active";
+  const shouldRecompute = recurrenceWasUpdated || activatedByUpdate;
+
+  let nextRunAt: string | null | undefined;
+  if (shouldRecompute) {
+    nextRunAt = effectiveStatus === "active"
+      ? computeSchedulerNextRunAt(effectiveTriggerType, effectiveTriggerExpr)
+      : schedule.next_run_at;
+  }
+
   updateSchedulerScheduleById(schedule.id, {
     name,
     trigger_type: triggerType as "cron" | "interval" | "once" | undefined,
     trigger_expr: triggerExpr,
     status: status as "active" | "paused" | "archived" | undefined,
+    next_run_at: nextRunAt,
   });
 
   const updated = getSchedulerScheduleById(schedule.id);

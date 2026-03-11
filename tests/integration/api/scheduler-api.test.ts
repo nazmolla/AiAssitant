@@ -142,6 +142,17 @@ describe("scheduler API endpoints", () => {
     expect(body2.schedule_id).toBeDefined();
     expect(body1.schedule_id).not.toBe(body2.schedule_id);
     expect(body1.schedule_key).not.toBe(body2.schedule_key);
+
+    const db = getDb();
+    const createdOne = db
+      .prepare("SELECT next_run_at FROM scheduler_schedules WHERE id = ?")
+      .get(body1.schedule_id) as { next_run_at: string | null } | undefined;
+    const createdTwo = db
+      .prepare("SELECT next_run_at FROM scheduler_schedules WHERE id = ?")
+      .get(body2.schedule_id) as { next_run_at: string | null } | undefined;
+
+    expect(createdOne?.next_run_at).toBeTruthy();
+    expect(createdTwo?.next_run_at).toBeTruthy();
   });
 
   test("POST schedules accepts dedicated email batch type", async () => {
@@ -230,6 +241,11 @@ describe("scheduler API endpoints", () => {
   });
 
   test("PUT schedule updates schedule metadata", async () => {
+    const db = getDb();
+    const before = db
+      .prepare("SELECT next_run_at FROM scheduler_schedules WHERE id = ?")
+      .get("sched-api-1") as { next_run_at: string | null };
+
     const req = new NextRequest("http://localhost/api/scheduler/schedules/sched-api-1", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -245,6 +261,12 @@ describe("scheduler API endpoints", () => {
     const body = await res.json();
     expect(body.schedule.name).toBe("API Test Schedule Updated");
     expect(body.schedule.trigger_expr).toBe("every:2:hour");
+
+    const after = db
+      .prepare("SELECT next_run_at FROM scheduler_schedules WHERE id = ?")
+      .get("sched-api-1") as { next_run_at: string | null };
+    expect(after.next_run_at).toBeTruthy();
+    expect(after.next_run_at).not.toBe(before.next_run_at);
   });
 
   test("tasks patch supports replace mode for removals", async () => {
