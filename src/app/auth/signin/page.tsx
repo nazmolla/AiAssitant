@@ -90,7 +90,7 @@ export default function SignInPage() {
               <Typography variant="caption" color="text.disabled">or use local credentials</Typography>
             </Divider>
           )}
-          <form style={{ display: "flex", flexDirection: "column", gap: 12 }} onSubmit={handleLocalSubmit}>
+          <form method="post" style={{ display: "flex", flexDirection: "column", gap: 12 }} onSubmit={handleLocalSubmit}>
             <TextField
               type="email"
               name="email"
