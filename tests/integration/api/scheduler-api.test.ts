@@ -413,3 +413,141 @@ describe("scheduler API endpoints", () => {
     expect(taskCount.c).toBe(0);
   });
 });
+
+describe("scheduler API: trigger with owner binding (regression for #103, #104)", () => {
+  let testUserId: string;
+
+  beforeAll(() => {
+    testUserId = seedTestUser({ email: "target-user@test.com", role: "user" });
+  });
+
+  test("trigger job scout batch without owner requires user_id parameter", async () => {
+    // Create unowned Job Scout schedule (mimics production seeded behavior)
+    const db = getDb();
+    db.prepare(
+      `INSERT INTO scheduler_schedules
+        (id, schedule_key, name, owner_type, owner_id, handler_type, trigger_type, trigger_expr,
+         timezone, status, max_concurrency, misfire_policy, next_run_at)
+       VALUES (?, ?, ?, 'system', NULL, 'workflow.job_scout', 'interval', 'every:1:day',
+               'UTC', 'active', 1, 'run_immediately', datetime('now', '+1 day'))`
+    ).run("sched-unowned-scout", "test.unowned_scout", "Job Scout Unowned");
+
+    db.prepare(
+      `INSERT INTO scheduler_tasks
+        (id, schedule_id, task_key, name, handler_name, execution_mode, sequence_no, enabled, config_json)
+       VALUES (?, ?, ?, ?, ?, 'sync', ?, 1, ?)`
+    ).run(
+      "task-unowned-search",
+      "sched-unowned-scout",
+      "search",
+      "Search Listings",
+      "workflow.job_scout.search",
+      0,
+      JSON.stringify({}),
+    );
+
+    // Trigger WITHOUT user_id should fail with 400
+    const triggerNoUserIdRes = await POST_TRIGGER(
+      new NextRequest("http://localhost/api/scheduler/schedules/sched-unowned-scout/trigger", { method: "POST" }),
+      { params: Promise.resolve({ id: "sched-unowned-scout" }) }
+    );
+    expect(triggerNoUserIdRes.status).toBe(400);
+    const errorBody = await triggerNoUserIdRes.json();
+    expect(errorBody.error).toContain("user_id");
+    expect(errorBody.error).toContain("Job Scout");
+  });
+
+  test("trigger job scout batch with user_id binds owner to specified user, not admin", async () => {
+    const db = getDb();
+
+    // Create unowned Job Scout schedule
+    db.prepare(
+      `INSERT INTO scheduler_schedules
+        (id, schedule_key, name, owner_type, owner_id, handler_type, trigger_type, trigger_expr,
+         timezone, status, max_concurrency, misfire_policy, next_run_at)
+       VALUES (?, ?, ?, 'system', NULL, 'workflow.job_scout', 'interval', 'every:1:day',
+               'UTC', 'active', 1, 'run_immediately', datetime('now', '+1 day'))`
+    ).run("sched-owned-scout", "test.owned_scout", "Job Scout With User Binding");
+
+    db.prepare(
+      `INSERT INTO scheduler_tasks
+        (id, schedule_id, task_key, name, handler_name, execution_mode, sequence_no, enabled, config_json)
+       VALUES (?, ?, ?, ?, ?, 'sync', ?, 1, ?)`
+    ).run(
+      "task-owned-search",
+      "sched-owned-scout",
+      "search",
+      "Search Listings",
+      "workflow.job_scout.search",
+      0,
+      JSON.stringify({}),
+    );
+
+    // Trigger WITH user_id should succeed and bind owner
+    const triggerRes = await POST_TRIGGER(
+      new NextRequest("http://localhost/api/scheduler/schedules/sched-owned-scout/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: testUserId }),
+      }),
+      { params: Promise.resolve({ id: "sched-owned-scout" }) }
+    );
+    expect(triggerRes.status).toBe(200);
+    const triggerBody = await triggerRes.json();
+    expect(triggerBody.run_id).toBeDefined();
+
+    // Verify schedule owner_id is now set to testUserId, NOT the admin
+    const updatedSchedule = db
+      .prepare("SELECT owner_id, owner_type FROM scheduler_schedules WHERE id = ?")
+      .get("sched-owned-scout") as { owner_id: string; owner_type: string };
+
+    expect(updatedSchedule.owner_id).toBe(testUserId);
+    expect(updatedSchedule.owner_id).not.toBe(adminId); // Must NOT be the triggering admin
+    expect(updatedSchedule.owner_type).toBe("user");
+  });
+
+  test("trigger pre-owned schedule ignores user_id parameter (backward compatibility)", async () => {
+    const db = getDb();
+
+    // Create schedule with admin as owner
+    db.prepare(
+      `INSERT INTO scheduler_schedules
+        (id, schedule_key, name, owner_type, owner_id, handler_type, trigger_type, trigger_expr,
+         timezone, status, max_concurrency, misfire_policy, next_run_at)
+       VALUES (?, ?, ?, 'user', ?, 'workflow.job_scout', 'interval', 'every:1:day',
+               'UTC', 'active', 1, 'run_immediately', datetime('now', '+1 day'))`
+    ).run("sched-preowned-scout", "test.preowned_scout", "Job Scout Pre-Owned", adminId);
+
+    db.prepare(
+      `INSERT INTO scheduler_tasks
+        (id, schedule_id, task_key, name, handler_name, execution_mode, sequence_no, enabled, config_json)
+       VALUES (?, ?, ?, ?, ?, 'sync', ?, 1, ?)`
+    ).run(
+      "task-preowned-search",
+      "sched-preowned-scout",
+      "search",
+      "Search Listings",
+      "workflow.job_scout.search",
+      0,
+      JSON.stringify({}),
+    );
+
+    // Trigger WITH user_id should succeed but NOT rebind owner (already has owner)
+    const triggerRes = await POST_TRIGGER(
+      new NextRequest("http://localhost/api/scheduler/schedules/sched-preowned-scout/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: testUserId }),
+      }),
+      { params: Promise.resolve({ id: "sched-preowned-scout" }) }
+    );
+    expect(triggerRes.status).toBe(200);
+
+    // Verify owner_id is still adminId (unchanged, not rebound to testUserId)
+    const schedule = db
+      .prepare("SELECT owner_id FROM scheduler_schedules WHERE id = ?")
+      .get("sched-preowned-scout") as { owner_id: string };
+
+    expect(schedule.owner_id).toBe(adminId); // Must remain unchanged
+  });
+});

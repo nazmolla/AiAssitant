@@ -343,3 +343,45 @@ describe("scheduler engine: log detail quality", () => {
     expect(warnMsgs.some((m) => m.includes("step_b") && m.includes('"failed"'))).toBe(true);
   });
 });
+
+describe("scheduler engine: owner_id validation (regression for #103)", () => {
+  test("job scout fails with clear error when schedule has no owner_id", async () => {
+    // Replicate production seeded behavior: system owner with NULL owner_id
+    getDb()
+      .prepare(
+        `INSERT INTO scheduler_schedules
+           (id, schedule_key, name, owner_type, owner_id, handler_type, trigger_type, trigger_expr,
+            timezone, status, max_concurrency, misfire_policy, next_run_at)
+         VALUES (?, ?, ?, 'system', NULL, 'workflow.job_scout', 'interval', 'every:1:hour',
+                 'UTC', 'active', 1, 'run_immediately', datetime('now', '+1 hour'))`
+      )
+      .run("sched-no-owner-job-scout", "test.no_owner_job_scout", "Job Scout No Owner");
+
+    getDb()
+      .prepare(
+        `INSERT INTO scheduler_tasks
+           (id, schedule_id, task_key, name, handler_name, execution_mode,
+            sequence_no, enabled, depends_on_task_id, config_json)
+         VALUES (?, ?, ?, ?, ?, 'sync', ?, 1, NULL, ?)`
+      )
+      .run(
+        "task-no-owner-search",
+        "sched-no-owner-job-scout",
+        "search",
+        "Search Listings",
+        "workflow.job_scout.search",
+        0,
+        JSON.stringify({}),
+      );
+
+    const run = createSchedulerRun("sched-no-owner-job-scout", "api");
+    createSchedulerTaskRun(run.id, "task-no-owner-search");
+
+    await runUnifiedSchedulerEngineTickForTests();
+
+    const taskRun = getSchedulerTaskRunsForRun(run.id)[0];
+    expect(taskRun.status).toBe("failed");
+    expect(taskRun.error_message).toContain("Missing userId for job scout step");
+    expect(taskRun.error_message).toContain("search");
+  });
+});
