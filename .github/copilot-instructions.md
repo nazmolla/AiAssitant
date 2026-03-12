@@ -68,6 +68,43 @@
 - Targeted: `npm run test:unit`, `npm run test:integration`, `npx jest --selectProjects component --forceExit`.
 - Component tests run in `jsdom` with `tests/helpers/setup-jsdom.ts`; preserve existing mocks when updating UI.
 
+## Mandatory Interaction Test Coverage (Non-Negotiable)
+
+Every code change that touches a UI component MUST include or update **interaction-level tests** — not just render-or-heading tests. This rule was formally adopted after test coverage analysis (#105) revealed that core components (`chat-area.tsx`, `input-bar.tsx`, `thread-sidebar.tsx`) had zero tests, meaning any regression in the core chat flow would pass the full test suite undetected.
+
+### Rules
+
+1. **New component = new test file.** Any new file in `src/components/` requires a corresponding test file in `tests/component/`. The test file MUST include at minimum:
+   - One test confirming the component renders without throwing
+   - One test for each user-interactive element (button, input, form) confirming it calls the expected callback with the expected arguments
+   - One test for any conditional rendering (empty state, loading state, disabled state)
+
+2. **Modified component = updated tests.** When editing an existing component file, check whether the modified code path is covered by interaction tests. If not, add tests before committing.
+
+3. **Navigation stubs are NOT sufficient.** `full-navigation.test.tsx` replaces every component with `<div data-testid="...">` stubs. Counting a component as "tested" because it appears as a stub in navigation tests is explicitly incorrect. Real component tests must render the actual component.
+
+4. **What qualifies as an interaction test:**
+   - `fireEvent.click(button)` → verify callback was called with correct args
+   - `fireEvent.change(input, { target: { value: 'text' } })` → verify `onInputChange` called
+   - `fireEvent.keyDown(field, { key: 'Enter' })` → verify `onSendMessage` called
+   - Asserting a button is `disabled` in a given state
+   - Asserting conditional content appears/disappears based on props
+
+5. **What does NOT count as an interaction test:**
+   - `expect(screen.getByRole('heading', { name: '...' })).toBeInTheDocument()` alone
+   - `expect(component).not.toThrow()` alone
+   - Any test where all child components are mocked as stubs before any assertion
+
+6. **Approval / HITL flows must be tested.** Any component rendering approval buttons (Approve / Deny for tool calls) MUST have tests for both approve and reject paths, verifying the callback is called with correct `action` argument.
+
+7. **Form validation must be tested.** Any form with required fields must have a test confirming submit is blocked when fields are missing, and another confirming submit proceeds when all fields are valid.
+
+### Enforcement
+
+- In the Request-End Checklist, "update tests" means updating **interaction-level tests**, not just render tests.
+- If a PR removes interactions (e.g., changes a button to a link), the test that verified the old interaction MUST be updated to cover the new behaviour.
+- Test files for components with zero interaction coverage pre-dating this rule must be created when that component is next modified.
+
 ## Copilot Workflow Enforcement (Mandatory)
 - Before any final "done" response, run an internal self-review using:
 	- `.github/prompts/task-review.prompt.md`
