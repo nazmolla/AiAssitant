@@ -2738,6 +2738,8 @@ export function updateSchedulerScheduleById(scheduleId: string, args: {
   trigger_type?: "cron" | "interval" | "once";
   trigger_expr?: string;
   status?: "active" | "paused" | "archived";
+  owner_type?: string;
+  owner_id?: string | null;
   next_run_at?: string | null;
 }): void {
   getDb().prepare(
@@ -2746,6 +2748,8 @@ export function updateSchedulerScheduleById(scheduleId: string, args: {
          trigger_type = COALESCE(?, trigger_type),
          trigger_expr = COALESCE(?, trigger_expr),
          status = COALESCE(?, status),
+         owner_type = COALESCE(?, owner_type),
+         owner_id = COALESCE(?, owner_id),
          next_run_at = COALESCE(?, next_run_at),
          updated_at = CURRENT_TIMESTAMP
      WHERE id = ?`
@@ -2754,6 +2758,8 @@ export function updateSchedulerScheduleById(scheduleId: string, args: {
     args.trigger_type ?? null,
     args.trigger_expr ?? null,
     args.status ?? null,
+    args.owner_type ?? null,
+    args.owner_id ?? null,
     args.next_run_at === undefined ? null : args.next_run_at,
     scheduleId,
   );

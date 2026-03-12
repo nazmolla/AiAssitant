@@ -7,6 +7,7 @@ import {
   createSchedulerTaskRun,
   getSchedulerScheduleById,
   getSchedulerTasksForSchedule,
+  updateSchedulerScheduleById,
 } from "@/lib/db";
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -16,6 +17,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const schedule = getSchedulerScheduleById(id);
   if (!schedule) return NextResponse.json({ error: "Schedule not found" }, { status: 404 });
+
+  const needsOwnerBinding = schedule.handler_type === "workflow.job_scout" && !schedule.owner_id;
+  if (needsOwnerBinding) {
+    updateSchedulerScheduleById(schedule.id, { owner_type: "user", owner_id: auth.user.id });
+  }
 
   const run = createSchedulerRun(schedule.id, "api");
   const tasks = getSchedulerTasksForSchedule(schedule.id);
