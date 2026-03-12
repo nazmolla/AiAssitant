@@ -6,15 +6,7 @@
  * only after the owner approves via the UI.
  */
 
-import { getMcpManager } from "@/lib/mcp";
-import { isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
-import { isBrowserTool, executeBrowserTool } from "./browser-tools";
-import { isFsTool, executeBuiltinFsTool } from "./fs-tools";
-import { isNetworkTool, executeBuiltinNetworkTool } from "./network-tools";
-import { isEmailTool, executeBuiltinEmailTool } from "./email-tools";
-import { isFileTool, executeBuiltinFileTool } from "./file-tools";
-import { isCustomTool, executeCustomTool } from "./custom-tools";
-import { isAlexaTool, executeAlexaTool } from "./alexa-tools";
+import { getToolRegistry } from "./tool-registry";
 import {
   getToolPolicy,
   createApprovalRequest,
@@ -259,30 +251,11 @@ export async function executeWithGatekeeper(
 
   // No approval needed — execute directly
   try {
-    let result: unknown;
-    if (isBuiltinWebTool(toolCall.name)) {
-      result = await executeBuiltinWebTool(toolCall.name, toolCall.arguments);
-    } else if (isBrowserTool(toolCall.name)) {
-      result = await executeBrowserTool(toolCall.name, toolCall.arguments);
-    } else if (isFsTool(toolCall.name)) {
-      result = await executeBuiltinFsTool(toolCall.name, toolCall.arguments);
-    } else if (isNetworkTool(toolCall.name)) {
-      result = await executeBuiltinNetworkTool(toolCall.name, toolCall.arguments);
-    } else if (isEmailTool(toolCall.name)) {
-      const thread = getThread(threadId);
-      result = await executeBuiltinEmailTool(toolCall.name, toolCall.arguments, thread?.user_id ?? undefined, threadId);
-    } else if (isFileTool(toolCall.name)) {
-      result = await executeBuiltinFileTool(toolCall.name, toolCall.arguments, { threadId });
-    } else if (isAlexaTool(toolCall.name)) {
-      result = await executeAlexaTool(toolCall.name, toolCall.arguments);
-    } else if (isCustomTool(toolCall.name)) {
-      result = await executeCustomTool(toolCall.name, toolCall.arguments);
-    } else {
-      result = await getMcpManager().callTool(
-        toolCall.name,
-        toolCall.arguments
-      );
-    }
+    const result = await getToolRegistry().dispatch(
+      toolCall.name,
+      toolCall.arguments,
+      { threadId }
+    );
 
     addLog({
       level: "info",
@@ -315,29 +288,11 @@ export async function executeApprovedTool(
   threadId: string
 ): Promise<GatekeeperResult> {
   try {
-    let result: unknown;
-
-    // Route to the correct executor based on tool type
-    if (isBuiltinWebTool(toolName)) {
-      result = await executeBuiltinWebTool(toolName, args);
-    } else if (isBrowserTool(toolName)) {
-      result = await executeBrowserTool(toolName, args);
-    } else if (isFsTool(toolName)) {
-      result = await executeBuiltinFsTool(toolName, args);
-    } else if (isNetworkTool(toolName)) {
-      result = await executeBuiltinNetworkTool(toolName, args);
-    } else if (isEmailTool(toolName)) {
-      const thread = getThread(threadId);
-      result = await executeBuiltinEmailTool(toolName, args, thread?.user_id ?? undefined, threadId);
-    } else if (isFileTool(toolName)) {
-      result = await executeBuiltinFileTool(toolName, args, { threadId });
-    } else if (isAlexaTool(toolName)) {
-      result = await executeAlexaTool(toolName, args);
-    } else if (isCustomTool(toolName)) {
-      result = await executeCustomTool(toolName, args);
-    } else {
-      result = await getMcpManager().callTool(toolName, args);
-    }
+    const result = await getToolRegistry().dispatch(
+      toolName,
+      args,
+      { threadId }
+    );
 
     // Resume the thread
     updateThreadStatus(threadId, "active");

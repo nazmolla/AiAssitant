@@ -20,14 +20,14 @@ import {
   type ContentPart,
 } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
-import { BUILTIN_WEB_TOOLS, isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
-import { BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool } from "./browser-tools";
-import { BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool } from "./fs-tools";
-import { BUILTIN_NETWORK_TOOLS, isNetworkTool, executeBuiltinNetworkTool } from "./network-tools";
-import { BUILTIN_EMAIL_TOOLS, isEmailTool, executeBuiltinEmailTool } from "./email-tools";
-import { BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool } from "./file-tools";
-import { isCustomTool } from "./custom-tools";
-import { BUILTIN_ALEXA_TOOLS, isAlexaTool, executeAlexaTool } from "./alexa-tools";
+import { BUILTIN_WEB_TOOLS } from "./web-tools";
+import { BUILTIN_BROWSER_TOOLS } from "./browser-tools";
+import { BUILTIN_FS_TOOLS } from "./fs-tools";
+import { BUILTIN_NETWORK_TOOLS } from "./network-tools";
+import { BUILTIN_EMAIL_TOOLS } from "./email-tools";
+import { BUILTIN_FILE_TOOLS } from "./file-tools";
+import { BUILTIN_ALEXA_TOOLS } from "./alexa-tools";
+import { getToolRegistry } from "./tool-registry";
 import {
   addMessage,
   getThreadMessages,
@@ -995,7 +995,6 @@ async function executeToolWithPolicy(
   reasoning?: string
 ): Promise<import("./gatekeeper").GatekeeperResult> {
   const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg, getThread, findApprovalPreferenceDecision, getChannel } = await import("@/lib/db");
-  const { executeCustomTool: execCustom } = await import("./custom-tools");
   const { normalizeToolName } = await import("./discovery");
 
   // Normalize tool name — the LLM sometimes strips the "builtin." prefix
@@ -1169,34 +1168,11 @@ async function executeToolWithPolicy(
 
   // No approval needed — route to the correct executor
   try {
-    let result: unknown;
-
-    if (isBuiltinWebTool(toolCall.name)) {
-      result = await executeBuiltinWebTool(toolCall.name, toolCall.arguments);
-    } else if (isBrowserTool(toolCall.name)) {
-      result = await executeBrowserTool(toolCall.name, toolCall.arguments);
-    } else if (isFsTool(toolCall.name)) {
-      result = await executeBuiltinFsTool(toolCall.name, toolCall.arguments);
-    } else if (isNetworkTool(toolCall.name)) {
-      result = await executeBuiltinNetworkTool(toolCall.name, toolCall.arguments);
-    } else if (isEmailTool(toolCall.name)) {
-      const thread = getThread(threadId);
-      result = await executeBuiltinEmailTool(
-        toolCall.name,
-        toolCall.arguments,
-        thread?.user_id ?? undefined,
-        threadId
-      );
-    } else if (isFileTool(toolCall.name)) {
-      result = await executeBuiltinFileTool(toolCall.name, toolCall.arguments, { threadId });
-    } else if (isAlexaTool(toolCall.name)) {
-      result = await executeAlexaTool(toolCall.name, toolCall.arguments);
-    } else if (isCustomTool(toolCall.name)) {
-      result = await execCustom(toolCall.name, toolCall.arguments);
-    } else {
-      // MCP tool
-      result = await getMcpManager().callTool(toolCall.name, toolCall.arguments);
-    }
+    const result = await getToolRegistry().dispatch(
+      toolCall.name,
+      toolCall.arguments,
+      { threadId }
+    );
 
     addLog({
       level: "info",
