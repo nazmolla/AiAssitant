@@ -107,7 +107,8 @@ jest.mock("@/components/custom-tools-config", () => ({ CustomToolsConfig: () => 
 jest.mock("@/components/logging-config", () => ({ LoggingConfig: () => <div data-testid="logging-config">LoggingConfig Stub</div> }));
 jest.mock("@/components/alexa-config", () => ({ AlexaConfig: () => <div data-testid="alexa-config">AlexaConfig Stub</div> }));
 jest.mock("@/components/whisper-config", () => ({ WhisperConfig: () => <div data-testid="whisper-config">WhisperConfig Stub</div> }));
-jest.mock("@/components/scheduler-config", () => ({ SchedulerConfig: () => <div data-testid="scheduler-config">SchedulerConfig Stub</div> }));
+jest.mock("@/components/scheduler-config", () => ({ SchedulerConfig: () => <div data-testid="scheduler-config"><h3>Batch Scheduling</h3></div> }));
+jest.mock("@/components/scheduler-console", () => ({ SchedulerConsole: () => <div data-testid="scheduler-console">SchedulerConsole Stub</div> }));
 
 
 import HomePage from "@/app/[[...path]]/page";
@@ -326,9 +327,9 @@ describe("Settings Sub-Pages — open every page via chip click", () => {
 
   test("Scheduler page renders SchedulerConfig (admin only)", async () => {
     await navigateToSettings();
-    await clickSettingsChip("⏱️ Scheduler");
+    await clickSettingsChip("⏱️ Batch Scheduler");
     expect(screen.getByTestId("scheduler-config")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Proactive Scheduler" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Batch Scheduling" })).toBeInTheDocument();
   });
 });
 
@@ -679,7 +680,7 @@ describe("Permission-Gated Settings Pages", () => {
     const allChips = [
       "🤖 Providers", "📡 Channels", "🔌 MCP Servers",
       "🛡️ Tool Policies", "🔊 Alexa", "🎤 Local Whisper", "🧾 Logging",
-      "🔧 Custom Tools", "🔐 Authentication", "👥 Users", "⏱️ Scheduler",
+      "🔧 Custom Tools", "🔐 Authentication", "👥 Users", "⏱️ Batch Scheduler",
     ];
     for (const chipLabel of allChips) {
       await waitFor(() => {
@@ -852,7 +853,7 @@ describe("Settings Page Headers", () => {
     { chip: "🔧 Custom Tools", title: "Custom Tools", subtitle: "Agent-created tools" },
     { chip: "🔐 Authentication", title: "Authentication", subtitle: "Configure OAuth" },
     { chip: "👥 Users", title: "User Management", subtitle: "Manage user access" },
-    { chip: "⏱️ Scheduler", title: "Proactive Scheduler", subtitle: "Configure how often" },
+    { chip: "⏱️ Batch Scheduler", title: "Batch Scheduler", subtitle: "Configure batch job scheduling" },
   ];
 
   test.each(headersToCheck)(

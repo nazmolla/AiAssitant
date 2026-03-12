@@ -27,6 +27,7 @@ import ChatIcon from "@mui/icons-material/Chat";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import SchoolIcon from "@mui/icons-material/School";
 import SettingsIcon from "@mui/icons-material/Settings";
+import ScheduleIcon from "@mui/icons-material/Schedule";
 import HeadsetMicIcon from "@mui/icons-material/HeadsetMic";
 import Avatar from "@mui/material/Avatar";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
@@ -39,6 +40,7 @@ const KnowledgeVault = dynamic(() => import("@/components/knowledge-vault").then
 const AgentDashboard = dynamic(() => import("@/components/agent-dashboard").then(m => ({ default: m.AgentDashboard })), { ssr: false });
 const ConversationMode = dynamic(() => import("@/components/conversation-mode").then(m => ({ default: m.ConversationMode })), { ssr: false });
 const NotificationBell = dynamic(() => import("@/components/notification-bell").then(m => ({ default: m.NotificationBell })), { ssr: false });
+const SchedulerConsole = dynamic(() => import("@/components/scheduler-console").then(m => ({ default: m.SchedulerConsole })), { ssr: false });
 
 /* ── Lazy-loaded settings sub-tab components ── */
 const McpConfig = dynamic(() => import("@/components/mcp-config").then(m => ({ default: m.McpConfig })), { ssr: false });
@@ -61,12 +63,14 @@ const TAB_FROM_PATH: Record<string, string> = {
   chat: "chat", dashboard: "dashboard",
   conversation: "conversation",
   knowledge: "knowledge",
+  scheduler: "scheduler",
   settings: "config",
 };
 const PATH_FROM_TAB: Record<string, string> = {
   chat: "/chat", dashboard: "/dashboard",
   conversation: "/conversation",
   knowledge: "/knowledge",
+  scheduler: "/scheduler",
   config: "/settings",
 };
 
@@ -176,9 +180,10 @@ export default function HomePage() {
     if (perms.chat) items.push({ value: "conversation", label: "Conversation", icon: <HeadsetMicIcon fontSize="small" /> });
     if (perms.dashboard) items.push({ value: "dashboard", label: "Dashboard", icon: <DashboardIcon fontSize="small" /> });
     if (perms.knowledge) items.push({ value: "knowledge", label: "Knowledge", icon: <SchoolIcon fontSize="small" /> });
+    if (userRole === "admin") items.push({ value: "scheduler", label: "Scheduler", icon: <ScheduleIcon fontSize="small" /> });
     items.push({ value: "config", label: "Settings", icon: <SettingsIcon fontSize="small" /> });
     return items;
-  }, [perms]);
+  }, [perms, userRole]);
 
   const activeTabItem = tabItems.find((t) => t.value === activeTab);
 
@@ -327,6 +332,11 @@ export default function HomePage() {
             <AgentDashboard />
           </AppPageBackbone>
         )}
+        {activeTab === "scheduler" && (
+          <AppPageBackbone>
+            <SchedulerConsole />
+          </AppPageBackbone>
+        )}
         {activeTab === "knowledge" && (
           <AppPageBackbone>
             <KnowledgeVault />
@@ -363,12 +373,12 @@ const SETTINGS_PAGES: SettingsPage[] = [
   { key: "custom-tools", label: "Custom Tools", icon: "🔧", adminOnly: true },
   { key: "auth", label: "Authentication", icon: "🔐", adminOnly: true },
   { key: "users", label: "Users", icon: "👥", adminOnly: true },
-  { key: "scheduler", label: "Scheduler", icon: "⏱️", adminOnly: true },
+  { key: "scheduler", label: "Batch Scheduler", icon: "⏱️", adminOnly: true },
 ];
 
 const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
   profile: { title: "Owner Profile", subtitle: "Your identity, skills, and contact info. Nexus uses this to personalize responses." },
-  scheduler: { title: "Proactive Scheduler", subtitle: "Configure how often Nexus proactively scans for updates and takes automated actions." },
+  scheduler: { title: "Batch Scheduler", subtitle: "Configure batch job scheduling for proactive scans, knowledge maintenance, cleanup, and email reading." },
   llm: { title: "LLM Providers", subtitle: "Centralize Azure OpenAI, OpenAI, and Anthropic credentials." },
   channels: { title: "Communication Channels", subtitle: "Connect messaging platforms so Nexus can chat with you anywhere." },
   mcp: { title: "MCP Servers", subtitle: "Manage Model Context Protocol server connections." },

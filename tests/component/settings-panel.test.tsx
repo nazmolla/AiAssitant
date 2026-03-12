@@ -152,7 +152,7 @@ describe("SettingsPanel — chip navigation rendering", () => {
     "🔐 Authentication",
     "👥 Users",
     "🔊 Alexa",
-    "⏱️ Scheduler",
+    "⏱️ Batch Scheduler",
   ];
 
   test("renders all settings chips without throwing (React #310 regression)", async () => {
