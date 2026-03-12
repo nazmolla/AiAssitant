@@ -57,6 +57,7 @@ interface SchedulerTaskRunRecord {
   finished_at: string | null;
   error_message: string | null;
   log_ref: string | null;
+  output_json: string | null;
 }
 
 interface SchedulerRunDetailResponse {
@@ -164,6 +165,7 @@ export function SchedulerConsole() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runDetail, setRunDetail] = useState<SchedulerRunDetailResponse | null>(null);
   const [loadingRunDetail, setLoadingRunDetail] = useState(false);
+  const [expandedTaskRunIds, setExpandedTaskRunIds] = useState<Set<string>>(new Set());
   const [selectedScheduleDetail, setSelectedScheduleDetail] = useState<SchedulerScheduleDetailResponse | null>(null);
   const [loadingScheduleDetail, setLoadingScheduleDetail] = useState(false);
   const [savingDetail, setSavingDetail] = useState(false);
@@ -1098,28 +1100,73 @@ export function SchedulerConsole() {
                             </tr>
                           </thead>
                           <tbody>
-                            {runDetail.task_runs.map((taskRun) => (
-                              <tr key={taskRun.id} className="border-t border-white/[0.06]">
-                                <td className="px-2 py-2 font-mono">{taskRun.id.slice(0, 8)}</td>
-                                <td className="px-2 py-2">
-                                  <span className={`inline-block rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${getRunBadgeClass(taskRun.status)}`}>
-                                    {taskRun.status}
-                                  </span>
-                                </td>
-                                <td className="px-2 py-2 whitespace-nowrap">{formatTs(taskRun.started_at)}</td>
-                                <td className="px-2 py-2 whitespace-nowrap">{formatTs(taskRun.finished_at)}</td>
-                                <td className="px-2 py-2">
-                                  <a
-                                    className="text-primary underline"
-                                    href={`/dashboard?dashboardView=details&logScheduleId=${encodeURIComponent(runDetail.run.schedule_id)}&logRunId=${encodeURIComponent(runDetail.run.id)}&logTaskRunId=${encodeURIComponent(taskRun.id)}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    Open Filtered Logs
-                                  </a>
-                                </td>
-                              </tr>
-                            ))}
+                            {runDetail.task_runs.map((taskRun) => {
+                              const output = taskRun.output_json ? (() => { try { return JSON.parse(taskRun.output_json); } catch { return null; } })() : null;
+                              const hasOutput = !!output;
+                              const isExpanded = expandedTaskRunIds.has(taskRun.id);
+                              return (
+                                <Fragment key={taskRun.id}>
+                                  <tr className="border-t border-white/[0.06]">
+                                    <td className="px-2 py-2 font-mono">{taskRun.id.slice(0, 8)}</td>
+                                    <td className="px-2 py-2">
+                                      <span className={`inline-block rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${getRunBadgeClass(taskRun.status)}`}>
+                                        {taskRun.status}
+                                      </span>
+                                    </td>
+                                    <td className="px-2 py-2 whitespace-nowrap">{formatTs(taskRun.started_at)}</td>
+                                    <td className="px-2 py-2 whitespace-nowrap">{formatTs(taskRun.finished_at)}</td>
+                                    <td className="px-2 py-2 space-x-2">
+                                      <a
+                                        className="text-primary underline"
+                                        href={`/dashboard?dashboardView=details&logScheduleId=${encodeURIComponent(runDetail.run.schedule_id)}&logRunId=${encodeURIComponent(runDetail.run.id)}&logTaskRunId=${encodeURIComponent(taskRun.id)}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        Open Filtered Logs
+                                      </a>
+                                      {hasOutput && (
+                                        <button
+                                          className="text-primary underline"
+                                          onClick={() => setExpandedTaskRunIds((prev) => {
+                                            const next = new Set(prev);
+                                            if (next.has(taskRun.id)) next.delete(taskRun.id);
+                                            else next.add(taskRun.id);
+                                            return next;
+                                          })}
+                                        >
+                                          {isExpanded ? "Hide Output" : "View Output"}
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                  {hasOutput && (
+                                    <tr>
+                                      <td colSpan={5} className="p-0">
+                                        <Collapse in={isExpanded}>
+                                          <div className="px-3 py-2 bg-muted/20 border-t border-white/[0.04] text-xs space-y-1">
+                                            {output.threadId && (
+                                              <p><span className="text-muted-foreground">Thread:</span> <span className="font-mono">{output.threadId.slice(0, 12)}…</span></p>
+                                            )}
+                                            {output.toolsUsed && output.toolsUsed.length > 0 && (
+                                              <p><span className="text-muted-foreground">Tools used:</span> {output.toolsUsed.join(", ")}</p>
+                                            )}
+                                            {output.response && (
+                                              <div className="mt-1">
+                                                <p className="text-muted-foreground mb-1">Response:</p>
+                                                <pre className="whitespace-pre-wrap break-words rounded border border-white/[0.08] bg-muted/30 p-2 max-h-60 overflow-y-auto">{output.response}</pre>
+                                              </div>
+                                            )}
+                                            {output.error && (
+                                              <p className="text-red-400"><span className="text-muted-foreground">Error:</span> {output.error}</p>
+                                            )}
+                                          </div>
+                                        </Collapse>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
+                              );
+                            })}
                             {runDetail.task_runs.length === 0 && (
                               <tr><td className="px-2 py-3 text-muted-foreground" colSpan={5}>No task-runs recorded.</td></tr>
                             )}

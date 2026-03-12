@@ -154,7 +154,7 @@ async function executeTaskRun(
       if (!threadId) {
         const schedule = getSchedulerScheduleById(scheduleId);
         const title = schedule ? `Batch Job: ${schedule.name}` : "Batch Job";
-        threadId = createThread(title, userId).id;
+        threadId = createThread(title, userId, { threadType: "scheduled" }).id;
       }
       const { runAgentLoop } = await import("@/lib/agent");
       const result = await runAgentLoop(threadId, prompt, undefined, undefined, undefined, userId);

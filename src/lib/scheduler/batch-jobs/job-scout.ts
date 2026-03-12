@@ -89,7 +89,7 @@ export class JobScoutBatchJob extends BatchJob {
     if (!stepThreadId) {
       const schedule = getSchedulerScheduleById(scheduleId);
       const title = schedule ? `Job Scout Pipeline: ${schedule.name}` : "Job Scout Pipeline";
-      stepThreadId = createThread(title, stepUserId).id;
+      stepThreadId = createThread(title, stepUserId, { threadType: "scheduled" }).id;
       log("info", `Created pipeline thread for job scout run.`, logCtx, { stepKey, threadId: stepThreadId });
     }
 

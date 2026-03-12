@@ -261,6 +261,13 @@ function ensureThreadClassificationColumns(): void {
 
   db.prepare(
     `UPDATE threads
+     SET thread_type = 'scheduled', is_interactive = 0
+     WHERE (title LIKE 'Job Scout Pipeline:%' OR title LIKE 'Batch Job:%')
+       AND thread_type = 'interactive'`
+  ).run();
+
+  db.prepare(
+    `UPDATE threads
      SET thread_type = 'channel', is_interactive = 0
      WHERE title LIKE 'channel:%'`
   ).run();
