@@ -551,3 +551,222 @@ describe("scheduler API: trigger with owner binding (regression for #103, #104)"
     expect(schedule.owner_id).toBe(adminId); // Must remain unchanged
   });
 });
+
+describe("scheduler API: batch job creation (Phase 2 — Job Scout workflow)", () => {
+    let targetUserId: string;
+
+    beforeAll(() => {
+      targetUserId = seedTestUser({ email: "job-scout-target@test.com", role: "user" });
+    });
+
+    test("POST /api/scheduler/schedules accepts job_scout batch_type", async () => {
+      const req = new NextRequest("http://localhost/api/scheduler/schedules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batch_type: "job_scout",
+          name: "Phase 2 Job Scout Batch",
+          trigger_type: "interval",
+          trigger_expr: "every:1:day",
+        }),
+      });
+
+      const res = await POST_SCHEDULES(req);
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.schedule_id).toBeDefined();
+      expect(body.schedule_key).toBeDefined();
+      expect(body.schedule_key).toMatch(/^batch\.job_scout\./);
+
+      // Verify schedule was created with correct properties
+      const db = getDb();
+      const schedule = db
+        .prepare("SELECT * FROM scheduler_schedules WHERE id = ?")
+        .get(body.schedule_id) as any;
+
+      expect(schedule).toBeDefined();
+      expect(schedule.name).toBe("Phase 2 Job Scout Batch");
+      expect(schedule.handler_type).toBe("batch.job_scout");
+      expect(schedule.owner_type).toBe("user");
+      expect(schedule.owner_id).toBe(adminId); // Created by admin
+    });
+
+    test("Job Scout batch creation includes all five pipeline tasks", async () => {
+      const req = new NextRequest("http://localhost/api/scheduler/schedules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batch_type: "job_scout",
+          name: "Full Pipeline Test",
+          trigger_type: "interval",
+          trigger_expr: "every:2:day",
+        }),
+      });
+
+      const res = await POST_SCHEDULES(req);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // Verify all five tasks were created
+      const db = getDb();
+      const tasks = db
+        .prepare(
+          `SELECT id, task_key, name, handler_name, sequence_no, depends_on_task_id
+           FROM scheduler_tasks
+           WHERE schedule_id = ?
+           ORDER BY sequence_no ASC`
+        )
+        .all(body.schedule_id) as any[];
+
+      expect(tasks).toHaveLength(5);
+
+      // Verify task sequence
+      expect(tasks[0].task_key).toBe("search");
+      expect(tasks[0].handler_name).toBe("workflow.job_scout.search");
+      expect(tasks[0].depends_on_task_id).toBeNull();
+
+      expect(tasks[1].task_key).toBe("extract");
+      expect(tasks[1].handler_name).toBe("workflow.job_scout.extract");
+      expect(tasks[1].depends_on_task_id).toBe(tasks[0].id);
+
+      expect(tasks[2].task_key).toBe("prepare");
+      expect(tasks[2].handler_name).toBe("workflow.job_scout.prepare");
+      expect(tasks[2].depends_on_task_id).toBe(tasks[1].id);
+
+      expect(tasks[3].task_key).toBe("validate");
+      expect(tasks[3].handler_name).toBe("workflow.job_scout.validate");
+      expect(tasks[3].depends_on_task_id).toBe(tasks[2].id);
+
+      expect(tasks[4].task_key).toBe("email");
+      expect(tasks[4].handler_name).toBe("workflow.job_scout.email");
+      expect(tasks[4].depends_on_task_id).toBe(tasks[3].id);
+    });
+
+    test("Full user journey: create Job Scout batch, then transfer to target user via trigger", async () => {
+      // Step 1: Admin creates Job Scout batch
+      const createRes = await POST_SCHEDULES(
+        new NextRequest("http://localhost/api/scheduler/schedules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            batch_type: "job_scout",
+            name: "User Journey Test",
+            trigger_type: "interval",
+            trigger_expr: "every:1:day",
+          }),
+        })
+      );
+      expect(createRes.status).toBe(200);
+      const createBody = await createRes.json();
+      const scheduleId = createBody.schedule_id;
+
+      const db = getDb();
+
+      // Verify schedule is initially owned by admin
+      let schedule = db
+        .prepare("SELECT owner_id, owner_type FROM scheduler_schedules WHERE id = ?")
+        .get(scheduleId) as { owner_id: string; owner_type: string };
+      expect(schedule.owner_id).toBe(adminId);
+      expect(schedule.owner_type).toBe("user");
+
+      // Step 2: Manually move to system owner (simulate admin releasing it for target assignment)
+      db.prepare("UPDATE scheduler_schedules SET owner_type = ?, owner_id = NULL WHERE id = ?").run(
+        "system",
+        scheduleId,
+      );
+
+      // Step 3: Trigger with user_id to bind to target user
+      const triggerRes = await POST_TRIGGER(
+        new NextRequest(`http://localhost/api/scheduler/schedules/${scheduleId}/trigger`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: targetUserId }),
+        }),
+        { params: Promise.resolve({ id: scheduleId }) }
+      );
+      expect(triggerRes.status).toBe(200);
+      const triggerBody = await triggerRes.json();
+      expect(triggerBody.run_id).toBeDefined();
+
+      // Step 4: Verify schedule is now owned by target user
+      schedule = db
+        .prepare("SELECT owner_id, owner_type FROM scheduler_schedules WHERE id = ?")
+        .get(scheduleId) as { owner_id: string; owner_type: string };
+      expect(schedule.owner_id).toBe(targetUserId);
+      expect(schedule.owner_type).toBe("user");
+      expect(schedule.owner_id).not.toBe(adminId);
+
+      // Step 5: Verify a run was created
+      const run = db
+        .prepare("SELECT id, schedule_id, status FROM scheduler_runs WHERE id = ?")
+        .get(triggerBody.run_id) as any;
+      expect(run.schedule_id).toBe(scheduleId);
+      expect(run.status).toBe("queued");
+
+      // Step 6: Verify tasks were created for the run
+      const taskRuns = db
+        .prepare("SELECT COUNT(*) as count FROM scheduler_task_runs WHERE run_id = ?")
+        .get(triggerBody.run_id) as { count: number };
+      expect(taskRuns.count).toBe(5); // All five Job Scout tasks
+    });
+
+    test("Job Scout batch with custom task override", async () => {
+      const customPrompt = "Find senior backend engineer roles paying $150k+";
+      const req = new NextRequest("http://localhost/api/scheduler/schedules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batch_type: "job_scout",
+          name: "Custom Job Scout",
+          trigger_type: "interval",
+          trigger_expr: "every:1:day",
+          tasks: [
+            {
+              task_key: "search",
+              name: "Search for Backend Roles",
+              handler_name: "workflow.job_scout.search",
+              execution_mode: "sync",
+              sequence_no: 0,
+              enabled: 1,
+              task_type: "prompt",
+              prompt: customPrompt,
+            },
+            {
+              task_key: "extract",
+              name: "Extract Details",
+              handler_name: "workflow.job_scout.extract",
+              execution_mode: "sync",
+              sequence_no: 1,
+              enabled: 1,
+              depends_on_task_key: "search",
+            },
+          ],
+        }),
+      });
+
+      const res = await POST_SCHEDULES(req);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // Verify custom tasks were used instead of defaults
+      const db = getDb();
+      const tasks = db
+        .prepare(
+          `SELECT task_key, config_json
+           FROM scheduler_tasks
+           WHERE schedule_id = ?
+           ORDER BY sequence_no ASC`
+        )
+        .all(body.schedule_id) as any[];
+
+      expect(tasks).toHaveLength(2); // Only 2 custom tasks, not the default 5
+      expect(tasks[0].task_key).toBe("search");
+
+      const config = JSON.parse(tasks[0].config_json || "{}");
+      expect(config.prompt).toBe(customPrompt);
+    });
+  });
+  });
+});

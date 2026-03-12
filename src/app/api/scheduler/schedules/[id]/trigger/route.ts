@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!schedule) return NextResponse.json({ error: "Schedule not found" }, { status: 404 });
 
   // For Job Scout batches without an owner, bind the owner to the specified user_id (or request body's user_id)
-  const needsOwnerBinding = schedule.handler_type === "workflow.job_scout" && !schedule.owner_id;
+  const needsOwnerBinding = (schedule.handler_type === "workflow.job_scout" || schedule.handler_type === "batch.job_scout") && !schedule.owner_id;
   if (needsOwnerBinding) {
     const requestedUserId = typeof (body as { user_id?: unknown }).user_id === "string" 
       ? String((body as { user_id: string }).user_id).trim() 

@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 
-export type BatchJobType = "proactive" | "knowledge" | "cleanup" | "email";
+export type BatchJobType = "proactive" | "knowledge" | "cleanup" | "email" | "job_scout";
 
 export interface BatchJobParameterDefinition {
   key: string;
@@ -181,11 +181,78 @@ class EmailBatchJob extends BatchJob {
   }
 }
 
+class JobScoutBatchJob extends BatchJob {
+  readonly type = "job_scout" as const;
+  readonly defaultName = "Job Scout Pipeline";
+  readonly defaultTriggerType = "interval" as const;
+  readonly defaultTriggerExpr = "every:1:day";
+
+  protected createDefaultTasks(): BatchJobSubTaskTemplate[] {
+    return [
+      {
+        task_key: "search",
+        name: "Search Listings",
+        handler_name: "workflow.job_scout.search",
+        execution_mode: "sync",
+        sequence_no: 0,
+        enabled: 1,
+        task_type: "prompt",
+        prompt: "Search for job listings matching the user's profile and preferences. Focus on roles that align with their experience and goals.",
+      },
+      {
+        task_key: "extract",
+        name: "Extract Role Details",
+        handler_name: "workflow.job_scout.extract",
+        execution_mode: "sync",
+        sequence_no: 1,
+        enabled: 1,
+        depends_on_task_key: "search",
+        task_type: "prompt",
+        prompt: "Extract detailed role information including responsibilities, requirements, and key qualifications from the listings found.",
+      },
+      {
+        task_key: "prepare",
+        name: "Prepare Resume",
+        handler_name: "workflow.job_scout.prepare",
+        execution_mode: "sync",
+        sequence_no: 2,
+        enabled: 1,
+        depends_on_task_key: "extract",
+        task_type: "prompt",
+        prompt: "Generate a tailored resume that highlights relevant skills and experience for the identified roles.",
+      },
+      {
+        task_key: "validate",
+        name: "Validate Matches",
+        handler_name: "workflow.job_scout.validate",
+        execution_mode: "sync",
+        sequence_no: 3,
+        enabled: 1,
+        depends_on_task_key: "prepare",
+        task_type: "prompt",
+        prompt: "Validate that all identified job matches are relevant and meet the user's criteria.",
+      },
+      {
+        task_key: "email",
+        name: "Send Results",
+        handler_name: "workflow.job_scout.email",
+        execution_mode: "sync",
+        sequence_no: 4,
+        enabled: 1,
+        depends_on_task_key: "validate",
+        task_type: "prompt",
+        prompt: "Prepare and send a summary email with the curated job matches and tailored resume to the user.",
+      },
+    ];
+  }
+}
+
 const REGISTRY: Record<BatchJobType, BatchJob> = {
   proactive: new ProactiveBatchJob(),
   knowledge: new KnowledgeBatchJob(),
   cleanup: new CleanupBatchJob(),
   email: new EmailBatchJob(),
+  job_scout: new JobScoutBatchJob(),
 };
 
 export function getBatchJob(type: BatchJobType): BatchJob {

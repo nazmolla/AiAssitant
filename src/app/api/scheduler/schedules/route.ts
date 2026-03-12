@@ -35,8 +35,8 @@ export async function POST(req: NextRequest) {
   }
 
   const batchType = String((body as { batch_type?: unknown }).batch_type || "").trim() as BatchJobType;
-  if (!batchType || !["proactive", "knowledge", "cleanup", "email"].includes(batchType)) {
-    return NextResponse.json({ error: "batch_type must be one of proactive|knowledge|cleanup|email" }, { status: 400 });
+  if (!batchType || !["proactive", "knowledge", "cleanup", "email", "job_scout"].includes(batchType)) {
+    return NextResponse.json({ error: "batch_type must be one of proactive|knowledge|cleanup|email|job_scout" }, { status: 400 });
   }
 
   const name = typeof (body as { name?: unknown }).name === "string" ? String((body as { name: string }).name).trim() : undefined;
