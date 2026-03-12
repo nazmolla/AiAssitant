@@ -4,6 +4,10 @@
 
 ---
 
+> **Summary:** Common issues, diagnostics, and recovery steps for Nexus Agent.
+
+---
+
 ## UI briefly shows loading/flicker
 
 ### Symptoms

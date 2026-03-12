@@ -4,29 +4,30 @@
 
 ---
 
-This guide covers admin-only responsibilities and governance workflows.
+> **Summary:** Admin-only responsibilities — user management, authentication providers, custom tool governance, scheduler operations, and DB management.
+
+---
 
 ## User Management
 
-Manage account lifecycle, role assignment, and permission scope.
+Manage accounts, roles, and permissions from Settings → Users.
 
-![User management (test env)](images/usage-settings-users.png)
+![User management](images/usage-settings-users.png)
 
-Common operations:
 - Activate/deactivate accounts
-- Promote/demote user roles
-- Grant/revoke feature permissions
+- Promote/demote roles (admin ↔ user)
+- Grant/revoke granular permissions (knowledge, chat, MCP, channels, approvals, settings)
 
 ---
 
 ## Authentication Providers
 
-Configure OAuth providers from the Settings UI.
+Configure OAuth sign-in providers from Settings → Authentication.
 
-![Authentication settings (test env)](images/usage-settings-authentication.png)
+![Authentication settings](images/usage-settings-authentication.png)
 
 | Provider | Required Fields |
-|----------|------------------|
+|----------|----------------|
 | Azure AD | Client ID, Client Secret, Tenant ID |
 | Google | Client ID, Client Secret |
 | Discord | Bot Token, Application ID |
@@ -35,29 +36,36 @@ Configure OAuth providers from the Settings UI.
 
 ## Custom Tool Governance
 
-Review agent-created tools and enforce safety boundaries.
+Review and manage agent-created tools from Settings → Custom Tools.
 
-![Custom tools settings (test env)](images/usage-settings-custom-tools.png)
+![Custom tools](images/usage-settings-custom-tools.png)
 
-Built-in toolmaker operations:
-
-| Tool | Purpose | Default Approval |
-|------|---------|------------------|
-| `nexus_create_tool` | Create tool | Required |
-| `nexus_list_custom_tools` | List tools | Not required |
-| `nexus_delete_custom_tool` | Delete tool | Required |
-
-Safety baseline:
-- VM sandbox execution
-- Restricted runtime surface (no unrestricted fs/process)
-- Timeout-bound tool execution
+Tools run in a VM sandbox with restricted runtime surface and timeout-bound execution. Use Tool Policies to control approval requirements.
 
 ---
 
-## Policy & Risk Controls
+## Scheduler Console
 
-Admins should regularly review:
-- Tool approval defaults
-- Proactive-enabled surfaces
-- Channel routing for alerts
-- Credential hygiene and encryption key consistency
+Settings → Scheduler provides a live operations console:
+- **Header Tasks** grid showing all schedules
+- **Child Tasks** and recent runs when a header is selected
+- **Focus View** for full run history with task-run log links
+- Health metrics via the API (`GET /api/scheduler/health`)
+
+---
+
+## DB Management
+
+Settings → DB Management (admin-only) for monitoring and cleanup:
+- Table-level size breakdown and host resource snapshot
+- Manual cleanup runs for logs, threads, attachments, orphan files
+- Recurring retention policies
+
+---
+
+## Regular Review Checklist
+
+- Tool approval defaults and scope settings
+- Proactive scheduler configuration and health
+- Channel routing and alert thresholds
+- Credential status and encryption key consistency

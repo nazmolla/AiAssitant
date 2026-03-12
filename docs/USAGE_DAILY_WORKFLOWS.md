@@ -1,75 +1,76 @@
-# Nexus Agent — Daily Workflows (End Users)
+# Nexus Agent — Daily Workflows
 
 > Back to [Usage Overview](USAGE.md) | [Getting Started](USAGE_GETTING_STARTED.md) | [Troubleshooting](USAGE_TROUBLESHOOTING.md)
 
 ---
 
-## Chat Workflow
+> **Summary:** How to use chat, approvals, knowledge, voice, and scheduled tasks in your daily workflow.
 
-Use Chat for day-to-day assistant interactions.
+---
 
-- Start/select a thread
-- Send prompts and receive streaming responses — intermediate thinking steps (tool calls, results) appear in real-time as the agent works
-- Every response shows an "Analyzing…" block that reveals the agent's internal process: model selection, knowledge retrieval, and LLM generation — even for simple questions with no tool calls
-- Each message shows a timestamp
-- Expand the "Thought for N steps" block to see the agent's reasoning process, tool calls, and results
-- Add file attachments when needed
-- Use screen sharing when enabled in your profile
-- **Voice input** — Click the mic button (🎤) to dictate a message. Audio is transcribed via Whisper and appended to the input field. The button pulses red while recording and shows a spinner while transcribing.
-- **Voice output** — Click the speaker icon (🔊) on any assistant message to hear it read aloud via TTS. Click again to stop. Choose your preferred voice (alloy, ash, coral, echo, fable, onyx, nova, sage, shimmer) in **Settings → Profile → Preferences → TTS Voice**. Requires an OpenAI-compatible LLM provider to be configured.
+## Chat
 
-![Chat tab (test env)](images/usage-chat.png)
+Use the **Chat** tab for day-to-day AI interactions.
 
-## Approval Workflow
+- Start or select a thread, then send messages
+- Responses stream in real-time with intermediate thinking steps visible
+- Every response shows an "Analyzing…" block revealing the agent's process (model selection, knowledge retrieval, tool calls)
+- Expand "Thought for N steps" to see full reasoning and tool results
+- Attach files or share your screen when needed
+- **Voice input** — Click 🎤 to dictate (transcribed via Whisper)
+- **Voice output** — Click 🔊 on any response to hear it read aloud. Choose your voice in Settings → Profile
+
+![Chat tab](images/usage-chat.png)
+
+---
+
+## Approvals
 
 When a tool action requires approval:
 
-1. Assistant pauses execution
-2. Request appears inline and in the **Notification Center** (bell icon)
-3. You approve or reject
-4. Assistant continues based on decision
+1. The assistant pauses and shows the request inline
+2. The request also appears in the **notification bell** (top-right)
+3. Approve or reject — the assistant continues based on your decision
+4. Choose **Always Allow/Reject** to save as a Standing Order for future calls
 
-**Proactive approvals** — The background scheduler can also create approval requests for actions it detects (e.g. a smart home device anomaly). These appear in the Notification Center with a "Proactive" badge and are visible to admins. When approved, the tool is executed directly without needing a chat thread.
+**Proactive approvals** from the background scheduler appear in the notification bell with a "Proactive" badge (admin-visible only).
 
-![Approvals tab (test env)](images/usage-approvals.png)
+![Approvals](images/usage-approvals.png)
+
+---
 
 ## Scheduled Tasks
 
-The agent supports **future and recurring tasks** that are persisted and executed automatically by the background scheduler.
+Ask the agent to do something later or on a schedule:
 
-### How tasks are created
+| Example | Type |
+|---------|------|
+| "Remind me tomorrow to check logs" | One-time |
+| "Every day review pending approvals" | Daily recurring |
+| "In 2 hours send a status update" | One-time delay |
 
-- **User request** — Ask the agent to do something later or on a schedule (e.g. "Remind me tomorrow to check the server logs", "Every day review pending approvals").
-- **Proactive discovery** — The background scheduler can detect tasks during its scan cycle and queue them for execution.
+Supported frequencies: hourly, daily, weekly, monthly, or specific delays (`in N hours/days`). Recurring tasks recalculate the next run after each execution.
 
-### Supported frequencies
+---
 
-| Keyword | Frequency |
-|---------|-----------|
-| `in N hours/days`, `tomorrow`, `next week` | One-time |
-| `every hour`, `hourly` | Hourly |
-| `every day`, `daily` | Daily |
-| `every week`, `weekly` | Weekly |
-| `every month`, `monthly` | Monthly |
+## Knowledge
 
-Tasks are picked up automatically when their `next_run_at` time arrives. Recurring tasks recalculate the next run after each execution.
+The **Knowledge** tab manages your personal fact vault.
 
-## Knowledge Workflow
+- Search, add, edit, or delete entries
+- Facts are automatically captured from conversations
+- Sources are tagged: `manual`, `chat`, or `proactive`
 
-The knowledge vault stores user-scoped memory.
+![Knowledge tab](images/usage-knowledge.png)
 
-- Search existing facts
-- Add/edit/delete entries
-- Use it to keep long-running context accurate
+---
 
-![Knowledge tab (test env)](images/usage-knowledge.png)
+## Profile
 
-## Profile Workflow
+Access from **Account menu (top-right) → Profile** or **Settings → Profile**:
 
-From **Account menu (top-right) → Profile** or **Settings → Profile**:
+- Update personal information, skills, and links
+- Set notification threshold (`low` / `medium` / `high` / `disaster`)
+- Choose TTS voice and theme preferences
 
-- Update personal metadata
-- Set notification threshold (`low`, `medium`, `high`, `disaster`)
-- Control personal experience options available in your deployment
-
-![Settings profile view (test env)](images/usage-settings-profile.png)
+![Profile settings](images/usage-settings-profile.png)

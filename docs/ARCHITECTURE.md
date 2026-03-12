@@ -1,22 +1,8 @@
 # Nexus Agent — Architecture
 
+> **Summary:** High-level system architecture — agent loop, threading model, caching layers, multi-user isolation, and project layout. For API routes and DB schema, see [Tech Specs](TECH_SPECS.md).
+
 > Back to [README](../README.md) | [Tech Specs](TECH_SPECS.md) | [Installation](INSTALLATION.md) | [Usage](USAGE.md)
-
----
-
-## Thread And Knowledge Typing
-
-- Security boundary hardening (Mar 2026): all attachment path resolution guards now use separator-safe prefix checks (`base + path.sep`) to prevent path-prefix confusion bypasses.
-- Middleware coverage (Mar 2026): `/api/channels/:path*` is now included for rate limiting; webhook calls continue to bypass JWT checks via explicit webhook-path middleware exception and rely on route-level webhook secret validation.
-- Transport hardening (Mar 2026): global HSTS response header is enabled and attachment delivery uses stream-based responses to avoid event-loop blocking and large heap buffers.
-
-- Thread ownership and visibility are enforced by typed DB metadata (`threads.user_id`, `thread_type`, `is_interactive`) rather than title prefix conventions.
-- Channel conversations are resolved by structured identifiers (`channel_id`, `external_sender_id`) instead of string tags inside `title`.
-- Knowledge provenance is represented by `user_knowledge.source_type` and consumed directly by UI/API filtering.
-
-## Scheduler Console Structure
-
-- The admin scheduler console starts with a Header Tasks grid. Selecting a header opens inline child tasks and recent runs; Focus View then expands to full child-task and run-history analysis with task-run log links.
 
 ## Architecture Diagram
 
@@ -158,136 +144,59 @@ This loop also supports end-to-end career workflows: discover relevant jobs from
 
 ### Voice Input & Output (STT / TTS)
 
-The chat interface supports **voice input** (Speech-to-Text) and **voice output** (Text-to-Speech) powered by OpenAI's audio models.
-
-- **Speech-to-Text**: Click the mic button to record audio via the browser MediaRecorder API (`audio/webm;codecs=opus`). The recording is sent to `POST /api/audio/transcribe` which forwards it to OpenAI's **Whisper** (`whisper-1`) model. The transcribed text is appended to the chat input field. Max file size: 25 MB.
-- **Text-to-Speech**: Click the speaker icon on any assistant message to hear it read aloud. The message text is sent to `POST /api/audio/tts` which calls OpenAI's **TTS-1** model (default voice: `nova`, 9 voices available: alloy, ash, coral, echo, fable, onyx, nova, sage, shimmer). Users can select their preferred voice in **Settings → Profile → Preferences & Features → TTS Voice**. The choice is persisted in the user profile and synced to localStorage for instant access. The MP3 audio plays inline via the browser Audio API. Click again to stop playback. The TTS endpoint supports multiple output formats via the `format` field: `mp3` (default), `wav`, `pcm`, `opus`, `aac`, `flac` — the `wav` and `pcm` formats are especially useful for embedded devices that lack an MP3 decoder.
-- **Provider selection**: `getAudioClient()` in `src/lib/audio.ts` prefers providers with `purpose = "tts"` or `purpose = "stt"` (each maps to one deployment), then falls back to the first OpenAI-compatible provider (openai → azure-openai → litellm). Anthropic is skipped as it has no audio API. Each TTS/STT provider uses the standard `deployment` config field — no special audio-specific fields needed.
-- **Audio mode**: Hands-free conversation mode is provided in the dedicated **Conversation** tab. The flow is: start mic → VAD detects end-of-speech → transcription auto-sends → TTS plays response → auto-listen resumes (when auto mode is enabled). The status banner shows current state (Listening/Transcribing/Thinking/Speaking).
-- **Conversation Mode**: A dedicated full-screen voice conversation page (`/conversation` tab) separate from the chat interface. Uses **Voice Activity Detection (VAD)** via WebAudio API's `AnalyserNode` to automatically detect the end of speech (1.2s of silence after at least 0.4s of speech). State updates use an atomic `useCallback` wrapper that synchronises both React state and a `stateRef` in a single call, preventing race conditions where async code reads a stale ref. The complete flow: Listen → Detect silence → STT transcription → Send to lightweight LLM endpoint (SSE streaming with tool support) → Accumulate response → TTS playback → Auto-listen again. **Interrupt / Barge-in** — a separate lightweight interrupt VAD (`startInterruptVad`) opens a second mic stream + AudioContext during thinking/speaking states. When sustained speech is detected (≥ 200 ms at 2× the silence threshold to avoid TTS speaker bleed), `interruptAndListen()` fires: aborts the LLM request, pauses TTS playback, marks the last assistant transcript with a "⸺" indicator, and transitions directly to listening. Features include: real-time audio level visualization, transcript display with chat bubbles, voice selector (9 voices), auto/manual listen toggle, interrupt / barge-in support, and in-memory conversation history (no thread/DB persistence). The component is at `src/components/conversation-mode.tsx` and uses a dedicated `/api/conversation/respond` endpoint that keeps full tool access (builtins + MCP + custom) while skipping the heavy overhead of the main agent loop (no knowledge retrieval, no embedding generation, no profile context, no message persistence). History is maintained in-memory on the client side (capped at 30 messages) and passed with each request.
-- **Local Whisper fallback**: Optional local Whisper server (e.g. `faster-whisper-server` or `whisper.cpp`) configured via **Settings → Local Whisper**. When enabled, if the cloud STT provider fails, `transcribeAudio()` automatically retries via the local server's OpenAI-compatible `/v1/audio/transcriptions` endpoint. Config stored in `app_config` keys: `whisper_local_enabled`, `whisper_local_url`, `whisper_local_model`. Connectivity test available via `POST /api/config/whisper`.
-- **ESP32 Atom Echo integration**: A standalone Arduino/PlatformIO firmware (`esp32/atom-echo-nexus/atom_echo_nexus.ino`) for the M5Stack Atom Echo turns it into a hands-free voice assistant. Wake-word detection runs **on-device** using **micro-wake-up** (no server wake-word check). After on-device wake detection, the command audio is sent to `/api/audio/transcribe`, the resulting text is sent to `/api/conversation/respond` (full tool support), and the response is played via `/api/audio/tts` in WAV format. See [`esp32/atom-echo-nexus/README.md`](../esp32/atom-echo-nexus/README.md) for setup instructions.
+- **Speech-to-Text** — Mic button records audio (MediaRecorder, `audio/webm`), transcribed by OpenAI Whisper via `POST /api/audio/transcribe`. Optional local Whisper fallback when cloud STT fails.
+- **Text-to-Speech** — Speaker icon on assistant messages plays TTS-1 audio (9 voices, user-selectable). Supports mp3/wav/pcm/opus/aac/flac output.
+- **Conversation Mode** — Full-screen voice tab (`/conversation`) with VAD-based auto-listen, interrupt/barge-in, and lightweight `/api/conversation/respond` endpoint (full tool support, no DB persistence).
+- **ESP32 Atom Echo** — Standalone Arduino firmware with on-device wake-word detection via micro-wake-up. See [`esp32/atom-echo-nexus/README.md`](../esp32/atom-echo-nexus/README.md).
 
 ### Real-Time Streaming
 
-The chat API uses **Server-Sent Events (SSE)** via a `ReadableStream` with `controller.enqueue()` to stream responses in real-time. This approach pushes data synchronously to the readable side for immediate HTTP flushing — unlike `TransformStream` which can buffer internally. Both OpenAI and Anthropic providers support **token-level streaming** — individual text tokens are sent to the client via `event: token` SSE events as they arrive from the LLM API, providing instant perceived response time. A leading SSE comment (`: stream opened`) is sent immediately to force proxies/framework to flush headers.
+The chat API uses **Server-Sent Events (SSE)** via a `ReadableStream` to stream tokens in real-time. Both OpenAI and Anthropic providers support token-level streaming for instant perceived latency.
 
-**Disconnect safety**: All SSE writes go through a `sseSend()` wrapper that checks a `streamCancelled` flag before calling `controller.enqueue()`. If the `enqueue()` throws (stream already closed), the flag is set and all future writes become no-ops. The `ReadableStream`'s `cancel()` callback also sets the flag when the client disconnects (tab close, navigation, or opening a new instance). This prevents server crashes when the agent loop continues emitting tokens or error events after the client has disconnected. The `finally` block wraps `controller.close()` in a try-catch for the same reason.
+**Disconnect safety** — All SSE writes go through a `sseSend()` wrapper that checks a `streamCancelled` flag, preventing crashes when clients disconnect mid-stream.
 
-The full SSE event lifecycle is:
+**SSE event types:**
+
+| Event | Description |
+|-------|-------------|
+| `token` | Individual text tokens streamed from the LLM |
+| `status` | Agent thinking steps (model selection, knowledge retrieval, tool execution) |
+| `message` | Complete messages persisted to DB |
+| `done` | Agent loop completed |
+| `error` | Error details (sanitized) |
 
 ### Worker Thread Architecture
 
-LLM API calls are offloaded to a dedicated **Worker Thread** (`scripts/agent-worker.js`) to prevent long-running LLM streaming from blocking the Node.js main event loop. This ensures the server remains responsive to other HTTP requests while the agent is mid-conversation.
+LLM API calls are offloaded to a **Worker Thread** (`scripts/agent-worker.js`) to keep the main event loop responsive. Tool execution, DB access, and knowledge retrieval remain on the main thread, coordinated via IPC (`postMessage`).
 
-**Separation of concerns**:
+- Pool size configurable via `WORKER_POOL_SIZE` env var (default 2, max 8)
+- Workers are recycled between tasks; crashed workers are auto-replaced
+- Automatic fallback to main thread if the worker is unavailable
+- 120-second timeout per task
 
-| Responsibility | Thread |
-|---|---|
-| LLM API calls (OpenAI, Azure, Anthropic, LiteLLM) | **Worker** |
-| Token streaming (SDK → IPC → SSE) | **Worker** → Main |
-| Tool execution (builtins, MCP, custom tools) | **Main** |
-| Database operations (messages, knowledge, threads) | **Main** |
-| Knowledge retrieval & embedding search (gated on vault having entries) | **Main** |
-| HITL gatekeeper enforcement | **Main** |
-| SSE relay to client | **Main** |
+**Files:** `scripts/agent-worker.js`, `src/lib/agent/worker-manager.ts`, `src/lib/agent/loop-worker.ts`
 
-**IPC Protocol** (via `parentPort.postMessage` / `worker.postMessage`):
+### Caching Strategy
 
-| Direction | Message Type | Payload |
-|---|---|---|
-| Main → Worker | `start` | Provider config, system prompt, chat messages, tool definitions |
-| Main → Worker | `tool_result` | Executed tool results (response to `tool_request`) |
-| Main → Worker | `abort` | Cancel mid-execution |
-| Worker → Main | `token` | Streamed text token from LLM |
-| Worker → Main | `status` | Step update (e.g. "calling model…") |
-| Worker → Main | `tool_request` | LLM returned tool calls — main thread executes and replies |
-| Worker → Main | `done` | Final response text + tool call history |
-| Worker → Main | `error` | Error details |
+Multiple caching layers eliminate redundant DB queries and API calls:
 
-**Fallback**: If the worker script is missing or the worker process fails, the system automatically falls back to running the LLM call on the main thread via the original `runAgentLoop()` function. Continuation agent loops (follow-up tool iterations) also run on the main thread.
+| Layer | Location | TTL | Purpose |
+|-------|----------|-----|---------|
+| **Application cache** | `src/lib/cache.ts` | 60s + explicit invalidation | LLM providers, tool policies, users, profiles, channels, auth providers, MCP servers |
+| **Provider instance cache** | `src/lib/llm/orchestrator.ts` | 10s | Avoids re-constructing SDK clients per request |
+| **Embedding result cache** | `src/lib/llm/embeddings.ts` | 1 hour, max 500 (LRU) | Eliminates redundant embedding API calls |
+| **Parsed vault cache** | `src/lib/knowledge/retriever.ts` | 300s | Avoids re-parsing JSON embedding vectors |
 
-**Files**:
-- `scripts/agent-worker.js` — Standalone worker entry point (plain JS, uses `require()`)
-- `src/lib/agent/worker-manager.ts` — Worker lifecycle management + IPC handling (120s timeout)
-- `src/lib/agent/loop-worker.ts` — Integration layer wrapping worker with knowledge, tools, DB persistence
+All caches use explicit invalidation on mutations as the primary mechanism, with TTL as a safety net.
 
-1. `event: token` — Individual text tokens streamed from the LLM in real-time (displayed progressively in the chat UI)
-2. `event: status` — Agent thinking steps (model selection, knowledge retrieval, tool execution)
-3. `event: message` — Complete messages persisted to DB (user echo, assistant responses, tool results)
-4. `event: done` — Agent loop completed with final result
-5. `event: error` — Error occurred during processing
+**Event loop protection** — `await yieldLoop()` (backed by `setImmediate()`) is inserted at critical points in the agent loop to prevent synchronous `better-sqlite3` calls from starving the event loop.
 
-The `onToken` callback is threaded from the chat route → agent loop → LLM provider. When streaming is enabled, providers use `stream: true` (OpenAI) or `messages.stream()` (Anthropic) to yield tokens incrementally. The complete response is still returned from `provider.chat()` for DB persistence and tool-call processing. Each message includes a `created_at` timestamp persisted in the database.
+### Notification & Channel Safety
 
-The SSE stream supports three event types:
-
-| Event      | Description |
-|------------|-------------|
-| `status`   | Agent analysis steps (model selection, knowledge retrieval, LLM call). Shown in a collapsible "Analyzing…" block in the UI — similar to Gemini/Copilot thinking indicators. |
-| `message`  | Database-persisted messages (user, assistant, tool). Standard chat messages with full content. |
-| `done`     | Final response metadata emitted when the agent loop completes. Triggers thread list refresh. |
-| `error`    | Error details when the agent loop throws, sanitized to avoid leaking paths. |
-
-The `status` events provide transparency into the agent's internal process for **every** response — not just tool-using ones — so users always see what the agent is doing (selecting a model, searching the knowledge vault, generating a response).
-
-### Caching & Event Loop Protection
-
-**Application Cache** (`src/lib/cache.ts`): An in-memory write-through cache for frequently-read, rarely-changed data that was previously queried from SQLite on every single request. Two invalidation strategies work together:
-
-1. **Explicit invalidation** — mutation functions (e.g. `createLlmProvider`, `updateUserRole`, `upsertToolPolicy`) automatically call `appCache.invalidate()` when they modify data (instant, primary mechanism).
-2. **TTL expiration** — 60-second safety net in case a mutation path misses invalidation.
-
-| Cached Data | Cache Key | Invalidated By |
-|---|---|---|
-| LLM providers (decrypted) | `llm_providers` | `createLlmProvider`, `updateLlmProvider`, `deleteLlmProvider`, `setDefaultLlmProvider` |
-| Tool policies | `tool_policies` | `upsertToolPolicy` |
-| User records (role/enabled) | `user:{userId}` | `updateUserRole`, `updateUserEnabled`, `deleteUser` |
-| User profiles | `profile:{userId}` | `upsertUserProfile`, `deleteUser` |
-| Auth lookup by email (5-min TTL) | `user_email:{email}` | `updateUserRole`, `updateUserEnabled`, `updateUserPassword`, `deleteUser` |
-| Auth lookup by external sub (5-min TTL) | `user_sub:{subId}` | `updateUserRole`, `updateUserEnabled`, `updateUserPassword`, `deleteUser` |
-| Channels (decrypted, per-user) | `channels:{userId}` | `createChannel`, `updateChannel`, `deleteChannel` |
-| Auth providers (decrypted) | `auth_providers` | `upsertAuthProvider`, `deleteAuthProvider` |
-| MCP servers (decrypted, per-user) | `mcp_servers:{userId}` | `upsertMcpServer`, `deleteMcpServer` |
-
-**Provider Instance Cache** (`src/lib/llm/orchestrator.ts`): A separate module-level `Map` caches constructed `ChatProvider` instances keyed by a SHA-256 hash of `{id, type, config}`. TTL is 10 seconds. When an LLM provider row is created, updated, or deleted via the `/api/config/llm` route handlers, `invalidateProviderCache()` is called to flush all entries. This avoids re-parsing config JSON plus re-instantiating SDK clients on every request while still reflecting admin changes within seconds.
-
-**Embedding Result Cache** (`src/lib/llm/embeddings.ts`): A module-level LRU `Map` caches generated embeddings keyed by a SHA-256 hash of the query text. TTL is 1 hour, max 500 entries with LRU eviction (oldest-insertion evicted when full). Identical queries across users or repeated knowledge retrievals return cached embeddings without an API call (100-500 ms savings per hit). `invalidateEmbeddingCache()` clears all entries.
-
-**Parsed Vault Embedding Cache** (`src/lib/knowledge/retriever.ts`): A module-level cache stores parsed embedding vectors (JSON → `number[]`) keyed by user. TTL is **300 seconds** (5 min, increased from 30s in PERF-03) to reduce redundant JSON parsing of the entire vault on every search call. Explicit invalidation via `invalidateEmbeddingCache()` on knowledge ingestion ensures new entries are visible immediately despite the longer TTL.
-
-Previously, `selectProvider()` called `listLlmProviders()` (full table scan + decryption) on every request — now cached. Similarly, `getUserById()` and `listToolPolicies()` were called per-request for role checks and tool filtering — now cached. Auth lookups (`getUserByEmail`, `getUserByExternalSub`) use a 5-minute TTL to avoid DB hits on every login/OAuth flow; all user mutation paths invalidate the by-id, by-email, and by-sub caches atomically.
-
-**Event Loop Yield Points**: Because `better-sqlite3` is synchronous, the agent loop uses `await yieldLoop()` (backed by `setImmediate()`) at critical points to prevent blocking the Node.js event loop:
-
-- At the top of each tool iteration loop (before calling the LLM)
-- Between each tool execution (before `executeToolWithPolicy()`)
-- Between tool executions in the conversation endpoint
-
-This ensures other HTTP requests (including new tabs, API calls, and the conversation endpoint) can be served even while a long-running agent loop with multiple tool calls is executing.
-
-**Approval Query Optimization** (`src/lib/db/queries.ts`): The `/api/notifications` and `/api/approvals` GET handlers previously suffered from an N+1 query pattern — each pending approval triggered a separate `getThread()` call to verify ownership and staleness. This was replaced with:
-
-- `listPendingApprovalsForUser(userId)` — a single `JOIN` query (`approval_queue ⨝ threads`) that returns only the current user's pending approvals in O(1) queries instead of O(n).
-- `cleanStaleApprovals()` — a bulk `UPDATE` that rejects orphaned approvals (deleted thread) and stale approvals (thread no longer in `awaiting_approval` status) in two statements, replacing per-row staleness checks. Proactive approvals (`thread_id IS NULL`) are preserved.
-
-**Knowledge Search Indexes** (`src/lib/db/schema.ts`): Three indexes added on `user_knowledge` to eliminate full table scans in `searchKnowledge()`: `idx_user_knowledge_user_id` (user_id), `idx_user_knowledge_entity` (user_id, entity), and `idx_user_knowledge_attribute` (user_id, attribute). The search query itself was restructured from `OR user_id IS NULL` to `UNION ALL` so SQLite's query planner can use the user_id index for both branches. FTS5 was evaluated but not adopted — the overhead of shadow tables and sync triggers is not justified at current vault sizes (benchmarked at 38ms for 5,000 entries).
-
-**Chat History Conversion** (`src/lib/agent/loop.ts`): `dbMessagesToChat()` converts DB messages to LLM-ready chat format. Previously it ran two full passes — first to collect `tool_call_id`s, then to build the result array, re-parsing `tool_calls` JSON each time. Now uses a single-pass approach with a pre-parsed `Map` cache, eliminating redundant `JSON.parse()` calls (50% reduction in parse overhead for tool-heavy conversations).
-
-**Listing Query Pagination** (`src/lib/db/queries.ts`): High-volume listing endpoints (`/api/threads`, `/api/knowledge`) use `LIMIT`/`OFFSET` pagination via `listThreadsPaginated()` and `listKnowledgePaginated()`. Each returns a `PaginatedResult<T>` with `{ data, total, limit, offset, hasMore }`. Threads default to 50 per page (max 200), knowledge to 100 per page (max 500). The frontend appends pages on demand via "Load more" controls. Original unpaginated functions (`listThreads()`, `listKnowledge()`) remain available for internal callers (e.g., export, migration).
-
-**Worker Thread Pool** (`src/lib/agent/worker-manager.ts`): LLM API calls are offloaded to a reusable pool of worker threads instead of spawning a new thread per request. Pool size is configurable via `WORKER_POOL_SIZE` env var (default 2, range 1–8). Workers are recycled after each task completes — the worker script (`scripts/agent-worker.js`) resets `aborted` and `toolResultResolvers` state between tasks. If all workers are busy, tasks are queued and dispatched as workers become idle (30s queue timeout). Crashed workers are automatically terminated, replaced, and logged. `getWorkerPoolStats()` exposes pool diagnostics (busy/idle counts, queue length).
-
-### Notification & Inbound Email Safety Path
-
-- **Per-user thresholds** — Channel notifications are filtered by each user profile's `notification_level` (`low`, `medium`, `high`, `disaster`).
-- **Severity capping** — Smart home / IoT tools (Alexa, Hue, Nest, Ring, etc.) are automatically capped at `high` severity — they can never emit `disaster`-level events, regardless of LLM assessment. This prevents false critical alerts for routine device state changes.
-- **Channel-first alerts** — Proactive/admin/unknown-sender notices are delivered through configured communication channels instead of posting into chat threads.
-- **System sender priority** — Inbound emails from system addresses (`no-reply@`, `noreply@`, `mailer-daemon@`, etc.) are automatically classified as `system` category with `low` severity before any LLM classification, preventing false security alerts from automated senders.
-- **Unknown sender summaries** — Inbound IMAP messages from unknown senders are summarized and severity-classified before notification routing.
-- **Per-message UID persistence** — Each processed IMAP message updates the channel's last-seen UID immediately (in a `finally` block), so a crash mid-batch does not cause re-processing of already-handled messages.
-- **Injection boundary** — Inbound email bodies are treated as untrusted external content and wrapped/sanitized before any LLM prompt ingestion.
+- **Per-user thresholds** — Notifications filtered by each user's `notification_level` (low → disaster).
+- **Severity capping** — Smart home/IoT tools are capped at `high` severity (never `disaster`).
+- **Injection boundary** — Inbound email bodies are treated as untrusted content and sanitized before LLM ingestion.
+- **Per-message UID persistence** — IMAP processing updates last-seen UID per message to prevent re-processing on crash.
 
 ---
 
@@ -295,37 +204,27 @@ This ensures other HTTP requests (including new tabs, API calls, and the convers
 
 | Principle | Description |
 |-----------|-------------|
-| **Multi-User Isolation** | Each user's knowledge, threads, and profile are scoped by `user_id`. No cross-user data leakage. |
-| **Proactive Intelligence** | A background scheduler polls MCP tools, writes discovered actions into a persisted scheduled-task queue, and executes due tasks by frequency. The proactive observer LLM is aware of all available tools (builtins + MCP + custom) and can create new custom tools via `builtin.nexus_create_tool` when it identifies automation opportunities. Proactive recurrence is represented in unified scheduler as `system.proactive.scan` and configurable via **Settings → Scheduler** (stored in `app_config`). Incoming email reading is separated into dedicated scheduler handler `system.email.read_incoming` (email batch), not the proactive scan loop. Proactive approvals (no chat thread) surface in the Notification Center (bell icon) and are visible to admins. |
-| **Unified Scheduler Foundation** | Scheduler persistence is normalized into parent schedules + child tasks + immutable run/task-run history: `scheduler_schedules`, `scheduler_tasks`, `scheduler_runs`, `scheduler_task_runs`, `scheduler_claims`, and `scheduler_events`. This provides a stable base for multi-step batch jobs (for example Job Scout pipelines), logs correlation by run/task context, powers the admin scheduler operations console in **Settings → Scheduler**, and enforces reliability guardrails (registered handlers + lifecycle transition checks). |
-| **Knowledge Declutter Worker** | Evening maintenance for `user_knowledge` (dedupe + declutter) now executes via unified scheduler task `system.knowledge_maintenance.run_due` with overlap guards and due-window checks, eliminating a separate recurring worker timer. |
-| **Autonomous Knowledge Capture** | Every chat turn is mined for durable facts, keeping the Knowledge Vault up to date without manual entry. |
-| **Vector-Aware Reasoning** | Semantic embedding search retrieves the most relevant knowledge before responding. |
-| **Human-in-the-Loop (HITL)** | Unified tool policy system governs ALL tools (built-in, custom, and MCP) with **default-deny** enforcement — unknown tools always require approval. Approval requests must include a clear reason. For interactive user-origin actions (chat/voice), approval is requested inline in the same conversation. The Approval Center lists only proactive/email-origin actions. Approval cards show structured details: **action** (human-readable), **item** (device/entity name), **location**, **reason**, and **source** (including email sender identity when available). Per-tool **scope** (`global` = all users, `user` = admin only) remains enforced. Standing orders let users save approval preferences (Always Allow/Ignore/Reject). |
-| **Model Orchestrator** | Intelligent task routing classifies each message (complex/simple/background/vision) and selects the best LLM provider based on capabilities, speed, cost, and tier. |
-| **Self-Extending Tools** | The agent can create, compile, and register new tools at runtime. Custom tools run in a VM sandbox with no file system or process access. |
+| **Multi-User Isolation** | Knowledge, threads, and profiles scoped by `user_id`. No cross-user data leakage. |
+| **Proactive Intelligence** | Background scheduler polls MCP tools, writes actions into a persisted task queue, and executes due tasks. Can create new custom tools at runtime. |
+| **Unified Scheduler** | Normalized parent schedules → child tasks → immutable run history. Powers proactive scans, knowledge maintenance, DB cleanup, and batch workflows (e.g. Job Scout). |
+| **Autonomous Knowledge Capture** | Every chat turn is mined for durable facts, keeping the Knowledge Vault current without manual entry. |
+| **Vector-Aware Reasoning** | Semantic embedding search retrieves relevant knowledge before responding (skipped if vault is empty). |
+| **Human-in-the-Loop (HITL)** | Default-deny tool policy system for all tools (built-in, custom, MCP). Standing orders let users save approval preferences. |
+| **Model Orchestrator** | Task routing classifies messages and selects the best LLM based on capabilities, speed, and cost. |
+| **Self-Extending Tools** | Agent can create, compile, and register new tools at runtime. Custom tools run in a VM sandbox. |
 | **Native SDKs** | Direct use of Azure OpenAI, OpenAI, Anthropic, LiteLLM, and MCP SDKs — no LangChain. |
+| **MCP Auto-Refresh** | Subscribes to `list_changed` notifications. Tool list refreshed with 500 ms debounce — no restart required. |
+| **Browser Automation** | Playwright-powered tools for page navigation, form filling, screenshots, and session management. |
+| **Multi-Channel Comms** | WhatsApp, Discord, webhooks, email — each channel resolves senders to internal users. |
+| **Alexa Smart Home** | 14 tools for announcements, lights, volume, sensors, DND, and device management. |
+| **Analytics Dashboard** | Date-range KPIs, session outcomes, trend charts, and topic drivers with drilldown to raw logs. |
 
 ---
 
-## UI Navigation Notes
+## UI Navigation
 
-- The header account area (top-right) opens an account dropdown with **Profile** and **Sign out** actions.
-- Profile is still available under **Settings → Profile**, but quick access is intentionally provided from the account dropdown.
-| **Worker Thread Isolation** | LLM API calls run in a dedicated Worker Thread to prevent token streaming from blocking the main event loop. Tool execution, DB access, and knowledge retrieval remain on the main thread. Automatic fallback to main thread if the worker is unavailable. |
-| **MCP Auto-Refresh** | Subscribes to `list_changed` notifications from MCP servers. When a server installs or removes tools at runtime (e.g. Forage), the tool list is refreshed automatically with a 500 ms debounce — no restart required. |
-| **MCP Tool Name Qualification** | MCP tool names are qualified as `serverId.toolName` and automatically truncated to fit the OpenAI 64-character limit. A reverse map resolves truncated names back to originals for MCP server calls. |
-| **Tool Array Cap & multi_tool_use** | All LLM dispatch paths cap the tools array at 128 (OpenAI limit). The `expandMultiToolUse()` function expands OpenAI's synthetic `multi_tool_use.parallel` call into individual tool calls before dispatch. |
-| **Browser Automation** | Playwright-powered tools let the agent navigate pages, fill forms, take screenshots, and manage sessions. |
-| **File System Access** | Built-in tools to read, write, list, and search files — with HITL gating on destructive operations. |
-| **Multi-Channel Comms** | WhatsApp, Discord, webhooks, and web chat — each channel resolves senders to internal users. |
-| **User-Scoped Alerting** | Per-user notification thresholds (`low` → `disaster`) suppress or deliver channel notifications based on event severity. Smart home/IoT tools are automatically capped below `disaster`. |
-| **Safe Email Ingestion** | Inbound email is classified, summarized, and guarded as untrusted content before reaching the agent loop. |
-| **Screen Sharing** | Share your screen with the agent via browser `getDisplayMedia()` — the agent sees what you see and can reason about it. |
-| **Voice I/O (STT/TTS)** | Mic button records audio via MediaRecorder, transcribes with Whisper. Speaker button on assistant messages plays TTS-1 audio. No extra dependencies — uses the existing OpenAI SDK. |
-| **Security Hardened** | Comprehensive prompt injection defense, security headers (CSP, X-Frame-Options, etc.), rate limiting, input validation, and path traversal protection. |
-| **Alexa Smart Home** | Native integration with Amazon Alexa — 14 tools for announcements, light control, volume, sensors, DND, and device management. Cookie-based auth with encrypted credential storage. |
-| **Analytics-Driven Observability** | Dashboard computes date-range KPIs, session outcomes, trend charts, and topic drivers with interactive drilldown to raw logs. |
+- The header account area (top-right) provides quick access to **Profile** and **Sign out**.
+- Approvals and system notifications are accessed via the **bell icon** (Notification Center), not as a standalone tab.
 
 ---
 
@@ -346,62 +245,41 @@ The UI is a single-page app served by a Next.js **optional catch-all** route (`[
 
 ### Settings Sub-Pages
 
-The Settings tab contains 13 sub-pages, each rendered as horizontally-scrollable chip-selectable panels. Sub-pages may be gated by **permissions** (e.g. `channels`, `llm_config`) or restricted to **admin-only** access. The Profile page is not shown in the chip navigation but remains accessible from the account menu (top-right).
+The Settings tab contains 13 chip-selectable sub-pages, gated by permissions or admin role.
 
 | Key | Label | Gate |
 |-----|-------|------|
 | `llm` | Providers | `llm_config` perm |
 | `channels` | Channels | `channels` perm |
 | `mcp` | MCP Servers | `mcp_servers` perm |
-| `policies` | Tool Policies | Admin only |
+| `policies` | Tool Policies | Admin |
 | `standing-orders` | Standing Orders | — |
 | `alexa` | Alexa | — |
 | `whisper` | Local Whisper | — |
-| `logging` | Logging | Admin only |
-| `db-management` | DB Management | Admin only |
+| `logging` | Logging | Admin |
+| `db-management` | DB Management | Admin |
 | `custom-tools` | Custom Tools | — |
-| `auth` | Authentication | Admin only |
-| `users` | User Management | Admin only |
-| `scheduler` | Scheduler | Admin only |
+| `auth` | Authentication | Admin |
+| `users` | User Management | Admin |
+| `scheduler` | Scheduler | Admin |
 
-### Permission-Aware Loading
-
-Permissions are fetched asynchronously from `GET /api/admin/users/me`. During the loading phase:
-
-1. **Default permissions are permissive** — all features visible while loading.
-2. **All settings pages are shown** in the chip strip until permissions resolve.
-3. **Redirect logic is deferred** — the redirect effect that enforces page visibility is skipped until `isUserMetaLoading` becomes `false`.
-
-Once permissions resolve, hidden pages are removed from the chip strip and any invalid active page triggers a redirect to `/settings/profile`.
+Permissions are fetched from `GET /api/admin/users/me`. Hidden pages are removed from the chip strip once permissions resolve.
 
 ---
 
 ## Multi-User Model
 
-### Roles & Access
-
 | Role | Capabilities |
 |------|-------------|
-| **Admin** | Full access. Manage LLM providers, global MCP servers, tool policies, logs, **user management** (enable/disable users, change roles, manage permissions). First user to sign up. |
-| **User** | Own knowledge vault, own threads, own channels, own profile. Access global MCP servers + user-scoped servers. Approve/reject tool calls on own threads. |
+| **Admin** | Full access — manage LLM providers, MCP servers, tool policies, users, logs, scheduler. First user to sign up. |
+| **User** | Own knowledge, threads, channels, profile. Access global MCP servers + user-scoped servers. |
 
-Admins can manage users from the **User Management** tab — enable/disable accounts, change roles, and control granular permissions (knowledge, chat, MCP, channels, approvals, settings).
+### Isolation
 
-### User Isolation
-
-- **Knowledge** — The `user_knowledge` table is keyed by `user_id`. All queries (list, search, upsert, semantic search) are scoped to the requesting user. The unique index includes `user_id` so the same entity/attribute/value can exist for different users.
-- **Threads** — Each thread stores a `user_id` foreign key. Thread listing and chat operations enforce ownership checks.
-- **MCP Servers** — Each server has a `scope` field (`global` or `user`). Global servers are visible to all; user-scoped servers are visible only to their owner.
-- **Profiles** — Per-user profile (display name, bio, skills, links) stored in `user_profiles`.
-
-### User-Specific Channels
-
-Communication channels are **owned by the user who creates them**. Each channel has a `user_id` foreign key:
-
-- Channel listing is filtered by the authenticated user (admins see all)
-- Only the channel owner can edit or delete their channels
-- When a message arrives on a channel webhook, the system resolves the **channel owner** as the user and routes knowledge/threads accordingly
-- Legacy `channel_user_mappings` table is preserved for backward compatibility but the primary resolution uses `getChannelOwnerId()`
+- **Knowledge** — `user_knowledge` keyed by `user_id`; same entity/attribute can exist per user.
+- **Threads** — Each thread has a `user_id` foreign key; ownership enforced on all operations.
+- **MCP Servers** — `scope` field: global (all users) or user-scoped (owner only).
+- **Channels** — Owned by creator; webhook messages resolve the channel owner as the active user.
 
 ---
 

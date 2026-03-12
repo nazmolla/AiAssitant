@@ -1,5 +1,7 @@
 # Nexus Agent — Installation Guide
 
+> **Summary:** Prerequisites, quick start, environment variables, production build, deployment, HTTPS setup, and optional components (Local Whisper, ESP32 Atom Echo).
+
 > Back to [README](../README.md) | [Architecture](ARCHITECTURE.md) | [Tech Specs](TECH_SPECS.md) | [Usage](USAGE.md)
 
 ---

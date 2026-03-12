@@ -1,5 +1,7 @@
 # Nexus Agent — Technical Specifications
 
+> **Summary:** Database schema, API routes, security measures, tool dispatch, attachment handling, testing framework, and deployment details.
+
 > Back to [README](../README.md) | [Architecture](ARCHITECTURE.md) | [Installation](INSTALLATION.md) | [Usage](USAGE.md)
 
 ---
@@ -8,22 +10,18 @@
 
 | Layer | Component | Details |
 |-------|-----------|---------|
-| Security Hardening (Mar 2026) | Path + transport controls | Attachment path guards now enforce separator-safe base checks (`base + path.sep`) across API/channel code paths; middleware matcher includes `/api/channels/:path*` for global rate limiting with explicit webhook JWT bypass logic; `Strict-Transport-Security` is enabled globally. |
-| Performance Hardening (Mar 2026) | I/O + query + stream tuning | Attachment API now streams files (`createReadStream`) instead of `readFileSync`; `searchKnowledge()` now applies `LIMIT 100`; FS tools use async `fs/promises` for read/write/stat/delete/search paths; `/api/logs/stream` polling interval increased from 1000ms to 2000ms. |
-| Runtime | Node.js | v20+ (LTS). Tested on x86-64 and ARM64. |
+| Runtime | Node.js | v20+ (LTS). x86-64 and ARM64. |
 | Language | TypeScript | v5.x, Strict Mode |
-| Database | SQLite | `better-sqlite3` — zero-config, single-file persistence. **Application cache** (`src/lib/cache.ts`) — in-memory write-through cache with 60s TTL and explicit invalidation for LLM providers, tool policies, user records, profiles, auth lookups (by-email/by-sub with 5-min TTL), channels, auth providers, and MCP servers (decrypted, per-user where applicable) to avoid redundant synchronous DB queries on every request. **Provider instance cache** (`src/lib/llm/orchestrator.ts`) — module-level Map keyed by config hash with 10s TTL; avoids re-constructing SDK clients on every chat request. **Embedding result cache** (`src/lib/llm/embeddings.ts`) — LRU Map keyed by SHA-256 text hash with 1-hour TTL, max 500 entries; eliminates redundant embedding API calls (100-500 ms each). |
-| Knowledge Hygiene | Normalized dedupe | `upsertKnowledge()` performs normalized (case/whitespace-insensitive) merge checks before insert, and startup migration deduplicates legacy normalized duplicates in `user_knowledge`. Ingestion also dedupes extracted facts per turn and caps noisy `source_context` length to reduce DB growth. |
-| Frontend | Next.js 16 | App Router, Material UI (MUI v7) with 7 color themes, TailwindCSS, screen sharing via getDisplayMedia, **Markdown rendering** via `react-markdown` + `remark-gfm`, **virtualized message list** via `@tanstack/react-virtual` (windowed rendering, dynamic measurement, overscan buffer), header avatar/name with direct Profile access plus dedicated Sign out button. **Middleware proxy** limit set to `50 MB` (`proxyClientMaxBodySize`) for large file uploads. Build requires `--webpack` flag (Turbopack unsupported). |
-| HTTPS | nginx + self-signed cert | Reverse proxy HTTPS:443 → Next.js:3000. Required for mic access over network. TLSv1.2/1.3, HTTP → HTTPS redirect, SSE passthrough. |
-| Audio | OpenAI Whisper + TTS-1 | Speech-to-Text (mic input, 25 MB max, webm/wav/mp3/ogg/flac) and Text-to-Speech (9 voices, configurable output format: mp3/wav/pcm/opus/aac/flac). Supports dedicated `tts` and `stt` purpose providers with standard deployment field for Azure OpenAI. **Local Whisper fallback** — optional local Whisper server (faster-whisper-server or whisper.cpp) as automatic backup when cloud STT fails. **Audio mode** — hands-free conversation with auto-listen and streaming TTS. **Conversation Mode** — dedicated `/conversation` tab with VAD-based automatic speech endpoint detection (WebAudio AnalyserNode, 1.2 s silence / 0.4 s min speech), lightweight `/api/conversation/respond` endpoint (full tool support, no knowledge/profile/DB overhead), in-memory client-side history (30 msg cap), real-time audio level visualization, atomic `stateRef` sync via `useCallback`, auto-listen after response, and **interrupt / barge-in** (separate interrupt VAD with 200 ms sustained speech at 2× threshold triggers abort of LLM + TTS, marks transcript with ⸺, transitions to listening). **ESP32 Atom Echo** — standalone Arduino sketch for M5Stack Atom Echo with on-device wake-word detection via micro-wake-up, WAV-format TTS, full tool support via `/api/conversation/respond`. |
-| LLM SDKs | Native | `@azure/openai`, `openai`, `@anthropic-ai/sdk`, LiteLLM proxy. **Streaming responses** — tokens are streamed in real-time via SSE `token` events for instant perceived latency. SSE writes use a `sseSend()` safety wrapper with `streamCancelled` flag to prevent crashes when clients disconnect mid-stream. **Worker Thread isolation** — LLM API calls run in a dedicated Node.js Worker Thread (`scripts/agent-worker.js`) to prevent token streaming from blocking the main event loop. Tool execution, DB access, and knowledge retrieval remain on the main thread with IPC-based coordination. Automatic fallback to main thread if worker is unavailable. **No-thinking control** — chat providers can persist `disableThinking` in provider config; OpenAI-compatible paths send `think=false` with fallback retry when unsupported. |
-| Agent Workflows | Built-in tool orchestration | The system prompt includes a guided job-scout workflow: web discovery of matching roles (including LinkedIn links), per-role tailored resume generation via `builtin.file_generate`, and delivery by `builtin.email_send` with attachments. |
-| MCP | v1.26+ | Stdio, SSE, and Streamable HTTP transports. `list_changed` auto-refresh (500 ms debounce). |
+| Database | SQLite | `better-sqlite3` — single-file persistence with in-memory write-through cache (see [Architecture → Caching](ARCHITECTURE.md#caching-strategy)) |
+| Frontend | Next.js 16 | App Router, MUI v7, TailwindCSS, 7 color themes, Markdown rendering, virtualized message list, screen sharing |
+| HTTPS | nginx + self-signed cert | Reverse proxy HTTPS:443 → Next.js:3000. Required for mic access. |
+| Audio | OpenAI Whisper + TTS-1 | STT (25 MB max) and TTS (9 voices). Local Whisper fallback. Conversation Mode with VAD. ESP32 Atom Echo support. |
+| LLM SDKs | Native | Azure OpenAI, OpenAI, Anthropic, LiteLLM. Token-level SSE streaming. Worker thread isolation. |
+| MCP | v1.26+ | Stdio, SSE, Streamable HTTP transports. Auto-refresh on `list_changed`. |
 | Discord | discord.js | Gateway bot with mentions, DMs, and slash commands |
 | Auth | NextAuth v4 | Credentials (email + password) and OAuth (Azure AD, Google) |
 | Browser | Playwright | Chromium headless/headful for automation |
-| Design | Material Design | 7 switchable dark themes (Ember, Midnight, Frost, Sunrise, Forest, Amethyst, Obsidian), Google Roboto font |
+| Design | Material Design | 7 dark themes, Google Roboto font |
 
 ---
 
@@ -52,8 +50,6 @@ CREATE TABLE user_emails (
 );
 CREATE INDEX idx_user_emails_user ON user_emails(user_id);
 CREATE INDEX idx_user_emails_email ON user_emails(email COLLATE NOCASE);
-
-> **Multi-email support**: Users can register additional email addresses to receive messages and inbound emails for any of them. All registered emails (primary + secondary) are treated equally by the authentication layer (`getUserByEmail()` performs UNION query on both `users.email` and `user_emails.email` tables). Secondary emails are managed through the profile settings UI and `/api/config/user-emails` API. No email verification is required — the system trusts account owner access. Cache invalidation automatically handles multi-email lookups to ensure fresh data after additions/removals.
 
 CREATE TABLE user_permissions (
     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -204,42 +200,6 @@ CREATE INDEX idx_notifications_user_read ON notifications (user_id, read);
 CREATE INDEX idx_notifications_created ON notifications (created_at);
 ```
 
-> **Notifications**: The `notifications` table stores persistent in-app notifications surfaced via the bell icon in the header. Notifications are automatically created when `notifyAdmin()` is called. Types include approval requests, tool errors, proactive actions, channel errors, and system-level alerts.
->
-> **Proactive approvals**: When `thread_id` is `NULL`, the approval was created by the proactive scheduler (no associated chat thread). These appear in the Notification Center for admins and are executed directly when approved — no agent loop continuation is needed.
->
-> **Typed thread filtering**: User chat thread lists now filter by `threads.thread_type = 'interactive'` (and `is_interactive = 1`) instead of title-prefix matching (e.g. `[proactive-scan]`, `[scheduled]`, `channel:*`). Channel conversations are resolved using `channel_id` + `external_sender_id` columns.
->
-> **Typed knowledge source filtering**: Knowledge entries use `user_knowledge.source_type` (`manual` / `chat` / `proactive`) for filtering and reporting, replacing source-context prefix parsing.
->
-> **Unified Scheduler Foundation**: The normalized scheduler model is available through `scheduler_schedules` (parent schedule definition), `scheduler_tasks` (child task graph), `scheduler_runs` (schedule execution history), `scheduler_task_runs` (per-task execution history), `scheduler_claims` (worker lease/heartbeat safety), and `scheduler_events` (transition timeline). All scheduling behavior now executes through this model.
-
-> **Unified Scheduler Migration**: Recurring platform flows are represented as first-class schedule/task records: `system.proactive.scan`, `system.db_maintenance.run_due`, `system.knowledge_maintenance.run_due`, and a modeled `workflow.job_scout.pipeline` parent schedule with child tasks (`search`, `extract`, `prepare`, `validate`, `email`).
-
-> **Scheduler Reliability Guardrails**: Run/task-run status transitions are validated against explicit lifecycle rules before DB updates. The runtime validates enabled task handlers against a registered-handler allowlist and emits warnings for orphan handlers. Queue health metrics (queued/claimed/running, 1h failures/success, stale claims) are available through `GET /api/scheduler/health`.
-
-> **Run-scoped batch logging**: Scheduler execution logs now include structured correlation metadata (`scheduleId`, `runId`, `taskRunId`, `handlerName`) and task-run `log_ref` pointers so run-detail log links can resolve to filtered logs for the selected batch run/task.
->
-> **Scheduler Console UX**: Admin scheduler operations in Settings now follow a progressive flow: **Header Tasks Grid** (top-level schedules only), **Inline Expansion** (selected header shows child tasks + recent runs), and **Focused Header View** (full child-task table, full run history, and task-run log links).
->
-> **Batch scheduler modal and multi-instance model**: Batch scheduling now uses a dedicated modal editor with three collapsible sections (**Parameters**, **Recurrence**, **Sub tasks**) and top-end **OK/Cancel** actions (Escape closes the modal). Backend creation is now explicit via `POST /api/scheduler/schedules` with typed batch jobs (`proactive`, `knowledge`, `cleanup`) so multiple independent instances per batch type are supported.
-
-> **Focused header edit UX hardening**: The focused schedule editor now supports Escape-to-close and normalizes lenient interval expressions (for example `every:10minute`, `every 10 minute`, `10 minute`) into canonical `every:<n>:<unit>` format before persistence.
-
-> **Recurring schedule due-time seeding**: Scheduler create/update APIs now compute and persist `next_run_at` for active recurring schedules (`interval` currently supported), including recurrence edits and re-activation updates. This prevents recurring batches from stalling due to a missing due timestamp.
->
-> **Dedicated email reading batch**: Incoming email processing is now schedulable as an independent batch type (`email`) using handler `system.email.read_incoming`. Email polling/auto-response is removed from the regular proactive scan path so it can be tuned and scheduled separately.
->
-> **Scheduler bulk selection**: The Header Tasks grid supports **Select All / Deselect All** for currently visible schedules, including a header checkbox and top action button for bulk delete workflows.
->
-> **Timezone-consistent timestamps**: Scheduler and other operational UI surfaces use the shared theme/provider date formatter so timestamps follow the signed-in user timezone preference consistently with the dashboard.
->
-> **One-time legacy run-once cleanup**: On runtime bootstrap, legacy migrated scheduler rows with `trigger_type='once'` and `owner_type='system'` are removed once, protected by `app_config` marker key `scheduler.cleanup_legacy_system_once_v1`.
->
-> **Severity capping**: Smart home / IoT tool assessments (prefixes: `builtin.alexa_`, `builtin.smart_home_`, `builtin.iot_`, `builtin.hue_`, `builtin.nest_`, `builtin.ring_`) are automatically capped at `high` severity — they can never produce `disaster`-level events.
->
-> **Quiet hours** (10 PM – 8 AM): Audio-producing tools are blocked during nighttime. This includes announcements, media playback, TTS, and volume increases. Volume decreases/muting and read-only queries remain allowed. The enforcement is in `executeSchedulerTool()` and applies to all scheduler-initiated actions (proactive and scheduled tasks).
-
 ### E. Custom Tools (Self-Extending)
 
 ```sql
@@ -274,11 +234,6 @@ CREATE TABLE channel_user_mappings (
     UNIQUE(channel_id, external_id)
 );
 ```
-
-Channel transport hardening notes:
-- Email transport normalizes SMTP/IMAP host fields (strips scheme/path/embedded port) before connection attempts.
-- SMTP/IMAP ports are validated as `1..65535`; empty or malformed values fall back to safe defaults (`587` SMTP, `993` IMAP).
-- SMTP verify/send and scheduler IMAP poll include lightweight retry handling for transient DNS/network errors (`EAI_AGAIN`, timeout, unexpected close).
 
 ### G. App Configuration (Key-Value)
 
@@ -548,7 +503,7 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**1315 tests across 103 suites** — all passing.
+**1547 tests across 124 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|
