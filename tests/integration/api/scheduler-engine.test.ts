@@ -17,8 +17,8 @@ installAuthMocks();
 // Mock the agent module — we are not testing LLM correctness here.
 jest.mock("@/lib/agent", () => ({
   runAgentLoop: jest.fn(async () => ({
-    content: "Mock agent response",
-    toolsUsed: 2,
+    content: "Mock agent response with sufficient content for pipeline orchestrator validation",
+    toolsUsed: ["builtin.web_search", "builtin.browser_navigate"],
     pendingApprovals: [],
   })),
 }));
@@ -209,8 +209,8 @@ describe("scheduler engine: job scout pipeline", () => {
   beforeEach(() => {
     (runAgentLoop as jest.Mock).mockClear();
     (runAgentLoop as jest.Mock).mockResolvedValue({
-      content: "Mock agent response",
-      toolsUsed: 2,
+      content: "Mock agent response with sufficient content for pipeline orchestrator validation",
+      toolsUsed: ["builtin.web_search", "builtin.browser_navigate"],
       pendingApprovals: [],
     });
   });
@@ -250,11 +250,11 @@ describe("scheduler engine: job scout pipeline", () => {
     expect(prompts[2]).toContain("prepare");
 
     // Output JSON records the step key, thread id, and tool usage.
-    const output0 = JSON.parse(taskRuns[0].output_json ?? "{}") as { kind: string; stepKey: string; threadId: string; toolsUsed: number };
+    const output0 = JSON.parse(taskRuns[0].output_json ?? "{}") as { kind: string; stepKey: string; threadId: string; toolsUsed: string[] };
     expect(output0.kind).toBe("job_scout_pipeline");
     expect(output0.stepKey).toBe("search");
     expect(output0.threadId).toBe(threadIds[0]);
-    expect(output0.toolsUsed).toBe(2);
+    expect(output0.toolsUsed).toEqual(["builtin.web_search", "builtin.browser_navigate"]);
   });
 
   test("job scout step failure cascades: extract skipped when search fails", async () => {

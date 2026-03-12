@@ -16,13 +16,10 @@ import {
   setSchedulerTaskRunStatus,
   tryClaimSchedulerRun,
   updateSchedulerScheduleAfterDispatch,
-  type SchedulerScheduleRecord,
-  runDbMaintenanceIfDue,
   listEnabledSchedulerTaskHandlers,
 } from "@/lib/db";
-import { runEmailReadBatch, runProactiveScan } from "@/lib/scheduler";
-import { runKnowledgeMaintenanceIfDue } from "@/lib/knowledge-maintenance";
 import { computeSchedulerNextRunAt } from "@/lib/scheduler/next-run";
+import { findBatchJobForHandler } from "@/lib/scheduler/batch-jobs";
 
 interface SchedulerLogContext {
   scheduleId?: string;
@@ -50,34 +47,6 @@ const REGISTERED_SCHEDULER_HANDLERS = new Set<string>([
   "workflow.job_scout.validate",
   "workflow.job_scout.email",
 ]);
-
-/**
- * Built-in system prompts for each Job Scout pipeline step.
- * A shared per-run conversation thread is used so each step can reference
- * the output of the previous one, giving the agent full pipeline context.
- */
-const JOB_SCOUT_STEP_PROMPTS: Record<string, string> = {
-  "workflow.job_scout.search":
-    "You are an AI job search specialist. Based on the user's configured job criteria and preferences, " +
-    "search for relevant open job listings. For each listing record: position title, company, location, " +
-    "compensation range (if visible), and the application URL.",
-  "workflow.job_scout.extract":
-    "You are an AI job research specialist. Review all the job listings found in this pipeline run and " +
-    "extract comprehensive role details: key requirements, technology stack, culture signals, " +
-    "compensation benchmarks, and seniority signals. Flag any listings that appear to be a strong match.",
-  "workflow.job_scout.prepare":
-    "You are an AI resume and cover-letter specialist. Based on all the listings and extracted details " +
-    "in this pipeline conversation, prepare tailored application materials for the top-matched " +
-    "opportunities. Include specific resume bullet points and a concise cover-letter outline per role.",
-  "workflow.job_scout.validate":
-    "You are an AI job-application coach. Review all listings, extracted details, and materials " +
-    "prepared in this pipeline run. Score each opportunity on fit, growth potential, and compensation. " +
-    "Produce a prioritised shortlist with recommended next actions for each.",
-  "workflow.job_scout.email":
-    "You are an AI communications specialist. Based on all work done in this pipeline run, compose a " +
-    "digest summary for the pipeline owner covering: top job matches, key insights, materials prepared, " +
-    "and recommended next steps. Send this summary via the available email or messaging tools.",
-};
 
 function validateRegisteredHandlers(): void {
   const handlers = listEnabledSchedulerTaskHandlers();
@@ -157,6 +126,7 @@ async function executeTaskRun(
   setSchedulerTaskRunStatus(taskRunId, "running");
 
   try {
+    // ── Generic agent.prompt handler (used by any batch type) ──
     if (handlerName === "agent.prompt") {
       let prompt = "";
       let threadId = "";
@@ -191,93 +161,28 @@ async function executeTaskRun(
       logSchedulerExecution("info", "Scheduler prompt task completed successfully.", context, {
         threadId,
         userId,
-        toolsUsed: result.toolsUsed ?? 0,
-        responsePreview: (result.content || "").slice(0, 400),
-      });
-      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "agent_prompt", threadId, userId, toolsUsed: result.toolsUsed ?? 0 }));
-      return {};
-    }
-
-    if (handlerName === "system.proactive.scan") {
-      await runProactiveScan({ scheduleId, runId, taskRunId, handlerName });
-      logSchedulerExecution("info", "Proactive scan task completed successfully.", context);
-      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "proactive_scan" }));
-      return {};
-    }
-
-    if (handlerName === "system.email.read_incoming") {
-      await runEmailReadBatch({ scheduleId, runId, taskRunId, handlerName });
-      logSchedulerExecution("info", "Email read task completed successfully.", context);
-      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "email_read_incoming" }));
-      return {};
-    }
-
-    if (handlerName === "system.db_maintenance.run_due") {
-      const result = runDbMaintenanceIfDue();
-      logSchedulerExecution("info", "DB maintenance task completed.", context, {
-        maintenanceSkipped: result === null,
-        ...(result || {}),
-      });
-      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "db_maintenance", result }));
-      return {};
-    }
-
-    if (handlerName === "system.knowledge_maintenance.run_due") {
-      const result = runKnowledgeMaintenanceIfDue();
-      logSchedulerExecution("info", "Knowledge maintenance task completed.", context, result as unknown as Record<string, unknown>);
-      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "knowledge_maintenance", result }));
-      return {};
-    }
-
-    if (handlerName.startsWith("workflow.job_scout.")) {
-      const stepKey = handlerName.replace("workflow.job_scout.", "");
-
-      // Step-specific prompt: config can override the built-in default.
-      let stepPrompt = JOB_SCOUT_STEP_PROMPTS[handlerName] ?? `Execute job scout step: ${stepKey}.`;
-      let stepUserId = "";
-      let stepThreadId = pipelineThreadId ?? "";
-
-      try {
-        const parsed = JSON.parse(configJson || "{}");
-        if (typeof parsed.prompt === "string" && parsed.prompt) stepPrompt = parsed.prompt;
-        if (typeof parsed.userId === "string" && parsed.userId) stepUserId = parsed.userId;
-      } catch { /* use defaults */ }
-
-      if (!stepUserId) {
-        const schedule = getSchedulerScheduleById(scheduleId);
-        stepUserId = schedule?.owner_id ?? "";
-      }
-      if (!stepUserId) {
-        throw new Error(`Missing userId for job scout step "${stepKey}". Set schedule owner_id.`);
-      }
-
-      // Create a shared pipeline thread on the first step; reuse it for all subsequent steps
-      // so each step runs in the same conversation and can reference prior step output.
-      if (!stepThreadId) {
-        const schedule = getSchedulerScheduleById(scheduleId);
-        const title = schedule ? `Job Scout Pipeline: ${schedule.name}` : "Job Scout Pipeline";
-        stepThreadId = createThread(title, stepUserId).id;
-        logSchedulerExecution("info", `Created pipeline thread for job scout run.`, context, { stepKey, threadId: stepThreadId });
-      }
-
-      const { runAgentLoop } = await import("@/lib/agent");
-      const result = await runAgentLoop(stepThreadId, stepPrompt, undefined, undefined, undefined, stepUserId);
-
-      logSchedulerExecution("info", `Job scout step "${stepKey}" completed.`, context, {
-        stepKey,
-        threadId: stepThreadId,
-        userId: stepUserId,
-        toolsUsed: result.toolsUsed ?? 0,
-        responsePreview: (result.content || "").slice(0, 400),
+        toolsUsed: result.toolsUsed ?? [],
+        responsePreview: (result.content || "").slice(0, 4000),
       });
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({
-        kind: "job_scout_pipeline",
-        stepKey,
-        threadId: stepThreadId,
-        userId: stepUserId,
-        toolsUsed: result.toolsUsed ?? 0,
+        kind: "agent_prompt", threadId, userId,
+        toolsUsed: result.toolsUsed ?? [],
+        response: result.content || "",
       }));
-      return { pipelineThreadId: stepThreadId };
+      return {};
+    }
+
+    // ── Delegate to the batch job class that owns this handler ──
+    const batchJob = findBatchJobForHandler(handlerName);
+    if (batchJob) {
+      const stepResult = await batchJob.executeStep(
+        { taskRunId, runId, handlerName, configJson, scheduleId, pipelineThreadId },
+        logSchedulerExecution,
+      );
+      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify(
+        stepResult.outputJson ?? { kind: batchJob.type, handlerName },
+      ));
+      return { pipelineThreadId: stepResult.pipelineThreadId };
     }
 
     throw new Error(`Unsupported scheduler handler: ${handlerName}`);

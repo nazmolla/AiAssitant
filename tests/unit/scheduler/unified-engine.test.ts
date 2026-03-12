@@ -1,8 +1,8 @@
 // Mock the agent loop so job scout steps don't try to make real LLM calls.
 jest.mock("@/lib/agent", () => ({
   runAgentLoop: jest.fn(async () => ({
-    content: "Mock agent response",
-    toolsUsed: 1,
+    content: "Mock agent response with sufficient content for pipeline orchestrator validation",
+    toolsUsed: ["builtin.web_search"],
     pendingApprovals: [],
   })),
 }));
