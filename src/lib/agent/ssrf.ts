@@ -14,6 +14,7 @@
 
 import * as dns from "dns";
 import * as net from "net";
+import { ValidationError, PermissionError, IntegrationError } from "@/lib/errors";
 
 // ── Blocklists ────────────────────────────────────────────────
 
@@ -76,22 +77,22 @@ export function assertExternalUrl(urlStr: string): void {
   try {
     parsed = new URL(urlStr);
   } catch {
-    throw new Error("Invalid URL");
+    throw new ValidationError("Invalid URL");
   }
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(`Blocked: unsupported protocol "${parsed.protocol}". Only http/https allowed.`);
+    throw new PermissionError(`Blocked: unsupported protocol "${parsed.protocol}". Only http/https allowed.`);
   }
 
   const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
 
   if (BLOCKED_HOSTNAMES.has(hostname.toLowerCase())) {
-    throw new Error("Blocked: request to internal/private address is not allowed.");
+    throw new PermissionError("Blocked: request to internal/private address is not allowed.");
   }
 
   if (net.isIP(hostname)) {
     if (isPrivateIP(hostname)) {
-      throw new Error("Blocked: request to internal/private address is not allowed.");
+      throw new PermissionError("Blocked: request to internal/private address is not allowed.");
     }
   }
 }
@@ -140,18 +141,18 @@ export async function assertExternalUrlWithResolve(
         });
       });
     } catch {
-      throw new Error(`DNS resolution failed for "${hostname}".`);
+      throw new IntegrationError(`DNS resolution failed for "${hostname}".`);
     }
   }
 
   if (resolvedIPs.length === 0) {
-    throw new Error(`DNS resolution returned no addresses for "${hostname}".`);
+    throw new IntegrationError(`DNS resolution returned no addresses for "${hostname}".`);
   }
 
   // Block if ANY resolved IP is private
   for (const ip of resolvedIPs) {
     if (isPrivateIP(ip)) {
-      throw new Error(
+      throw new PermissionError(
         `Blocked: "${hostname}" resolves to internal/private address ${ip}.`
       );
     }

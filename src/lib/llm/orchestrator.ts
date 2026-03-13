@@ -17,6 +17,7 @@ import type { ChatProvider } from "./types";
 import { OpenAIChatProvider } from "./openai-provider";
 import { AnthropicChatProvider } from "./anthropic-provider";
 import { createHash } from "crypto";
+import { ConfigurationError } from "@/lib/errors";
 
 // ── Provider Instance Cache ───────────────────────────────────
 // Avoids re-creating OpenAI/Anthropic SDK clients on every request.
@@ -297,7 +298,7 @@ function buildProviderUncached(record: LlmProviderRecord, config: Record<string,
       return new OpenAIChatProvider({ variant: "openai", apiKey, model, baseURL, disableThinking });
     }
     default:
-      throw new Error(`Unknown provider type: ${record.provider_type}`);
+      throw new ConfigurationError(`Unknown provider type: ${record.provider_type}`, { providerType: record.provider_type });
   }
 }
 
@@ -327,7 +328,7 @@ export function selectProvider(
   const allProviders = listLlmProviders().filter((p) => p.purpose === "chat");
 
   if (allProviders.length === 0) {
-    throw new Error("[Nexus] No LLM provider configured. Add one in Settings → LLM Providers.");
+    throw new ConfigurationError("No LLM provider configured. Add one in Settings → LLM Providers.");
   }
 
   // Score all providers
@@ -383,7 +384,7 @@ export function selectProviderForWorker(
   const allProviders = listLlmProviders().filter((p) => p.purpose === "chat");
 
   if (allProviders.length === 0) {
-    throw new Error("[Nexus] No LLM provider configured. Add one in Settings → LLM Providers.");
+    throw new ConfigurationError("No LLM provider configured. Add one in Settings → LLM Providers.");
   }
 
   const scored: ScoredProvider[] = allProviders.map((record) => {

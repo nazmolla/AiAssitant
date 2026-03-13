@@ -9,6 +9,7 @@
  */
 
 import type { ToolDefinition } from "@/lib/llm";
+import { NotFoundError } from "@/lib/errors";
 
 /** Context passed to tool executors that need thread/user info */
 export interface ToolExecutionContext {
@@ -67,7 +68,7 @@ export class ToolRegistry {
   ): Promise<unknown> {
     const category = this.findCategory(toolName);
     if (!category) {
-      throw new Error(`No registered tool category handles "${toolName}"`);
+      throw new NotFoundError(`No registered tool category handles "${toolName}"`, { toolName });
     }
     return category.execute(toolName, args, context);
   }

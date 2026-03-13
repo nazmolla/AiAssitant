@@ -19,6 +19,7 @@
 
 import type { ToolDefinition, ToolCall } from "@/lib/llm";
 import * as vm from "vm";
+import { ValidationError, NotFoundError, IntegrationError } from "@/lib/errors";
 
 function emitCustomToolLog(level: "verbose" | "warning" | "error", args: unknown[]): void {
   try {
@@ -239,7 +240,7 @@ export async function executeCustomTool(
   // Custom tool execution
   const tool = customToolsCache.find((t) => t.name === name && t.enabled);
   if (!tool) {
-    throw new Error(`Custom tool "${name}" not found or is disabled.`);
+    throw new NotFoundError(`Custom tool "${name}" not found or is disabled.`);
   }
 
   return runSandboxed(tool.implementation, args);
@@ -254,7 +255,7 @@ async function createCustomTool(args: Record<string, unknown>): Promise<unknown>
   const implementation = args.implementation as string;
 
   if (!rawName || !description || !inputSchema || !implementation) {
-    throw new Error("Missing required fields: toolName, description, inputSchema, implementation");
+    throw new ValidationError("Missing required fields: toolName, description, inputSchema, implementation");
   }
 
   // Sanitize the name
@@ -266,12 +267,12 @@ async function createCustomTool(args: Record<string, unknown>): Promise<unknown>
 
   // Validate name length
   if (safeName.length < 2 || safeName.length > 64) {
-    throw new Error("Tool name must be 2-64 characters.");
+    throw new ValidationError("Tool name must be 2-64 characters.");
   }
 
   // Check for duplicates — guide the agent to use update instead
   if (customToolsCache.some((t) => t.name === fullName)) {
-    throw new Error(
+    throw new ValidationError(
       `Custom tool "${fullName}" already exists. ` +
       `Use builtin.nexus_update_tool to modify its implementation, description, or schema.`
     );
@@ -279,13 +280,13 @@ async function createCustomTool(args: Record<string, unknown>): Promise<unknown>
 
   // Validate inputSchema has required structure
   if (!inputSchema.type || inputSchema.type !== "object") {
-    throw new Error("inputSchema must have type: 'object'");
+    throw new ValidationError("inputSchema must have type: 'object'");
   }
 
   // Validate the implementation compiles and runs in the sandbox
   const validationError = validateImplementation(implementation);
   if (validationError) {
-    throw new Error(validationError);
+    throw new ValidationError(validationError);
   }
 
   // Save to DB
@@ -324,12 +325,12 @@ async function createCustomTool(args: Record<string, unknown>): Promise<unknown>
 
 async function updateCustomTool(args: Record<string, unknown>): Promise<unknown> {
   const rawName = args.toolName as string;
-  if (!rawName) throw new Error("toolName is required.");
+  if (!rawName) throw new ValidationError("toolName is required.");
 
   const fullName = rawName.startsWith(CUSTOM_TOOL_PREFIX) ? rawName : `${CUSTOM_TOOL_PREFIX}${rawName}`;
   const idx = customToolsCache.findIndex((t) => t.name === fullName);
   if (idx === -1) {
-    throw new Error(`Custom tool "${fullName}" not found. Use builtin.nexus_create_tool to create it first.`);
+    throw new NotFoundError(`Custom tool "${fullName}" not found. Use builtin.nexus_create_tool to create it first.`);
   }
 
   const existing = customToolsCache[idx];
@@ -342,7 +343,7 @@ async function updateCustomTool(args: Record<string, unknown>): Promise<unknown>
   // Validate inputSchema structure if changed
   if (args.inputSchema) {
     if (!newInputSchema.type || newInputSchema.type !== "object") {
-      throw new Error("inputSchema must have type: 'object'");
+      throw new ValidationError("inputSchema must have type: 'object'");
     }
   }
 
@@ -350,7 +351,7 @@ async function updateCustomTool(args: Record<string, unknown>): Promise<unknown>
   if (typeof args.implementation === "string") {
     const validationError = validateImplementation(newImplementation);
     if (validationError) {
-      throw new Error(validationError);
+      throw new ValidationError(validationError);
     }
   }
 
@@ -398,12 +399,12 @@ function listTools(): unknown {
 
 async function deleteCustomTool(args: Record<string, unknown>): Promise<unknown> {
   const rawName = args.toolName as string;
-  if (!rawName) throw new Error("toolName is required.");
+  if (!rawName) throw new ValidationError("toolName is required.");
 
   const fullName = rawName.startsWith(CUSTOM_TOOL_PREFIX) ? rawName : `${CUSTOM_TOOL_PREFIX}${rawName}`;
   const idx = customToolsCache.findIndex((t) => t.name === fullName);
   if (idx === -1) {
-    throw new Error(`Custom tool "${fullName}" not found.`);
+    throw new NotFoundError(`Custom tool "${fullName}" not found.`);
   }
 
   // Remove from DB
@@ -562,7 +563,7 @@ async function runSandboxed(
 
   const result = sandbox.__result__;
   if (result && typeof result === "object" && "__error__" in (result as Record<string, unknown>)) {
-    throw new Error((result as Record<string, unknown>).__error__ as string);
+    throw new IntegrationError((result as Record<string, unknown>).__error__ as string);
   }
 
   return result ?? { status: "completed", note: "Tool returned no explicit value." };

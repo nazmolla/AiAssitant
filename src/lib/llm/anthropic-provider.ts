@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ContentPart, ChatRequestOptions } from "./types";
+import { ConfigurationError } from "@/lib/errors";
 
 export interface AnthropicProviderOptions {
   apiKey?: string;
@@ -16,7 +17,7 @@ export class AnthropicChatProvider implements ChatProvider {
   constructor(options: AnthropicProviderOptions) {
     const apiKey = options.apiKey;
     if (!apiKey) {
-      throw new Error("[Nexus] Missing Anthropic API key.");
+      throw new ConfigurationError("Missing Anthropic API key.");
     }
 
     this.client = new Anthropic({ apiKey });

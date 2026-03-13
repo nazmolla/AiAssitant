@@ -3,6 +3,7 @@ import type { ChatProvider } from "./types";
 import { OpenAIChatProvider } from "./openai-provider";
 import { AnthropicChatProvider } from "./anthropic-provider";
 import { getCachedProviderByRecord } from "./orchestrator";
+import { ConfigurationError } from "@/lib/errors";
 
 export type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ToolCall, ContentPart } from "./types";
 export { selectProvider, selectBackgroundProvider, selectFallbackProvider, selectProviderForWorker, classifyTask, type TaskType, type RoutingTier, type OrchestratorResult, type WorkerProviderInfo } from "./orchestrator";
@@ -17,8 +18,8 @@ export function createChatProvider(): ChatProvider {
     return buildProviderFromRecord(defaultProvider);
   }
 
-  throw new Error(
-    "[Nexus] No LLM provider configured. Add one in Settings → LLM Providers."
+  throw new ConfigurationError(
+    "No LLM provider configured. Add one in Settings → LLM Providers."
   );
 }
 
@@ -85,7 +86,7 @@ function buildProviderUncached(record: LlmProviderRecord, config: Record<string,
       });
     }
     default:
-      throw new Error(`[Nexus] Unknown LLM provider type: ${record.provider_type}`);
+      throw new ConfigurationError(`Unknown LLM provider type: ${record.provider_type}`, { providerType: record.provider_type });
   }
 }
 
@@ -93,12 +94,12 @@ function parseConfig(record: LlmProviderRecord): Record<string, unknown> {
   try {
     return record.config_json ? JSON.parse(record.config_json) : {};
   } catch (err) {
-    throw new Error(`[Nexus] Failed to parse LLM config for ${record.label}: ${(err as Error).message}`);
+    throw new ConfigurationError(`Failed to parse LLM config for ${record.label}: ${(err as Error).message}`, { label: record.label });
   }
 }
 
 function assertConfig(condition: unknown, message: string): asserts condition {
   if (!condition) {
-    throw new Error(`[Nexus] ${message}`);
+    throw new ConfigurationError(message);
   }
 }

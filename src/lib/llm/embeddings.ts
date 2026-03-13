@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { createHash } from "crypto";
 import { getDefaultLlmProvider } from "@/lib/db";
+import { ConfigurationError } from "@/lib/errors";
 
 /* ── Embedding result cache (PERF-02) ────────────────────────────── */
 const EMBEDDING_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -55,7 +56,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
   const dbProvider = getDefaultLlmProvider("embedding");
   if (!dbProvider) {
-    throw new Error("[Nexus] No embedding provider configured. Add one in Settings → LLM Providers.");
+    throw new ConfigurationError("No embedding provider configured. Add one in Settings → LLM Providers.");
   }
 
   const result = await generateFromRecord(dbProvider, trimmed);
@@ -78,7 +79,7 @@ function generateFromRecord(
     const endpoint = (config.endpoint as string).replace(/\/$/, "");
     const deployment = config.deployment as string;
     if (!apiKey || !endpoint || !deployment) {
-      throw new Error(`[Nexus] Azure OpenAI embedding config for "${record.label}" is incomplete.`);
+      throw new ConfigurationError(`Azure OpenAI embedding config for "${record.label}" is incomplete.`, { label: record.label });
     }
     const client = new OpenAI({
       apiKey,
@@ -94,7 +95,7 @@ function generateFromRecord(
   if (record.provider_type === "openai") {
     const apiKey = config.apiKey as string;
     if (!apiKey) {
-      throw new Error(`[Nexus] OpenAI embedding config for "${record.label}" is missing an API key.`);
+      throw new ConfigurationError(`OpenAI embedding config for "${record.label}" is missing an API key.`, { label: record.label });
     }
     const client = new OpenAI({
       apiKey,
@@ -111,7 +112,7 @@ function generateFromRecord(
     let baseURL = config.baseURL as string;
     const model = (config.model as string) || "text-embedding-3-large";
     if (!baseURL) {
-      throw new Error(`[Nexus] LiteLLM embedding config for "${record.label}" is missing a Base URL.`);
+      throw new ConfigurationError(`LiteLLM embedding config for "${record.label}" is missing a Base URL.`, { label: record.label });
     }
     if (!baseURL.endsWith("/v1") && !baseURL.endsWith("/v1/")) {
       baseURL = baseURL.replace(/\/$/, "") + "/v1";
@@ -122,5 +123,5 @@ function generateFromRecord(
       .then((r) => r.data[0]?.embedding || []);
   }
 
-  throw new Error(`[Nexus] Provider type "${record.provider_type}" does not support embeddings.`);
+  throw new ConfigurationError(`Provider type "${record.provider_type}" does not support embeddings.`, { providerType: record.provider_type });
 }
