@@ -4,14 +4,18 @@ import fs from "fs";
 import path from "path";
 import {
   buildThemedEmailBody,
+  createImapClient,
   formatEmailConnectError,
   getEmailChannelConfig,
+  getImapSecureCandidatesForConfig,
   isValidPort,
   sendSmtpMail,
 } from "@/lib/channels/email-transport";
+import { simpleParser } from "mailparser";
 
 export const EMAIL_TOOL_NAMES = {
   SEND: "builtin.email_send",
+  READ: "builtin.email_read",
 } as const;
 
 export const EMAIL_TOOLS_REQUIRING_APPROVAL: string[] = [];
@@ -48,6 +52,47 @@ export const BUILTIN_EMAIL_TOOLS: ToolDefinition[] = [
         },
       },
       required: ["to", "subject", "body"],
+    },
+  },
+  {
+    name: EMAIL_TOOL_NAMES.READ,
+    description:
+      "Read emails from the configured Email channel IMAP mailbox. " +
+      "Returns a list of recent messages with sender, subject, date, and a text snippet. " +
+      "Use this when the user asks to check their inbox, read emails, or find specific messages.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        folder: {
+          type: "string",
+          description: "IMAP folder to read from (default: 'INBOX').",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of messages to return (1–50, default: 10).",
+        },
+        unreadOnly: {
+          type: "boolean",
+          description: "If true, only return unread/unseen messages (default: false).",
+        },
+        from: {
+          type: "string",
+          description: "Optional filter: only return messages from this sender (partial match).",
+        },
+        subject: {
+          type: "string",
+          description: "Optional filter: only return messages whose subject contains this text (case-insensitive).",
+        },
+        since: {
+          type: "string",
+          description: "Optional ISO date string: only return messages received on or after this date (e.g. '2026-03-01').",
+        },
+        channelLabel: {
+          type: "string",
+          description: "Optional exact channel label to use when multiple Email channels exist.",
+        },
+      },
+      required: [],
     },
   },
 ];
@@ -120,7 +165,7 @@ function resolveAttachments(
 }
 
 export function isEmailTool(name: string): boolean {
-  return name === EMAIL_TOOL_NAMES.SEND;
+  return name === EMAIL_TOOL_NAMES.SEND || name === EMAIL_TOOL_NAMES.READ;
 }
 
 export async function executeBuiltinEmailTool(
@@ -129,9 +174,20 @@ export async function executeBuiltinEmailTool(
   userId?: string,
   threadId?: string
 ): Promise<unknown> {
-  if (name !== EMAIL_TOOL_NAMES.SEND) {
-    throw new Error(`Unknown email tool: ${name}`);
+  if (name === EMAIL_TOOL_NAMES.SEND) {
+    return executeEmailSend(args, userId, threadId);
   }
+  if (name === EMAIL_TOOL_NAMES.READ) {
+    return executeEmailRead(args, userId);
+  }
+  throw new Error(`Unknown email tool: ${name}`);
+}
+
+async function executeEmailSend(
+  args: Record<string, unknown>,
+  userId?: string,
+  threadId?: string
+): Promise<unknown> {
 
   const to = normalizeEmail(getStringArg(args, "to"));
   const subject = getStringArg(args, "subject");
@@ -181,4 +237,156 @@ export async function executeBuiltinEmailTool(
     subject,
     messageId,
   };
+}
+
+/* ── Email Read (IMAP) ─────────────────────────────────────────────── */
+
+/** Max snippet chars from email body to return to the LLM (manages token budget). */
+const EMAIL_BODY_SNIPPET_MAX = 500;
+
+/** Strip HTML tags and compact whitespace for plain-text snippet. */
+function stripHtml(value: string): string {
+  return value
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function executeEmailRead(
+  args: Record<string, unknown>,
+  userId?: string
+): Promise<unknown> {
+  const folder = getStringArg(args, "folder") || "INBOX";
+  const rawLimit = typeof args.limit === "number" ? args.limit : 10;
+  const limit = Math.max(1, Math.min(50, Math.round(rawLimit)));
+  const unreadOnly = args.unreadOnly === true;
+  const filterFrom = getStringArg(args, "from").toLowerCase();
+  const filterSubject = getStringArg(args, "subject").toLowerCase();
+  const sinceStr = getStringArg(args, "since");
+  const channelLabel = getStringArg(args, "channelLabel");
+
+  const channel = pickEmailChannel(userId, channelLabel || undefined);
+  let rawConfig: Record<string, unknown> = {};
+  try {
+    rawConfig = JSON.parse(channel.config_json || "{}");
+  } catch {
+    rawConfig = {};
+  }
+
+  const cfg = getEmailChannelConfig(rawConfig);
+
+  if (!cfg.imapHost || !isValidPort(cfg.imapPort) || !cfg.imapUser || !cfg.imapPass) {
+    throw new Error("Email channel is missing IMAP config (imapHost/imapPort/imapUser/imapPass).");
+  }
+
+  const secureCandidates = getImapSecureCandidatesForConfig(cfg);
+  let lastErr: unknown;
+
+  for (const secure of secureCandidates) {
+    const client = createImapClient(cfg, secure);
+    // Swallow background socket errors — handled below
+    client.on("error", () => {});
+
+    try {
+      await client.connect();
+      const lock = await client.getMailboxLock(folder);
+
+      try {
+        // Build IMAP search criteria
+        const searchCriteria: Record<string, unknown> = {};
+        if (unreadOnly) searchCriteria.seen = false;
+        if (sinceStr) {
+          const since = new Date(sinceStr);
+          if (!isNaN(since.getTime())) searchCriteria.since = since;
+        }
+
+        // Search for matching UIDs
+        let uids: number[];
+        try {
+          uids = await client.search(searchCriteria, { uid: true });
+        } catch {
+          uids = [];
+        }
+
+        // Take the most recent N UIDs (highest = newest)
+        // We fetch more than limit to allow for post-fetch filtering
+        const fetchLimit = filterFrom || filterSubject ? limit * 3 : limit;
+        const targetUids = uids.slice(-fetchLimit);
+
+        if (targetUids.length === 0) {
+          return { messages: [], count: 0, folder, note: "No messages found matching criteria." };
+        }
+
+        // Fetch envelope + source for parsing
+        const messages: Array<{
+          uid: number;
+          from: string;
+          to: string;
+          subject: string;
+          date: string;
+          snippet: string;
+          seen: boolean;
+        }> = [];
+
+        for await (const msg of client.fetch(targetUids, {
+          uid: true,
+          envelope: true,
+          source: true,
+          flags: true,
+        }, { uid: true })) {
+          const parsed = await simpleParser(msg.source as Buffer);
+          const fromAddr = parsed.from?.value?.[0]?.address || "";
+          const toAddr = parsed.to
+            ? (Array.isArray(parsed.to) ? parsed.to : [parsed.to])
+                .flatMap((t) => t.value.map((v) => v.address || ""))
+                .join(", ")
+            : "";
+          const subjectText = (parsed.subject || "(no subject)").trim();
+          const rawBody = parsed.text || (parsed.html ? stripHtml(parsed.html) : "");
+          const bodySnippet = rawBody.length > EMAIL_BODY_SNIPPET_MAX
+            ? rawBody.slice(0, EMAIL_BODY_SNIPPET_MAX) + "..."
+            : rawBody;
+          const seen = msg.flags ? new Set(msg.flags).has("\\Seen") : false;
+
+          // Apply client-side filters
+          if (filterFrom && !fromAddr.toLowerCase().includes(filterFrom)) continue;
+          if (filterSubject && !subjectText.toLowerCase().includes(filterSubject)) continue;
+
+          messages.push({
+            uid: msg.uid,
+            from: fromAddr,
+            to: toAddr,
+            subject: subjectText,
+            date: parsed.date?.toISOString() || "",
+            snippet: bodySnippet,
+            seen,
+          });
+
+          if (messages.length >= limit) break;
+        }
+
+        // Sort newest first
+        messages.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+        return {
+          messages,
+          count: messages.length,
+          folder,
+          channelLabel: channel.label,
+        };
+      } finally {
+        lock.release();
+      }
+    } catch (err) {
+      lastErr = err;
+      try { await client.logout(); } catch { /* ignore */ }
+      continue; // Try next secure candidate
+    } finally {
+      try { client.close(); } catch { /* ignore */ }
+    }
+  }
+
+  throw new Error(formatEmailConnectError(lastErr));
 }
