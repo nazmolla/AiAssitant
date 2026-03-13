@@ -104,5 +104,33 @@ export function dbMessagesToChat(
     result.push(msg);
   }
 
+  // Sanitize orphaned tool_calls: if an assistant message has tool_calls but
+  // one or more corresponding tool result messages are missing (e.g. from an
+  // interrupted agent loop), strip the tool_calls to prevent LLM 400 errors.
+  const presentToolResultIds = new Set<string>();
+  for (const m of result) {
+    if (m.role === "tool" && m.tool_call_id) {
+      presentToolResultIds.add(m.tool_call_id);
+    }
+  }
+
+  for (let i = result.length - 1; i >= 0; i--) {
+    const m = result[i];
+    if (m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0) {
+      const allPresent = m.tool_calls.every((tc) => presentToolResultIds.has(tc.id));
+      if (!allPresent) {
+        // Remove the orphaned assistant tool_calls message and any tool results
+        // that were part of this batch so the LLM doesn't see a partial sequence.
+        const orphanedIds = new Set(m.tool_calls.map((tc) => tc.id));
+        result.splice(i, 1);
+        for (let j = result.length - 1; j >= i; j--) {
+          if (result[j].role === "tool" && result[j].tool_call_id && orphanedIds.has(result[j].tool_call_id!)) {
+            result.splice(j, 1);
+          }
+        }
+      }
+    }
+  }
+
   return result;
 }
