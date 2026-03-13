@@ -295,12 +295,13 @@ class McpManager {
   }
 
   /**
-   * Disconnect all MCP servers.
+   * Disconnect all MCP servers and clear internal state.
    */
   async disconnectAll(): Promise<void> {
     for (const id of Array.from(this.connections.keys())) {
       await this.disconnect(id);
     }
+    this.toolNameMap.clear();
   }
 
   /**
@@ -365,4 +366,12 @@ export function getMcpManager(): McpManager {
     _manager = new McpManager();
   }
   return _manager;
+}
+
+/** Reset the singleton MCP manager (disconnects all servers, destroys instance). */
+export async function resetMcpManager(): Promise<void> {
+  if (_manager) {
+    await _manager.disconnectAll();
+    _manager = null;
+  }
 }

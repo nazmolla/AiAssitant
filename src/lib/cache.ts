@@ -89,6 +89,16 @@ class AppCache implements ICache {
 /** Singleton cache instance for the application. */
 export const appCache = new AppCache();
 
+/** Create a new isolated AppCache instance (useful for testing). */
+export function createCache(): AppCache {
+  return new AppCache();
+}
+
+/** Reset the singleton cache (clears all entries). */
+export function resetCache(): void {
+  appCache.invalidateAll();
+}
+
 /**
  * Well-known cache keys. Using constants prevents typo bugs
  * and makes it easy to grep for all cache usage.

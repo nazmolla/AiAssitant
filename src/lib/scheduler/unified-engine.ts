@@ -74,6 +74,18 @@ const engineState = {
   leaseSeconds: DEFAULT_LEASE_SECONDS,
 };
 
+/** Reset engine state and handler registry (for testing). */
+export function resetSchedulerEngine(): void {
+  if (engineState.timer) {
+    clearInterval(engineState.timer);
+  }
+  engineState.timer = null;
+  engineState.tickRunning = false;
+  engineState.pollMs = DEFAULT_POLL_MS;
+  engineState.leaseSeconds = DEFAULT_LEASE_SECONDS;
+  handlerRegistry.clear();
+}
+
 const WORKER_ID = `scheduler-worker-${process.pid}`;
 
 function validateRegisteredHandlers(): void {
