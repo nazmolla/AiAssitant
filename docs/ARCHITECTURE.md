@@ -308,13 +308,14 @@ src/
 │   └── layout.tsx              # Root layout
 ├── components/                 # React UI components
 │   ├── ui/                     # MUI adapter primitives (button, card, input, badge, switch, textarea, scroll-area)
+│   ├── change-password-section.tsx # Standalone password change form for local auth users
 │   ├── agent-dashboard.tsx     # Full analytics dashboard + drilldown log explorer
 │   ├── alexa-config.tsx        # Alexa Smart Home credential management
 │   ├── api-keys-config.tsx     # API key management
 │   ├── approval-inbox.tsx      # HITL approval UI (legacy, superseded by notification-bell)
 │   ├── auth-config.tsx         # Authentication provider configuration
 │   ├── channels-config.tsx     # Channel management (user-scoped)
-│   ├── chat-panel.tsx          # Chat orchestrator — owns all state, composes ThreadSidebar + ChatArea + InputBar
+│   ├── chat-panel.tsx          # Thin chat orchestrator — composes hooks + ThreadSidebar + ChatArea + InputBar
 │   ├── chat-panel-types.ts    # Shared types (Thread, Message, PendingFile, etc.) and utility functions
 │   ├── thread-sidebar.tsx     # Memo'd thread list sidebar (thread select, create, delete, load more)
 │   ├── chat-area.tsx          # Memo'd virtualized message display (@tanstack/react-virtual, ThinkingBlock, ThoughtsBlock, AttachmentPreview)
@@ -327,12 +328,19 @@ src/
 │   ├── markdown-message.tsx    # Markdown renderer (react-markdown + remark-gfm) for assistant messages
 │   ├── mcp-config.tsx          # MCP server management
 │   ├── notification-bell.tsx   # Unified notification center (bell icon popover with approvals + system alerts)
-│   ├── profile-config.tsx      # User profile editor with feature toggles
+│   ├── profile-config.tsx      # User profile editor (thin shell using useProfileData hook)
 │   ├── providers.tsx           # NextAuth SessionProvider wrapper
 │   ├── theme-provider.tsx      # MUI theme provider (light/dark)
 │   ├── tool-policies.tsx       # Tool approval policy management
 │   ├── user-management.tsx     # Admin user management
 │   └── whisper-config.tsx      # Local Whisper STT configuration
+├── hooks/                      # Reusable React hooks
+│   ├── use-audio-controls.ts   # STT recording, TTS playback, continuous audio mode
+│   ├── use-chat-stream.ts      # SSE consumption, message state, send with optimistic updates
+│   ├── use-dashboard-data.ts   # All 15 useMemo computations for agent dashboard analytics
+│   ├── use-file-upload.ts      # File selection, preview URLs, upload
+│   ├── use-profile-data.ts     # Profile CRUD, preferences, email management, TTS voice preview
+│   └── use-screen-share.ts     # Screen capture lifecycle, preference fetching
 ├── lib/
 │   ├── agent/                  # Core agent logic
 │   │   ├── loop.ts             # Sense-Think-Act agent loop
@@ -367,6 +375,11 @@ src/
 │   │   └── discord.ts          # Discord Gateway bot (uses channel owner resolution)
 │   ├── mcp/                    # MCP client management
 │   │   └── manager.ts          # Connect, discover, invoke, auto-refresh
+│   ├── services/               # Extracted service modules
+│   │   └── attachment-processor.ts # Attachment + screen-frame processing for multimodal content
+│   ├── dashboard-analytics.ts  # Pure helper functions and types for dashboard log analysis
+│   ├── sse.ts                  # Reusable SSE stream factory (createSSEStream, sseResponse, sseEvent)
+│   ├── env.ts                  # Centralized environment config (Zod-validated, typed)
 │   ├── audio.ts                # Audio utility (getAudioClient, transcribeAudio, textToSpeech)
 │   ├── cache.ts                # In-memory write-through cache (LLM providers, tool policies, users, profiles)
 │   ├── scheduler/              # Proactive cron scheduler

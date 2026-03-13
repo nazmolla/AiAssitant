@@ -23,8 +23,8 @@ export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   DISABLE_REGISTRATION: z
     .string()
-    .transform((v) => v === "true")
-    .default("false"),
+    .default("false")
+    .transform((v) => v === "true"),
   PROACTIVE_CRON_SCHEDULE: z.string().min(1).default("*/15 * * * *"),
   FS_ALLOWED_ROOT: z
     .string()
@@ -36,8 +36,8 @@ export const envSchema = z.object({
     .transform((v) => Math.max(parseInt(v, 10) || 2, 1)),
   NEXUS_DEDUPE_KNOWLEDGE_STARTUP: z
     .string()
-    .transform((v) => v === "1")
-    .default("0"),
+    .default("0")
+    .transform((v) => v === "1"),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

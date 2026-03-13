@@ -30,9 +30,11 @@ npm install
 # 3. Install Playwright for browser automation
 npx playwright install chromium
 
-# 4. Copy and configure environment variables
+# 4. Create environment file from template
 cp .env.example .env
-# Edit .env with NEXTAUTH_SECRET (LLM keys and OAuth are configured via the admin UI)
+# Then edit .env and set NEXTAUTH_SECRET to a random value:
+#   openssl rand -base64 32
+# See Environment Variables table below for all options
 
 # 5. Start the development server
 npm run dev
@@ -67,12 +69,18 @@ If you plan to use automated job scouting and resume delivery by email, also ver
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `NEXTAUTH_SECRET` | Yes | Random secret for JWT signing. Generate with `openssl rand -base64 32`. |
-| `NEXTAUTH_URL` | Yes | Base URL (e.g., `http://localhost:3000`) |
-| `DATABASE_PATH` | No | SQLite database file path (default: `nexus.db`) |
-| `PROACTIVE_CRON_SCHEDULE` | No | Cron expression for the proactive scheduler (default: every 15 min) |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NEXTAUTH_SECRET` | Yes | — | Random secret for JWT signing. Generate with `openssl rand -base64 32`. |
+| `NEXTAUTH_URL` | Yes | — | Base URL (e.g., `http://localhost:3000`) |
+| `DATABASE_PATH` | No | `nexus.db` | SQLite database file path. |
+| `NODE_ENV` | No | `development` | Runtime environment (`development`, `production`, `test`). |
+| `PROACTIVE_CRON_SCHEDULE` | No | `*/15 * * * *` | Cron expression for the proactive scheduler (every 15 min). |
+| `DISABLE_REGISTRATION` | No | `false` | Set to `true` to block new user sign-ups after initial admin is created. |
+| `FS_ALLOWED_ROOT` | No | project root | Root boundary for filesystem tool operations. |
+| `WORKER_POOL_SIZE` | No | `2` | Number of worker threads for LLM calls (1–8). |
+| `NEXUS_DB_SECRET` | No | — | AES-256-GCM encryption key for sensitive `app_config` values (API keys stored at rest). |
+| `NEXUS_DEDUPE_KNOWLEDGE_STARTUP` | No | `0` | Set to `1` to run knowledge deduplication on server startup. |
 
 Knowledge maintenance settings are managed in the admin UI via **Settings → Scheduler** and stored in `app_config`.
 The same page also includes the unified scheduler operations console (overview metrics, schedule controls, run history, and task-run detail).
