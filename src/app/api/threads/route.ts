@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { listThreadsPaginated, createThread, addLog } from "@/lib/db";
 import { initializeDatabase } from "@/lib/db";
+import { THREADS_DEFAULT_LIMIT, THREADS_MAX_LIMIT } from "@/lib/constants";
 
 let dbReady = false;
 
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
     if ("error" in auth) return auth.error;
 
     const url = req.nextUrl;
-    const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 1), 200);
+    const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") || String(THREADS_DEFAULT_LIMIT), 10) || THREADS_DEFAULT_LIMIT, 1), THREADS_MAX_LIMIT);
     const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
 
     const result = listThreadsPaginated(auth.user.id, limit, offset);

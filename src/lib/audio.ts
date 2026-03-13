@@ -24,6 +24,7 @@ import {
   AUDIO_MAX_SIZE_BYTES,
   AUDIO_MAX_TTS_TEXT_LENGTH,
   AUDIO_OPERATION_TIMEOUT_MS,
+  AZURE_OPENAI_DEFAULT_API_VERSION,
 } from "@/lib/constants";
 
 /** Supported TTS voices */
@@ -98,7 +99,7 @@ export function getAudioClient(operation: AudioOperation = "tts"): AudioClientRe
       client: new OpenAI({
         apiKey: config.apiKey as string,
         baseURL: `${endpoint}/openai/deployments/${deployment}`,
-        defaultQuery: { "api-version": (config.apiVersion as string) || "2024-08-01-preview" },
+        defaultQuery: { "api-version": (config.apiVersion as string) || AZURE_OPENAI_DEFAULT_API_VERSION },
         defaultHeaders: { "api-key": config.apiKey as string },
       }),
       model,

@@ -27,6 +27,8 @@ import {
   BROWSER_PAGE_TEXT_PREVIEW_CHARS,
   BROWSER_MAX_ELEMENTS,
   BROWSER_WAIT_TIMEOUT_MS,
+  BROWSER_VIEWPORT_WIDTH,
+  BROWSER_VIEWPORT_HEIGHT,
 } from "@/lib/constants";
 
 // ── Tool Definitions ──────────────────────────────────────────
@@ -382,7 +384,7 @@ class BrowserSession {
     });
 
     this.context = await this.browser.newContext({
-      viewport: { width: 1366, height: 768 },
+      viewport: { width: BROWSER_VIEWPORT_WIDTH, height: BROWSER_VIEWPORT_HEIGHT },
       userAgent:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       locale: "en-US",

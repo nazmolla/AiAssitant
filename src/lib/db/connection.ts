@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { env } from "@/lib/env";
+import { DB_BUSY_TIMEOUT_MS, DB_CACHE_SIZE_KB, DB_MMAP_SIZE } from "@/lib/constants";
 
 const DB_PATH = env.DATABASE_PATH;
 
@@ -41,12 +42,12 @@ export function getDb(): Database.Database {
     _db = new Database(DB_PATH);
     _db.pragma("journal_mode = WAL");
     _db.pragma("foreign_keys = ON");
-    _db.pragma("busy_timeout = 5000");     // Wait up to 5s on DB lock instead of throwing SQLITE_BUSY
+    _db.pragma(`busy_timeout = ${DB_BUSY_TIMEOUT_MS}`);
     // Performance pragmas
     _db.pragma("synchronous = NORMAL");   // Safe with WAL; avoids fsync per tx
-    _db.pragma("cache_size = -64000");     // 64 MB page cache (default is 2 MB)
+    _db.pragma(`cache_size = ${DB_CACHE_SIZE_KB}`);
     _db.pragma("temp_store = MEMORY");     // Keep temp tables/indexes in RAM
-    _db.pragma("mmap_size = 268435456");   // 256 MB memory-mapped I/O
+    _db.pragma(`mmap_size = ${DB_MMAP_SIZE}`);
   }
   return _db;
 }

@@ -33,6 +33,10 @@ import {
   NET_PORT_SCAN_TIMEOUT_MS,
   NET_HTTP_TIMEOUT_MS,
   NET_MAX_HTTP_BODY,
+  NET_PING_DEFAULT_COUNT,
+  NET_PING_MAX_COUNT,
+  NET_PING_SWEEP_TIMEOUT_MS,
+  NET_IP_ROUTE_TIMEOUT_MS,
 } from "@/lib/constants";
 
 // ── Tool Names ────────────────────────────────────────────────
@@ -277,7 +281,7 @@ function sanitizeUsername(username: string): string {
 
 async function netPing(args: Record<string, unknown>): Promise<unknown> {
   const host = sanitizeHost(args.host as string);
-  const count = Math.min(Math.max((args.count as number) || 4, 1), 20);
+  const count = Math.min(Math.max((args.count as number) || NET_PING_DEFAULT_COUNT, 1), NET_PING_MAX_COUNT);
 
   // Cross-platform ping: Linux uses -c, Windows uses -n
   const isWindows = process.platform === "win32";
@@ -447,7 +451,7 @@ function parseNmapPingScanOutput(output: string, devices: DeviceEntry[]): void {
 
 async function detectLocalSubnet(): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync("ip", ["route"], { timeout: 5000 });
+    const { stdout } = await execFileAsync("ip", ["route"], { timeout: NET_IP_ROUTE_TIMEOUT_MS });
     const match = stdout.match(/src\s+(\d+\.\d+\.\d+\.\d+)/);
     const ip = match?.[1]?.trim();
     if (ip && /^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
@@ -471,7 +475,7 @@ async function pingSweep(subnet: string, devices: DeviceEntry[]): Promise<void> 
   for (let i = 1; i <= 254; i++) {
     const ip = `${base}.${i}`;
     promises.push(
-      execFileAsync("ping", ["-c", "1", "-W", "1", ip], { timeout: 3000 })
+      execFileAsync("ping", ["-c", "1", "-W", "1", ip], { timeout: NET_PING_SWEEP_TIMEOUT_MS })
         .then(() => {
           devices.push({ ip, mac: null, hostname: null, vendor: null });
         })

@@ -18,12 +18,11 @@ import { OpenAIChatProvider } from "./openai-provider";
 import { AnthropicChatProvider } from "./anthropic-provider";
 import { createHash } from "crypto";
 import { ConfigurationError } from "@/lib/errors";
+import { LLM_PROVIDER_CACHE_TTL_MS } from "@/lib/constants";
 
-// ── Provider Instance Cache ───────────────────────────────────
+// ── Provider Instance Cache ───────────────────────────────────────
 // Avoids re-creating OpenAI/Anthropic SDK clients on every request.
-// Keyed by a hash of the provider config; 10s TTL.
-
-const PROVIDER_CACHE_TTL_MS = 10_000;
+// Keyed by a hash of the provider config; TTL from constants.
 
 interface CachedProvider {
   provider: ChatProvider;
@@ -49,7 +48,7 @@ export function getCachedProviderByRecord(
   const hash = providerConfigHash(record, config);
   const entry = providerCache.get(hash);
   const now = Date.now();
-  if (entry && (now - entry.cachedAt) < PROVIDER_CACHE_TTL_MS) {
+  if (entry && (now - entry.cachedAt) < LLM_PROVIDER_CACHE_TTL_MS) {
     return entry.provider;
   }
   const provider = factory();

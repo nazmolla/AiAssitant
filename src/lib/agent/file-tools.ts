@@ -8,6 +8,12 @@ import ExcelJS from "exceljs";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { PNG } from "pngjs";
 import jpeg from "jpeg-js";
+import {
+  FILE_IMAGE_DEFAULT_WIDTH,
+  FILE_IMAGE_DEFAULT_HEIGHT,
+  FILE_IMAGE_MIN_DIMENSION,
+  FILE_IMAGE_MAX_DIMENSION,
+} from "@/lib/constants";
 
 const ATTACHMENTS_ROOT = path.join(process.cwd(), "data", "attachments");
 
@@ -161,8 +167,8 @@ async function generateBytes(format: string, content: string, jsonData: unknown,
     }
 
     case "png": {
-      const w = Math.max(32, Math.min(4096, Math.floor(width || 1024)));
-      const h = Math.max(32, Math.min(4096, Math.floor(height || 576)));
+      const w = Math.max(FILE_IMAGE_MIN_DIMENSION, Math.min(FILE_IMAGE_MAX_DIMENSION, Math.floor(width || FILE_IMAGE_DEFAULT_WIDTH)));
+      const h = Math.max(FILE_IMAGE_MIN_DIMENSION, Math.min(FILE_IMAGE_MAX_DIMENSION, Math.floor(height || FILE_IMAGE_DEFAULT_HEIGHT)));
       const image = new PNG({ width: w, height: h });
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
@@ -177,8 +183,8 @@ async function generateBytes(format: string, content: string, jsonData: unknown,
     }
 
     case "jpg": {
-      const w = Math.max(32, Math.min(4096, Math.floor(width || 1024)));
-      const h = Math.max(32, Math.min(4096, Math.floor(height || 576)));
+      const w = Math.max(FILE_IMAGE_MIN_DIMENSION, Math.min(FILE_IMAGE_MAX_DIMENSION, Math.floor(width || FILE_IMAGE_DEFAULT_WIDTH)));
+      const h = Math.max(FILE_IMAGE_MIN_DIMENSION, Math.min(FILE_IMAGE_MAX_DIMENSION, Math.floor(height || FILE_IMAGE_DEFAULT_HEIGHT)));
       const data = Buffer.alloc(w * h * 4);
       for (let i = 0; i < data.length; i += 4) {
         data[i] = 12;

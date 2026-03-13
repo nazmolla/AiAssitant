@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { createHash } from "crypto";
 import { getDefaultLlmProvider } from "@/lib/db";
 import { ConfigurationError } from "@/lib/errors";
-import { EMBEDDING_CACHE_MAX_SIZE, EMBEDDING_CACHE_TTL_MS } from "@/lib/constants";
+import { EMBEDDING_CACHE_MAX_SIZE, EMBEDDING_CACHE_TTL_MS, AZURE_OPENAI_DEFAULT_API_VERSION } from "@/lib/constants";
 
 /* ── Embedding result cache (PERF-02) ────────────────────────────── */
 
@@ -83,7 +83,7 @@ function generateFromRecord(
     const client = new OpenAI({
       apiKey,
       baseURL: `${endpoint}/openai/deployments/${deployment}`,
-      defaultQuery: { "api-version": (config.apiVersion as string) || "2024-08-01-preview" },
+      defaultQuery: { "api-version": (config.apiVersion as string) || AZURE_OPENAI_DEFAULT_API_VERSION },
       defaultHeaders: { "api-key": apiKey },
     });
     return client.embeddings

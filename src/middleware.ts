@@ -1,31 +1,33 @@
 import { getToken } from "next-auth/jwt";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import {
+  RATE_LIMIT_WINDOW_MS,
+  RATE_LIMIT_MAX_REQUESTS,
+  RATE_LIMIT_CACHE_SIZE,
+} from "@/lib/constants";
 
 /* ── Rate Limiting ────────────────────────────────────────────────── */
 
 /**
  * Sliding-window counter per IP.
- * Returns a 429 response if the IP exceeds MAX_REQUESTS within WINDOW_MS.
+ * Returns a 429 response if the IP exceeds RATE_LIMIT_MAX_REQUESTS within RATE_LIMIT_WINDOW_MS.
  */
-const WINDOW_MS = 60_000; // 1 minute
-const MAX_REQUESTS = 120; // 120 req/min per IP
-const IP_HITS_MAX_SIZE = 10_000;
 const ipHits = new Map<string, { count: number; resetAt: number }>();
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
   const entry = ipHits.get(ip);
   if (!entry || now > entry.resetAt) {
-    if (ipHits.size >= IP_HITS_MAX_SIZE) {
+    if (ipHits.size >= RATE_LIMIT_CACHE_SIZE) {
       const firstKey = ipHits.keys().next().value;
       if (firstKey) ipHits.delete(firstKey);
     }
-    ipHits.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    ipHits.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
     return false;
   }
   entry.count++;
-  return entry.count > MAX_REQUESTS;
+  return entry.count > RATE_LIMIT_MAX_REQUESTS;
 }
 
 // Clean stale entries every 60s
@@ -34,7 +36,7 @@ setInterval(() => {
   ipHits.forEach((entry, ip) => {
     if (now > entry.resetAt) ipHits.delete(ip);
   });
-}, 60_000);
+}, RATE_LIMIT_WINDOW_MS);
 
 export function applyRateLimit(req: NextRequest): NextResponse | null {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";

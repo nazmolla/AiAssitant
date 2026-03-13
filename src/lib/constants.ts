@@ -170,3 +170,128 @@ export const VOICE_TURN_TIMEOUT_MS = 60_000;
 
 /** Per-server MCP connection timeout (ms) */
 export const MCP_CONNECT_TIMEOUT_MS = 15_000;
+
+/* ── Database Pragmas ─────────────────────────────────────────────── */
+
+/** SQLite busy_timeout — wait on lock before SQLITE_BUSY (ms) */
+export const DB_BUSY_TIMEOUT_MS = 5_000;
+
+/** SQLite page cache size (negative = KB, positive = pages) */
+export const DB_CACHE_SIZE_KB = -64_000;
+
+/** SQLite memory-mapped I/O buffer (bytes) — 256 MB */
+export const DB_MMAP_SIZE = 268_435_456;
+
+/* ── Email Transport ──────────────────────────────────────────────── */
+
+/** SMTP connection timeout (ms) */
+export const EMAIL_CONNECTION_TIMEOUT_MS = 10_000;
+
+/** SMTP greeting timeout (ms) */
+export const EMAIL_GREETING_TIMEOUT_MS = 10_000;
+
+/** SMTP socket read/write timeout (ms) */
+export const EMAIL_SOCKET_TIMEOUT_MS = 15_000;
+
+/** IMAP socket timeout (ms) */
+export const EMAIL_IMAP_SOCKET_TIMEOUT_MS = 30_000;
+
+/* ── Rate Limiting ────────────────────────────────────────────────── */
+
+/** Sliding window duration for rate limiter (ms) */
+export const RATE_LIMIT_WINDOW_MS = 60_000;
+
+/** Max requests per IP within the sliding window */
+export const RATE_LIMIT_MAX_REQUESTS = 120;
+
+/** Max tracked IPs in the rate limiter cache */
+export const RATE_LIMIT_CACHE_SIZE = 10_000;
+
+/* ── Azure OpenAI ─────────────────────────────────────────────────── */
+
+/** Default Azure OpenAI API version used as fallback */
+export const AZURE_OPENAI_DEFAULT_API_VERSION = "2024-08-01-preview";
+
+/* ── LLM Orchestrator ─────────────────────────────────────────────── */
+
+/** Provider instance cache TTL (ms) */
+export const LLM_PROVIDER_CACHE_TTL_MS = 10_000;
+
+/* ── File Generation ──────────────────────────────────────────────── */
+
+/** Default generated image width (px) */
+export const FILE_IMAGE_DEFAULT_WIDTH = 1_024;
+
+/** Default generated image height (px) */
+export const FILE_IMAGE_DEFAULT_HEIGHT = 576;
+
+/** Min image dimension clamp (px) */
+export const FILE_IMAGE_MIN_DIMENSION = 32;
+
+/** Max image dimension clamp (px) */
+export const FILE_IMAGE_MAX_DIMENSION = 4_096;
+
+/* ── FS Tools — Chunk Defaults ────────────────────────────────────── */
+
+/** Default byte chunk for fs_read_file (64 KB) */
+export const FS_DEFAULT_CHUNK_BYTES = 65_536;
+
+/** Default byte chunk for fs_extract_text (256 KB) */
+export const FS_EXTRACT_DEFAULT_BYTES = 262_144;
+
+/** Default max output chars for fs_extract_text */
+export const FS_EXTRACT_DEFAULT_MAX_CHARS = 15_000;
+
+/** Hard max output chars for fs_extract_text */
+export const FS_EXTRACT_MAX_CHARS_LIMIT = 100_000;
+
+/** Max entries when recursively walking a directory */
+export const FS_WALK_DIR_LIMIT = 500;
+
+/* ── Network Tools — Ping ─────────────────────────────────────────── */
+
+/** Default ping packet count */
+export const NET_PING_DEFAULT_COUNT = 4;
+
+/** Max ping packet count */
+export const NET_PING_MAX_COUNT = 20;
+
+/** Ping-sweep per-host timeout (ms) */
+export const NET_PING_SWEEP_TIMEOUT_MS = 3_000;
+
+/** ip-route command timeout (ms) */
+export const NET_IP_ROUTE_TIMEOUT_MS = 5_000;
+
+/* ── Knowledge ────────────────────────────────────────────────────── */
+
+/** Max chars of prompt text sent to LLM for knowledge extraction */
+export const KNOWLEDGE_PROMPT_MAX_CHARS = 8_000;
+
+/* ── Gatekeeper ───────────────────────────────────────────────────── */
+
+/** Max chars of tool results shown in gatekeeper logs */
+export const GATEKEEPER_RESULT_PREVIEW_CHARS = 500;
+
+/* ── SSE / Streaming ──────────────────────────────────────────────── */
+
+/** Log-stream heartbeat interval (ms) */
+export const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+
+/** Log-stream poll interval (ms) */
+export const SSE_LOG_POLL_INTERVAL_MS = 2_000;
+
+/* ── Pagination ───────────────────────────────────────────────────── */
+
+/** Default page size for thread listing */
+export const THREADS_DEFAULT_LIMIT = 50;
+
+/** Max page size for thread listing */
+export const THREADS_MAX_LIMIT = 200;
+
+/* ── Browser Viewport ─────────────────────────────────────────────── */
+
+/** Default browser viewport width (px) */
+export const BROWSER_VIEWPORT_WIDTH = 1_366;
+
+/** Default browser viewport height (px) */
+export const BROWSER_VIEWPORT_HEIGHT = 768;

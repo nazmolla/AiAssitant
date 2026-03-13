@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getLogsAfterId, type AgentLog } from "@/lib/db";
 import { isUnifiedLogLevel } from "@/lib/logging/levels";
 import { sseEvent } from "@/lib/sse";
+import { SSE_HEARTBEAT_INTERVAL_MS, SSE_LOG_POLL_INTERVAL_MS } from "@/lib/constants";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,10 +79,10 @@ export async function GET(req: NextRequest) {
         sendLogs(initial);
       }
 
-      pollTimer = setInterval(tick, 2000); // 2s — halves per-client DB load vs 1s
+      pollTimer = setInterval(tick, SSE_LOG_POLL_INTERVAL_MS);
       heartbeatTimer = setInterval(() => {
         send(sseEvent("heartbeat", { sinceId: cursor, ts: Date.now() }));
-      }, 15000);
+      }, SSE_HEARTBEAT_INTERVAL_MS);
     },
     cancel() {
       closed = true;

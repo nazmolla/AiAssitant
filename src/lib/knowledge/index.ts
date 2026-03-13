@@ -2,6 +2,7 @@ import { createChatProvider } from "@/lib/llm";
 import { generateEmbedding } from "@/lib/llm/embeddings";
 import { upsertKnowledge, upsertKnowledgeEmbedding, addLog } from "@/lib/db";
 import { invalidateEmbeddingCache } from "./retriever";
+import { KNOWLEDGE_PROMPT_MAX_CHARS } from "@/lib/constants";
 
 export interface KnowledgeIngestionPayload {
   text: string;
@@ -53,7 +54,7 @@ export async function ingestKnowledgeFromText(payload: KnowledgeIngestionPayload
       [
         {
           role: "user",
-          content: prompt.slice(0, 8000),
+          content: prompt.slice(0, KNOWLEDGE_PROMPT_MAX_CHARS),
         },
       ],
       undefined,

@@ -28,6 +28,11 @@ import {
   FS_MAX_READ_BYTES,
   FS_MAX_SCRIPT_OUTPUT,
   FS_SCRIPT_TIMEOUT_MS,
+  FS_DEFAULT_CHUNK_BYTES,
+  FS_EXTRACT_DEFAULT_BYTES,
+  FS_EXTRACT_DEFAULT_MAX_CHARS,
+  FS_EXTRACT_MAX_CHARS_LIMIT,
+  FS_WALK_DIR_LIMIT,
 } from "@/lib/constants";
 
 const execAsync = promisify(exec);
@@ -112,11 +117,11 @@ export const BUILTIN_FS_TOOLS: ToolDefinition[] = [
         },
         length: {
           type: "number",
-          description: "Optional number of bytes to read from offset. Default 262144 (256 KB), max 1 MB.",
+          description: `Optional number of bytes to read from offset. Default ${FS_EXTRACT_DEFAULT_BYTES} (256 KB), max 1 MB.`,
         },
         maxChars: {
           type: "number",
-          description: "Maximum output characters after extraction (default 15000, max 100000).",
+          description: `Maximum output characters after extraction (default ${FS_EXTRACT_DEFAULT_MAX_CHARS}, max ${FS_EXTRACT_MAX_CHARS_LIMIT}).`,
         },
         encoding: {
           type: "string",
@@ -139,7 +144,7 @@ export const BUILTIN_FS_TOOLS: ToolDefinition[] = [
         },
         recursive: {
           type: "boolean",
-          description: "If true, list contents recursively (default: false). Limited to 500 entries.",
+          description: "If true, list contents recursively (default: false). Limited to " + FS_WALK_DIR_LIMIT + " entries.",
         },
         pattern: {
           type: "string",
@@ -439,7 +444,7 @@ async function fsReadFile(args: Record<string, unknown>): Promise<unknown> {
   // Byte-level chunked reading — works on any file size
   if (byteOffset !== undefined) {
     const maxChunk = 1024 * 1024; // 1 MB max per chunk
-    const readLen = Math.min(byteLength || 65536, maxChunk);
+    const readLen = Math.min(byteLength || FS_DEFAULT_CHUNK_BYTES, maxChunk);
     const start = Math.max(0, byteOffset);
     const end = Math.min(stat.size - 1, start + readLen - 1);
     if (start >= stat.size) {
@@ -522,9 +527,9 @@ async function fsExtractText(args: Record<string, unknown>): Promise<unknown> {
   const filePath = resolvePath(args.filePath as string);
   const encoding = (args.encoding as BufferEncoding) || "utf-8";
   const byteOffset = typeof args.offset === "number" ? Math.max(0, args.offset) : 0;
-  const requestedLen = typeof args.length === "number" ? args.length : 262144;
+  const requestedLen = typeof args.length === "number" ? args.length : FS_EXTRACT_DEFAULT_BYTES;
   const readLen = Math.min(Math.max(1, requestedLen), 1024 * 1024);
-  const maxChars = Math.min(Math.max(1, (args.maxChars as number) || 15000), 100000);
+  const maxChars = Math.min(Math.max(1, (args.maxChars as number) || FS_EXTRACT_DEFAULT_MAX_CHARS), FS_EXTRACT_MAX_CHARS_LIMIT);
 
   let stat: fs.Stats;
   try {
@@ -596,7 +601,7 @@ async function fsReadDirectory(args: Record<string, unknown>): Promise<unknown> 
 
   if (recursive) {
     const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
-    await walkDirAsync(dirPath, pattern, 500, results);
+    await walkDirAsync(dirPath, pattern, FS_WALK_DIR_LIMIT, results);
     return { dirPath, entryCount: results.length, entries: results };
   }
 

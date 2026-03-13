@@ -4,6 +4,7 @@ import { listPendingApprovals, listPendingApprovalsForUser, cleanStaleApprovals,
 import { executeApprovedTool, continueAgentLoop } from "@/lib/agent";
 import { executeProactiveApprovedTool } from "@/lib/scheduler";
 import type { ToolCall } from "@/lib/llm";
+import { TOOL_RESULT_TRUNCATION_LIMIT } from "@/lib/constants";
 
 function isApprovalCenterSource(source: string | null | undefined): boolean {
   const value = (source || "").toLowerCase();
@@ -148,8 +149,8 @@ export async function POST(req: NextRequest) {
       addMessage({
         thread_id: approval.thread_id,
         role: "tool",
-        content: toolResultContent.length > 15000
-          ? toolResultContent.slice(0, 15000) + "\n... [truncated]"
+        content: toolResultContent.length > TOOL_RESULT_TRUNCATION_LIMIT
+          ? toolResultContent.slice(0, TOOL_RESULT_TRUNCATION_LIMIT) + "\n... [truncated]"
           : toolResultContent,
         tool_calls: null,
         tool_results: JSON.stringify({

@@ -18,7 +18,7 @@ import {
 } from "@/lib/db";
 import { notifyAdmin } from "@/lib/channels/notify";
 import type { ToolCall } from "@/lib/llm";
-import { APPROVAL_REASON_MAX_CHARS } from "@/lib/constants";
+import { APPROVAL_REASON_MAX_CHARS, GATEKEEPER_RESULT_PREVIEW_CHARS } from "@/lib/constants";
 
 export interface GatekeeperResult {
   status: "executed" | "pending_approval" | "error";
@@ -56,7 +56,7 @@ function redactArgs(args: Record<string, unknown>): Record<string, unknown> {
 }
 
 /** Truncate tool results to prevent logging huge payloads */
-function truncateResult(result: unknown, maxLen = 500): string {
+function truncateResult(result: unknown, maxLen = GATEKEEPER_RESULT_PREVIEW_CHARS): string {
   const str = JSON.stringify(result);
   return str.length > maxLen ? str.slice(0, maxLen) + "...[truncated]" : str;
 }

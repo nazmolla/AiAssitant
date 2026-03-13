@@ -1,5 +1,11 @@
 import nodemailer, { type SendMailOptions, type Transporter } from "nodemailer";
 import { ImapFlow } from "imapflow";
+import {
+  EMAIL_CONNECTION_TIMEOUT_MS,
+  EMAIL_GREETING_TIMEOUT_MS,
+  EMAIL_SOCKET_TIMEOUT_MS,
+  EMAIL_IMAP_SOCKET_TIMEOUT_MS,
+} from "@/lib/constants";
 
 export interface EmailChannelConfig {
   smtpHost: string;
@@ -214,9 +220,9 @@ function createSmtpTransport(cfg: EmailChannelConfig, secure: boolean): Transpor
       user: cfg.smtpUser,
       pass: cfg.smtpPass,
     },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    connectionTimeout: EMAIL_CONNECTION_TIMEOUT_MS,
+    greetingTimeout: EMAIL_GREETING_TIMEOUT_MS,
+    socketTimeout: EMAIL_SOCKET_TIMEOUT_MS,
     tls: {
       servername: cfg.smtpHost,
     },
@@ -299,7 +305,7 @@ export function createImapClient(cfg: EmailChannelConfig, secure: boolean): Imap
       pass: cfg.imapPass,
     },
     logger: false,
-    socketTimeout: 30_000,
+    socketTimeout: EMAIL_IMAP_SOCKET_TIMEOUT_MS,
     emitLogs: false,
   });
 }

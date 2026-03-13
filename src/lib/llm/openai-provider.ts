@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ContentPart, ChatRequestOptions } from "./types";
-import { LLM_CLIENT_TIMEOUT_MS, LLM_MAX_RETRIES } from "@/lib/constants";
+import { LLM_CLIENT_TIMEOUT_MS, LLM_MAX_RETRIES, AZURE_OPENAI_DEFAULT_API_VERSION } from "@/lib/constants";
 
 export type OpenAIProviderOptions =
   | {
@@ -41,7 +41,7 @@ export class OpenAIChatProvider implements ChatProvider {
       const client = new OpenAI({
         apiKey: options.apiKey,
         baseURL: `${endpoint}/openai/deployments/${options.deployment}`,
-        defaultQuery: { "api-version": options.apiVersion || "2024-08-01-preview" },
+        defaultQuery: { "api-version": options.apiVersion || AZURE_OPENAI_DEFAULT_API_VERSION },
         defaultHeaders: { "api-key": options.apiKey },
         timeout: LLM_CLIENT_TIMEOUT_MS,
         maxRetries: LLM_MAX_RETRIES,
