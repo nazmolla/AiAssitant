@@ -164,7 +164,11 @@ describe("POST /api/config/llm", () => {
     const res = await POST(req);
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error).toContain("purpose");
+    // Zod returns structured validation errors
+    const hasFieldError = data.error === "Validation failed"
+      ? data.details?.some((d: { field: string }) => d.field === "purpose")
+      : data.error?.toLowerCase().includes("purpose");
+    expect(hasFieldError).toBe(true);
   });
 
   test("returns 400 for Azure OpenAI without endpoint", async () => {

@@ -11,6 +11,8 @@ import {
   type LlmProviderPurpose,
 } from "@/lib/db";
 import { invalidateProviderCache } from "@/lib/llm/orchestrator";
+import { validateBody } from "@/lib/validation";
+import { createLlmProviderSchema } from "@/lib/schemas";
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -25,24 +27,10 @@ export async function POST(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
-  const label = typeof body.label === "string" ? body.label.trim() : "";
-  const providerType = body.provider_type;
-  const purpose = body.purpose || "chat";
-  const config = body.config;
-  const isDefault = !!body.is_default;
+  const validation = validateBody(body, createLlmProviderSchema);
+  if (!validation.success) return validation.response;
 
-  if (!label) {
-    return NextResponse.json({ error: "label is required." }, { status: 400 });
-  }
-  if (!isProviderType(providerType)) {
-    return NextResponse.json({ error: "provider_type is invalid." }, { status: 400 });
-  }
-  if (!isPurpose(purpose)) {
-    return NextResponse.json({ error: "purpose must be 'chat', 'embedding', 'tts', or 'stt'." }, { status: 400 });
-  }
-  if (!config || typeof config !== "object") {
-    return NextResponse.json({ error: "config must be an object." }, { status: 400 });
-  }
+  const { label, provider_type: providerType, purpose, config, is_default: isDefault } = validation.data;
 
   let normalizedConfig: Record<string, string>;
   try {

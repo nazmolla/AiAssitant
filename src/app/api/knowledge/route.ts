@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { listKnowledgePaginated, upsertKnowledge, updateKnowledge, deleteKnowledge, getKnowledgeEntry } from "@/lib/db";
+import { validateBody } from "@/lib/validation";
+import { updateKnowledgeSchema } from "@/lib/schemas";
 
 export async function GET(req: NextRequest) {
   const auth = await requireUser();
@@ -47,11 +49,10 @@ export async function PUT(req: NextRequest) {
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
-  const { id, ...updates } = body;
+  const validation = validateBody(body, updateKnowledgeSchema);
+  if (!validation.success) return validation.response;
 
-  if (!id) {
-    return NextResponse.json({ error: "id is required." }, { status: 400 });
-  }
+  const { id, ...updates } = validation.data;
 
   // Verify ownership
   const entry = getKnowledgeEntry(id);
