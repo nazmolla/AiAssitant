@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { env } from "@/lib/env";
 
 const LOCAL_SALT_ROUNDS = 12;
 
@@ -39,7 +40,7 @@ export function buildAuthConfig(): NextAuthConfig {
           // New user signup: first user becomes admin, subsequent users become regular users
           if (!existing) {
             // Check if open registration is disabled
-            if (process.env.DISABLE_REGISTRATION === "true" && getUserCount() > 0) {
+            if (env.DISABLE_REGISTRATION && getUserCount() > 0) {
               return null; // Registration disabled — reject new signups
             }
             // Enforce password policy on signup
@@ -116,7 +117,7 @@ export function buildAuthConfig(): NextAuthConfig {
         }
 
         // New OAuth user — create account
-        if (process.env.DISABLE_REGISTRATION === "true" && getUserCount() > 0) {
+        if (env.DISABLE_REGISTRATION && getUserCount() > 0) {
           return false; // Registration disabled
         }
         const isFirst = getUserCount() === 0;

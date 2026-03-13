@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
-import path from "path";
+import { env } from "@/lib/env";
 
-const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), "nexus.db");
+const DB_PATH = env.DATABASE_PATH;
 
 let _db: Database.Database | null = null;
 

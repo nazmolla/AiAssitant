@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getMcpServer } from "@/lib/db";
 import { randomUUID } from "crypto";
+import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export async function GET(
   const response = NextResponse.redirect(authUrl.toString());
   response.cookies.set(`mcp_oauth_state_${serverId}`, state, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: env.NODE_ENV === "production",
     maxAge: 600, // 10 minutes
     path: "/",
     sameSite: "lax",

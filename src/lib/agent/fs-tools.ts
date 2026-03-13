@@ -23,6 +23,7 @@ import { promises as fsp } from "fs";
 import * as path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { env } from "@/lib/env";
 
 const execAsync = promisify(exec);
 
@@ -313,9 +314,7 @@ export const BUILTIN_FS_TOOLS: ToolDefinition[] = [
  * Allowed root directory for all FS operations.
  * Defaults to cwd, can be overridden via FS_ALLOWED_ROOT env var.
  */
-const FS_ALLOWED_ROOT = path.resolve(
-  process.env.FS_ALLOWED_ROOT || process.cwd()
-);
+const FS_ALLOWED_ROOT = env.FS_ALLOWED_ROOT;
 
 /**
  * Resolve a path, making relative paths relative to cwd,

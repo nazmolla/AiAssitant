@@ -17,6 +17,7 @@ import type { ToolDefinition } from "@/lib/llm";
 import * as fs from "fs";
 import * as path from "path";
 import { assertExternalUrl, assertExternalUrlWithResolve } from "./ssrf";
+import { env } from "@/lib/env";
 
 // ── Tool Definitions ──────────────────────────────────────────
 
@@ -860,7 +861,7 @@ async function _executeBrowserToolInner(
       const page = await session.getPage();
       const filePath = args.filePath as string;
       // Restrict file uploads to the FS_ALLOWED_ROOT to prevent exfiltration of sensitive files
-      const FS_ALLOWED_ROOT = path.resolve(process.env.FS_ALLOWED_ROOT || process.cwd());
+      const FS_ALLOWED_ROOT = env.FS_ALLOWED_ROOT;
       const resolved = path.resolve(filePath);
       if (!resolved.startsWith(FS_ALLOWED_ROOT + path.sep) && resolved !== FS_ALLOWED_ROOT) {
         throw new Error(`Access denied: file path "${filePath}" is outside the allowed root directory.`);

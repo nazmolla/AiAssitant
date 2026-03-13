@@ -5,11 +5,12 @@ import os from "os";
 import path from "path";
 import { getAppConfig, setAppConfig, deleteLogsOlderThanDays } from "./log-queries";
 import { deleteThread } from "./thread-queries";
+import { env } from "@/lib/env";
 
 const ATTACHMENTS_ROOT = path.join(process.cwd(), "data", "attachments");
 
 function getDbFilePath(): string {
-  return process.env.DATABASE_PATH || path.join(process.cwd(), "nexus.db");
+  return env.DATABASE_PATH;
 }
 
 export interface DbMaintenanceConfig {

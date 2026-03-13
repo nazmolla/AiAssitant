@@ -693,7 +693,7 @@ describe("Worker Pool — source verification", () => {
   test("uses WORKER_POOL_SIZE env var for configuration", () => {
     const code = readSource();
     expect(code).toContain("WORKER_POOL_SIZE");
-    expect(code).toContain("process.env.WORKER_POOL_SIZE");
+    expect(code).toContain("env.WORKER_POOL_SIZE");
   });
 
   test("has drainQueue for task queuing when all workers busy", () => {

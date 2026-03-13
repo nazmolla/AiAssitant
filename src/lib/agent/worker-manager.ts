@@ -14,6 +14,7 @@ import { Worker } from "worker_threads";
 import path from "path";
 import type { ChatMessage, ToolDefinition, ToolCall } from "@/lib/llm";
 import { addLog } from "@/lib/db";
+import { env } from "@/lib/env";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -110,7 +111,7 @@ interface TaskHandle {
 }
 
 const POOL_SIZE = Math.min(
-  Math.max(parseInt(process.env.WORKER_POOL_SIZE || "2", 10) || 2, 1),
+  Math.max(env.WORKER_POOL_SIZE, 1),
   8
 );
 

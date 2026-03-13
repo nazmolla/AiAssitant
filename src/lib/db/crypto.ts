@@ -14,6 +14,7 @@
 
 import * as crypto from "crypto";
 import * as os from "os";
+import { env } from "@/lib/env";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12;
@@ -27,11 +28,11 @@ let _masterKey: Buffer | null = null;
 function getMasterKey(): Buffer {
   if (_masterKey) return _masterKey;
 
-  const envSecret = process.env.NEXUS_DB_SECRET;
+  const envSecret = env.NEXUS_DB_SECRET;
   if (envSecret) {
     // Derive a fixed-length key from the user-supplied secret
     _masterKey = crypto.scryptSync(envSecret, "nexus-db-salt", KEY_BYTES);
-  } else if (process.env.NODE_ENV === "production") {
+  } else if (env.NODE_ENV === "production") {
     throw new Error(
       "[Nexus Crypto] NEXUS_DB_SECRET is required in production. " +
         "Set NEXUS_DB_SECRET environment variable before starting the application."

@@ -13,6 +13,7 @@ import { BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL } from "@/lib/
 import { BROWSER_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/browser-tools";
 import { BUILTIN_ALEXA_TOOLS, ALEXA_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/alexa-tools";
 import { v4 as uuid } from "uuid";
+import { env } from "@/lib/env";
 
 // ─── Helper: check if a table exists ─────────────────────────
 function tableExists(table: string): boolean {
@@ -839,7 +840,7 @@ export function initializeDatabase(): void {
   ensureUserIdColumns();
   ensureThreadClassificationColumns();
   ensureKnowledgeSourceTypeColumn();
-  if (process.env.NEXUS_DEDUPE_KNOWLEDGE_STARTUP === "1") {
+  if (env.NEXUS_DEDUPE_KNOWLEDGE_STARTUP) {
     dedupeKnowledgeRows();
   }
   ensureMcpServerNewColumns();
@@ -872,7 +873,7 @@ export function initializeDatabase(): void {
  */
 function warnIfDbShrunk(): void {
   try {
-    const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), "nexus.db");
+    const dbPath = env.DATABASE_PATH;
     const dbSize = fs.statSync(dbPath).size;
     const dir = path.dirname(dbPath);
     const base = path.basename(dbPath);

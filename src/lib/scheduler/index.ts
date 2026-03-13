@@ -61,6 +61,7 @@ import {
 import { summarizeInboundUnknownEmail } from "@/lib/channels/inbound-email";
 import { getUserNotificationLevel } from "@/lib/channels/notify";
 import type { NotificationLevel } from "@/lib/channels/notify";
+import { env } from "@/lib/env";
 
 /* ── Quiet Hours (no audio-producing tools) ────────────────────── */
 
@@ -1129,7 +1130,7 @@ async function _runProactiveScanInner(): Promise<void> {
  */
 export function startScheduler(): void {
   const dbSchedule = getAppConfig("proactive_cron_schedule");
-  const schedule = dbSchedule || process.env.PROACTIVE_CRON_SCHEDULE || "*/15 * * * *";
+  const schedule = dbSchedule || env.PROACTIVE_CRON_SCHEDULE;
 
   // Idempotent start: do not tear down/recreate a live cron job when the
   // schedule has not changed for this process.
