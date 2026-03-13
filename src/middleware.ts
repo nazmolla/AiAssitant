@@ -2,19 +2,21 @@ import { getToken } from "next-auth/jwt";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+/* ── Rate Limiting ────────────────────────────────────────────────── */
+
 /**
- * Rate-limiter: simple sliding-window counter per IP.
- * Limits each IP to MAX_REQUESTS within WINDOW_MS.
+ * Sliding-window counter per IP.
+ * Returns a 429 response if the IP exceeds MAX_REQUESTS within WINDOW_MS.
  */
 const WINDOW_MS = 60_000; // 1 minute
 const MAX_REQUESTS = 120; // 120 req/min per IP
+const IP_HITS_MAX_SIZE = 10_000;
 const ipHits = new Map<string, { count: number; resetAt: number }>();
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
   const entry = ipHits.get(ip);
   if (!entry || now > entry.resetAt) {
-    // PERF-14: Evict oldest entries if map exceeds cap
     if (ipHits.size >= IP_HITS_MAX_SIZE) {
       const firstKey = ipHits.keys().next().value;
       if (firstKey) ipHits.delete(firstKey);
@@ -26,8 +28,7 @@ function isRateLimited(ip: string): boolean {
   return entry.count > MAX_REQUESTS;
 }
 
-// PERF-14: Clean stale entries every 60s (was 5 min) + cap map size
-const IP_HITS_MAX_SIZE = 10_000;
+// Clean stale entries every 60s
 setInterval(() => {
   const now = Date.now();
   ipHits.forEach((entry, ip) => {
@@ -35,8 +36,7 @@ setInterval(() => {
   });
 }, 60_000);
 
-export async function middleware(req: NextRequest) {
-  // --- Rate limiting (applied to all matched routes) ---
+export function applyRateLimit(req: NextRequest): NextResponse | null {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   if (isRateLimited(ip)) {
     return NextResponse.json(
@@ -44,27 +44,41 @@ export async function middleware(req: NextRequest) {
       { status: 429, headers: { "Retry-After": "60" } }
     );
   }
+  return null;
+}
 
-  // --- API-key bearer tokens bypass session auth ---
-  // Requests carrying `Authorization: Bearer nxk_...` are validated later
-  // in the route-level guards (guard.ts) — let them through here.
+/* ── Auth Bypass ──────────────────────────────────────────────────── */
+
+const WEBHOOK_PATTERN = /^\/api\/channels\/[^/]+\/webhook\/?$/;
+
+/**
+ * Checks whether the request should bypass session auth.
+ * Returns `NextResponse.next()` for API-key bearer tokens and webhook routes,
+ * or `null` if normal auth gating should proceed.
+ */
+export function checkAuthBypass(req: NextRequest): NextResponse | null {
+  // API-key bearer tokens — validated later in route-level guards (guard.ts)
   const authHeader = req.headers.get("authorization") ?? "";
-  const isApiKeyRequest = authHeader.toLowerCase().startsWith("bearer nxk_");
-
-  if (isApiKeyRequest) {
+  if (authHeader.toLowerCase().startsWith("bearer nxk_")) {
     return NextResponse.next();
   }
 
-  // --- Inbound channel webhooks use their own secret-based auth ---
-  // They must still pass rate-limiting (above) but do not carry a JWT session.
-  const WEBHOOK_PATTERN = /^\/api\/channels\/[^/]+\/webhook\/?$/;
+  // Inbound channel webhooks use their own secret-based auth
   if (WEBHOOK_PATTERN.test(req.nextUrl.pathname)) {
     return NextResponse.next();
   }
 
-  // --- Check auth via JWT token (Edge-compatible, no DB access needed) ---
-  const isApiRoute = req.nextUrl.pathname.startsWith("/api/");
+  return null;
+}
 
+/* ── Auth Gating ──────────────────────────────────────────────────── */
+
+/**
+ * Verifies the JWT session token. Returns 401 for API routes or
+ * redirects to signin for page routes when unauthenticated.
+ */
+export async function gateAuth(req: NextRequest): Promise<NextResponse | null> {
+  const isApiRoute = req.nextUrl.pathname.startsWith("/api/");
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const userId = (token as Record<string, unknown> | null)?.userId;
 
@@ -77,6 +91,24 @@ export async function middleware(req: NextRequest) {
     }
     return NextResponse.redirect(new URL("/auth/signin", req.url));
   }
+
+  return null;
+}
+
+/* ── Composed Middleware Pipeline ──────────────────────────────────── */
+
+export async function middleware(req: NextRequest) {
+  // 1. Rate limiting — applied to all matched routes
+  const rateLimitResponse = applyRateLimit(req);
+  if (rateLimitResponse) return rateLimitResponse;
+
+  // 2. Auth bypass — API keys and webhooks skip session auth
+  const bypassResponse = checkAuthBypass(req);
+  if (bypassResponse) return bypassResponse;
+
+  // 3. Auth gating — verify JWT session
+  const authResponse = await gateAuth(req);
+  if (authResponse) return authResponse;
 
   return NextResponse.next();
 }
