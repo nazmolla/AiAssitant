@@ -16,6 +16,15 @@
 
 import OpenAI from "openai";
 import { listLlmProviders, getAppConfig, type LlmProviderRecord } from "@/lib/db";
+import {
+  AUDIO_DEFAULT_TTS_VOICE,
+  AUDIO_DEFAULT_TTS_MODEL,
+  AUDIO_DEFAULT_STT_MODEL,
+  AUDIO_MAX_SIZE_MB,
+  AUDIO_MAX_SIZE_BYTES,
+  AUDIO_MAX_TTS_TEXT_LENGTH,
+  AUDIO_OPERATION_TIMEOUT_MS,
+} from "@/lib/constants";
 
 /** Supported TTS voices */
 export type TtsVoice = "alloy" | "ash" | "coral" | "echo" | "fable" | "onyx" | "nova" | "sage" | "shimmer";
@@ -26,12 +35,8 @@ export type TtsFormat = "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
 /** Which audio operation the client will be used for */
 export type AudioOperation = "tts" | "stt";
 
-const DEFAULT_TTS_VOICE: TtsVoice = "nova";
-const DEFAULT_TTS_MODEL = "tts-1";
-const DEFAULT_STT_MODEL = "whisper-1";
-const MAX_AUDIO_SIZE_MB = 25; // OpenAI Whisper limit
-export const MAX_AUDIO_SIZE_BYTES = MAX_AUDIO_SIZE_MB * 1024 * 1024;
-const MAX_TTS_TEXT_LENGTH = 4096;
+// Re-export for backward compatibility
+export const MAX_AUDIO_SIZE_BYTES = AUDIO_MAX_SIZE_BYTES;
 
 /** Result from getAudioClient — client + resolved model name */
 export interface AudioClientResult {
@@ -82,7 +87,7 @@ export function getAudioClient(operation: AudioOperation = "tts"): AudioClientRe
   const config = parseConfig(chosen);
 
   // Resolve model name — provider config can override defaults
-  const defaultModel = operation === "tts" ? DEFAULT_TTS_MODEL : DEFAULT_STT_MODEL;
+  const defaultModel = operation === "tts" ? AUDIO_DEFAULT_TTS_MODEL : AUDIO_DEFAULT_STT_MODEL;
   const model = (config.model as string) || defaultModel;
 
   if (chosen.provider_type === "azure-openai") {
@@ -121,7 +126,7 @@ export async function transcribeAudio(
   mimeType: string
 ): Promise<string> {
   if (audioBuffer.length > MAX_AUDIO_SIZE_BYTES) {
-    throw new Error(`Audio file exceeds ${MAX_AUDIO_SIZE_MB}MB limit.`);
+    throw new Error(`Audio file exceeds ${AUDIO_MAX_SIZE_MB}MB limit.`);
   }
 
   let cloudError: Error | undefined;
@@ -222,7 +227,7 @@ async function transcribeAudioLocal(
     response = await fetch(endpoint, {
       method: "POST",
       body: formData,
-      signal: AbortSignal.timeout(60_000), // 60s timeout for local
+      signal: AbortSignal.timeout(AUDIO_OPERATION_TIMEOUT_MS),
     });
   } catch {
     // If the OAI-compatible endpoint fails, try the whisper.cpp /inference endpoint
@@ -232,7 +237,7 @@ async function transcribeAudioLocal(
     response = await fetch(endpointFallback, {
       method: "POST",
       body: fallbackForm,
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(AUDIO_OPERATION_TIMEOUT_MS),
     });
   }
 
@@ -268,7 +273,7 @@ export function ttsFormatToMime(format: TtsFormat): string {
  */
 export async function textToSpeech(
   text: string,
-  voice: TtsVoice = DEFAULT_TTS_VOICE,
+  voice: TtsVoice = AUDIO_DEFAULT_TTS_VOICE,
   format: TtsFormat = "mp3"
 ): Promise<ArrayBuffer> {
   if (!text || text.length === 0) {
@@ -276,8 +281,8 @@ export async function textToSpeech(
   }
 
   // Truncate to max length
-  const truncated = text.length > MAX_TTS_TEXT_LENGTH
-    ? text.slice(0, MAX_TTS_TEXT_LENGTH) + "…"
+  const truncated = text.length > AUDIO_MAX_TTS_TEXT_LENGTH
+    ? text.slice(0, AUDIO_MAX_TTS_TEXT_LENGTH) + "…"
     : text;
 
   const { client, model } = getAudioClient("tts");

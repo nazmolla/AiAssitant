@@ -11,8 +11,7 @@ import crypto from "crypto";
 import type { ToolCall, ChatMessage } from "@/lib/llm";
 import { addMessage, addAttachment, addLog, type Message, type AttachmentMeta } from "@/lib/db";
 import { isUntrustedToolOutput } from "./system-prompt";
-
-const TOOL_RESULT_TRUNCATION_LIMIT = 15000;
+import { TOOL_RESULT_TRUNCATION_LIMIT } from "@/lib/constants";
 
 export interface ProcessedToolResult {
   /** Attachments collected from this tool call (screenshots, generated files). */

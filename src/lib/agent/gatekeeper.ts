@@ -18,6 +18,7 @@ import {
 } from "@/lib/db";
 import { notifyAdmin } from "@/lib/channels/notify";
 import type { ToolCall } from "@/lib/llm";
+import { APPROVAL_REASON_MAX_CHARS } from "@/lib/constants";
 
 export interface GatekeeperResult {
   status: "executed" | "pending_approval" | "error";
@@ -32,12 +33,12 @@ function extractApprovalReason(reasoning: string | undefined, args: Record<strin
     .map((line) => line.trim())
     .find((line) => !!line && !line.startsWith("{"));
 
-  if (fromReasoning) return fromReasoning.slice(0, 500);
+  if (fromReasoning) return fromReasoning.slice(0, APPROVAL_REASON_MAX_CHARS);
 
   for (const key of ["reason", "rationale", "justification", "purpose", "why", "note", "message"]) {
     const value = args[key];
     if (typeof value === "string" && value.trim()) {
-      return value.trim().slice(0, 500);
+      return value.trim().slice(0, APPROVAL_REASON_MAX_CHARS);
     }
   }
 

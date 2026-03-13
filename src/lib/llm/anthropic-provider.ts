@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ContentPart, ChatRequestOptions } from "./types";
 import { ConfigurationError } from "@/lib/errors";
+import { LLM_MAX_RESPONSE_TOKENS } from "@/lib/constants";
 
 export interface AnthropicProviderOptions {
   apiKey?: string;
@@ -85,7 +86,7 @@ export class AnthropicChatProvider implements ChatProvider {
     if (onToken) {
       const stream = this.client.messages.stream({
         model: this.model,
-        max_tokens: 4096,
+        max_tokens: LLM_MAX_RESPONSE_TOKENS,
         system: systemPrompt || undefined,
         messages: anthropicMessages,
         tools: anthropicTools,
@@ -130,7 +131,7 @@ export class AnthropicChatProvider implements ChatProvider {
     // Non-streaming mode (fallback)
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 4096,
+      max_tokens: LLM_MAX_RESPONSE_TOKENS,
       system: systemPrompt || undefined,
       messages: anthropicMessages,
       tools: anthropicTools,

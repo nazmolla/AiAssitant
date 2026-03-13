@@ -431,8 +431,7 @@ async function deleteCustomTool(args: Record<string, unknown>): Promise<unknown>
 
 // ── Sandboxed Execution ───────────────────────────────────────
 
-const SANDBOX_TIMEOUT_MS = 30_000; // 30s max execution
-const VALIDATION_TIMEOUT_MS = 5_000; // 5s for dry-run validation
+import { SANDBOX_TIMEOUT_MS, SANDBOX_VALIDATION_TIMEOUT_MS } from "@/lib/constants";
 
 /**
  * Build the sandbox context object used for both validation and execution.
@@ -522,7 +521,7 @@ export function validateImplementation(code: string): string | null {
 
   try {
     const script = new vm.Script(wrappedCode, { filename: "custom-tool-validate.js" });
-    script.runInContext(sandbox, { timeout: VALIDATION_TIMEOUT_MS });
+    script.runInContext(sandbox, { timeout: SANDBOX_VALIDATION_TIMEOUT_MS });
   } catch (err: any) {
     return `Implementation code failed sandbox compilation: ${err.message}`;
   }

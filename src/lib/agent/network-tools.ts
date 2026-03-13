@@ -26,12 +26,14 @@ import { Client as SSHClient } from "ssh2";
 const execFileAsync = promisify(execFile);
 
 // ── Limits ────────────────────────────────────────────────────
-const MAX_OUTPUT = 64 * 1024; // 64 KB captured output
-const CMD_TIMEOUT_MS = 30_000; // 30 s
-const SSH_TIMEOUT_MS = 60_000; // 60 s
-const PORT_SCAN_TIMEOUT_MS = 2_000; // per-port connect timeout
-const HTTP_TIMEOUT_MS = 30_000; // HTTP request timeout
-const MAX_HTTP_BODY = 128 * 1024; // 128 KB response body
+import {
+  NET_MAX_OUTPUT,
+  NET_CMD_TIMEOUT_MS,
+  NET_SSH_TIMEOUT_MS,
+  NET_PORT_SCAN_TIMEOUT_MS,
+  NET_HTTP_TIMEOUT_MS,
+  NET_MAX_HTTP_BODY,
+} from "@/lib/constants";
 
 // ── Tool Names ────────────────────────────────────────────────
 
@@ -283,8 +285,8 @@ async function netPing(args: Record<string, unknown>): Promise<unknown> {
 
   try {
     const { stdout, stderr } = await execFileAsync("ping", [countFlag, String(count), host], {
-      timeout: CMD_TIMEOUT_MS,
-      maxBuffer: MAX_OUTPUT,
+      timeout: NET_CMD_TIMEOUT_MS,
+      maxBuffer: NET_MAX_OUTPUT,
     });
 
     // Parse basic stats from ping output
@@ -296,7 +298,7 @@ async function netPing(args: Record<string, unknown>): Promise<unknown> {
       host,
       reachable: !stderr.includes("100% packet loss") && !stdout.includes("100% packet loss"),
       count,
-      output: stdout.slice(0, MAX_OUTPUT),
+      output: stdout.slice(0, NET_MAX_OUTPUT),
       stats: statsLine?.trim() || null,
       rtt: rttLine?.trim() || null,
     };
@@ -306,7 +308,7 @@ async function netPing(args: Record<string, unknown>): Promise<unknown> {
       host,
       reachable: false,
       count,
-      output: (err.stdout || "").slice(0, MAX_OUTPUT),
+      output: (err.stdout || "").slice(0, NET_MAX_OUTPUT),
       error: err.stderr || err.message,
     };
   }
@@ -333,8 +335,8 @@ async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
     try {
       const arpArgs = subnet ? ["-l", subnet] : ["-l"];
       const { stdout } = await execFileAsync("arp-scan", arpArgs, {
-        timeout: CMD_TIMEOUT_MS,
-        maxBuffer: MAX_OUTPUT,
+        timeout: NET_CMD_TIMEOUT_MS,
+        maxBuffer: NET_MAX_OUTPUT,
       });
       scanMethod = "arp-scan";
       parseArpScanOutput(stdout, devices);
@@ -343,8 +345,8 @@ async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
       if (method === "arp" || method === "auto") {
         try {
           const { stdout } = await execFileAsync("arp", ["-a"], {
-            timeout: CMD_TIMEOUT_MS,
-            maxBuffer: MAX_OUTPUT,
+            timeout: NET_CMD_TIMEOUT_MS,
+            maxBuffer: NET_MAX_OUTPUT,
           });
           scanMethod = "arp -a";
           parseArpTableOutput(stdout, devices);
@@ -361,7 +363,7 @@ async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
       const target = subnet || "192.168.0.0/24";
       const { stdout } = await execFileAsync("nmap", ["-sn", target], {
         timeout: 60_000, // nmap scans can take a while
-        maxBuffer: MAX_OUTPUT,
+        maxBuffer: NET_MAX_OUTPUT,
       });
       scanMethod = "nmap";
       parseNmapPingScanOutput(stdout, devices);
@@ -547,7 +549,7 @@ const PORT_SERVICES: Record<number, string> = {
 async function netScanPorts(args: Record<string, unknown>): Promise<unknown> {
   const host = sanitizeHost(args.host as string);
   const portsStr = (args.ports as string) || null;
-  const perPortTimeout = Math.min((args.timeout as number) || PORT_SCAN_TIMEOUT_MS, 10_000);
+  const perPortTimeout = Math.min((args.timeout as number) || NET_PORT_SCAN_TIMEOUT_MS, 10_000);
 
   let portsToScan: number[];
 
@@ -669,7 +671,7 @@ async function netConnectSsh(args: Record<string, unknown>): Promise<unknown> {
     const timer = setTimeout(() => {
       timedOut = true;
       conn.end();
-    }, SSH_TIMEOUT_MS);
+    }, NET_SSH_TIMEOUT_MS);
 
     conn.on("ready", () => {
       conn.exec(command, (err, stream) => {
@@ -688,15 +690,15 @@ async function netConnectSsh(args: Record<string, unknown>): Promise<unknown> {
 
         stream.on("data", (data: Buffer) => {
           stdoutData += data.toString();
-          if (stdoutData.length > MAX_OUTPUT) {
-            stdoutData = stdoutData.slice(0, MAX_OUTPUT);
+          if (stdoutData.length > NET_MAX_OUTPUT) {
+            stdoutData = stdoutData.slice(0, NET_MAX_OUTPUT);
           }
         });
 
         stream.stderr.on("data", (data: Buffer) => {
           stderrData += data.toString();
-          if (stderrData.length > MAX_OUTPUT) {
-            stderrData = stderrData.slice(0, MAX_OUTPUT);
+          if (stderrData.length > NET_MAX_OUTPUT) {
+            stderrData = stderrData.slice(0, NET_MAX_OUTPUT);
           }
         });
 
@@ -712,8 +714,8 @@ async function netConnectSsh(args: Record<string, unknown>): Promise<unknown> {
       resolve({
         host, username, port, command,
         exitCode: timedOut ? 124 : exitCode,
-        stdout: stdoutData.slice(0, MAX_OUTPUT),
-        stderr: stderrData.slice(0, MAX_OUTPUT),
+        stdout: stdoutData.slice(0, NET_MAX_OUTPUT),
+        stderr: stderrData.slice(0, NET_MAX_OUTPUT),
         error: timedOut ? "Connection timed out" : undefined,
       });
     });
@@ -723,7 +725,7 @@ async function netConnectSsh(args: Record<string, unknown>): Promise<unknown> {
       resolve({
         host, username, port, command,
         exitCode: 1,
-        stdout: stdoutData.slice(0, MAX_OUTPUT),
+        stdout: stdoutData.slice(0, NET_MAX_OUTPUT),
         stderr: err.message,
         error: err.message,
       });
@@ -767,7 +769,7 @@ async function netHttpRequest(args: Record<string, unknown>): Promise<unknown> {
   const method = ((args.method as string) || "GET").toUpperCase();
   const headers = (args.headers as Record<string, string>) || {};
   const body = args.body as string | undefined;
-  const timeout = Math.min((args.timeout as number) || HTTP_TIMEOUT_MS, 120_000);
+  const timeout = Math.min((args.timeout as number) || NET_HTTP_TIMEOUT_MS, 120_000);
 
   if (!url || typeof url !== "string") {
     throw new Error("URL is required.");
@@ -807,7 +809,7 @@ async function netHttpRequest(args: Record<string, unknown>): Promise<unknown> {
 
       res.on("data", (chunk: Buffer) => {
         totalSize += chunk.length;
-        if (totalSize <= MAX_HTTP_BODY) {
+        if (totalSize <= NET_MAX_HTTP_BODY) {
           chunks.push(chunk);
         }
       });
@@ -833,9 +835,9 @@ async function netHttpRequest(args: Record<string, unknown>): Promise<unknown> {
           statusMessage: res.statusMessage,
           headers: res.headers,
           body: typeof parsedBody === "string"
-            ? parsedBody.slice(0, MAX_HTTP_BODY)
+            ? parsedBody.slice(0, NET_MAX_HTTP_BODY)
             : parsedBody,
-          truncated: totalSize > MAX_HTTP_BODY,
+          truncated: totalSize > NET_MAX_HTTP_BODY,
         });
       });
     });

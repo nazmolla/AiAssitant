@@ -24,15 +24,13 @@ import * as path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { env } from "@/lib/env";
+import {
+  FS_MAX_READ_BYTES,
+  FS_MAX_SCRIPT_OUTPUT,
+  FS_SCRIPT_TIMEOUT_MS,
+} from "@/lib/constants";
 
 const execAsync = promisify(exec);
-
-// Maximum file size we're willing to read in a single shot (2 MB)
-const MAX_READ_BYTES = 2 * 1024 * 1024;
-// Maximum output captured from a script execution (64 KB)
-const MAX_SCRIPT_OUTPUT = 64 * 1024;
-// Script execution timeout (30 seconds)
-const SCRIPT_TIMEOUT_MS = 30_000;
 
 // ── Tool Names ────────────────────────────────────────────────
 
@@ -466,9 +464,9 @@ async function fsReadFile(args: Record<string, unknown>): Promise<unknown> {
   }
 
   // Full-file read — enforce size limit unless line-range params are provided
-  if (stat.size > MAX_READ_BYTES && encoding !== "base64" && !isPartialRead) {
+  if (stat.size > FS_MAX_READ_BYTES && encoding !== "base64" && !isPartialRead) {
     throw new Error(
-      `File is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB). Max for full reads is ${MAX_READ_BYTES / 1024 / 1024} MB. Use startLine/endLine for line-based chunking or offset/length for byte-based chunking.`
+      `File is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB). Max for full reads is ${FS_MAX_READ_BYTES / 1024 / 1024} MB. Use startLine/endLine for line-based chunking or offset/length for byte-based chunking.`
     );
   }
 
@@ -539,7 +537,7 @@ async function fsExtractText(args: Record<string, unknown>): Promise<unknown> {
   }
 
   // Require chunking for very large files to avoid huge memory spikes.
-  if (stat.size > MAX_READ_BYTES && args.offset === undefined && args.length === undefined) {
+  if (stat.size > FS_MAX_READ_BYTES && args.offset === undefined && args.length === undefined) {
     throw new Error(
       `File is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB) for default extraction. Provide offset/length to process it in chunks.`
     );
@@ -810,7 +808,7 @@ async function fsDeleteDirectory(args: Record<string, unknown>): Promise<unknown
 async function fsExecuteScript(args: Record<string, unknown>): Promise<unknown> {
   const command = args.command as string;
   const cwd = args.cwd ? resolvePath(args.cwd as string) : process.cwd();
-  const timeout = Math.min((args.timeout as number) || SCRIPT_TIMEOUT_MS, 120_000);
+  const timeout = Math.min((args.timeout as number) || FS_SCRIPT_TIMEOUT_MS, 120_000);
 
   if (!command || typeof command !== "string" || command.trim().length === 0) {
     throw new Error("Command must be a non-empty string.");
@@ -845,7 +843,7 @@ async function fsExecuteScript(args: Record<string, unknown>): Promise<unknown> 
     const { stdout, stderr } = await execAsync(command, {
       cwd,
       timeout,
-      maxBuffer: MAX_SCRIPT_OUTPUT,
+      maxBuffer: FS_MAX_SCRIPT_OUTPUT,
       shell: shellBin,
     });
 
@@ -853,16 +851,16 @@ async function fsExecuteScript(args: Record<string, unknown>): Promise<unknown> 
       command,
       cwd,
       exitCode: 0,
-      stdout: stdout.slice(0, MAX_SCRIPT_OUTPUT),
-      stderr: stderr.slice(0, MAX_SCRIPT_OUTPUT),
+      stdout: stdout.slice(0, FS_MAX_SCRIPT_OUTPUT),
+      stderr: stderr.slice(0, FS_MAX_SCRIPT_OUTPUT),
     };
   } catch (err: any) {
     return {
       command,
       cwd,
       exitCode: err.code ?? 1,
-      stdout: (err.stdout || "").slice(0, MAX_SCRIPT_OUTPUT),
-      stderr: (err.stderr || err.message || "").slice(0, MAX_SCRIPT_OUTPUT),
+      stdout: (err.stdout || "").slice(0, FS_MAX_SCRIPT_OUTPUT),
+      stderr: (err.stderr || err.message || "").slice(0, FS_MAX_SCRIPT_OUTPUT),
       error: err.killed ? "Process timed out" : undefined,
     };
   }

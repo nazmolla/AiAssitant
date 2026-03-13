@@ -17,6 +17,11 @@ import {
 import { isWorkerAvailable as checkWorkerAvailable, runLlmInWorker, type WorkerToolResult } from "@/lib/agent/worker-manager";
 import { buildCappedToolList, MAX_TOOLS_PER_REQUEST } from "@/lib/agent/tool-cap";
 import { addLog, getUserById, listToolPolicies, getToolPolicy } from "@/lib/db";
+import {
+  VOICE_MAX_HISTORY_MESSAGES,
+  VOICE_MAX_TOOL_ITERATIONS,
+  VOICE_TURN_TIMEOUT_MS,
+} from "@/lib/constants";
 
 /**
  * POST /api/conversation/respond
@@ -60,13 +65,6 @@ Keep most responses under 3-4 sentences unless the topic requires depth.
 You have access to tools — use them when the user asks you to do something actionable (smart home, web search, network ops, etc.).
 After using a tool, summarize what happened conversationally.`;
 
-/** Cap conversation history to avoid exceeding context limits */
-const MAX_HISTORY_MESSAGES = 30;
-/** Max tool iterations per request */
-const MAX_TOOL_ITERATIONS = 10;
-/** Hard timeout for the entire conversation turn (including tool calls) */
-const TURN_TIMEOUT_MS = 60_000; // 60 seconds
-
 /** Yield the event loop so other requests can be processed */
 const yieldLoop = () => new Promise<void>((r) => setImmediate(r));
 
@@ -109,7 +107,7 @@ export async function POST(req: NextRequest) {
   const chatMessages: ChatMessage[] = [];
 
   if (Array.isArray(history)) {
-    const recent = history.slice(-MAX_HISTORY_MESSAGES);
+    const recent = history.slice(-VOICE_MAX_HISTORY_MESSAGES);
     for (const h of recent) {
       if (
         h &&
@@ -202,7 +200,7 @@ export async function POST(req: NextRequest) {
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(
           () => reject(new Error("Conversation turn timed out")),
-          TURN_TIMEOUT_MS
+          VOICE_TURN_TIMEOUT_MS
         );
       });
 
@@ -260,7 +258,7 @@ async function runConversationLoop(
 ) {
   let iterations = 0;
 
-  while (iterations < MAX_TOOL_ITERATIONS) {
+  while (iterations < VOICE_MAX_TOOL_ITERATIONS) {
     iterations++;
     await yieldLoop(); // let other requests breathe
 
@@ -440,7 +438,7 @@ async function runConversationLoopViaWorker(
       systemPrompt: CONVERSATION_SYSTEM_PROMPT,
       messages: chatMessages,
       tools,
-      maxIterations: MAX_TOOL_ITERATIONS,
+      maxIterations: VOICE_MAX_TOOL_ITERATIONS,
     },
     /* onToken */
     async (token: string) => {

@@ -4,8 +4,10 @@
  */
 
 import type { Message } from "@/lib/db";
+import { INLINE_APPROVAL_MARKER, APPROVAL_REASON_MAX_CHARS } from "@/lib/constants";
 
-export const INLINE_APPROVAL_MARKER = "<!-- INLINE_APPROVAL:";
+// Re-export so existing imports continue to work
+export { INLINE_APPROVAL_MARKER };
 
 export interface InlineApprovalPayload {
   tool_name: string;
@@ -60,12 +62,12 @@ export function extractApprovalReason(reasoning: string | undefined, args: Recor
     .map((line) => line.trim())
     .find((line) => !!line && !line.startsWith("{"));
 
-  if (fromReasoning) return fromReasoning.slice(0, 500);
+  if (fromReasoning) return fromReasoning.slice(0, APPROVAL_REASON_MAX_CHARS);
 
   for (const key of ["reason", "rationale", "justification", "purpose", "why", "note", "message"]) {
     const value = args[key];
     if (typeof value === "string" && value.trim()) {
-      return value.trim().slice(0, 500);
+      return value.trim().slice(0, APPROVAL_REASON_MAX_CHARS);
     }
   }
 

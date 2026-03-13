@@ -20,8 +20,7 @@ import {
   extractLatestInlineApproval,
 } from "./approval-handler";
 import type { AgentResponse } from "./loop";
-
-const TOOL_RESULT_TRUNCATION_LIMIT = 15000;
+import { TOOL_RESULT_TRUNCATION_LIMIT } from "@/lib/constants";
 
 export type InlineApprovalResult =
   | { handled: false }

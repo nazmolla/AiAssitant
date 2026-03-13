@@ -22,7 +22,7 @@ export interface CacheEntry<T> {
   cachedAt: number;
 }
 
-const DEFAULT_TTL_MS = 60_000; // 60 seconds
+import { CACHE_DEFAULT_TTL_MS } from "@/lib/constants";
 
 class AppCache implements ICache {
   private entries = new Map<string, CacheEntry<unknown>>();
@@ -31,7 +31,7 @@ class AppCache implements ICache {
    * Get a cached value, or load it fresh via `loader` if missing/expired.
    * `loader` is only called when the cache misses.
    */
-  get<T>(key: string, loader: () => T, ttlMs: number = DEFAULT_TTL_MS): T {
+  get<T>(key: string, loader: () => T, ttlMs: number = CACHE_DEFAULT_TTL_MS): T {
     const entry = this.entries.get(key);
     const now = Date.now();
     if (entry && (now - entry.cachedAt) < ttlMs) {
@@ -45,7 +45,7 @@ class AppCache implements ICache {
   /**
    * Async version of `get` for loaders that return a Promise.
    */
-  async getAsync<T>(key: string, loader: () => Promise<T>, ttlMs: number = DEFAULT_TTL_MS): Promise<T> {
+  async getAsync<T>(key: string, loader: () => Promise<T>, ttlMs: number = CACHE_DEFAULT_TTL_MS): Promise<T> {
     const entry = this.entries.get(key);
     const now = Date.now();
     if (entry && (now - entry.cachedAt) < ttlMs) {

@@ -57,21 +57,25 @@ function populateHandlerRegistry(): void {
 
 /* ── Engine configuration ─────────────────────────────────────────── */
 
+import {
+  SCHEDULER_POLL_MS,
+  SCHEDULER_LEASE_SECONDS,
+  SCHEDULER_BATCH_SIZE,
+  SCHEDULER_RESPONSE_PREVIEW_CHARS,
+} from "@/lib/constants";
+
 export interface SchedulerEngineConfig {
   pollMs?: number;
   leaseSeconds?: number;
 }
-
-const DEFAULT_POLL_MS = 10_000;
-const DEFAULT_LEASE_SECONDS = 60;
 
 /* ── Engine state (encapsulated) ──────────────────────────────────── */
 
 const engineState = {
   timer: null as ReturnType<typeof setInterval> | null,
   tickRunning: false,
-  pollMs: DEFAULT_POLL_MS,
-  leaseSeconds: DEFAULT_LEASE_SECONDS,
+  pollMs: SCHEDULER_POLL_MS,
+  leaseSeconds: SCHEDULER_LEASE_SECONDS,
 };
 
 /** Reset engine state and handler registry (for testing). */
@@ -81,8 +85,8 @@ export function resetSchedulerEngine(): void {
   }
   engineState.timer = null;
   engineState.tickRunning = false;
-  engineState.pollMs = DEFAULT_POLL_MS;
-  engineState.leaseSeconds = DEFAULT_LEASE_SECONDS;
+  engineState.pollMs = SCHEDULER_POLL_MS;
+  engineState.leaseSeconds = SCHEDULER_LEASE_SECONDS;
   handlerRegistry.clear();
 }
 
@@ -102,7 +106,7 @@ function validateRegisteredHandlers(): void {
 }
 
 function dispatchDueSchedules(): void {
-  const due = listDueSchedulerSchedules(25);
+  const due = listDueSchedulerSchedules(SCHEDULER_BATCH_SIZE);
   if (due.length === 0) return;
 
   for (const schedule of due) {
@@ -202,7 +206,7 @@ async function executeTaskRun(
         threadId,
         userId,
         toolsUsed: result.toolsUsed ?? [],
-        responsePreview: (result.content || "").slice(0, 4000),
+        responsePreview: (result.content || "").slice(0, SCHEDULER_RESPONSE_PREVIEW_CHARS),
       });
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({
         kind: "agent_prompt", threadId, userId,

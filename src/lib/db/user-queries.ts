@@ -2,6 +2,7 @@ import { getDb } from "./connection";
 import { stmt } from "./query-helpers";
 import { v4 as uuid } from "uuid";
 import { appCache, CACHE_KEYS } from "@/lib/cache";
+import { CACHE_AUTH_TTL_MS } from "@/lib/constants";
 
 export interface UserRecord {
   id: string;
@@ -21,8 +22,6 @@ export function getUserById(id: string): UserRecord | undefined {
   );
 }
 
-const AUTH_CACHE_TTL_MS = 300_000; // 5 minutes
-
 export function getUserByEmail(email: string): UserRecord | undefined {
   return appCache.get(
     `${CACHE_KEYS.USER_BY_EMAIL_PREFIX}${email.toLowerCase()}`,
@@ -35,7 +34,7 @@ export function getUserByEmail(email: string): UserRecord | undefined {
       WHERE LOWER(ue.email) = LOWER(?)
       LIMIT 1
     `).get(email, email) as UserRecord | undefined,
-    AUTH_CACHE_TTL_MS
+    CACHE_AUTH_TTL_MS
   );
 }
 
@@ -43,7 +42,7 @@ export function getUserByExternalSub(subId: string): UserRecord | undefined {
   return appCache.get(
     `${CACHE_KEYS.USER_BY_SUB_PREFIX}${subId}`,
     () => stmt("SELECT * FROM users WHERE external_sub_id = ?").get(subId) as UserRecord | undefined,
-    AUTH_CACHE_TTL_MS
+    CACHE_AUTH_TTL_MS
   );
 }
 

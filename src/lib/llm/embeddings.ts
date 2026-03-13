@@ -2,10 +2,9 @@ import OpenAI from "openai";
 import { createHash } from "crypto";
 import { getDefaultLlmProvider } from "@/lib/db";
 import { ConfigurationError } from "@/lib/errors";
+import { EMBEDDING_CACHE_MAX_SIZE, EMBEDDING_CACHE_TTL_MS } from "@/lib/constants";
 
 /* ── Embedding result cache (PERF-02) ────────────────────────────── */
-const EMBEDDING_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const EMBEDDING_CACHE_MAX_SIZE = 500;           // max entries (LRU eviction)
 
 interface CachedEmbedding {
   embedding: number[];

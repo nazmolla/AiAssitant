@@ -6,9 +6,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { listMcpServers, type McpServerRecord } from "@/lib/db";
 import { addLog } from "@/lib/db";
 import type { ToolDefinition } from "@/lib/llm";
-
-/** Per-server connection timeout (ms). */
-const CONNECT_TIMEOUT_MS = 15_000;
+import { MCP_CONNECT_TIMEOUT_MS } from "@/lib/constants";
 
 /** OpenAI API enforces max 64 characters for tool function names. */
 export const MAX_TOOL_NAME_LENGTH = 64;
@@ -203,7 +201,7 @@ class McpManager {
         args,
         env: { ...safeEnv, ...envVars } as Record<string, string>,
       });
-      await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, server.name);
+      await withTimeout(client.connect(transport), MCP_CONNECT_TIMEOUT_MS, server.name);
     } else if (transportType === "sse") {
       const endpoint = server.url || server.command;
       if (!endpoint) {
@@ -214,7 +212,7 @@ class McpManager {
           headers: { ...envVars, ...authHeaders } as Record<string, string>,
         },
       } as any);
-      await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, server.name);
+      await withTimeout(client.connect(transport), MCP_CONNECT_TIMEOUT_MS, server.name);
     } else if (transportType === "streamablehttp") {
       const endpoint = server.url || server.command;
       if (!endpoint) {
@@ -225,7 +223,7 @@ class McpManager {
         const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
           requestInit: { headers: httpHeaders },
         });
-        await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, server.name);
+        await withTimeout(client.connect(transport), MCP_CONNECT_TIMEOUT_MS, server.name);
       } catch (streamErr) {
         // Fallback to SSE if StreamableHTTP fails (e.g. 404 — server uses legacy SSE)
         addLog({
@@ -241,7 +239,7 @@ class McpManager {
           const sseTransport = new SSEClientTransport(new URL(endpoint), {
             requestInit: { headers: httpHeaders },
           } as any);
-          await withTimeout(client.connect(sseTransport), CONNECT_TIMEOUT_MS, server.name);
+          await withTimeout(client.connect(sseTransport), MCP_CONNECT_TIMEOUT_MS, server.name);
         } catch (_sseErr) {
           // Last resort: try SSE at endpoint + /sse (legacy MCP convention)
           addLog({
@@ -255,7 +253,7 @@ class McpManager {
           const sseTransport2 = new SSEClientTransport(new URL(sseUrl), {
             requestInit: { headers: httpHeaders },
           } as any);
-          await withTimeout(client.connect(sseTransport2), CONNECT_TIMEOUT_MS, server.name);
+          await withTimeout(client.connect(sseTransport2), MCP_CONNECT_TIMEOUT_MS, server.name);
         }
       }
     } else {

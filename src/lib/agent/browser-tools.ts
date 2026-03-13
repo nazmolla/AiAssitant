@@ -18,6 +18,16 @@ import * as fs from "fs";
 import * as path from "path";
 import { assertExternalUrl, assertExternalUrlWithResolve } from "./ssrf";
 import { env } from "@/lib/env";
+import {
+  BROWSER_DEFAULT_TIMEOUT_MS,
+  BROWSER_NAVIGATION_TIMEOUT_MS,
+  BROWSER_SELECTOR_TIMEOUT_MS,
+  BROWSER_SETTLE_DELAY_MS,
+  BROWSER_MAX_CONTENT_CHARS,
+  BROWSER_PAGE_TEXT_PREVIEW_CHARS,
+  BROWSER_MAX_ELEMENTS,
+  BROWSER_WAIT_TIMEOUT_MS,
+} from "@/lib/constants";
 
 // ── Tool Definitions ──────────────────────────────────────────
 
@@ -396,8 +406,8 @@ class BrowserSession {
     this._page = await this.context.newPage();
 
     // Default timeout
-    this._page.setDefaultTimeout(15000);
-    this._page.setDefaultNavigationTimeout(30000);
+    this._page.setDefaultTimeout(BROWSER_DEFAULT_TIMEOUT_MS);
+    this._page.setDefaultNavigationTimeout(BROWSER_NAVIGATION_TIMEOUT_MS);
   }
 
   async close(): Promise<void> {
@@ -553,11 +563,11 @@ async function _executeBrowserToolInner(
       await assertExternalUrlWithResolve(url);
 
       try {
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: BROWSER_NAVIGATION_TIMEOUT_MS });
       } catch (navErr: any) {
         // Retry once with networkidle
         try {
-          await page.goto(url, { waitUntil: "commit", timeout: 30000 });
+          await page.goto(url, { waitUntil: "commit", timeout: BROWSER_NAVIGATION_TIMEOUT_MS });
         } catch {
           throw new Error(`Failed to navigate to ${url}: ${navErr.message}`);
         }
@@ -565,11 +575,11 @@ async function _executeBrowserToolInner(
 
       if (args.waitFor) {
         try {
-          await page.waitForSelector(args.waitFor as string, { timeout: 10000 });
+          await page.waitForSelector(args.waitFor as string, { timeout: BROWSER_SELECTOR_TIMEOUT_MS });
         } catch {}
       }
       // Small settling delay
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(BROWSER_SETTLE_DELAY_MS);
 
       const title = await page.title();
       const currentUrl = page.url();
@@ -582,7 +592,7 @@ async function _executeBrowserToolInner(
           clone.querySelectorAll("script, style, nav, footer, noscript, svg, iframe").forEach(el => el.remove());
           return (clone.innerText || "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
         });
-        pageText = pageText.slice(0, 3000);
+        pageText = pageText.slice(0, BROWSER_PAGE_TEXT_PREVIEW_CHARS);
       } catch {}
 
       // Get interactive elements (limited)
@@ -611,7 +621,7 @@ async function _executeBrowserToolInner(
         throw new Error("Either 'selector' or 'text' must be provided.");
       }
 
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(BROWSER_SETTLE_DELAY_MS);
 
       const afterUrl = page.url();
       const summary = await pageSummary(page);
@@ -732,7 +742,7 @@ async function _executeBrowserToolInner(
     // ── Get Content ─────────────────────────────────────────
     case "builtin.browser_get_content": {
       const page = await session.getPage();
-      const maxLen = (args.maxLength as number) || 10000;
+      const maxLen = (args.maxLength as number) || BROWSER_MAX_CONTENT_CHARS;
       let text: string;
 
       if (args.selector) {
@@ -769,7 +779,7 @@ async function _executeBrowserToolInner(
         page,
         args.selector as string | undefined,
         args.types as string[] | undefined,
-        (args.maxResults as number) || 30
+        (args.maxResults as number) || BROWSER_MAX_ELEMENTS
       );
       const summary = await pageSummary(page);
       return {
@@ -843,7 +853,7 @@ async function _executeBrowserToolInner(
     // ── Wait ────────────────────────────────────────────────
     case "builtin.browser_wait": {
       const page = await session.getPage();
-      const timeout = (args.timeout as number) || 10000;
+      const timeout = (args.timeout as number) || BROWSER_WAIT_TIMEOUT_MS;
 
       if (args.selector) {
         const state = (args.state as "visible" | "hidden" | "attached" | "detached") || "visible";
