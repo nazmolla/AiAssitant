@@ -1,221 +1,27 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { useSession } from "next-auth/react";
+import { useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { useTheme, THEMES, ThemeId, FONTS, FontId } from "@/components/theme-provider";
-
-interface ProfileData {
-  display_name: string;
-  avatar_url: string;
-  title: string;
-  bio: string;
-  location: string;
-  phone: string;
-  email: string;
-  website: string;
-  linkedin: string;
-  github: string;
-  twitter: string;
-  skills: string;
-  languages: string;
-  company: string;
-  screen_sharing_enabled: number;
-  notification_level: string;
-  theme: string;
-  font: string;
-  timezone: string;
-  tts_voice: string;
-}
-
-const EMPTY: ProfileData = {
-  display_name: "",
-  avatar_url: "",
-  title: "",
-  bio: "",
-  location: "",
-  phone: "",
-  email: "",
-  website: "",
-  linkedin: "",
-  github: "",
-  twitter: "",
-  skills: "[]",
-  languages: "[]",
-  company: "",
-  screen_sharing_enabled: 1,
-  notification_level: "disaster",
-  theme: "ember",
-  font: "inter",
-  timezone: "",
-  tts_voice: "nova",
-};
+import { useTheme, THEMES, FONTS } from "@/components/theme-provider";
+import { useProfileData } from "@/hooks/use-profile-data";
+import { ChangePasswordSection } from "@/components/change-password-section";
 
 const LABEL_CLASS = "text-[11px] font-medium text-muted-foreground/60 mb-1.5 block uppercase tracking-wider";
 
 export function ProfileConfig() {
-  const [profile, setProfile] = useState<ProfileData>(EMPTY);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [langInput, setLangInput] = useState("");
-  const [newEmailInput, setNewEmailInput] = useState("");
-  const [secondaryEmails, setSecondaryEmails] = useState<string[]>([]);
-  const [emailsLoading, setEmailsLoading] = useState(false);
-  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
-  const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
-  const { theme, setTheme, font, setFont, timezone, setTimezone } = useTheme();
+  const themeCtx = useTheme();
+  const p = useProfileData(themeCtx);
 
-  const timezones = useMemo(() => {
-    try {
-      return Intl.supportedValuesOf("timeZone");
-    } catch {
-      // Fallback for older engines
-      return [
-        "UTC",
-        "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
-        "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Moscow",
-        "Asia/Dubai", "Asia/Kolkata", "Asia/Shanghai", "Asia/Tokyo",
-        "Australia/Sydney", "Pacific/Auckland",
-      ];
-    }
-  }, []);
+  useEffect(() => { p.load(); }, [p.load]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const timezoneOptions = useMemo(() => timezones.map((tz) => (
+  const timezoneOptions = useMemo(() => p.timezones.map((tz) => (
     <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
-  )), [timezones]);
-
-  const load = useCallback(async () => {
-    const res = await fetch("/api/config/profile");
-    const data = await res.json();
-    if (data && !data.error) {
-      const merged = { ...EMPTY, ...data };
-      setProfile(merged);
-      // Sync with context — profile is the source of truth
-      if (merged.theme && merged.theme !== theme) setTheme(merged.theme as ThemeId);
-      if (merged.font && merged.font !== font) setFont(merged.font as FontId);
-      if (merged.timezone !== timezone) setTimezone(merged.timezone || "");
-      // Sync TTS voice to localStorage for chat panel access
-      if (merged.tts_voice) {
-        try { localStorage.setItem("nexus_tts_voice", merged.tts_voice); } catch { /* noop */ }
-      }
-    }
-    // Load secondary emails
-    try {
-      setEmailsLoading(true);
-      const emailRes = await fetch("/api/config/user-emails");
-      const emailData = await emailRes.json();
-      if (emailData?.secondary) {
-        setSecondaryEmails(emailData.secondary);
-      }
-    } catch {
-      // Ignore email loading errors
-    } finally {
-      setEmailsLoading(false);
-    }
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => { load(); }, [load]);
-
-  const languages: string[] = useMemo(() => {
-    try { return JSON.parse(profile.languages) as string[]; } catch { return []; }
-  }, [profile.languages]);
-
-  const update = (field: keyof ProfileData, value: string | number) =>
-    setProfile((p) => ({ ...p, [field]: typeof EMPTY[field] === "number" ? Number(value) : value }));
-
-  const addLang = () => {
-    const v = langInput.trim();
-    if (v && !languages.includes(v)) {
-      update("languages", JSON.stringify([...languages, v]));
-      setLangInput("");
-    }
-  };
-
-  const removeLang = (l: string) =>
-    update("languages", JSON.stringify(languages.filter((x) => x !== l)));
-
-  const addSecondaryEmail = async () => {
-    const v = newEmailInput.trim().toLowerCase();
-    if (!v || secondaryEmails.includes(v)) return;
-
-    try {
-      const res = await fetch("/api/config/user-emails", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: v }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSecondaryEmails([...secondaryEmails, v]);
-        setNewEmailInput("");
-      } else {
-        console.error("Failed to add email:", data.error);
-      }
-    } catch (err) {
-      console.error("Error adding email:", err);
-    }
-  };
-
-  const removeSecondaryEmail = async (e: string) => {
-    try {
-      const res = await fetch("/api/config/user-emails", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: e }),
-      });
-      if (res.ok) {
-        setSecondaryEmails(secondaryEmails.filter((x) => x !== e));
-      } else {
-        const data = await res.json();
-        console.error("Failed to remove email:", data.error);
-      }
-    } catch (err) {
-      console.error("Error removing email:", err);
-    }
-  };
-
-  const playVoicePreview = async (voiceId: string) => {
-    // Stop any playing preview
-    if (previewAudioRef.current) {
-      previewAudioRef.current.pause();
-      previewAudioRef.current = null;
-    }
-    setPreviewingVoice(voiceId);
-    try {
-      const res = await fetch("/api/audio/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: "Hello! This is how I sound.", voice: voiceId }),
-      });
-      if (!res.ok) { setPreviewingVoice(null); return; }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      previewAudioRef.current = audio;
-      audio.onended = () => { URL.revokeObjectURL(url); setPreviewingVoice(null); previewAudioRef.current = null; };
-      audio.onerror = () => { URL.revokeObjectURL(url); setPreviewingVoice(null); previewAudioRef.current = null; };
-      await audio.play();
-    } catch { setPreviewingVoice(null); }
-  };
-
-  const save = async () => {
-    setSaving(true);
-    await fetch("/api/config/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(profile),
-    });
-    // Sync TTS voice to localStorage for chat panel access
-    try { localStorage.setItem("nexus_tts_voice", profile.tts_voice || "nova"); } catch { /* noop */ }
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
+  )), [p.timezones]);
 
   const labelClass = LABEL_CLASS;
 
@@ -227,68 +33,42 @@ export function ProfileConfig() {
           <CardTitle className="text-lg font-display">Personal Information</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* Avatar */}
           <div className="flex items-center gap-4">
             <div className="relative h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border border-white/[0.08] shrink-0">
-              {profile.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element -- avatar_url is an arbitrary user-supplied URL; listing all user domains in next.config is not feasible
-                <img src={profile.avatar_url} alt="Avatar" className="h-full w-full object-cover" />
+              {p.profile.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={p.profile.avatar_url} alt="Avatar" className="h-full w-full object-cover" />
               ) : (
                 <span className="text-2xl font-bold text-primary/60">
-                  {(profile.display_name || "?").charAt(0).toUpperCase()}
+                  {(p.profile.display_name || "?").charAt(0).toUpperCase()}
                 </span>
               )}
             </div>
             <div className="flex-1 min-w-0">
               <label className={labelClass}>Avatar URL</label>
-              <Input
-                value={profile.avatar_url}
-                onChange={(e) => update("avatar_url", e.target.value)}
-                placeholder="https://example.com/photo.jpg"
-              />
+              <Input value={p.profile.avatar_url} onChange={(e) => p.update("avatar_url", e.target.value)} placeholder="https://example.com/photo.jpg" />
               <p className="text-[10px] text-muted-foreground/50 mt-0.5">Paste a URL to your profile picture.</p>
             </div>
           </div>
           <div>
             <label className={labelClass}>Display Name</label>
-            <Input
-              value={profile.display_name}
-              onChange={(e) => update("display_name", e.target.value)}
-              placeholder="Demo User"
-            />
+            <Input value={p.profile.display_name} onChange={(e) => p.update("display_name", e.target.value)} placeholder="Demo User" />
           </div>
           <div>
             <label className={labelClass}>Job Title</label>
-            <Input
-              value={profile.title}
-              onChange={(e) => update("title", e.target.value)}
-              placeholder="Senior Software Engineer"
-            />
+            <Input value={p.profile.title} onChange={(e) => p.update("title", e.target.value)} placeholder="Senior Software Engineer" />
           </div>
           <div>
             <label className={labelClass}>Company</label>
-            <Input
-              value={profile.company}
-              onChange={(e) => update("company", e.target.value)}
-              placeholder="Acme Corp"
-            />
+            <Input value={p.profile.company} onChange={(e) => p.update("company", e.target.value)} placeholder="Acme Corp" />
           </div>
           <div>
             <label className={labelClass}>Location</label>
-            <Input
-              value={profile.location}
-              onChange={(e) => update("location", e.target.value)}
-              placeholder="City, Country"
-            />
+            <Input value={p.profile.location} onChange={(e) => p.update("location", e.target.value)} placeholder="City, Country" />
           </div>
           <div>
             <label className={labelClass}>Bio / Summary</label>
-            <Textarea
-              value={profile.bio}
-              onChange={(e) => update("bio", e.target.value)}
-              placeholder="A brief professional summary…"
-              rows={4}
-            />
+            <Textarea value={p.profile.bio} onChange={(e) => p.update("bio", e.target.value)} placeholder="A brief professional summary…" rows={4} />
           </div>
         </CardContent>
       </Card>
@@ -296,57 +76,32 @@ export function ProfileConfig() {
       {/* Contact & Social Links */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-display">Contact & Links</CardTitle>
+          <CardTitle className="text-lg font-display">Contact &amp; Links</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div>
             <label className={labelClass}>Email</label>
-            <Input
-              type="email"
-              value={profile.email}
-              onChange={(e) => update("email", e.target.value)}
-              placeholder="you@example.com"
-            />
+            <Input type="email" value={p.profile.email} onChange={(e) => p.update("email", e.target.value)} placeholder="you@example.com" />
           </div>
           <div>
             <label className={labelClass}>Phone</label>
-            <Input
-              value={profile.phone}
-              onChange={(e) => update("phone", e.target.value)}
-              placeholder="+1 555 123 4567"
-            />
+            <Input value={p.profile.phone} onChange={(e) => p.update("phone", e.target.value)} placeholder="+1 555 123 4567" />
           </div>
           <div>
             <label className={labelClass}>Website</label>
-            <Input
-              value={profile.website}
-              onChange={(e) => update("website", e.target.value)}
-              placeholder="https://yoursite.com"
-            />
+            <Input value={p.profile.website} onChange={(e) => p.update("website", e.target.value)} placeholder="https://yoursite.com" />
           </div>
           <div>
             <label className={labelClass}>LinkedIn</label>
-            <Input
-              value={profile.linkedin}
-              onChange={(e) => update("linkedin", e.target.value)}
-              placeholder="https://linkedin.com/in/yourname"
-            />
+            <Input value={p.profile.linkedin} onChange={(e) => p.update("linkedin", e.target.value)} placeholder="https://linkedin.com/in/yourname" />
           </div>
           <div>
             <label className={labelClass}>GitHub</label>
-            <Input
-              value={profile.github}
-              onChange={(e) => update("github", e.target.value)}
-              placeholder="https://github.com/yourname"
-            />
+            <Input value={p.profile.github} onChange={(e) => p.update("github", e.target.value)} placeholder="https://github.com/yourname" />
           </div>
           <div>
             <label className={labelClass}>Twitter / X</label>
-            <Input
-              value={profile.twitter}
-              onChange={(e) => update("twitter", e.target.value)}
-              placeholder="https://twitter.com/yourname"
-            />
+            <Input value={p.profile.twitter} onChange={(e) => p.update("twitter", e.target.value)} placeholder="https://twitter.com/yourname" />
           </div>
         </CardContent>
       </Card>
@@ -361,29 +116,16 @@ export function ProfileConfig() {
             Register additional email addresses to receive messages and inbound emails for any of them.
           </p>
           <div className="flex flex-col gap-2">
-            {secondaryEmails.map((email) => (
+            {p.secondaryEmails.map((email) => (
               <div key={email} className="flex items-center justify-between gap-2 px-3 py-2 bg-secondary/30 rounded-lg border border-white/[0.06]">
                 <span className="text-sm">{email}</span>
-                <button
-                  onClick={() => removeSecondaryEmail(email)}
-                  className="text-xs text-destructive hover:text-destructive/80 underline"
-                >
-                  Remove
-                </button>
+                <button onClick={() => p.removeSecondaryEmail(email)} className="text-xs text-destructive hover:text-destructive/80 underline">Remove</button>
               </div>
             ))}
           </div>
           <div className="flex gap-2">
-            <Input
-              type="email"
-              value={newEmailInput}
-              onChange={(e) => setNewEmailInput(e.target.value)}
-              placeholder="name@example.com"
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSecondaryEmail())}
-            />
-            <Button variant="outline" size="sm" onClick={addSecondaryEmail} disabled={emailsLoading}>
-              Add
-            </Button>
+            <Input type="email" value={p.newEmailInput} onChange={(e) => p.setNewEmailInput(e.target.value)} placeholder="name@example.com" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), p.addSecondaryEmail())} />
+            <Button variant="outline" size="sm" onClick={p.addSecondaryEmail} disabled={p.emailsLoading}>Add</Button>
           </div>
         </CardContent>
       </Card>
@@ -395,22 +137,15 @@ export function ProfileConfig() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-1.5">
-            {languages.map((l) => (
-              <Badge key={l} variant="secondary" className="gap-1 cursor-pointer" onClick={() => removeLang(l)}>
+            {p.languages.map((l) => (
+              <Badge key={l} variant="secondary" className="gap-1 cursor-pointer" onClick={() => p.removeLang(l)}>
                 {l} <span className="text-xs opacity-60">✕</span>
               </Badge>
             ))}
           </div>
           <div className="flex gap-2">
-            <Input
-              value={langInput}
-              onChange={(e) => setLangInput(e.target.value)}
-              placeholder="Add a language…"
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addLang())}
-            />
-            <Button variant="outline" size="sm" onClick={addLang}>
-              Add
-            </Button>
+            <Input value={p.langInput} onChange={(e) => p.setLangInput(e.target.value)} placeholder="Add a language…" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), p.addLang())} />
+            <Button variant="outline" size="sm" onClick={p.addLang}>Add</Button>
           </div>
         </CardContent>
       </Card>
@@ -418,7 +153,7 @@ export function ProfileConfig() {
       {/* Preferences & Features */}
       <Card className="md:col-span-2">
         <CardHeader>
-          <CardTitle className="text-lg font-display">Preferences & Features</CardTitle>
+          <CardTitle className="text-lg font-display">Preferences &amp; Features</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Theme picker */}
@@ -426,22 +161,8 @@ export function ProfileConfig() {
             <label className={labelClass}>Theme</label>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-1">
               {THEMES.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    update("theme", t.id);
-                    setTheme(t.id);
-                  }}
-                  className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left border transition-all duration-200 ${
-                    profile.theme === t.id
-                      ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                      : "border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.03]"
-                  }`}
-                >
-                  <span
-                    className="h-4 w-4 rounded-full border border-white/20 shrink-0"
-                    style={{ background: t.swatch }}
-                  />
+                <button key={t.id} onClick={() => { p.update("theme", t.id); themeCtx.setTheme(t.id); }} className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left border transition-all duration-200 ${p.profile.theme === t.id ? "border-primary bg-primary/10 ring-1 ring-primary/30" : "border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.03]"}`}>
+                  <span className="h-4 w-4 rounded-full border border-white/20 shrink-0" style={{ background: t.swatch }} />
                   <div className="min-w-0">
                     <div className="text-[13px] font-medium truncate">{t.label}</div>
                     <div className="text-[10px] text-muted-foreground/60 truncate">{t.description}</div>
@@ -456,24 +177,8 @@ export function ProfileConfig() {
             <label className={labelClass}>Font</label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
               {FONTS.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => {
-                    update("font", f.id);
-                    setFont(f.id);
-                  }}
-                  className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left border transition-all duration-200 ${
-                    profile.font === f.id
-                      ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                      : "border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.03]"
-                  }`}
-                >
-                  <span
-                    className="text-lg font-medium shrink-0 text-primary/70"
-                    style={{ fontFamily: f.preview }}
-                  >
-                    Aa
-                  </span>
+                <button key={f.id} onClick={() => { p.update("font", f.id); themeCtx.setFont(f.id); }} className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left border transition-all duration-200 ${p.profile.font === f.id ? "border-primary bg-primary/10 ring-1 ring-primary/30" : "border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.03]"}`}>
+                  <span className="text-lg font-medium shrink-0 text-primary/70" style={{ fontFamily: f.preview }}>Aa</span>
                   <div className="min-w-0">
                     <div className="text-[13px] font-medium truncate">{f.label}</div>
                     <div className="text-[10px] text-muted-foreground/60 truncate">{f.description}</div>
@@ -486,30 +191,19 @@ export function ProfileConfig() {
           {/* Timezone picker */}
           <div>
             <label className={labelClass}>Timezone</label>
-            <select
-              value={profile.timezone}
-              onChange={(e) => {
-                update("timezone", e.target.value);
-                setTimezone(e.target.value);
-              }}
-              className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-            >
+            <select value={p.profile.timezone} onChange={(e) => { p.update("timezone", e.target.value); themeCtx.setTimezone(e.target.value); }} className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
               <option value="">Auto (browser default)</option>
               {timezoneOptions}
             </select>
             <p className="text-[10px] text-muted-foreground/50 mt-1">
               Controls how dates and times are displayed throughout the app.
-              {timezone ? ` Current: ${timezone}` : " Using your browser's timezone."}
+              {themeCtx.timezone ? ` Current: ${themeCtx.timezone}` : " Using your browser's timezone."}
             </p>
           </div>
 
           <div>
             <label className={labelClass}>Notification Level</label>
-            <select
-              value={profile.notification_level}
-              onChange={(e) => update("notification_level", e.target.value)}
-              className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-            >
+            <select value={p.profile.notification_level} onChange={(e) => p.update("notification_level", e.target.value)} className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
               <option value="disaster">Disaster only</option>
               <option value="high">High + disaster</option>
               <option value="medium">Medium + high + disaster</option>
@@ -535,24 +229,11 @@ export function ProfileConfig() {
                 { id: "sage", label: "Sage", desc: "Calm & measured" },
                 { id: "shimmer", label: "Shimmer", desc: "Bright & energetic" },
               ] as const).map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => update("tts_voice", v.id)}
-                  className={`flex flex-col items-center gap-1 rounded-xl px-3 py-2.5 text-center border transition-all duration-200 ${
-                    profile.tts_voice === v.id
-                      ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                      : "border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.03]"
-                  }`}
-                >
+                <button key={v.id} onClick={() => p.update("tts_voice", v.id)} className={`flex flex-col items-center gap-1 rounded-xl px-3 py-2.5 text-center border transition-all duration-200 ${p.profile.tts_voice === v.id ? "border-primary bg-primary/10 ring-1 ring-primary/30" : "border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.03]"}`}>
                   <div className="text-[13px] font-medium">{v.label}</div>
                   <div className="text-[10px] text-muted-foreground/60">{v.desc}</div>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); playVoicePreview(v.id); }}
-                    className="mt-0.5 text-[10px] text-primary/70 hover:text-primary underline"
-                    disabled={previewingVoice === v.id}
-                  >
-                    {previewingVoice === v.id ? "Playing…" : "Preview"}
+                  <button type="button" onClick={(e) => { e.stopPropagation(); p.playVoicePreview(v.id); }} className="mt-0.5 text-[10px] text-primary/70 hover:text-primary underline" disabled={p.previewingVoice === v.id}>
+                    {p.previewingVoice === v.id ? "Playing…" : "Preview"}
                   </button>
                 </button>
               ))}
@@ -568,165 +249,20 @@ export function ProfileConfig() {
               <div className="text-sm font-medium">Screen Sharing</div>
               <div className="text-xs text-muted-foreground/60">Allow sharing your screen with Nexus during chat so it can see what you see.</div>
             </div>
-            <Switch
-              checked={profile.screen_sharing_enabled === 1}
-              onCheckedChange={(checked) => update("screen_sharing_enabled", checked ? "1" : "0")}
-            />
+            <Switch checked={p.profile.screen_sharing_enabled === 1} onCheckedChange={(checked) => p.update("screen_sharing_enabled", checked ? "1" : "0")} />
           </div>
         </CardContent>
       </Card>
 
       {/* Save Button */}
       <div className="md:col-span-2 flex justify-end gap-2 items-center">
-        {saved && <span className="text-sm text-green-400">Saved!</span>}
-        <Button onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Save Profile"}
+        {p.saved && <span className="text-sm text-green-400">Saved!</span>}
+        <Button onClick={p.save} disabled={p.saving}>
+          {p.saving ? "Saving…" : "Save Profile"}
         </Button>
       </div>
 
-      {/* Change Password (local accounts only) */}
       <ChangePasswordSection />
     </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Change Password Section                                                    */
-/* -------------------------------------------------------------------------- */
-
-function ChangePasswordSection() {
-  const { data: session } = useSession();
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [changing, setChanging] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [isLocalUser, setIsLocalUser] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    // Check if the current user is a local (credentials) auth user
-    fetch("/api/admin/users/me")
-      .then((r) => r.json())
-      .then((d) => {
-        // If provider_id is 'local', show password change. Otherwise hide.
-        setIsLocalUser(d?.provider_id === "local");
-      })
-      .catch(() => setIsLocalUser(false));
-  }, []);
-
-  // Don't render for OAuth users or while checking
-  if (isLocalUser === null || isLocalUser === false) return null;
-
-  const labelClass = LABEL_CLASS;
-
-  const handleSubmit = async () => {
-    setMessage(null);
-
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setMessage({ type: "error", text: "All fields are required." });
-      return;
-    }
-    if (newPassword.length < 8) {
-      setMessage({ type: "error", text: "New password must be at least 8 characters." });
-      return;
-    }
-    if (!/[A-Z]/.test(newPassword)) {
-      setMessage({ type: "error", text: "New password must contain at least one uppercase letter." });
-      return;
-    }
-    if (!/[a-z]/.test(newPassword)) {
-      setMessage({ type: "error", text: "New password must contain at least one lowercase letter." });
-      return;
-    }
-    if (!/[0-9]/.test(newPassword)) {
-      setMessage({ type: "error", text: "New password must contain at least one digit." });
-      return;
-    }
-    if (!/[^A-Za-z0-9]/.test(newPassword)) {
-      setMessage({ type: "error", text: "New password must contain at least one special character." });
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setMessage({ type: "error", text: "New passwords do not match." });
-      return;
-    }
-
-    setChanging(true);
-    try {
-      const res = await fetch("/api/auth/change-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        setMessage({ type: "success", text: data.message || "Password changed successfully." });
-        setCurrentPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
-      } else {
-        setMessage({ type: "error", text: data.error || "Failed to change password." });
-      }
-    } catch {
-      setMessage({ type: "error", text: "Network error. Please try again." });
-    } finally {
-      setChanging(false);
-    }
-  };
-
-  return (
-    <Card className="md:col-span-2">
-      <CardHeader>
-        <CardTitle className="text-lg font-display">Change Password</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div>
-            <label className={labelClass}>Current Password</label>
-            <Input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-            />
-          </div>
-          <div>
-            <label className={labelClass}>New Password</label>
-            <Input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="new-password"
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Confirm New Password</label>
-            <Input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="new-password"
-            />
-          </div>
-        </div>
-        <p className="text-[10px] text-muted-foreground/50">
-          Password must be at least 8 characters. Only available for local accounts.
-        </p>
-        {message && (
-          <p className={`text-sm ${message.type === "success" ? "text-green-400" : "text-red-400"}`}>
-            {message.text}
-          </p>
-        )}
-        <div className="flex justify-end">
-          <Button onClick={handleSubmit} disabled={changing} variant="outline">
-            {changing ? "Changing…" : "Change Password"}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

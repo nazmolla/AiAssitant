@@ -107,3 +107,104 @@ export function sanitizeAssistantContent(content: string | null, hasAttachments:
   if (!cleaned) return "(no content)";
   return cleaned;
 }
+
+/**
+ * Pre-process messages: group tool calls and thinking steps into collapsible
+ * `ThoughtStep` blocks attached to their final assistant response.
+ */
+export function processMessages(
+  messages: Message[],
+  loading: boolean,
+  thinkingSteps: ThinkingStep[]
+): ProcessedMessage[] {
+  const result: ProcessedMessage[] = [];
+  let pendingThoughts: ThoughtStep[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+
+    // Tool messages — collect results into the current thought step
+    if (msg.role === "tool") {
+      if (pendingThoughts.length > 0) {
+        const lastThought = pendingThoughts[pendingThoughts.length - 1];
+        let name = "tool";
+        if (lastThought.toolCalls.length > 0) {
+          const idx = lastThought.toolResults.length;
+          if (idx < lastThought.toolCalls.length) {
+            name = lastThought.toolCalls[idx].name;
+          }
+        }
+        lastThought.toolResults.push({
+          name,
+          result: msg.content || "(no output)",
+        });
+        if (msg.attachments) {
+          const toolAtts: AttachmentMeta[] = safeJsonParse(msg.attachments, []);
+          lastThought.attachments.push(...toolAtts);
+        }
+      }
+      continue;
+    }
+
+    // Assistant message WITH tool_calls = thinking step
+    if (msg.role === "assistant" && msg.tool_calls) {
+      let parsedCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+      try { parsedCalls = JSON.parse(msg.tool_calls).map((tc: { name: string; arguments: Record<string, unknown> }) => ({ name: tc.name, args: tc.arguments })); } catch { /* ignore */ }
+      pendingThoughts.push({
+        thinking: msg.content,
+        toolCalls: parsedCalls,
+        toolResults: [],
+        attachments: safeJsonParse<AttachmentMeta[]>(msg.attachments, []),
+      });
+      continue;
+    }
+
+    // Final assistant message (no tool_calls) = visible response with collected thoughts
+    if (msg.role === "assistant") {
+      const attachments: AttachmentMeta[] = safeJsonParse<AttachmentMeta[]>(msg.attachments, []);
+      const hasAtt = attachments.length > 0;
+      const content = sanitizeAssistantContent(msg.content, hasAtt);
+      if ((!content || content === "(no content)") && !hasAtt) {
+        pendingThoughts = [];
+        continue;
+      }
+      result.push({
+        msg,
+        attachments,
+        approvalMeta: null,
+        displayContent: msg.content,
+        thoughts: pendingThoughts,
+      });
+      pendingThoughts = [];
+      continue;
+    }
+
+    // User / system messages
+    const attachments: AttachmentMeta[] = safeJsonParse<AttachmentMeta[]>(msg.attachments, []);
+    const approvalMeta = msg.role === "system" ? extractApprovalMeta(msg.content) : null;
+    const displayContent = approvalMeta ? stripApprovalMeta(msg.content) : msg.content;
+    pendingThoughts = [];
+    result.push({ msg, attachments, approvalMeta, displayContent, thoughts: [] });
+  }
+
+  // Streaming placeholders for real-time progress
+  if (pendingThoughts.length > 0 && loading) {
+    result.push({
+      msg: { id: -1, thread_id: "", role: "assistant", content: null, tool_calls: null, tool_results: null, attachments: null, created_at: null },
+      attachments: [],
+      approvalMeta: null,
+      displayContent: null,
+      thoughts: pendingThoughts,
+    });
+  } else if (loading && thinkingSteps.length > 0 && !result.some((r) => r.msg.role === "assistant")) {
+    result.push({
+      msg: { id: -1, thread_id: "", role: "assistant", content: null, tool_calls: null, tool_results: null, attachments: null, created_at: null },
+      attachments: [],
+      approvalMeta: null,
+      displayContent: null,
+      thoughts: [],
+    });
+  }
+
+  return result;
+}

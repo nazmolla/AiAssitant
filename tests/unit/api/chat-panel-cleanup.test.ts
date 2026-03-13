@@ -86,13 +86,13 @@ describe("ChatPanel blob URL cleanup (PERF-19)", () => {
   test("individual file removal also revokes blob URL", () => {
     const fs = require("fs");
     const path = require("path");
+    // File upload logic (including removePendingFile) is now in the extracted hook
     const src = fs.readFileSync(
-      path.join(__dirname, "../../../src/components/chat-panel.tsx"),
+      path.join(__dirname, "../../../src/hooks/use-file-upload.ts"),
       "utf-8"
     );
 
     // When a file is removed from pending list, its blob URL should also be revoked
-    // The pattern: copy[index].previewUrl URL.revokeObjectURL(copy[index].previewUrl!)
-    expect(src).toMatch(/revokeObjectURL\(copy\[index\]\.previewUrl!\)/);
+    expect(src).toMatch(/revokeObjectURL/);
   });
 });

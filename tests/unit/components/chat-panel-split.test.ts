@@ -179,14 +179,16 @@ describe("InputBar component", () => {
 });
 
 describe("State isolation", () => {
-  test("ChatPanel owns all shared state and passes props down", () => {
-    // ChatPanel should have useState for these state variables
+  test("ChatPanel owns core UI state and delegates domain state to hooks", () => {
+    // ChatPanel retains thread list state and UI state
     expect(chatPanelSrc).toContain("useState<Thread[]>");
-    expect(chatPanelSrc).toContain("useState<Message[]>");
-    expect(chatPanelSrc).toContain("useState<PendingFile[]>");
     expect(chatPanelSrc).toContain('useState("")'); // input
-    expect(chatPanelSrc).toContain("useState(false)"); // loading
-    expect(chatPanelSrc).toContain("useState(true)"); // showSidebar/screenShareEnabled
+    expect(chatPanelSrc).toContain("useState(true)"); // showSidebar
+    // Message[] and PendingFile[] state are now in extracted hooks
+    expect(chatPanelSrc).toContain("useChatStream");
+    expect(chatPanelSrc).toContain("useFileUpload");
+    expect(chatPanelSrc).toContain("useScreenShare");
+    expect(chatPanelSrc).toContain("useAudioControls");
   });
 
   test("ThreadSidebar does not manage its own fetch state", () => {
