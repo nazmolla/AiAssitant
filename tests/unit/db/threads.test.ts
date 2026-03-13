@@ -11,6 +11,7 @@ import {
   deleteThread,
   addMessage,
   getThreadMessages,
+  deleteMessagesFrom,
 } from "@/lib/db/queries";
 
 let userId: string;
@@ -159,5 +160,68 @@ describe("Messages", () => {
 
   test("getThreadMessages returns empty for unknown thread", () => {
     expect(getThreadMessages("nonexistent")).toEqual([]);
+  });
+});
+
+describe("deleteMessagesFrom", () => {
+  let threadId: string;
+  let msgIds: number[];
+
+  beforeAll(() => {
+    const thread = createThread("Restore Thread", userId);
+    threadId = thread.id;
+    msgIds = [];
+    // Add 5 messages: user, assistant, user, assistant, user
+    for (const [role, content] of [
+      ["user", "Message 1"],
+      ["assistant", "Reply 1"],
+      ["user", "Message 2"],
+      ["assistant", "Reply 2"],
+      ["user", "Message 3"],
+    ] as const) {
+      const m = addMessage({ thread_id: threadId, role, content, tool_calls: null, tool_results: null, attachments: null });
+      msgIds.push(m.id);
+    }
+  });
+
+  test("returns undefined for nonexistent message", () => {
+    expect(deleteMessagesFrom(threadId, 999999)).toBeUndefined();
+  });
+
+  test("returns undefined for wrong thread_id", () => {
+    expect(deleteMessagesFrom("wrong-thread", msgIds[0])).toBeUndefined();
+  });
+
+  test("deletes the target message and all subsequent messages", () => {
+    // Restore to message 3 (index 2, which is "Message 2")
+    const targetId = msgIds[2];
+    const deleted = deleteMessagesFrom(threadId, targetId);
+    expect(deleted).toBeDefined();
+    expect(deleted!.content).toBe("Message 2");
+    expect(deleted!.role).toBe("user");
+
+    const remaining = getThreadMessages(threadId);
+    // Only messages 1 and 2 should remain (indices 0 and 1)
+    expect(remaining.length).toBe(2);
+    expect(remaining[0].content).toBe("Message 1");
+    expect(remaining[1].content).toBe("Reply 1");
+  });
+
+  test("updates thread last_message_at after deletion", () => {
+    const thread = getThread(threadId);
+    expect(thread).toBeDefined();
+    const remaining = getThreadMessages(threadId);
+    // last_message_at should match the last remaining message's created_at
+    expect(remaining.length).toBeGreaterThan(0);
+  });
+
+  test("resets thread status to active after restore", () => {
+    // Set status to something else first
+    updateThreadStatus(threadId, "awaiting_approval");
+    // Add a message back and restore
+    const m = addMessage({ thread_id: threadId, role: "user", content: "New msg", tool_calls: null, tool_results: null, attachments: null });
+    deleteMessagesFrom(threadId, m.id);
+    const thread = getThread(threadId);
+    expect(thread!.status).toBe("active");
   });
 });

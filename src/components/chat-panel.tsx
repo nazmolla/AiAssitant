@@ -200,6 +200,43 @@ export function ChatPanel() {
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
+  // ── Restore-to-message ──────────────────────────────────────────────────
+
+  async function handleRestoreToMessage(messageId: number) {
+    if (!activeThread) return;
+    if (!confirm("Restore to this message? All messages after it will be deleted and this message will be resent.")) return;
+
+    try {
+      const res = await fetch(`/api/threads/${activeThread}/restore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || `Restore failed (HTTP ${res.status})`);
+        return;
+      }
+
+      // Update local messages — remove everything from messageId onward
+      chatStream.setMessages((prev) => prev.filter((m) => m.id < messageId));
+
+      // Re-send the restored message content via the normal chat flow
+      if (data.content) {
+        setInput(data.content);
+        // Use requestAnimationFrame to let state settle, then trigger send
+        requestAnimationFrame(() => {
+          sendMessageRef.current?.();
+        });
+      }
+
+      fetchThreadsDebounced();
+    } catch (err) {
+      console.error("Restore failed:", err);
+      alert(`Restore failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   const activeThreadTitle = useMemo(() => threads.find(t => t.id === activeThread)?.title, [threads, activeThread]);
   const processedMessages = useMemo(
     () => processMessages(chatStream.messages, chatStream.loading, chatStream.thinkingSteps),
@@ -260,6 +297,7 @@ export function ChatPanel() {
           actingApproval={actingApproval}
           resolvedApprovals={resolvedApprovals}
           onApproval={handleApproval}
+          onRestoreToMessage={handleRestoreToMessage}
         />
         {activeThread && (
           <InputBar

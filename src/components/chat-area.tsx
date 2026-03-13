@@ -18,6 +18,7 @@ import PsychologyIcon from "@mui/icons-material/Psychology";
 import BuildIcon from "@mui/icons-material/Build";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
+import ReplayIcon from "@mui/icons-material/Replay";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -39,6 +40,7 @@ export interface ChatAreaProps {
   actingApproval: string | null;
   resolvedApprovals: Record<string, string>;
   onApproval: (id: string, action: "approved" | "rejected") => void;
+  onRestoreToMessage: (messageId: number) => void;
 }
 
 export const ChatArea = memo(function ChatArea({
@@ -54,6 +56,7 @@ export const ChatArea = memo(function ChatArea({
   actingApproval,
   resolvedApprovals,
   onApproval,
+  onRestoreToMessage,
 }: ChatAreaProps) {
   const { formatDate } = useTheme();
   // Reliability-first mode: avoid absolute-positioned rows to prevent
@@ -361,6 +364,18 @@ export const ChatArea = memo(function ChatArea({
                       minute: "2-digit",
                     })}
                   </Typography>
+                )}
+
+                {/* Restore — rewind to this user message and resend */}
+                {msg.role === "user" && msg.id > 0 && !loading && (
+                  <IconButton
+                    size="small"
+                    onClick={() => onRestoreToMessage(msg.id)}
+                    title="Restore to this message"
+                    sx={{ mt: 0.25, p: 0.5, opacity: 0.6, "&:hover": { opacity: 1 }, color: "inherit" }}
+                  >
+                    <ReplayIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
                 )}
 
                 {/* TTS — Read aloud button for assistant messages */}

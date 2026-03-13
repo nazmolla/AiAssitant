@@ -187,3 +187,41 @@ export function getThreadMessages(threadId: string): Message[] {
     "SELECT * FROM messages WHERE thread_id = ? ORDER BY id ASC"
   ).all(threadId) as Message[];
 }
+
+/** Get a single message by id. */
+export function getMessage(messageId: number): Message | undefined {
+  return stmt("SELECT * FROM messages WHERE id = ?").get(messageId) as Message | undefined;
+}
+
+/**
+ * Delete a message and all subsequent messages in the same thread.
+ * Also cascades to attachments and approval_queue entries.
+ * Returns the deleted target message so the caller can re-use its content.
+ */
+export function deleteMessagesFrom(threadId: string, messageId: number): Message | undefined {
+  const db = getDb();
+  const target = db.prepare("SELECT * FROM messages WHERE id = ? AND thread_id = ?").get(messageId, threadId) as Message | undefined;
+  if (!target) return undefined;
+
+  db.transaction(() => {
+    db.prepare(
+      "DELETE FROM attachments WHERE thread_id = ? AND message_id IN (SELECT id FROM messages WHERE thread_id = ? AND id >= ?)"
+    ).run(threadId, threadId, messageId);
+    // approval_queue has no message_id — clear any pending approvals for this thread
+    db.prepare(
+      "DELETE FROM approval_queue WHERE thread_id = ? AND status = 'pending'"
+    ).run(threadId);
+    db.prepare(
+      "DELETE FROM messages WHERE thread_id = ? AND id >= ?"
+    ).run(threadId, messageId);
+    // Update last_message_at to the latest remaining message, or NULL if empty
+    const latest = db.prepare(
+      "SELECT created_at FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT 1"
+    ).get(threadId) as { created_at: string } | undefined;
+    db.prepare(
+      "UPDATE threads SET last_message_at = ?, status = 'active' WHERE id = ?"
+    ).run(latest?.created_at ?? null, threadId);
+  })();
+
+  return target;
+}

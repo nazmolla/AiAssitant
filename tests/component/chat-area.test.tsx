@@ -62,6 +62,7 @@ jest.mock("@mui/icons-material/Psychology", () => () => <span data-testid="Psych
 jest.mock("@mui/icons-material/Build", () => () => <span data-testid="BuildIcon" />);
 jest.mock("@mui/icons-material/VolumeUp", () => () => <span data-testid="VolumeUpIcon" />);
 jest.mock("@mui/icons-material/StopCircle", () => () => <span data-testid="StopCircleIcon" />);
+jest.mock("@mui/icons-material/Replay", () => () => <span data-testid="ReplayIcon" />);
 jest.mock("@mui/icons-material/AttachFile", () => () => <span data-testid="AttachFileIcon" />);
 jest.mock("@mui/icons-material/ChatBubbleOutline", () => () => <span data-testid="ChatBubbleOutlineIcon" />);
 
@@ -140,6 +141,7 @@ function baseProps(overrides: Partial<ChatAreaProps> = {}): ChatAreaProps {
     actingApproval: null,
     resolvedApprovals: {},
     onApproval: jest.fn(),
+    onRestoreToMessage: jest.fn(),
     ...overrides,
   };
 }
@@ -375,5 +377,61 @@ describe("ChatArea — loading state", () => {
       }],
     });
     expect(screen.getByText("Thinking...")).toBeInTheDocument();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════
+// 6. RESTORE-TO-MESSAGE
+// ════════════════════════════════════════════════════════════════
+
+describe("ChatArea — restore-to-message", () => {
+  test("restore button is rendered for user messages with a valid id", () => {
+    const msg = makeMsg("user", "Restore me", 10);
+    renderArea({
+      processedMessages: [{ msg, attachments: [], approvalMeta: null, displayContent: msg.content, thoughts: [] }],
+    });
+    expect(screen.getByTitle("Restore to this message")).toBeInTheDocument();
+  });
+
+  test("clicking restore button calls onRestoreToMessage with the message id", () => {
+    const msg = makeMsg("user", "Restore me", 10);
+    const props = renderArea({
+      processedMessages: [{ msg, attachments: [], approvalMeta: null, displayContent: msg.content, thoughts: [] }],
+    });
+    fireEvent.click(screen.getByTitle("Restore to this message"));
+    expect(props.onRestoreToMessage).toHaveBeenCalledWith(10);
+  });
+
+  test("restore button is NOT rendered for assistant messages", () => {
+    const msg = makeMsg("assistant", "Agent reply", 11);
+    renderArea({
+      processedMessages: [{ msg, attachments: [], approvalMeta: null, displayContent: msg.content, thoughts: [] }],
+    });
+    expect(screen.queryByTitle("Restore to this message")).not.toBeInTheDocument();
+  });
+
+  test("restore button is NOT rendered for tool messages", () => {
+    const msg = makeMsg("tool", "tool output", 12);
+    renderArea({
+      processedMessages: [{ msg, attachments: [], approvalMeta: null, displayContent: msg.content, thoughts: [] }],
+    });
+    expect(screen.queryByTitle("Restore to this message")).not.toBeInTheDocument();
+  });
+
+  test("restore button is NOT rendered for optimistic messages (id < 0)", () => {
+    const msg = makeMsg("user", "Optimistic", -1);
+    renderArea({
+      processedMessages: [{ msg, attachments: [], approvalMeta: null, displayContent: msg.content, thoughts: [] }],
+    });
+    expect(screen.queryByTitle("Restore to this message")).not.toBeInTheDocument();
+  });
+
+  test("restore button is NOT rendered while loading", () => {
+    const msg = makeMsg("user", "Loading test", 10);
+    renderArea({
+      loading: true,
+      processedMessages: [{ msg, attachments: [], approvalMeta: null, displayContent: msg.content, thoughts: [] }],
+    });
+    expect(screen.queryByTitle("Restore to this message")).not.toBeInTheDocument();
   });
 });
