@@ -180,7 +180,7 @@ const mcpCategory: ToolCategory = {
   matches: () => true,
   execute: async (toolName, args) => getMcpManager().callTool(toolName, args),
   get tools() {
-    return getMcpManager().getTools();
+    return getMcpManager().getAllTools();
   },
   toolsRequiringApproval: [],
 };
