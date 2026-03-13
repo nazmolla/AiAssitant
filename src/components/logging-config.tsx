@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { configService } from "@/lib/api";
+import { ApiError } from "@/lib/api/client";
 
 type UnifiedLogLevel = "verbose" | "warning" | "error" | "critical";
 
@@ -18,11 +20,9 @@ export function LoggingConfig() {
 
   const load = async () => {
     try {
-      const res = await fetch("/api/config/logging");
-      if (!res.ok) return;
-      const data = await res.json();
-      if (LOG_LEVELS.includes(data?.min_level)) {
-        setMinLevel(data.min_level);
+      const data = await configService.getLogging();
+      if (LOG_LEVELS.includes(data?.min_level as UnifiedLogLevel)) {
+        setMinLevel(data.min_level as UnifiedLogLevel);
       }
     } catch {
       // ignore
@@ -37,19 +37,11 @@ export function LoggingConfig() {
     setSaving(true);
     setMessage(null);
     try {
-      const res = await fetch("/api/config/logging", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ min_level: minLevel }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setMessage(data?.error || "Failed to save logging config.");
-      } else {
-        setMessage(`Minimum log level updated to ${minLevel}.`);
-      }
-    } catch {
-      setMessage("Failed to save logging config.");
+      await configService.saveLogging(minLevel);
+      setMessage(`Minimum log level updated to ${minLevel}.`);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Failed to save logging config.";
+      setMessage(msg);
     } finally {
       setSaving(false);
     }
