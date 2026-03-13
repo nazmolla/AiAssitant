@@ -11,7 +11,8 @@
 
 import type { ToolDefinition } from "@/lib/llm";
 import { URL } from "url";
-import { assertExternalUrl, assertExternalUrlWithResolve } from "./ssrf";
+import { assertExternalUrl, assertExternalUrlWithResolve } from "@/lib/agent/ssrf";
+import { BaseTool, type ToolExecutionContext } from "./base-tool";
 
 // ── Tool Definitions ──────────────────────────────────────────
 
@@ -402,3 +403,18 @@ export async function executeBuiltinWebTool(
       throw new Error(`Unknown built-in tool: "${name}"`);
   }
 }
+
+// ── BaseTool class wrapper ────────────────────────────────────
+
+export class WebTools extends BaseTool {
+  readonly name = "web";
+  readonly toolNamePrefix = "builtin.web_";
+  readonly tools = BUILTIN_WEB_TOOLS;
+  readonly toolsRequiringApproval: string[] = [];
+
+  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
+    return executeBuiltinWebTool(toolName, args);
+  }
+}
+
+export const webTools = new WebTools();

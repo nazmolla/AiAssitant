@@ -5,35 +5,20 @@
  * Each tool category registers itself via the ToolCategory interface;
  * the registry routes tool calls by name using the first matching category.
  *
+ * Built-in categories are auto-discovered from src/lib/tools/ via
+ * ALL_TOOL_CATEGORIES.  MCP is wired as the catch-all fallback.
+ *
  * @see https://github.com/nazmolla/AiAssitant/issues/114
+ * @see https://github.com/nazmolla/AiAssitant/issues/132
  */
 
 import type { ToolDefinition } from "@/lib/llm";
 import { NotFoundError } from "@/lib/errors";
+import { ALL_TOOL_CATEGORIES, type ToolCategory, type ToolExecutionContext } from "@/lib/tools";
+import { getMcpManager } from "@/lib/mcp";
 
-/** Context passed to tool executors that need thread/user info */
-export interface ToolExecutionContext {
-  threadId: string;
-  userId?: string;
-}
-
-/** Common interface every tool category must implement */
-export interface ToolCategory {
-  /** Human-readable category name (e.g. "web", "browser", "fs") */
-  readonly name: string;
-  /** Return true if this category handles the given tool name */
-  matches(toolName: string): boolean;
-  /** Execute the tool and return the result */
-  execute(
-    toolName: string,
-    args: Record<string, unknown>,
-    context: ToolExecutionContext
-  ): Promise<unknown>;
-  /** Tool definitions exposed to the LLM */
-  readonly tools: ToolDefinition[];
-  /** Names of tools that require approval by default */
-  readonly toolsRequiringApproval: string[];
-}
+// Re-export types so existing consumers don't break
+export type { ToolCategory, ToolExecutionContext };
 
 /**
  * Central registry for all tool categories.
@@ -90,94 +75,11 @@ export class ToolRegistry {
 }
 
 // ---------------------------------------------------------------------------
-// Category adapters — thin wrappers that conform each tool module to the
-// ToolCategory interface.  Imported lazily via createToolRegistry() below.
+// MCP catch-all category — anything not matched by built-in categories
 // ---------------------------------------------------------------------------
-
-import { BUILTIN_WEB_TOOLS, isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
-import { BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool, BROWSER_TOOLS_REQUIRING_APPROVAL } from "./browser-tools";
-import { BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool, FS_TOOLS_REQUIRING_APPROVAL } from "./fs-tools";
-import { BUILTIN_NETWORK_TOOLS, isNetworkTool, executeBuiltinNetworkTool, NETWORK_TOOLS_REQUIRING_APPROVAL } from "./network-tools";
-import { BUILTIN_EMAIL_TOOLS, isEmailTool, executeBuiltinEmailTool, EMAIL_TOOLS_REQUIRING_APPROVAL } from "./email-tools";
-import { BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool, FILE_TOOLS_REQUIRING_APPROVAL } from "./file-tools";
-import { isCustomTool, executeCustomTool, getCustomToolDefinitions, CUSTOM_TOOLS_REQUIRING_APPROVAL, BUILTIN_TOOLMAKER_TOOLS } from "./custom-tools";
-import { BUILTIN_ALEXA_TOOLS, isAlexaTool, executeAlexaTool, ALEXA_TOOLS_REQUIRING_APPROVAL } from "./alexa-tools";
-import { getMcpManager } from "@/lib/mcp";
-import { getThread } from "@/lib/db";
-
-const webCategory: ToolCategory = {
-  name: "web",
-  matches: isBuiltinWebTool,
-  execute: async (_name, args) => executeBuiltinWebTool(_name, args),
-  tools: BUILTIN_WEB_TOOLS,
-  toolsRequiringApproval: [],
-};
-
-const browserCategory: ToolCategory = {
-  name: "browser",
-  matches: isBrowserTool,
-  execute: async (_name, args) => executeBrowserTool(_name, args),
-  tools: BUILTIN_BROWSER_TOOLS,
-  toolsRequiringApproval: [...BROWSER_TOOLS_REQUIRING_APPROVAL],
-};
-
-const fsCategory: ToolCategory = {
-  name: "fs",
-  matches: isFsTool,
-  execute: async (_name, args) => executeBuiltinFsTool(_name, args),
-  tools: BUILTIN_FS_TOOLS,
-  toolsRequiringApproval: [...FS_TOOLS_REQUIRING_APPROVAL],
-};
-
-const networkCategory: ToolCategory = {
-  name: "network",
-  matches: isNetworkTool,
-  execute: async (_name, args) => executeBuiltinNetworkTool(_name, args),
-  tools: BUILTIN_NETWORK_TOOLS,
-  toolsRequiringApproval: [...NETWORK_TOOLS_REQUIRING_APPROVAL],
-};
-
-const emailCategory: ToolCategory = {
-  name: "email",
-  matches: isEmailTool,
-  execute: async (toolName, args, context) => {
-    const thread = getThread(context.threadId);
-    return executeBuiltinEmailTool(toolName, args, thread?.user_id ?? undefined, context.threadId);
-  },
-  tools: BUILTIN_EMAIL_TOOLS,
-  toolsRequiringApproval: [...EMAIL_TOOLS_REQUIRING_APPROVAL],
-};
-
-const fileCategory: ToolCategory = {
-  name: "file",
-  matches: isFileTool,
-  execute: async (toolName, args, context) =>
-    executeBuiltinFileTool(toolName, args, { threadId: context.threadId }),
-  tools: BUILTIN_FILE_TOOLS,
-  toolsRequiringApproval: [...FILE_TOOLS_REQUIRING_APPROVAL],
-};
-
-const alexaCategory: ToolCategory = {
-  name: "alexa",
-  matches: isAlexaTool,
-  execute: async (_name, args) => executeAlexaTool(_name, args),
-  tools: BUILTIN_ALEXA_TOOLS,
-  toolsRequiringApproval: [...ALEXA_TOOLS_REQUIRING_APPROVAL],
-};
-
-const customCategory: ToolCategory = {
-  name: "custom",
-  matches: isCustomTool,
-  execute: async (toolName, args) => executeCustomTool(toolName, args),
-  get tools() {
-    return [...BUILTIN_TOOLMAKER_TOOLS, ...getCustomToolDefinitions()];
-  },
-  toolsRequiringApproval: [...CUSTOM_TOOLS_REQUIRING_APPROVAL],
-};
 
 const mcpCategory: ToolCategory = {
   name: "mcp",
-  // MCP is the catch-all — anything not matched above is routed here
   matches: () => true,
   execute: async (toolName, args) => getMcpManager().callTool(toolName, args),
   get tools() {
@@ -196,15 +98,11 @@ let _instance: ToolRegistry | null = null;
 export function getToolRegistry(): ToolRegistry {
   if (!_instance) {
     _instance = new ToolRegistry();
-    // Order matters: specific categories first, MCP catch-all last.
-    _instance.register(webCategory);
-    _instance.register(browserCategory);
-    _instance.register(fsCategory);
-    _instance.register(networkCategory);
-    _instance.register(emailCategory);
-    _instance.register(fileCategory);
-    _instance.register(alexaCategory);
-    _instance.register(customCategory);
+    // Auto-register all built-in tool categories from src/lib/tools/
+    for (const category of ALL_TOOL_CATEGORIES) {
+      _instance.register(category);
+    }
+    // MCP catch-all — always last
     _instance.register(mcpCategory);
   }
   return _instance;

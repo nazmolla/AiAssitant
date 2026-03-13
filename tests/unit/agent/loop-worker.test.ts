@@ -45,14 +45,14 @@ jest.mock("@/lib/mcp", () => ({
   getMcpManager: () => ({ getAllTools: () => [] }),
 }));
 
-jest.mock("@/lib/agent/web-tools", () => ({ BUILTIN_WEB_TOOLS: [] }));
-jest.mock("@/lib/agent/browser-tools", () => ({ BUILTIN_BROWSER_TOOLS: [] }));
-jest.mock("@/lib/agent/fs-tools", () => ({ BUILTIN_FS_TOOLS: [] }));
-jest.mock("@/lib/agent/network-tools", () => ({ BUILTIN_NETWORK_TOOLS: [] }));
-jest.mock("@/lib/agent/email-tools", () => ({ BUILTIN_EMAIL_TOOLS: [] }));
-jest.mock("@/lib/agent/file-tools", () => ({ BUILTIN_FILE_TOOLS: [] }));
-jest.mock("@/lib/agent/alexa-tools", () => ({ BUILTIN_ALEXA_TOOLS: [] }));
-jest.mock("@/lib/agent/custom-tools", () => ({
+jest.mock("@/lib/tools/web-tools", () => ({ BUILTIN_WEB_TOOLS: [] }));
+jest.mock("@/lib/tools/browser-tools", () => ({ BUILTIN_BROWSER_TOOLS: [] }));
+jest.mock("@/lib/tools/fs-tools", () => ({ BUILTIN_FS_TOOLS: [] }));
+jest.mock("@/lib/tools/network-tools", () => ({ BUILTIN_NETWORK_TOOLS: [] }));
+jest.mock("@/lib/tools/email-tools", () => ({ BUILTIN_EMAIL_TOOLS: [] }));
+jest.mock("@/lib/tools/file-tools", () => ({ BUILTIN_FILE_TOOLS: [] }));
+jest.mock("@/lib/tools/alexa-tools", () => ({ BUILTIN_ALEXA_TOOLS: [] }));
+jest.mock("@/lib/tools/custom-tools", () => ({
   getCustomToolDefinitions: () => [],
 }));
 

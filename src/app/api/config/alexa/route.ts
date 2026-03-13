@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { getAlexaConfig, saveAlexaConfig } from "@/lib/agent/alexa-tools";
+import { getAlexaConfig, saveAlexaConfig } from "@/lib/tools/alexa-tools";
 
 /** GET /api/config/alexa — read current Alexa credentials (masked) */
 export async function GET() {

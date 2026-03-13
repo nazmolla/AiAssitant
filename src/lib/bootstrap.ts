@@ -2,7 +2,7 @@ import { initializeDatabase, listMcpServers, addLog, listChannels, getDb } from 
 import { startUnifiedSchedulerEngine } from "@/lib/scheduler/unified-engine";
 import { getMcpManager } from "@/lib/mcp";
 import { startDiscordBot } from "@/lib/channels/discord";
-import { loadCustomToolsFromDb } from "@/lib/agent/custom-tools";
+import { loadCustomToolsFromDb } from "@/lib/tools/custom-tools";
 
 declare global {
    

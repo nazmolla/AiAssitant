@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { executeBuiltinFsTool, FS_TOOL_NAMES } from "@/lib/agent/fs-tools";
+import { executeBuiltinFsTool, FS_TOOL_NAMES } from "@/lib/tools/fs-tools";
 
 describe("fs tools — large file handling", () => {
   const tmpRoot = path.join(process.cwd(), "tmp", "fs-tools-tests");

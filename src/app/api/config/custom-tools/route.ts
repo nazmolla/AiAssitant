@@ -15,7 +15,7 @@ import {
   getCustomTool,
   upsertToolPolicy,
 } from "@/lib/db/queries";
-import { loadCustomToolsFromDb, validateImplementation } from "@/lib/agent/custom-tools";
+import { loadCustomToolsFromDb, validateImplementation } from "@/lib/tools/custom-tools";
 
 export async function GET() {
   const auth = await requireAdmin();

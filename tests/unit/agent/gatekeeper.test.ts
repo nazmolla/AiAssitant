@@ -15,10 +15,10 @@ import {
   listToolPolicies,
   createThread,
 } from "@/lib/db/queries";
-import { FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
-import { NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/network-tools";
-import { EMAIL_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/email-tools";
-import { ALEXA_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/alexa-tools";
+import { FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/fs-tools";
+import { NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/network-tools";
+import { EMAIL_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/email-tools";
+import { ALEXA_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/alexa-tools";
 
 // Mock MCP manager so executeWithGatekeeper can call tools
 jest.mock("@/lib/mcp", () => ({

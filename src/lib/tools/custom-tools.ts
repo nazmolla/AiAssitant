@@ -18,6 +18,7 @@
  */
 
 import type { ToolDefinition, ToolCall } from "@/lib/llm";
+import { BaseTool, type ToolExecutionContext } from "./base-tool";
 import * as vm from "vm";
 import { ValidationError, NotFoundError, IntegrationError } from "@/lib/errors";
 
@@ -567,3 +568,27 @@ async function runSandboxed(
 
   return result ?? { status: "completed", note: "Tool returned no explicit value." };
 }
+
+// ── BaseTool class wrapper ────────────────────────────────────
+
+export class CustomTools extends BaseTool {
+  readonly name = "custom";
+  readonly toolNamePrefix = "custom.";
+  readonly toolsRequiringApproval = [...CUSTOM_TOOLS_REQUIRING_APPROVAL];
+
+  /** Dynamic: includes both toolmaker meta-tools and user-created tools */
+  get tools(): ToolDefinition[] {
+    return [...BUILTIN_TOOLMAKER_TOOLS, ...getCustomToolDefinitions()];
+  }
+
+  /** Custom matcher — handles both custom.* prefix and builtin toolmaker tools */
+  matches(toolName: string): boolean {
+    return isCustomTool(toolName);
+  }
+
+  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
+    return executeCustomTool(toolName, args);
+  }
+}
+
+export const customTools = new CustomTools();

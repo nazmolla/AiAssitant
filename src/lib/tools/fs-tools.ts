@@ -24,6 +24,7 @@ import * as path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { env } from "@/lib/env";
+import { BaseTool, type ToolExecutionContext } from "./base-tool";
 import {
   FS_MAX_READ_BYTES,
   FS_MAX_SCRIPT_OUTPUT,
@@ -912,3 +913,18 @@ export async function executeBuiltinFsTool(
       throw new Error(`Unknown built-in fs tool: "${name}"`);
   }
 }
+
+// ── BaseTool class wrapper ────────────────────────────────────
+
+export class FsTools extends BaseTool {
+  readonly name = "fs";
+  readonly toolNamePrefix = "builtin.fs_";
+  readonly tools = BUILTIN_FS_TOOLS;
+  readonly toolsRequiringApproval = [...FS_TOOLS_REQUIRING_APPROVAL];
+
+  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
+    return executeBuiltinFsTool(toolName, args);
+  }
+}
+
+export const fsTools = new FsTools();

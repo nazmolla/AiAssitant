@@ -12,6 +12,7 @@
 import type { ToolDefinition } from "@/lib/llm";
 import { getAppConfig, setAppConfig } from "@/lib/db/queries";
 import { encryptField, decryptField } from "@/lib/db/crypto";
+import { BaseTool, type ToolExecutionContext } from "./base-tool";
 
 /* ══════════════════════════════════════════════════════════════════
    Constants
@@ -949,3 +950,18 @@ async function handleSetDndStatus(creds: AlexaCreds, args: Record<string, unknow
     lastUpdate: new Date().toISOString(),
   };
 }
+
+// ── BaseTool class wrapper ────────────────────────────────────
+
+export class AlexaTools extends BaseTool {
+  readonly name = "alexa";
+  readonly toolNamePrefix = "builtin.alexa_";
+  readonly tools = BUILTIN_ALEXA_TOOLS;
+  readonly toolsRequiringApproval = [...ALEXA_TOOLS_REQUIRING_APPROVAL];
+
+  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
+    return executeAlexaTool(toolName, args);
+  }
+}
+
+export const alexaTools = new AlexaTools();

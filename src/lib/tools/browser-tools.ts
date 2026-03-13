@@ -16,8 +16,9 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 import type { ToolDefinition } from "@/lib/llm";
 import * as fs from "fs";
 import * as path from "path";
-import { assertExternalUrl, assertExternalUrlWithResolve } from "./ssrf";
+import { assertExternalUrl, assertExternalUrlWithResolve } from "@/lib/agent/ssrf";
 import { env } from "@/lib/env";
+import { BaseTool, type ToolExecutionContext } from "./base-tool";
 import {
   BROWSER_DEFAULT_TIMEOUT_MS,
   BROWSER_NAVIGATION_TIMEOUT_MS,
@@ -964,3 +965,18 @@ process.on("beforeExit", async () => {
     await _session.close();
   }
 });
+
+// ── BaseTool class wrapper ────────────────────────────────────
+
+export class BrowserTools extends BaseTool {
+  readonly name = "browser";
+  readonly toolNamePrefix = "builtin.browser_";
+  readonly tools = BUILTIN_BROWSER_TOOLS;
+  readonly toolsRequiringApproval = [...BROWSER_TOOLS_REQUIRING_APPROVAL];
+
+  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
+    return executeBrowserTool(toolName, args);
+  }
+}
+
+export const browserTools = new BrowserTools();

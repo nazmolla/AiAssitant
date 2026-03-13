@@ -2,7 +2,7 @@
  * Unit tests — Network tools
  */
 
-import { executeBuiltinNetworkTool, NET_TOOL_NAMES } from "@/lib/agent/network-tools";
+import { executeBuiltinNetworkTool, NET_TOOL_NAMES } from "@/lib/tools/network-tools";
 
 jest.mock("child_process", () => ({
   execFile: jest.fn((command: string, args: string[], _options: unknown, callback: (err: Error | null, stdout: string, stderr: string) => void) => {

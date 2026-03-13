@@ -22,6 +22,7 @@ import * as http from "http";
 import * as https from "https";
 import * as fs from "fs";
 import { Client as SSHClient } from "ssh2";
+import { BaseTool, type ToolExecutionContext } from "./base-tool";
 
 const execFileAsync = promisify(execFile);
 
@@ -952,3 +953,18 @@ export async function executeBuiltinNetworkTool(
       throw new Error(`Unknown built-in network tool: "${name}"`);
   }
 }
+
+// ── BaseTool class wrapper ────────────────────────────────────
+
+export class NetworkTools extends BaseTool {
+  readonly name = "network";
+  readonly toolNamePrefix = "builtin.net_";
+  readonly tools = BUILTIN_NETWORK_TOOLS;
+  readonly toolsRequiringApproval = [...NETWORK_TOOLS_REQUIRING_APPROVAL];
+
+  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
+    return executeBuiltinNetworkTool(toolName, args);
+  }
+}
+
+export const networkTools = new NetworkTools();

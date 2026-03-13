@@ -14,6 +14,7 @@ import {
   FILE_IMAGE_MIN_DIMENSION,
   FILE_IMAGE_MAX_DIMENSION,
 } from "@/lib/constants";
+import { BaseTool, type ToolExecutionContext } from "./base-tool";
 
 const ATTACHMENTS_ROOT = path.join(process.cwd(), "data", "attachments");
 
@@ -262,3 +263,18 @@ export async function executeBuiltinFileTool(
     attachments: [attachment],
   };
 }
+
+// ── BaseTool class wrapper ────────────────────────────────────
+
+export class FileTools extends BaseTool {
+  readonly name = "file";
+  readonly toolNamePrefix = "builtin.file_";
+  readonly tools = BUILTIN_FILE_TOOLS;
+  readonly toolsRequiringApproval = [...FILE_TOOLS_REQUIRING_APPROVAL];
+
+  async execute(toolName: string, args: Record<string, unknown>, context: ToolExecutionContext): Promise<unknown> {
+    return executeBuiltinFileTool(toolName, args, { threadId: context.threadId });
+  }
+}
+
+export const fileTools = new FileTools();

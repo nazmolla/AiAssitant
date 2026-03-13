@@ -9,7 +9,7 @@ import {
   loadCustomToolsFromDb,
   validateImplementation,
   BUILTIN_TOOLMAKER_TOOLS,
-} from "@/lib/agent/custom-tools";
+} from "@/lib/tools/custom-tools";
 import { createCustomToolRecord, getToolPolicy } from "@/lib/db/queries";
 
 beforeAll(() => {

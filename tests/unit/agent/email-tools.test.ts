@@ -60,7 +60,7 @@ jest.mock("mailparser", () => ({
 }));
 
 import { listChannels } from "@/lib/db/queries";
-import { executeBuiltinEmailTool, isEmailTool } from "@/lib/agent/email-tools";
+import { executeBuiltinEmailTool, isEmailTool } from "@/lib/tools/email-tools";
 
 const IMAP_CHANNEL = {
   id: "ch-email-1",

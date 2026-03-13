@@ -37,7 +37,7 @@ import {
   getAlexaConfig,
   saveAlexaConfig,
   executeAlexaTool,
-} from "@/lib/agent/alexa-tools";
+} from "@/lib/tools/alexa-tools";
 
 beforeEach(() => {
   jest.clearAllMocks();

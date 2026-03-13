@@ -8,14 +8,16 @@
 
 import type { ToolDefinition } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
-import { BUILTIN_WEB_TOOLS } from "./web-tools";
-import { BUILTIN_BROWSER_TOOLS } from "./browser-tools";
-import { BUILTIN_FS_TOOLS } from "./fs-tools";
-import { BUILTIN_NETWORK_TOOLS } from "./network-tools";
-import { BUILTIN_EMAIL_TOOLS } from "./email-tools";
-import { BUILTIN_FILE_TOOLS } from "./file-tools";
-import { BUILTIN_ALEXA_TOOLS } from "./alexa-tools";
-import { buildCappedToolList } from "./tool-cap";
+import {
+  BUILTIN_WEB_TOOLS,
+  BUILTIN_BROWSER_TOOLS,
+  BUILTIN_FS_TOOLS,
+  BUILTIN_NETWORK_TOOLS,
+  BUILTIN_EMAIL_TOOLS,
+  BUILTIN_FILE_TOOLS,
+  BUILTIN_ALEXA_TOOLS,
+  buildCappedToolList,
+} from "@/lib/tools";
 import { getUserById, listToolPolicies } from "@/lib/db";
 
 /**
@@ -26,7 +28,7 @@ export async function buildFilteredToolList(userId?: string): Promise<ToolDefini
   const mcpManager = getMcpManager();
   const mcpTools = mcpManager.getAllTools();
 
-  const { getCustomToolDefinitions } = await import("./custom-tools");
+  const { getCustomToolDefinitions } = await import("@/lib/tools/custom-tools");
   const customTools = getCustomToolDefinitions();
 
   const builtinTools = [

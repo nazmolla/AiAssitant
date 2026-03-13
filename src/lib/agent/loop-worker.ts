@@ -20,13 +20,14 @@ import {
   type ContentPart,
 } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
-import { BUILTIN_WEB_TOOLS } from "./web-tools";
-import { BUILTIN_BROWSER_TOOLS } from "./browser-tools";
-import { BUILTIN_FS_TOOLS } from "./fs-tools";
-import { BUILTIN_NETWORK_TOOLS } from "./network-tools";
-import { BUILTIN_EMAIL_TOOLS } from "./email-tools";
-import { BUILTIN_FILE_TOOLS } from "./file-tools";
-import { BUILTIN_ALEXA_TOOLS } from "./alexa-tools";
+import { BUILTIN_WEB_TOOLS } from "@/lib/tools/web-tools";
+import { BUILTIN_BROWSER_TOOLS } from "@/lib/tools/browser-tools";
+import { BUILTIN_FS_TOOLS } from "@/lib/tools/fs-tools";
+import { BUILTIN_NETWORK_TOOLS } from "@/lib/tools/network-tools";
+import { BUILTIN_EMAIL_TOOLS } from "@/lib/tools/email-tools";
+import { BUILTIN_FILE_TOOLS } from "@/lib/tools/file-tools";
+import { BUILTIN_ALEXA_TOOLS } from "@/lib/tools/alexa-tools";
+import { buildCappedToolList } from "@/lib/tools/tool-cap";
 import {
   addMessage,
   getThreadMessages,
@@ -54,7 +55,6 @@ import {
   type AgentResponse,
 } from "./loop";
 import { executeWithGatekeeper } from "./gatekeeper";
-import { buildCappedToolList } from "./tool-cap";
 
 /* ── Re-export for convenience ──────────────────────────────────── */
 export type { AgentResponse } from "./loop";
@@ -177,7 +177,7 @@ async function _runViaWorker(
   /* ── 2. Load tools (in-memory, fast) ────────────────────────── */
   const mcpManager = getMcpManager();
   const mcpTools = mcpManager.getAllTools();
-  const { getCustomToolDefinitions } = await import("./custom-tools");
+  const { getCustomToolDefinitions } = await import("@/lib/tools/custom-tools");
   const customTools = getCustomToolDefinitions();
   const builtinTools = [
     ...BUILTIN_WEB_TOOLS, ...BUILTIN_BROWSER_TOOLS, ...BUILTIN_FS_TOOLS,

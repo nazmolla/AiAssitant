@@ -1,5 +1,5 @@
 import type { ToolDefinition } from "@/lib/llm";
-import { buildCappedToolList, MAX_TOOLS_PER_REQUEST } from "@/lib/agent/tool-cap";
+import { buildCappedToolList, MAX_TOOLS_PER_REQUEST } from "@/lib/tools/tool-cap";
 
 function makeTool(name: string): ToolDefinition {
   return {

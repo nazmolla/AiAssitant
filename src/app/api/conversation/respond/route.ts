@@ -15,7 +15,7 @@ import {
   isWorkerAvailable,
 } from "@/lib/agent";
 import { isWorkerAvailable as checkWorkerAvailable, runLlmInWorker, type WorkerToolResult } from "@/lib/agent/worker-manager";
-import { buildCappedToolList, MAX_TOOLS_PER_REQUEST } from "@/lib/agent/tool-cap";
+import { buildCappedToolList, MAX_TOOLS_PER_REQUEST } from "@/lib/tools/tool-cap";
 import { addLog, getUserById, listToolPolicies, getToolPolicy } from "@/lib/db";
 import {
   VOICE_MAX_HISTORY_MESSAGES,

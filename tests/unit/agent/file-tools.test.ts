@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { executeBuiltinFileTool } from "@/lib/agent/file-tools";
+import { executeBuiltinFileTool } from "@/lib/tools/file-tools";
 
 describe("file tools", () => {
   const threadId = "thread-test-file-tools";

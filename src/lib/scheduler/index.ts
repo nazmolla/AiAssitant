@@ -29,7 +29,7 @@ import {
   isAlexaTool,
   executeAlexaTool,
 } from "@/lib/agent";
-import { getCustomToolDefinitions } from "@/lib/agent/custom-tools";
+import { getCustomToolDefinitions } from "@/lib/tools/custom-tools";
 import { normalizeToolName } from "@/lib/agent/discovery";
 import {
   getToolPolicy,

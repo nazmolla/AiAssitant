@@ -3,15 +3,16 @@ import { SCHEMA_SQL } from "./schema";
 import { encryptField, isEncrypted } from "./crypto";
 import fs from "fs";
 import path from "path";
-import { BUILTIN_WEB_TOOLS } from "@/lib/agent/web-tools";
-import { BUILTIN_BROWSER_TOOLS } from "@/lib/agent/browser-tools";
-import { BUILTIN_FS_TOOLS, FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/fs-tools";
-import { BUILTIN_NETWORK_TOOLS, NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/network-tools";
-import { BUILTIN_EMAIL_TOOLS, EMAIL_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/email-tools";
-import { BUILTIN_FILE_TOOLS, FILE_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/file-tools";
-import { BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/custom-tools";
-import { BROWSER_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/browser-tools";
-import { BUILTIN_ALEXA_TOOLS, ALEXA_TOOLS_REQUIRING_APPROVAL } from "@/lib/agent/alexa-tools";
+import {
+  BUILTIN_WEB_TOOLS,
+  BUILTIN_BROWSER_TOOLS, BROWSER_TOOLS_REQUIRING_APPROVAL,
+  BUILTIN_FS_TOOLS, FS_TOOLS_REQUIRING_APPROVAL,
+  BUILTIN_NETWORK_TOOLS, NETWORK_TOOLS_REQUIRING_APPROVAL,
+  BUILTIN_EMAIL_TOOLS, EMAIL_TOOLS_REQUIRING_APPROVAL,
+  BUILTIN_FILE_TOOLS, FILE_TOOLS_REQUIRING_APPROVAL,
+  BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL,
+  BUILTIN_ALEXA_TOOLS, ALEXA_TOOLS_REQUIRING_APPROVAL,
+} from "@/lib/tools";
 import { v4 as uuid } from "uuid";
 import { env } from "@/lib/env";
 
