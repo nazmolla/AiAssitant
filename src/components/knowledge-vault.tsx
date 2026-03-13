@@ -10,6 +10,7 @@ import Typography from "@mui/material/Typography";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import { useTheme } from "@/components/theme-provider";
+import { knowledgeService } from "@/lib/api";
 
 interface KnowledgeEntry {
   id: number;
@@ -41,8 +42,7 @@ export function KnowledgeVault() {
   const { formatDate } = useTheme();
 
   const fetchKnowledge = () => {
-    fetch("/api/knowledge")
-      .then((r) => r.json())
+    knowledgeService.list()
       .then((d) => {
         if (d && Array.isArray(d.data)) {
           setEntries(d.data);
@@ -54,8 +54,7 @@ export function KnowledgeVault() {
   };
 
   const loadMoreKnowledge = () => {
-    fetch(`/api/knowledge?limit=100&offset=${entries.length}`)
-      .then((r) => r.json())
+    knowledgeService.list(100, entries.length)
       .then((d) => {
         if (d && Array.isArray(d.data)) {
           setEntries((prev) => [...prev, ...d.data]);
@@ -71,17 +70,13 @@ export function KnowledgeVault() {
   }, []);
 
   async function updateEntry(id: number) {
-    await fetch("/api/knowledge", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, value: editValue }),
-    });
+    await knowledgeService.update(id, editValue);
     setEditingId(null);
     fetchKnowledge();
   }
 
   async function deleteEntry(id: number) {
-    await fetch(`/api/knowledge?id=${id}`, { method: "DELETE" });
+    await knowledgeService.delete(id);
     fetchKnowledge();
   }
 
