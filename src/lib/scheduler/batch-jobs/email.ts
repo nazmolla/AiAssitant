@@ -18,6 +18,10 @@ export class EmailBatchJob extends BatchJob {
     return handlerName === "system.email.read_incoming";
   }
 
+  getHandlerNames(): string[] {
+    return ["system.email.read_incoming"];
+  }
+
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
     await runEmailReadBatch({ scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName });

@@ -20,6 +20,7 @@ import {
 } from "@/lib/db";
 import { computeSchedulerNextRunAt } from "@/lib/scheduler/next-run";
 import { findBatchJobForHandler } from "@/lib/scheduler/batch-jobs";
+import { getAllHandlerNames } from "@/lib/scheduler/batch-jobs";
 
 interface SchedulerLogContext {
   scheduleId?: string;
@@ -28,29 +29,56 @@ interface SchedulerLogContext {
   handlerName?: string;
 }
 
-const ENGINE_POLL_MS = 10_000;
-const CLAIM_LEASE_SECONDS = 60;
+/* ── Handler registry ─────────────────────────────────────────────── */
+
+const handlerRegistry = new Set<string>();
+
+/**
+ * Register a scheduler handler name.
+ * Called automatically with batch-job handlers on engine start,
+ * and can be called externally for ad-hoc handlers.
+ */
+export function registerHandler(name: string): void {
+  handlerRegistry.add(name);
+}
+
+export function getRegisteredHandlers(): ReadonlySet<string> {
+  return handlerRegistry;
+}
+
+function populateHandlerRegistry(): void {
+  // Built-in generic handler
+  registerHandler("agent.prompt");
+  // Batch-job handlers discovered dynamically
+  for (const name of getAllHandlerNames()) {
+    registerHandler(name);
+  }
+}
+
+/* ── Engine configuration ─────────────────────────────────────────── */
+
+export interface SchedulerEngineConfig {
+  pollMs?: number;
+  leaseSeconds?: number;
+}
+
+const DEFAULT_POLL_MS = 10_000;
+const DEFAULT_LEASE_SECONDS = 60;
+
+/* ── Engine state (encapsulated) ──────────────────────────────────── */
+
+const engineState = {
+  timer: null as ReturnType<typeof setInterval> | null,
+  tickRunning: false,
+  pollMs: DEFAULT_POLL_MS,
+  leaseSeconds: DEFAULT_LEASE_SECONDS,
+};
+
 const WORKER_ID = `scheduler-worker-${process.pid}`;
-
-let _engineTimer: ReturnType<typeof setInterval> | null = null;
-let _engineTickRunning = false;
-
-const REGISTERED_SCHEDULER_HANDLERS = new Set<string>([
-  "agent.prompt",
-  "system.proactive.scan",
-  "system.email.read_incoming",
-  "system.db_maintenance.run_due",
-  "system.knowledge_maintenance.run_due",
-  "workflow.job_scout.search",
-  "workflow.job_scout.extract",
-  "workflow.job_scout.prepare",
-  "workflow.job_scout.validate",
-  "workflow.job_scout.email",
-]);
 
 function validateRegisteredHandlers(): void {
   const handlers = listEnabledSchedulerTaskHandlers();
-  const unknown = handlers.filter((h) => !REGISTERED_SCHEDULER_HANDLERS.has(h.handler_name));
+  const unknown = handlers.filter((h) => !handlerRegistry.has(h.handler_name));
   if (unknown.length === 0) return;
 
   addLog({
@@ -196,7 +224,7 @@ async function executeTaskRun(
 
 async function executeRunnableRun(): Promise<void> {
   const candidates = listRunnableSchedulerRuns(10);
-  const claimed = candidates.find((run) => tryClaimSchedulerRun(run.id, WORKER_ID, CLAIM_LEASE_SECONDS));
+  const claimed = candidates.find((run) => tryClaimSchedulerRun(run.id, WORKER_ID, engineState.leaseSeconds));
   if (!claimed) return;
 
   try {
@@ -234,7 +262,7 @@ async function executeRunnableRun(): Promise<void> {
         continue;
       }
 
-      heartbeatSchedulerClaim(claimed.id, WORKER_ID, CLAIM_LEASE_SECONDS);
+      heartbeatSchedulerClaim(claimed.id, WORKER_ID, engineState.leaseSeconds);
 
       const task = allTasks.find((t) => t.id === taskRun.schedule_task_id);
       if (!task) {
@@ -307,26 +335,32 @@ async function executeRunnableRun(): Promise<void> {
 }
 
 async function engineTick(): Promise<void> {
-  if (_engineTickRunning) return;
-  _engineTickRunning = true;
+  if (engineState.tickRunning) return;
+  engineState.tickRunning = true;
   try {
     dispatchDueSchedules();
     await executeRunnableRun();
   } finally {
-    _engineTickRunning = false;
+    engineState.tickRunning = false;
   }
 }
 
 export async function runUnifiedSchedulerEngineTickForTests(): Promise<void> {
+  populateHandlerRegistry();
+  validateRegisteredHandlers();
   await engineTick();
 }
 
-export function startUnifiedSchedulerEngine(): void {
-  if (_engineTimer) return;
+export function startUnifiedSchedulerEngine(config?: SchedulerEngineConfig): void {
+  if (engineState.timer) return;
 
+  if (config?.pollMs) engineState.pollMs = config.pollMs;
+  if (config?.leaseSeconds) engineState.leaseSeconds = config.leaseSeconds;
+
+  populateHandlerRegistry();
   validateRegisteredHandlers();
 
-  _engineTimer = setInterval(() => {
+  engineState.timer = setInterval(() => {
     engineTick().catch((err) => {
       addLog({
         level: "error",
@@ -335,20 +369,20 @@ export function startUnifiedSchedulerEngine(): void {
         metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err), workerId: WORKER_ID }),
       });
     });
-  }, ENGINE_POLL_MS);
+  }, engineState.pollMs);
 
   addLog({
     level: "info",
     source: "scheduler-engine",
     message: "Unified scheduler engine started.",
-    metadata: JSON.stringify({ pollMs: ENGINE_POLL_MS, workerId: WORKER_ID }),
+    metadata: JSON.stringify({ pollMs: engineState.pollMs, workerId: WORKER_ID }),
   });
 }
 
 export function stopUnifiedSchedulerEngine(): void {
-  if (!_engineTimer) return;
-  clearInterval(_engineTimer);
-  _engineTimer = null;
+  if (!engineState.timer) return;
+  clearInterval(engineState.timer);
+  engineState.timer = null;
   addLog({
     level: "info",
     source: "scheduler-engine",

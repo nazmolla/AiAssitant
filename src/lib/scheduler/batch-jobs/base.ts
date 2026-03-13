@@ -77,6 +77,12 @@ export abstract class BatchJob {
   abstract canExecuteHandler(handlerName: string): boolean;
 
   /**
+   * Returns all handler names this batch job class supports.
+   * Used by the scheduler engine for dynamic handler registration.
+   */
+  abstract getHandlerNames(): string[];
+
+  /**
    * Execute a single step/task for this batch job type.
    * Each subclass owns its own prompts, orchestration, and retry logic.
    *

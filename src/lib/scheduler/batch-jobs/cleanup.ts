@@ -18,6 +18,10 @@ export class CleanupBatchJob extends BatchJob {
     return handlerName === "system.db_maintenance.run_due";
   }
 
+  getHandlerNames(): string[] {
+    return ["system.db_maintenance.run_due"];
+  }
+
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
     const result = runDbMaintenanceIfDue();

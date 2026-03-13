@@ -53,3 +53,11 @@ export function listBatchJobs(): Array<{
     defaultTriggerExpr: job.defaultTriggerExpr,
   }));
 }
+
+/**
+ * Collect all handler names from every registered batch job.
+ * Used by the scheduler engine for dynamic handler validation.
+ */
+export function getAllHandlerNames(): string[] {
+  return Object.values(REGISTRY).flatMap((job) => job.getHandlerNames());
+}

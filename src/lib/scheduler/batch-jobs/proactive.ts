@@ -17,6 +17,10 @@ export class ProactiveBatchJob extends BatchJob {
     return handlerName === "system.proactive.scan";
   }
 
+  getHandlerNames(): string[] {
+    return ["system.proactive.scan"];
+  }
+
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
     await runProactiveScan({ scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName });

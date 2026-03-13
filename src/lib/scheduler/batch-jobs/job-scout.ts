@@ -61,6 +61,16 @@ export class JobScoutBatchJob extends BatchJob {
     return handlerName.startsWith("workflow.job_scout.");
   }
 
+  getHandlerNames(): string[] {
+    return [
+      "workflow.job_scout.search",
+      "workflow.job_scout.extract",
+      "workflow.job_scout.prepare",
+      "workflow.job_scout.validate",
+      "workflow.job_scout.email",
+    ];
+  }
+
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const { taskRunId, runId, handlerName, configJson, scheduleId } = ctx;
     const logCtx = { scheduleId, runId, taskRunId, handlerName };
