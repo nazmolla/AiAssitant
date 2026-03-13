@@ -104,27 +104,40 @@ describe("Preview size", () => {
   });
 });
 
-// PERF-01: Verify no synchronous file reads in chat route
+// PERF-01: Verify no synchronous file reads in attachment processing
 describe("Async file reads (PERF-01)", () => {
-  test("chat route uses fsp (fs/promises) instead of readFileSync", () => {
-    // Read the source file and verify no readFileSync calls exist
+  test("chat route delegates to attachment-processor service (no inline file I/O)", () => {
     const fs = require("fs");
     const path = require("path");
     const routePath = path.join(__dirname, "../../../src/app/api/threads/[threadId]/chat/route.ts");
     const src = fs.readFileSync(routePath, "utf-8");
 
-    // Should NOT contain readFileSync
+    // Should NOT contain readFileSync anywhere
     expect(src).not.toContain("readFileSync");
-    // Should NOT contain openSync, readSync, closeSync
     expect(src).not.toContain("openSync");
     expect(src).not.toContain("readSync(");
     expect(src).not.toContain("closeSync");
 
+    // Should delegate to attachment-processor
+    expect(src).toContain("@/lib/services/attachment-processor");
+    expect(src).toContain("buildAttachmentParts");
+    expect(src).toContain("buildScreenFrameParts");
+  });
+
+  test("attachment-processor uses fsp (fs/promises) instead of readFileSync", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const svcPath = path.join(__dirname, "../../../src/lib/services/attachment-processor.ts");
+    const src = fs.readFileSync(svcPath, "utf-8");
+
+    // Should NOT contain readFileSync
+    expect(src).not.toContain("readFileSync");
+
     // Should import fs/promises
     expect(src).toMatch(/import\s+\w+\s+from\s+["']fs\/promises["']/);
     // Should use async reads
-    expect(src).toContain("await fsp.readFile");
-    expect(src).toContain("await fsp.open");
+    expect(src).toContain("fsp.readFile");
+    expect(src).toContain("fsp.open");
   });
 
   test("chat route has no synchronous file reads", () => {

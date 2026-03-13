@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { getLogsAfterId, type AgentLog } from "@/lib/db";
 import { isUnifiedLogLevel } from "@/lib/logging/levels";
+import { sseEvent } from "@/lib/sse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,10 +21,6 @@ async function requireLogsReadAccess() {
   }
 
   return auth;
-}
-
-function toSse(event: string, data: unknown): string {
-  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
 export async function GET(req: NextRequest) {
@@ -57,7 +54,7 @@ export async function GET(req: NextRequest) {
 
   const sendLogs = (logs: AgentLog[]) => {
     for (const log of logs) {
-      send(toSse("log", log));
+      send(sseEvent("log", log));
       cursor = log.id;
     }
   };
@@ -74,7 +71,7 @@ export async function GET(req: NextRequest) {
     start(c) {
       controller = c;
       send(": stream opened\n\n");
-      send(toSse("cursor", { sinceId: cursor }));
+      send(sseEvent("cursor", { sinceId: cursor }));
 
       const initial = getLogsAfterId(cursor, 200, level, source);
       if (initial.length > 0) {
@@ -83,7 +80,7 @@ export async function GET(req: NextRequest) {
 
       pollTimer = setInterval(tick, 2000); // 2s — halves per-client DB load vs 1s
       heartbeatTimer = setInterval(() => {
-        send(toSse("heartbeat", { sinceId: cursor, ts: Date.now() }));
+        send(sseEvent("heartbeat", { sinceId: cursor, ts: Date.now() }));
       }, 15000);
     },
     cancel() {
