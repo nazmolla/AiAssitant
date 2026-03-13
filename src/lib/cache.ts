@@ -1,3 +1,6 @@
+import type { ICache } from "@/lib/container";
+import { container } from "@/lib/container";
+
 /**
  * Application-level in-memory cache for frequently-read, rarely-changed data.
  *
@@ -21,7 +24,7 @@ export interface CacheEntry<T> {
 
 const DEFAULT_TTL_MS = 60_000; // 60 seconds
 
-class AppCache {
+class AppCache implements ICache {
   private entries = new Map<string, CacheEntry<unknown>>();
 
   /**
@@ -110,3 +113,6 @@ export const CACHE_KEYS = {
   /** MCP servers (decrypted). Key: `mcp_servers:{userId|_all}` */
   MCP_SERVERS_PREFIX: "mcp_servers:",
 } as const;
+
+// Register AppCache as the default ICache implementation
+container.registerDefault("cache", () => appCache);

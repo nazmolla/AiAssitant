@@ -1,6 +1,8 @@
 import { getDb, cachedStmt as _cachedStmt } from "./connection";
 import { normalizeLogLevel, shouldKeepLog, type UnifiedLogLevel, isUnifiedLogLevel } from "@/lib/logging/levels";
 import { appCache, CACHE_KEYS } from "@/lib/cache";
+import type { ILogger } from "@/lib/container";
+import { container } from "@/lib/container";
 
 /** Thin wrapper that passes the (patchable) `getDb` import to the cache */
 function stmt(sql: string) { return _cachedStmt(sql, getDb); }
@@ -160,3 +162,22 @@ export function deleteLogsOlderThanDays(days: number): number {
   const result = stmt("DELETE FROM agent_logs WHERE created_at < datetime('now', ?) ").run(`-${safeDays} days`);
   return Number(result.changes || 0);
 }
+
+// ── ILogger adapter ──────────────────────────────────────────
+
+class DbLogger implements ILogger {
+  log(level: UnifiedLogLevel, source: string | null, message: string, metadata?: string | null): void {
+    addLog({ level, source, message, metadata: metadata ?? null });
+  }
+  verbose(source: string | null, message: string, metadata?: string | null): void {
+    this.log("verbose", source, message, metadata);
+  }
+  warning(source: string | null, message: string, metadata?: string | null): void {
+    this.log("warning", source, message, metadata);
+  }
+  error(source: string | null, message: string, metadata?: string | null): void {
+    this.log("error", source, message, metadata);
+  }
+}
+
+container.registerDefault("logger", () => new DbLogger());
