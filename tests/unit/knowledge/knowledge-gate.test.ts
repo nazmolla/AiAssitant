@@ -54,15 +54,18 @@ describe("needsKnowledgeRetrieval — meaningful queries still trigger", () => {
 });
 
 describe("Knowledge retrieval check ordering (PERF-10)", () => {
-  test("loop.ts checks needsKnowledgeRetrieval BEFORE hasKnowledgeEntries", () => {
+  test("context-builder.ts checks needsKnowledgeRetrieval BEFORE hasKnowledgeEntries", () => {
     const fs = require("fs");
     const path = require("path");
-    const loopPath = path.join(__dirname, "../../../src/lib/agent/loop.ts");
-    const src = fs.readFileSync(loopPath, "utf-8");
+    const cbPath = path.join(__dirname, "../../../src/lib/agent/context-builder.ts");
+    const src = fs.readFileSync(cbPath, "utf-8");
 
     // Find the condition that gates knowledge retrieval
+    // Supports both forms:
+    //   if (needsKnowledgeRetrieval(...) && hasKnowledgeEntries(...))
+    //   if (!needsKnowledgeRetrieval(...) || !hasKnowledgeEntries(...))   (De Morgan's)
     const conditionMatch = src.match(
-      /if\s*\(\s*(needsKnowledgeRetrieval|hasKnowledgeEntries)\(.*?\)\s*&&\s*(needsKnowledgeRetrieval|hasKnowledgeEntries)\(/
+      /if\s*\(\s*!?\s*(needsKnowledgeRetrieval|hasKnowledgeEntries)\(.*?\)\s*(?:&&|\|\|)\s*!?\s*(needsKnowledgeRetrieval|hasKnowledgeEntries)\(/
     );
     expect(conditionMatch).not.toBeNull();
     // The first check should be needsKnowledgeRetrieval (cheap heuristic),
