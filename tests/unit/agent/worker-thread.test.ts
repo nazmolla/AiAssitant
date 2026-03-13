@@ -167,41 +167,50 @@ jest.mock("@/lib/agent/web-tools", () => ({
   BUILTIN_WEB_TOOLS: [],
   isBuiltinWebTool: () => false,
   executeBuiltinWebTool: jest.fn(),
+  WEB_TOOLS_REQUIRING_APPROVAL: [],
 }));
 jest.mock("@/lib/agent/browser-tools", () => ({
   BUILTIN_BROWSER_TOOLS: [],
   isBrowserTool: () => false,
   executeBrowserTool: jest.fn(),
+  BROWSER_TOOLS_REQUIRING_APPROVAL: [],
 }));
 jest.mock("@/lib/agent/fs-tools", () => ({
   BUILTIN_FS_TOOLS: [],
   isFsTool: () => false,
   executeBuiltinFsTool: jest.fn(),
+  FS_TOOLS_REQUIRING_APPROVAL: [],
 }));
 jest.mock("@/lib/agent/network-tools", () => ({
   BUILTIN_NETWORK_TOOLS: [],
   isNetworkTool: () => false,
   executeBuiltinNetworkTool: jest.fn(),
+  NETWORK_TOOLS_REQUIRING_APPROVAL: [],
 }));
 jest.mock("@/lib/agent/email-tools", () => ({
   BUILTIN_EMAIL_TOOLS: [],
   isEmailTool: () => false,
   executeBuiltinEmailTool: jest.fn(),
+  EMAIL_TOOLS_REQUIRING_APPROVAL: [],
 }));
 jest.mock("@/lib/agent/file-tools", () => ({
   BUILTIN_FILE_TOOLS: [],
   isFileTool: () => false,
   executeBuiltinFileTool: jest.fn(),
+  FILE_TOOLS_REQUIRING_APPROVAL: [],
 }));
 jest.mock("@/lib/agent/alexa-tools", () => ({
   BUILTIN_ALEXA_TOOLS: [],
   isAlexaTool: () => false,
   executeAlexaTool: jest.fn(),
+  ALEXA_TOOLS_REQUIRING_APPROVAL: [],
 }));
 jest.mock("@/lib/agent/custom-tools", () => ({
   getCustomToolDefinitions: () => [],
   isCustomTool: () => false,
   executeCustomTool: jest.fn(),
+  CUSTOM_TOOLS_REQUIRING_APPROVAL: [],
+  BUILTIN_TOOLMAKER_TOOLS: [],
 }));
 jest.mock("@/lib/agent/gatekeeper", () => ({
   executeWithGatekeeper: jest.fn(async () => ({
