@@ -261,6 +261,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `GET/POST` | `/api/threads` | User | List/create threads (user-scoped); GET supports `?limit=N&offset=M` pagination (default 50, max 200) returning `{ data, total, limit, offset, hasMore }` |
 | `GET/DELETE` | `/api/threads/[threadId]` | User | Get/delete thread (ownership enforced) |
 | `POST` | `/api/threads/[threadId]/chat` | User | Send message and run agent loop (SSE streaming: `token`, `status`, `message`, `done`, `error` events) |
+| `POST` | `/api/threads/[threadId]/restore` | User | Restore thread to a specific user message — deletes target message and all subsequent messages (cascading attachments + pending approvals), returns content for re-submission via chat endpoint |
 | `GET/POST` | `/api/knowledge` | User | List/upsert knowledge entries (user-scoped); GET supports `?limit=N&offset=M` pagination (default 100, max 500) returning `{ data, total, limit, offset, hasMore }` |
 | `GET/POST` | `/api/mcp` | User | List/add MCP servers (global + user-scoped) |
 | `POST` | `/api/mcp/[serverId]/connect` | Auth | Connect to an MCP server |
@@ -320,6 +321,8 @@ All built-in tools use the `builtin.` prefix (e.g. `builtin.alexa_announce`, `bu
 `isBuiltinWebTool → isBrowserTool → isFsTool → isFileTool → isNetworkTool → isEmailTool → isAlexaTool → isCustomTool → MCP fallback`
 
 **Name normalization**: The LLM sometimes strips the `builtin.` prefix when calling tools (e.g. `alexa_announce` instead of `builtin.alexa_announce`). The `normalizeToolName()` function in `discovery.ts` lazily builds a map of all known builtin short names and restores the prefix before dispatch. Applied in all three dispatch entry points.
+
+**Orphaned tool_calls sanitization**: When the agent loop is interrupted mid-tool-execution, an assistant message with `tool_calls` may be saved to the DB without corresponding tool result messages. `dbMessagesToChat()` in `message-converter.ts` detects these orphaned sequences (assistant `tool_calls` where not all `tool_call_id`s have matching tool results) and strips them from the chat history sent to the LLM. This is read-time only — no DB data is modified — so broken threads auto-recover on next message send.
 
 **Discovery**: `discovery.ts` uses barrel exports from `agent/index.ts` (via `import * as agentExports from "./index"`) to dynamically discover all `BUILTIN_*_TOOLS` arrays and `*_REQUIRING_APPROVAL` arrays. To avoid circular dependencies, `discovery.ts` is **not** re-exported from the barrel — consumers import directly from `@/lib/agent/discovery`.
 
@@ -503,13 +506,13 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**1547 tests across 124 suites** — all passing.
+**1855 tests across 145 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|
-| Unit | ~65 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards, knowledge retrieval, inbound email classification, attachment size guards, embedding cache, provider cache, auth cache, decrypted row cache, vault embedding cache, ChatPanel split verification |
+| Unit | ~72 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards, knowledge retrieval, inbound email classification, attachment size guards, embedding cache, provider cache, auth cache, decrypted row cache, vault embedding cache, ChatPanel split verification, message converter, base tool |
 | Integration | ~6 | End-to-end API flows, MCP integration, channel routing, SSE concurrency & disconnect safety |
-| Component | ~10 | Full navigation (every page + settings sub-page), component rendering, settings panel, tool policies, profile config, markdown rendering, TTS-to-listening transitions, interrupt / barge-in |
+| Component | ~11 | Full navigation (every page + settings sub-page), component rendering, settings panel, tool policies, profile config, markdown rendering, TTS-to-listening transitions, interrupt / barge-in, chat area interactions |
 
 ### Component Test Architecture
 
@@ -539,3 +542,6 @@ Component tests use `jsdom` environment with the following mocks:
 | `tests/unit/components/message-virtualization.test.ts` | 10 | Message list virtualization — useVirtualizer, windowed rendering, overscan, absolute positioning, auto-scroll via scrollToIndex, dynamic measurement |
 | `tests/unit/mcp/mcp-manager.test.ts` | 18 | listChanged auto-refresh, qualifyToolName 64-char enforcement, callTool truncated-name reverse mapping |
 | `tests/unit/agent/expand-multi-tool-use.test.ts` | 10 | multi_tool_use.parallel expansion, mixed calls, missing parameters, empty recipient_name, bare multi_tool_use |
+| `tests/unit/agent/message-converter.test.ts` | 6 | Orphaned tool_calls stripping, partial tool result removal, complete sequence preservation, system message exclusion |
+| `tests/unit/agent/base-tool.test.ts` | 9 | BaseTool interface compliance, default matching, execute delegation, ALL_TOOL_CATEGORIES count, tool name prefix matching |
+| `tests/component/chat-area.test.tsx` | 28 | Empty state, message rendering, approval buttons (approve/deny/disabled/resolved), TTS button, restore-to-message button (user-only, callback, loading guard) |
