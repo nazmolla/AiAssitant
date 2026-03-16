@@ -73,3 +73,5 @@ scripts/verify-*.sh
 check-versions.cjs
 test-remote.mjs
 check-users.js
+
+deployment.deploy
