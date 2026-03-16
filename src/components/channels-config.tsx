@@ -65,7 +65,10 @@ const CONFIG_FIELDS: Record<ChannelType, { key: string; label: string; type: "te
     { key: "tenantId", label: "Tenant ID", type: "text" },
   ],
   phone: [
-    { key: "provider", label: "Provider (e.g. twilio)", type: "text" },
+    { key: "provider", label: "Provider (twilio)", type: "text" },
+    { key: "accountSid", label: "Twilio Account SID", type: "text" },
+    { key: "authToken", label: "Twilio Auth Token", type: "password" },
+    { key: "phoneNumber", label: "Twilio Phone Number (from)", type: "text" },
     { key: "voiceName", label: "Voice Name (optional)", type: "text" },
   ],
 };

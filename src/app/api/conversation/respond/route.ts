@@ -9,6 +9,7 @@ import {
   BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool,
   BUILTIN_NETWORK_TOOLS, isNetworkTool, executeBuiltinNetworkTool,
   BUILTIN_EMAIL_TOOLS, isEmailTool, executeBuiltinEmailTool,
+  BUILTIN_PHONE_TOOLS, isPhoneTool, executeBuiltinPhoneTool,
   BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool,
   BUILTIN_ALEXA_TOOLS, isAlexaTool, executeAlexaTool,
   isCustomTool, executeCustomTool, getCustomToolDefinitions,
@@ -142,6 +143,7 @@ export async function POST(req: NextRequest) {
     ...BUILTIN_FS_TOOLS,
     ...BUILTIN_NETWORK_TOOLS,
     ...BUILTIN_EMAIL_TOOLS,
+    ...BUILTIN_PHONE_TOOLS,
     ...BUILTIN_FILE_TOOLS,
     ...BUILTIN_ALEXA_TOOLS,
   ];
@@ -346,6 +348,8 @@ async function executeConversationTool(
       result = await executeBuiltinNetworkTool(tc.name, tc.arguments);
     } else if (isEmailTool(tc.name)) {
       result = await executeBuiltinEmailTool(tc.name, tc.arguments, userId, undefined);
+    } else if (isPhoneTool(tc.name)) {
+      result = await executeBuiltinPhoneTool(tc.name, tc.arguments, userId);
     } else if (isFileTool(tc.name)) {
       result = await executeBuiltinFileTool(tc.name, tc.arguments, {});
     } else if (isAlexaTool(tc.name)) {

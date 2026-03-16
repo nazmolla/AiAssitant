@@ -24,6 +24,8 @@ import {
   executeBuiltinNetworkTool,
   isEmailTool,
   executeBuiltinEmailTool,
+  isPhoneTool,
+  executeBuiltinPhoneTool,
   isFileTool,
   executeBuiltinFileTool,
   isCustomTool,
@@ -100,6 +102,9 @@ async function executeSchedulerTool(
   }
   if (isEmailTool(toolName)) {
     return { skipped: false, result: await executeBuiltinEmailTool(toolName, args) };
+  }
+  if (isPhoneTool(toolName)) {
+    return { skipped: false, result: await executeBuiltinPhoneTool(toolName, args) };
   }
   if (isAlexaTool(toolName)) {
     return { skipped: false, result: await executeAlexaTool(toolName, args) };

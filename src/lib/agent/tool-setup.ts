@@ -14,6 +14,7 @@ import {
   BUILTIN_FS_TOOLS,
   BUILTIN_NETWORK_TOOLS,
   BUILTIN_EMAIL_TOOLS,
+  BUILTIN_PHONE_TOOLS,
   BUILTIN_FILE_TOOLS,
   BUILTIN_ALEXA_TOOLS,
   buildCappedToolList,
@@ -37,6 +38,7 @@ export async function buildFilteredToolList(userId?: string): Promise<ToolDefini
     ...BUILTIN_FS_TOOLS,
     ...BUILTIN_NETWORK_TOOLS,
     ...BUILTIN_EMAIL_TOOLS,
+    ...BUILTIN_PHONE_TOOLS,
     ...BUILTIN_FILE_TOOLS,
     ...BUILTIN_ALEXA_TOOLS,
   ];

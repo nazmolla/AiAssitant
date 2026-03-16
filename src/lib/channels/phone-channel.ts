@@ -2,63 +2,102 @@ import type { ChannelRecord } from "@/lib/db/channel-queries";
 import {
   BaseCommunicationChannel,
   type ChannelSendRequest,
+  type CommunicationChannel,
 } from "@/lib/channels/communication-channel";
+import type { CommunicationChannelBuilder } from "@/lib/channels/channel-builder";
+import {
+  validateTwilioConfig,
+  buildTwimlResponse,
+  callTwilioApi,
+} from "@/lib/services/phone-service";
+
+type FetchFn = typeof fetch;
 
 export class PhoneChannel extends BaseCommunicationChannel {
   readonly capabilities = {
-    supportsDirectRecipientMapping: false,
+    supportsDirectRecipientMapping: true,  // Phone numbers are external recipient IDs
     supportsEmailRecipient: false,
   } as const;
 
-  constructor(channel: ChannelRecord) {
+  constructor(
+    channel: ChannelRecord,
+    private readonly fetchFn: FetchFn = fetch,
+  ) {
     super(channel);
   }
 
   canSend(request: ChannelSendRequest): boolean {
-    // Phone channel does not support outbound sending via send() method.
-    // Phone responses are returned as TwiML via the webhook handler.
-    return false;
+    // Can send if we have recipient phone number and Twilio credentials
+    return !!request.externalRecipientId && this.hasTwilioConfig();
   }
 
   async send(request: ChannelSendRequest): Promise<void> {
-    throw new Error("Phone channel does not support outbound send() calls. Use buildTwimlResponse() for webhook responses.");
+    if (!request.externalRecipientId) {
+      throw new Error("Phone channel requires externalRecipientId (phone number to call).");
+    }
+
+    validateTwilioConfig(this.config);
+
+    const accountSid = String(this.config.accountSid ?? "").trim();
+    const authToken = String(this.config.authToken ?? "").trim();
+    const fromNumber = String(this.config.phoneNumber ?? "").trim();
+    const toNumber = request.externalRecipientId;
+    const message = (request.message || "").trim();
+
+    if (!message) {
+      throw new Error("Phone channel requires a message to play.");
+    }
+
+    const voiceName = this.getVoiceName();
+    const twiml = buildTwimlResponse(message, "", voiceName);
+
+    await callTwilioApi(accountSid, authToken, fromNumber, toNumber, twiml, this.fetchFn);
   }
 
   /**
    * Build a TwiML (Twilio XML) response for voice messages.
-   * Escapes XML special characters and constructs a Gather+Say loop.
+   * Used both for inbound responses and outbound call payloads.
+   */
+  buildTwimlResponse(
+    reply: string,
+    actionUrl: string = "",
+    voice: string = "alice"
+  ): string {
+    return buildTwimlResponse(reply, actionUrl, voice);
+  }
+
+  /**
+   * Static method for building TwiML responses.
+   * Used by webhook handler for inbound calls and send() for outbound calls.
    */
   static buildTwimlResponse(
     reply: string,
     actionUrl: string,
     voice: string = "alice"
   ): string {
-    const safeReply = this.escapeXml(
-      (reply || "").trim().slice(0, 2000) || "I did not catch that. Please repeat."
-    );
-    const safeAction = this.escapeXml(actionUrl);
-    const safeVoice = this.escapeXml(voice || "alice");
-    return [
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      "<Response>",
-      `  <Say voice="${safeVoice}">${safeReply}</Say>`,
-      `  <Gather input="speech" timeout="4" speechTimeout="auto" action="${safeAction}" method="POST">`,
-      `    <Say voice="${safeVoice}">You can continue speaking after the tone.</Say>`,
-      "  </Gather>",
-      `  <Say voice="${safeVoice}">Goodbye.</Say>`,
-      "</Response>",
-    ].join("\n");
+    return buildTwimlResponse(reply, actionUrl, voice);
   }
 
-  /**
-   * Escape XML special characters to prevent injection attacks.
-   */
-  private static escapeXml(input: string): string {
-    return input
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&apos;");
+  private hasTwilioConfig(): boolean {
+    const accountSid = String(this.config.accountSid ?? "").trim();
+    const authToken = String(this.config.authToken ?? "").trim();
+    const phoneNumber = String(this.config.phoneNumber ?? "").trim();
+    return !!(accountSid && authToken && phoneNumber);
+  }
+
+  private getVoiceName(): string {
+    return String(this.config.voiceName ?? "alice").trim();
+  }
+}
+
+export class PhoneChannelBuilder implements CommunicationChannelBuilder {
+  constructor(private readonly fetchFn: FetchFn = fetch) {}
+
+  matches(channel: ChannelRecord): boolean {
+    return channel.channel_type === "phone";
+  }
+
+  create(channel: ChannelRecord): CommunicationChannel {
+    return new PhoneChannel(channel, this.fetchFn);
   }
 }
