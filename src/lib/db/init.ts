@@ -332,7 +332,13 @@ function ensureKnowledgeEmbeddingStorageColumns(): void {
   addColumnIfMissing("knowledge_embeddings", "embedding_encoding", "TEXT NOT NULL DEFAULT 'f32le'");
   addColumnIfMissing("knowledge_embeddings", "compression", "TEXT NOT NULL DEFAULT 'none'");
   addColumnIfMissing("knowledge_embeddings", "is_archived", "INTEGER NOT NULL DEFAULT 0");
-  addColumnIfMissing("knowledge_embeddings", "updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP");
+  addColumnIfMissing("knowledge_embeddings", "updated_at", "DATETIME");
+
+  db.prepare(
+    `UPDATE knowledge_embeddings
+     SET updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP)
+     WHERE updated_at IS NULL`
+  ).run();
 
   db.exec("CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_archived ON knowledge_embeddings(is_archived, updated_at DESC)");
 
