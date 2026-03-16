@@ -107,8 +107,20 @@ echo "  ✓ Tarball: $(du -h ${TAR_NAME} | cut -f1)"
 # ── 3. Remote: backup database ────────────────────────────────────
 step 3 "Backing up remote database..."
 
+echo "  Pre-cleaning stale artifacts before backup..."
+rcmd "cd ${REMOTE_DIR} && ls -t nexus.db.backup_* 2>/dev/null | tail -n +3 | xargs rm -f 2>/dev/null || true"
+rcmd "cd ${REMOTE_DIR} && rm -f deploy.tar deploy-fresh.tar.gz nexus-deploy.tar.gz ${TAR_NAME} 2>/dev/null || true"
+rcmd "rm -f /tmp/${TAR_NAME} /tmp/deploy*.tar* 2>/dev/null || true"
+
 echo "  Remote storage snapshot:"
 rcmd "df -h ${REMOTE_DIR} /tmp 2>/dev/null | sed 's/^/    /'" || true
+
+FREE_KB=$(rcmd "df -k ${REMOTE_DIR} | awk 'NR==2{print \$4}'" || echo "0")
+if [ "${FREE_KB}" -lt 1048576 ]; then
+  echo "  ✗ Not enough free space on remote disk after cleanup"
+  rcmd_diag "df -h ${REMOTE_DIR} /tmp | sed 's/^/    /'" || true
+  fail "Remote disk free space < 1GB; cannot safely create DB backup"
+fi
 
 # Check if remote dir exists (fresh install)
 if ! rcmd "test -d ${REMOTE_DIR}"; then
