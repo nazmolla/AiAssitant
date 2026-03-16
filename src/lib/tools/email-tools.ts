@@ -954,7 +954,7 @@ Triage this email for the owner: summarize intent, risk level, and recommended n
   }
 }
 
-export async function runEmailReadBatch(context?: SchedulerBatchExecutionContext): Promise<void> {
+export async function runEmailReadToolExecution(context?: SchedulerBatchExecutionContext): Promise<void> {
   if (_emailBatchRunning) {
     addContextLog("info", "email", "Skipping email read batch — previous run still active.", undefined, context);
     return;
@@ -1008,7 +1008,7 @@ export class EmailReadTool extends BaseTool {
   ];
 
   constructor(
-    private readonly runEmailReadBatchFn: (context?: SchedulerBatchExecutionContext) => Promise<void> = runEmailReadBatch,
+    private readonly runEmailReadFn: (context?: SchedulerBatchExecutionContext) => Promise<void> = runEmailReadToolExecution,
   ) {
     super();
   }
@@ -1022,7 +1022,7 @@ export class EmailReadTool extends BaseTool {
     _args: Record<string, unknown>,
     _context: ToolExecutionContext,
   ): Promise<unknown> {
-    await this.runEmailReadBatchFn();
+    await this.runEmailReadFn();
     return { status: "completed", kind: "email_read" };
   }
 }

@@ -8,7 +8,7 @@
  * - Unified scheduler engine via EmailBatchJob.executeStep()
  */
 
-import { runEmailReadBatch } from "@/lib/tools/email-tools";
+import { runEmailReadToolExecution } from "@/lib/tools/email-tools";
 import {
   BatchJob,
   type BatchJobParameterDefinition,
@@ -18,7 +18,7 @@ import {
   type LogFn,
 } from "./base";
 
-export { runEmailReadBatch };
+export { runEmailReadToolExecution };
 
 /* ── Batch Job Class ──────────────────────────────────────────────── */
 
@@ -38,7 +38,7 @@ export class EmailBatchJob extends BatchJob {
 
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
-    await runEmailReadBatch({
+    await runEmailReadToolExecution({
       scheduleId: ctx.scheduleId,
       runId: ctx.runId,
       taskRunId: ctx.taskRunId,
