@@ -8,17 +8,7 @@
 
 import type { ToolDefinition } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
-import {
-  BUILTIN_WEB_TOOLS,
-  BUILTIN_BROWSER_TOOLS,
-  BUILTIN_FS_TOOLS,
-  BUILTIN_NETWORK_TOOLS,
-  BUILTIN_EMAIL_TOOLS,
-  BUILTIN_PHONE_TOOLS,
-  BUILTIN_FILE_TOOLS,
-  BUILTIN_ALEXA_TOOLS,
-  buildCappedToolList,
-} from "@/lib/tools";
+import { ALL_TOOL_CATEGORIES, buildCappedToolList } from "@/lib/tools";
 import { getUserById, listToolPolicies } from "@/lib/db";
 
 /**
@@ -32,16 +22,8 @@ export async function buildFilteredToolList(userId?: string): Promise<ToolDefini
   const { getCustomToolDefinitions } = await import("@/lib/tools/custom-tools");
   const customTools = getCustomToolDefinitions();
 
-  const builtinTools = [
-    ...BUILTIN_WEB_TOOLS,
-    ...BUILTIN_BROWSER_TOOLS,
-    ...BUILTIN_FS_TOOLS,
-    ...BUILTIN_NETWORK_TOOLS,
-    ...BUILTIN_EMAIL_TOOLS,
-    ...BUILTIN_PHONE_TOOLS,
-    ...BUILTIN_FILE_TOOLS,
-    ...BUILTIN_ALEXA_TOOLS,
-  ];
+  // Use auto-discovered tool categories (in dispatch order)
+  const builtinTools = ALL_TOOL_CATEGORIES.flatMap((category) => category.tools);
 
   const allTools = buildCappedToolList(builtinTools, customTools, mcpTools);
 

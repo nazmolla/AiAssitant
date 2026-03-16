@@ -4,14 +4,8 @@ import { encryptField, isEncrypted } from "./crypto";
 import fs from "fs";
 import path from "path";
 import {
-  BUILTIN_WEB_TOOLS,
-  BUILTIN_BROWSER_TOOLS, BROWSER_TOOLS_REQUIRING_APPROVAL,
-  BUILTIN_FS_TOOLS, FS_TOOLS_REQUIRING_APPROVAL,
-  BUILTIN_NETWORK_TOOLS, NETWORK_TOOLS_REQUIRING_APPROVAL,
-  BUILTIN_EMAIL_TOOLS, EMAIL_TOOLS_REQUIRING_APPROVAL,
-  BUILTIN_FILE_TOOLS, FILE_TOOLS_REQUIRING_APPROVAL,
-  BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL,
-  BUILTIN_ALEXA_TOOLS, ALEXA_TOOLS_REQUIRING_APPROVAL,
+  ALL_TOOL_CATEGORIES,
+  CUSTOM_TOOLS_REQUIRING_APPROVAL,
 } from "@/lib/tools";
 import { v4 as uuid } from "uuid";
 import { env } from "@/lib/env";
@@ -390,18 +384,23 @@ function dedupeKnowledgeRows(): void {
 /**
  * Collect the names of built-in tools that require approval by default.
  */
-const TOOLS_REQUIRING_APPROVAL = new Set([
-  ...FS_TOOLS_REQUIRING_APPROVAL,
-  ...NETWORK_TOOLS_REQUIRING_APPROVAL,
-  ...EMAIL_TOOLS_REQUIRING_APPROVAL,
-  ...FILE_TOOLS_REQUIRING_APPROVAL,
-  ...CUSTOM_TOOLS_REQUIRING_APPROVAL,
-  ...BROWSER_TOOLS_REQUIRING_APPROVAL,
-  ...ALEXA_TOOLS_REQUIRING_APPROVAL,
-]);
+function buildApprovalRequiredSet(): Set<string> {
+  const names = new Set<string>();
+  // Collect from all tool categories
+  for (const category of ALL_TOOL_CATEGORIES) {
+    for (const toolName of category.toolsRequiringApproval) {
+      names.add(toolName);
+    }
+  }
+  // Also include custom tools requiring approval
+  for (const toolName of CUSTOM_TOOLS_REQUIRING_APPROVAL) {
+    names.add(toolName);
+  }
+  return names;
+}
 
 /**
- * Seed policies for ALL built-in tools (web, browser, fs, network, email, toolmaker, alexa).
+ * Seed policies for ALL built-in tools discovered from ALL_TOOL_CATEGORIES.
  * Tools in the "requiring approval" sets get requires_approval=1;
  * all others default to requires_approval=0.  Uses INSERT OR IGNORE so
  * existing policies (e.g. customised by admin) are never overwritten.
@@ -413,21 +412,13 @@ function seedAllBuiltinToolPolicies(): void {
      VALUES (?, NULL, ?, 'global')`
   );
 
-  const allBuiltinTools = [
-    ...BUILTIN_WEB_TOOLS,
-    ...BUILTIN_BROWSER_TOOLS,
-    ...BUILTIN_FS_TOOLS,
-    ...BUILTIN_NETWORK_TOOLS,
-    ...BUILTIN_EMAIL_TOOLS,
-    ...BUILTIN_FILE_TOOLS,
-    ...BUILTIN_TOOLMAKER_TOOLS,
-    ...BUILTIN_ALEXA_TOOLS,
-  ];
+  const allBuiltinTools = ALL_TOOL_CATEGORIES.flatMap((category) => category.tools);
+  const toolsRequiringApproval = buildApprovalRequiredSet();
 
   // Wrap in a transaction for atomicity and performance (single fsync)
   db.transaction(() => {
     for (const tool of allBuiltinTools) {
-      const needsApproval = TOOLS_REQUIRING_APPROVAL.has(tool.name) ? 1 : 0;
+      const needsApproval = toolsRequiringApproval.has(tool.name) ? 1 : 0;
       stmt.run(tool.name, needsApproval);
     }
   })();

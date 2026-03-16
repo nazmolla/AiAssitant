@@ -4,16 +4,17 @@ import { selectProvider, selectProviderForWorker } from "@/lib/llm/orchestrator"
 import type { ChatMessage, ChatResponse, ToolDefinition, ToolCall } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
 import {
-  BUILTIN_WEB_TOOLS, isBuiltinWebTool, executeBuiltinWebTool,
-  BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool,
-  BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool,
-  BUILTIN_NETWORK_TOOLS, isNetworkTool, executeBuiltinNetworkTool,
-  BUILTIN_EMAIL_TOOLS, isEmailTool, executeBuiltinEmailTool,
-  BUILTIN_PHONE_TOOLS, isPhoneTool, executeBuiltinPhoneTool,
-  BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool,
-  BUILTIN_ALEXA_TOOLS, isAlexaTool, executeAlexaTool,
+  isBuiltinWebTool, executeBuiltinWebTool,
+  isBrowserTool, executeBrowserTool,
+  isFsTool, executeBuiltinFsTool,
+  isNetworkTool, executeBuiltinNetworkTool,
+  isEmailTool, executeBuiltinEmailTool,
+  isPhoneTool, executeBuiltinPhoneTool,
+  isFileTool, executeBuiltinFileTool,
+  isAlexaTool, executeAlexaTool,
   isCustomTool, executeCustomTool, getCustomToolDefinitions,
   isWorkerAvailable,
+  ALL_TOOL_CATEGORIES,
 } from "@/lib/agent";
 import { isWorkerAvailable as checkWorkerAvailable, runLlmInWorker, type WorkerToolResult } from "@/lib/agent/worker-manager";
 import { buildCappedToolList, MAX_TOOLS_PER_REQUEST } from "@/lib/tools/tool-cap";
@@ -137,16 +138,7 @@ export async function POST(req: NextRequest) {
   await yieldLoop();
   const mcpTools = getMcpManager().getAllTools();
   const customTools = getCustomToolDefinitions();
-  const builtinTools: ToolDefinition[] = [
-    ...BUILTIN_WEB_TOOLS,
-    ...BUILTIN_BROWSER_TOOLS,
-    ...BUILTIN_FS_TOOLS,
-    ...BUILTIN_NETWORK_TOOLS,
-    ...BUILTIN_EMAIL_TOOLS,
-    ...BUILTIN_PHONE_TOOLS,
-    ...BUILTIN_FILE_TOOLS,
-    ...BUILTIN_ALEXA_TOOLS,
-  ];
+  const builtinTools: ToolDefinition[] = ALL_TOOL_CATEGORIES.flatMap((category) => category.tools);
   const allTools: ToolDefinition[] = buildCappedToolList(builtinTools, customTools, mcpTools, MAX_TOOLS_PER_REQUEST);
 
   // Filter tools by user role and approval policy.

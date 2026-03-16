@@ -130,8 +130,8 @@ describe("registerToolCategory / getRegisteredToolCategories", () => {
 // ---------------------------------------------------------------------------
 
 describe("ALL_TOOL_CATEGORIES (auto-discovered)", () => {
-  test("contains exactly 9 built-in categories", () => {
-    expect(ALL_TOOL_CATEGORIES).toHaveLength(9);
+  test("contains exactly 10 built-in categories", () => {
+    expect(ALL_TOOL_CATEGORIES).toHaveLength(10);
   });
 
   test("all categories are BaseTool instances", () => {
@@ -143,7 +143,7 @@ describe("ALL_TOOL_CATEGORIES (auto-discovered)", () => {
   test("contains expected category names in order", () => {
     const names = ALL_TOOL_CATEGORIES.map((c) => c.name);
     expect(names).toEqual([
-      "web", "browser", "fs", "network", "email", "file", "alexa", "workflow", "custom",
+      "web", "browser", "fs", "network", "email", "phone", "file", "alexa", "workflow", "custom",
     ]);
   });
 

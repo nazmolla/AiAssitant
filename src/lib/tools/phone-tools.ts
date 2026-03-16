@@ -6,6 +6,7 @@ import {
   callTwilioApi,
   type PhoneConfig,
 } from "@/lib/services/phone-service";
+import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 
 export const PHONE_TOOL_NAMES = {
   CALL: "builtin.phone_call",
@@ -138,3 +139,23 @@ async function executePhoneCall(
     message,
   };
 }
+
+/**
+ * PhoneTools — BaseTool implementation for phone calling.
+ * Auto-registers via the tool category registry.
+ */
+export class PhoneTools extends BaseTool {
+  readonly name = "phone";
+  readonly toolNamePrefix = "builtin.phone_";
+  readonly registrationOrder = 45; // After email (40)
+  readonly tools = BUILTIN_PHONE_TOOLS;
+  readonly toolsRequiringApproval = [...PHONE_TOOLS_REQUIRING_APPROVAL];
+
+  async execute(toolName: string, args: Record<string, unknown>, context: ToolExecutionContext): Promise<unknown> {
+    return executeBuiltinPhoneTool(toolName, args, context.userId);
+  }
+}
+
+// Auto-discovery registration
+export const phoneTools = new PhoneTools();
+registerToolCategory(phoneTools);
