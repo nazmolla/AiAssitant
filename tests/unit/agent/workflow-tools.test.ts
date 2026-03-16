@@ -62,7 +62,7 @@ import {
 import { ProactiveScanTool, proactiveScanTool } from "@/lib/tools/proactive-scan-tool";
 import { KnowledgeMaintenanceTool, knowledgeMaintenanceTool } from "@/lib/tools/knowledge-maintenance-tool";
 import { DbMaintenanceTool, dbMaintenanceTool } from "@/lib/tools/db-maintenance-tool";
-import { EmailReadTool, emailReadTool } from "@/lib/tools/email-read-tool";
+import { EmailReadTool, emailReadTool } from "@/lib/tools/email-tools";
 
 const ctx = { threadId: "", userId: "" };
 

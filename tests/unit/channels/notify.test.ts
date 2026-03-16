@@ -22,23 +22,31 @@ jest.mock("@/lib/db", () => ({
 }));
 
 const mockSendDiscordDm = jest.fn();
-jest.mock("@/lib/channels/discord", () => ({
-  sendDiscordDirectMessage: (...a: unknown[]) => mockSendDiscordDm(...a),
-}));
+jest.mock("@/lib/channels/discord-channel", () => {
+  const actual = jest.requireActual("@/lib/channels/discord-channel");
+  return {
+    ...actual,
+    sendDiscordChannelDirectMessage: (...a: unknown[]) => mockSendDiscordDm(...a),
+  };
+});
 
 const mockSendSmtpMail = jest.fn();
-jest.mock("@/lib/channels/email-transport", () => ({
-  buildThemedEmailBody: jest.fn(() => ({ text: "plain", html: "<p>html</p>" })),
-  getEmailChannelConfig: jest.fn(() => ({
-    smtpHost: "smtp.test.com",
-    smtpPort: 587,
-    smtpUser: "user",
-    smtpPass: "pass",
-    fromAddress: "nexus@test.com",
-  })),
-  isValidPort: jest.fn(() => true),
-  sendSmtpMail: (...a: unknown[]) => mockSendSmtpMail(...a),
-}));
+jest.mock("@/lib/channels/email-channel", () => {
+  const actual = jest.requireActual("@/lib/channels/email-channel");
+  return {
+    ...actual,
+    buildThemedEmailBody: jest.fn(() => ({ text: "plain", html: "<p>html</p>" })),
+    getEmailChannelConfig: jest.fn(() => ({
+      smtpHost: "smtp.test.com",
+      smtpPort: 587,
+      smtpUser: "user",
+      smtpPass: "pass",
+      fromAddress: "nexus@test.com",
+    })),
+    isValidPort: jest.fn(() => true),
+    sendSmtpMail: (...a: unknown[]) => mockSendSmtpMail(...a),
+  };
+});
 
 // Mock @/lib/notifications to prevent circular dependency in tests
 jest.mock("@/lib/notifications", () => ({
@@ -50,6 +58,7 @@ jest.mock("@/lib/notifications", () => ({
 }));
 
 import { sendChannelNotification } from "@/lib/channels/notify";
+import type { CommunicationChannelFactory } from "@/lib/channels/communication-channel-factory";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -128,6 +137,32 @@ describe("sendChannelNotification", () => {
     const result = await sendChannelNotification("admin-1", "", "msg", "subj");
     expect(result).toBe(false);
   });
+
+  test("uses injected channel factory for instantiation", async () => {
+    const channelFactory: CommunicationChannelFactory = {
+      create: jest.fn(() => ({
+        capabilities: { supportsDirectRecipientMapping: true, supportsEmailRecipient: false },
+        canSend: () => true,
+        send: jest.fn(async () => undefined),
+      })),
+    };
+
+    mockListChannels.mockReturnValue([
+      { id: "ch-1", channel_type: "discord", enabled: 1, config_json: "{}" },
+    ]);
+    mockListChannelUserMappings.mockReturnValue([
+      { user_id: "admin-1", external_id: "discord-user-123" },
+    ]);
+
+    const result = await sendChannelNotification("admin-1", "admin@test.com", "Alert!", "Test", {
+      channelFactory,
+    });
+
+    expect(result).toBe(true);
+    expect(channelFactory.create).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "ch-1", channel_type: "discord" }),
+    );
+  });
 });
 
 describe("backward-compatible re-exports", () => {
@@ -138,3 +173,4 @@ describe("backward-compatible re-exports", () => {
     expect(mod.getUserNotificationLevel).toBeDefined();
   });
 });
+

@@ -365,7 +365,7 @@ src/
 │   │   ├── proactive-scan-tool.ts      # System tool: proactive scan
 │   │   ├── knowledge-maintenance-tool.ts # System tool: knowledge maintenance
 │   │   ├── db-maintenance-tool.ts      # System tool: DB maintenance
-│   │   ├── email-read-tool.ts          # System tool: email read batch
+│   │   ├── email-tools.ts              # Unified email tools (send/read + workflow email batch exports)
 │   │   └── tool-cap.ts         # MAX_TOOLS_PER_REQUEST cap logic
 │   ├── auth/                   # Authentication
 │   │   ├── options.ts          # NextAuth config (multi-user)
@@ -386,7 +386,7 @@ src/
 │   │   ├── embeddings.ts       # Embedding generation
 │   │   └── types.ts            # ChatProvider interface
 │   ├── channels/               # Channel integrations
-│   │   └── discord.ts          # Discord Gateway bot (uses channel owner resolution)
+│   │   └── discord-channel.ts          # Unified Discord channel (outbound + gateway bot runtime)
 │   ├── mcp/                    # MCP client management
 │   │   └── manager.ts          # Connect, discover, invoke, auto-refresh
 │   ├── services/               # Extracted service modules

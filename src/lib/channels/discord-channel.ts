@@ -1,13 +1,9 @@
 /**
- * Discord Bot Integration (Gateway)
+ * Discord Channel
  *
- * Connects to Discord via WebSocket Gateway to support:
- *  - Reply to messages mentioning the bot
- *  - Reply to DMs sent to the bot
- *  - Slash commands (/ask, /help)
- *  - Send attachments/images in responses
- *
- * Bots are started/stopped as channels are enabled/disabled.
+ * Single-file Discord channel implementation:
+ * - Channel class + builder for outbound notifications
+ * - Discord gateway bot runtime for inbound/interactive messaging
  */
 
 import {
@@ -32,22 +28,23 @@ import {
   findActiveChannelThread,
   addLog,
   type AttachmentMeta,
+  type ChannelRecord,
 } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 import fs from "fs";
 import path from "path";
-
-// ── Active Bot Instances ──────────────────────────────────────
+import {
+  BaseCommunicationChannel,
+  type ChannelSendRequest,
+  type CommunicationChannel,
+} from "@/lib/channels/communication-channel";
+import type { CommunicationChannelBuilder } from "@/lib/channels/channel-builder";
 
 const activeBots = new Map<string, Client>();
 const DATA_DIR = path.join(process.cwd(), "data");
-
-// Discord message limit
 const DISCORD_MAX_MSG = 2000;
 const DISCORD_MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const DISCORD_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".jfif", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".avif", ".dng", ".raw"]);
-
-// ── Slash Command Definitions ─────────────────────────────────
 
 const SLASH_COMMANDS = [
   {
@@ -57,7 +54,7 @@ const SLASH_COMMANDS = [
       {
         name: "question",
         description: "Your question or request",
-        type: 3, // STRING
+        type: 3,
         required: true,
       },
     ],
@@ -68,23 +65,65 @@ const SLASH_COMMANDS = [
   },
 ];
 
-// ── Public API ────────────────────────────────────────────────
+export async function sendDiscordChannelDirectMessage(
+  channelId: string,
+  recipientUserId: string,
+  content: string,
+): Promise<void> {
+  const client = activeBots.get(channelId);
+  if (!client || !client.isReady()) {
+    throw new Error(`Discord bot is not active for channel ${channelId}`);
+  }
 
-/**
- * Start a Discord bot for a channel configuration.
- */
+  const user = await client.users.fetch(recipientUserId);
+  await user.send(content);
+}
+
+export class DiscordChannel extends BaseCommunicationChannel {
+  readonly capabilities = {
+    supportsDirectRecipientMapping: true,
+    supportsEmailRecipient: false,
+  } as const;
+
+  constructor(
+    channel: ChannelRecord,
+    private readonly sendDiscordDirectMessageFn: typeof sendDiscordChannelDirectMessage,
+  ) {
+    super(channel);
+  }
+
+  canSend(request: ChannelSendRequest): boolean {
+    return !!request.externalRecipientId;
+  }
+
+  async send(request: ChannelSendRequest): Promise<void> {
+    if (!request.externalRecipientId) {
+      throw new Error("Discord channel requires externalRecipientId.");
+    }
+    await this.sendDiscordDirectMessageFn(this.id, request.externalRecipientId, request.message);
+  }
+}
+
+export class DiscordChannelBuilder implements CommunicationChannelBuilder {
+  constructor(private readonly sendDiscordDirectMessageFn: typeof sendDiscordChannelDirectMessage = sendDiscordChannelDirectMessage) {}
+
+  matches(channel: ChannelRecord): boolean {
+    return channel.channel_type === "discord";
+  }
+
+  create(channel: ChannelRecord): CommunicationChannel {
+    return new DiscordChannel(channel, this.sendDiscordDirectMessageFn);
+  }
+}
+
 export async function startDiscordBot(
   channelId: string,
   config: Record<string, unknown>
 ): Promise<void> {
-  // Stop existing bot for this channel if any
   await stopDiscordBot(channelId);
 
   const botToken = String(config.botToken || "").trim();
-
-  if (!botToken) {
-    throw new Error("Discord bot token is required");
-  }
+  if (!botToken) throw new Error("Discord bot token is required");
 
   const client = new Client({
     intents: [
@@ -93,10 +132,9 @@ export async function startDiscordBot(
       GatewayIntentBits.DirectMessages,
       GatewayIntentBits.MessageContent,
     ],
-    partials: [Partials.Channel], // needed to receive DMs
+    partials: [Partials.Channel],
   });
 
-  // ── Event: Ready ──────────────────────────────────────────
   client.once(Events.ClientReady, async (readyClient) => {
     addLog({
       level: "info",
@@ -109,13 +147,10 @@ export async function startDiscordBot(
       }),
     });
 
-    // Register slash commands using the application ID from the connected client
     const applicationId = readyClient.application?.id || readyClient.user.id;
     try {
       const rest = new REST({ version: "10" }).setToken(botToken);
-      await rest.put(Routes.applicationCommands(applicationId), {
-        body: SLASH_COMMANDS,
-      });
+      await rest.put(Routes.applicationCommands(applicationId), { body: SLASH_COMMANDS });
       addLog({
         level: "info",
         source: "discord",
@@ -132,35 +167,24 @@ export async function startDiscordBot(
     }
   });
 
-  // ── Event: Message Create ─────────────────────────────────
   client.on(Events.MessageCreate, async (message: Message) => {
-    // Ignore own messages
     if (message.author.bot) return;
 
     const isMention =
       message.mentions.has(client.user!.id) ||
       message.content.startsWith(`<@${client.user!.id}>`);
     const isDM = message.channel.type === ChannelType.DM;
-
-    // Only respond to DMs or mentions
     if (!isDM && !isMention) return;
 
-    // Strip the mention from the text
     let text = message.content
       .replace(new RegExp(`<@!?${client.user!.id}>`, "g"), "")
       .trim();
 
     const attachmentParts = await buildDiscordImageParts(message.attachments);
-
-    if (!text && attachmentParts.length === 0) {
-      text = "Hello!";
-    }
-    if (!text && attachmentParts.length > 0) {
-      text = "Please analyze the attached image(s).";
-    }
+    if (!text && attachmentParts.length === 0) text = "Hello!";
+    if (!text && attachmentParts.length > 0) text = "Please analyze the attached image(s).";
 
     try {
-      // Show typing indicator
       if ("sendTyping" in message.channel) {
         await message.channel.sendTyping();
       }
@@ -173,6 +197,7 @@ export async function startDiscordBot(
       const contentParts: ContentPart[] | undefined = attachmentParts.length > 0
         ? [{ type: "text", text }, ...attachmentParts]
         : undefined;
+
       const result = await runAgentLoop(
         threadId,
         taggedText,
@@ -194,13 +219,10 @@ export async function startDiscordBot(
 
       try {
         await message.reply("Sorry, I encountered an error processing your message.");
-      } catch {
-        // Can't reply - channel permissions issue
-      }
+      } catch {}
     }
   });
 
-  // ── Event: Slash Command ──────────────────────────────────
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -230,8 +252,6 @@ export async function startDiscordBot(
 
     if (commandName === "ask") {
       const question = interaction.options.getString("question", true);
-
-      // Defer reply since agent processing can take time
       await interaction.deferReply();
 
       try {
@@ -249,7 +269,7 @@ export async function startDiscordBot(
           userId ?? undefined
         );
 
-        await sendDiscordInteractionResponse(interaction, result);
+        await sendDiscordInteractionResponse(interaction as Interaction & { editReply: Function }, result);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         addLog({
@@ -259,14 +279,11 @@ export async function startDiscordBot(
           metadata: JSON.stringify({ channelId, senderId: interaction.user.id }),
         });
 
-        await interaction.editReply(
-          "Sorry, I encountered an error processing your request."
-        );
+        await interaction.editReply("Sorry, I encountered an error processing your request.");
       }
     }
   });
 
-  // ── Event: Error ──────────────────────────────────────────
   client.on(Events.Error, (error) => {
     addLog({
       level: "error",
@@ -276,7 +293,6 @@ export async function startDiscordBot(
     });
   });
 
-  // ── Connect ───────────────────────────────────────────────
   await client.login(botToken);
   activeBots.set(channelId, client);
 
@@ -286,6 +302,40 @@ export async function startDiscordBot(
     message: `Discord bot started for channel ${channelId}`,
     metadata: JSON.stringify({ channelId }),
   });
+}
+
+export async function stopDiscordBot(channelId: string): Promise<void> {
+  const client = activeBots.get(channelId);
+  if (!client) return;
+
+  try {
+    client.destroy();
+  } catch {}
+
+  activeBots.delete(channelId);
+
+  addLog({
+    level: "info",
+    source: "discord",
+    message: `Discord bot stopped for channel ${channelId}`,
+    metadata: JSON.stringify({ channelId }),
+  });
+}
+
+export function getActiveDiscordBotCount(): number {
+  return activeBots.size;
+}
+
+export function isDiscordBotActive(channelId: string): boolean {
+  const client = activeBots.get(channelId);
+  return !!client && client.isReady();
+}
+
+export async function stopAllDiscordBots(): Promise<void> {
+  const channelIds = Array.from(activeBots.keys());
+  for (const channelId of channelIds) {
+    await stopDiscordBot(channelId);
+  }
 }
 
 async function buildDiscordImageParts(
@@ -315,9 +365,7 @@ async function buildDiscordImageParts(
         type: "image_url",
         image_url: { url: `data:${mimeType};base64,${b64}`, detail: "auto" },
       });
-    } catch {
-      // ignore malformed attachment fetches
-    }
+    } catch {}
   }
 
   return parts;
@@ -343,76 +391,6 @@ function guessImageMimeFromName(name: string | null): string {
   return "image/jpeg";
 }
 
-/**
- * Stop and disconnect a Discord bot for a channel.
- */
-export async function stopDiscordBot(channelId: string): Promise<void> {
-  const client = activeBots.get(channelId);
-  if (!client) return;
-
-  try {
-    client.destroy();
-  } catch {
-    // Already disconnected
-  }
-
-  activeBots.delete(channelId);
-
-  addLog({
-    level: "info",
-    source: "discord",
-    message: `Discord bot stopped for channel ${channelId}`,
-    metadata: JSON.stringify({ channelId }),
-  });
-}
-
-/**
- * Get the number of active Discord bots.
- */
-export function getActiveDiscordBotCount(): number {
-  return activeBots.size;
-}
-
-/**
- * Check if a Discord bot is running for a channel.
- */
-export function isDiscordBotActive(channelId: string): boolean {
-  const client = activeBots.get(channelId);
-  return !!client && client.isReady();
-}
-
-/**
- * Stop all active Discord bots (for graceful shutdown).
- */
-export async function stopAllDiscordBots(): Promise<void> {
-  const channelIds = Array.from(activeBots.keys());
-  for (const channelId of channelIds) {
-    await stopDiscordBot(channelId);
-  }
-}
-
-/**
- * Send a direct message to a Discord user via a running channel bot.
- */
-export async function sendDiscordDirectMessage(
-  channelId: string,
-  recipientUserId: string,
-  content: string
-): Promise<void> {
-  const client = activeBots.get(channelId);
-  if (!client || !client.isReady()) {
-    throw new Error(`Discord bot is not active for channel ${channelId}`);
-  }
-
-  const user = await client.users.fetch(recipientUserId);
-  await user.send(content);
-}
-
-// ── Response Helpers ──────────────────────────────────────────
-
-/**
- * Send an agent response to a Discord message (mention or DM).
- */
 async function sendDiscordResponse(
   message: Message,
   response: AgentResponse
@@ -420,7 +398,6 @@ async function sendDiscordResponse(
   const chunks = splitMessage(response.content);
   const files = buildAttachments(response.attachments);
 
-  // Send text chunks
   for (let i = 0; i < chunks.length; i++) {
     const isLast = i === chunks.length - 1;
     if (i === 0) {
@@ -438,15 +415,11 @@ async function sendDiscordResponse(
     }
   }
 
-  // If no text but has attachments
   if (chunks.length === 0 && files.length > 0) {
     await message.reply({ files });
   }
 }
 
-/**
- * Send an agent response to a deferred slash command interaction.
- */
 async function sendDiscordInteractionResponse(
   interaction: Interaction & { editReply: Function },
   response: AgentResponse
@@ -462,13 +435,11 @@ async function sendDiscordInteractionResponse(
     return;
   }
 
-  // First chunk as the deferred reply edit
   await interaction.editReply({
     content: chunks[0],
     files: chunks.length === 1 ? files : undefined,
   });
 
-  // Additional chunks as follow-up messages
   if ("followUp" in interaction) {
     for (let i = 1; i < chunks.length; i++) {
       const isLast = i === chunks.length - 1;
@@ -480,9 +451,6 @@ async function sendDiscordInteractionResponse(
   }
 }
 
-/**
- * Split a long message into Discord-friendly chunks (≤2000 chars).
- */
 function splitMessage(content: string): string[] {
   if (!content || content.trim().length === 0) return [];
   if (content.length <= DISCORD_MAX_MSG) return [content];
@@ -496,20 +464,16 @@ function splitMessage(content: string): string[] {
       break;
     }
 
-    // Find a good split point (newline, sentence break, or word boundary)
     let splitAt = DISCORD_MAX_MSG;
 
-    // Try splitting at a double newline
     const doubleNewline = remaining.lastIndexOf("\n\n", DISCORD_MAX_MSG);
     if (doubleNewline > DISCORD_MAX_MSG * 0.5) {
       splitAt = doubleNewline;
     } else {
-      // Try single newline
       const newline = remaining.lastIndexOf("\n", DISCORD_MAX_MSG);
       if (newline > DISCORD_MAX_MSG * 0.5) {
         splitAt = newline;
       } else {
-        // Try space
         const space = remaining.lastIndexOf(" ", DISCORD_MAX_MSG);
         if (space > DISCORD_MAX_MSG * 0.5) {
           splitAt = space;
@@ -524,9 +488,6 @@ function splitMessage(content: string): string[] {
   return chunks;
 }
 
-/**
- * Convert agent attachments to Discord AttachmentBuilder instances.
- */
 function buildAttachments(
   attachments: AttachmentMeta[] | undefined
 ): AttachmentBuilder[] {
@@ -552,18 +513,12 @@ function resolveAttachmentPath(storagePath: string): string {
     .replace(/^\.\/+/, "")
     .replace(/^\/+/, "");
   const absolute = path.resolve(DATA_DIR, normalized);
-  // Guard with separator to prevent prefix-confusion (e.g. DATA_DIR + ".evil/")
   if (!absolute.startsWith(DATA_DIR + path.sep)) {
     throw new Error("Invalid attachment path");
   }
   return absolute;
 }
 
-// ── Thread Resolution ─────────────────────────────────────────
-
-/**
- * Find or create a thread for a Discord channel + sender combination.
- */
 function resolveThread(
   channelId: string,
   senderId: string,

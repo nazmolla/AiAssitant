@@ -218,7 +218,7 @@ CREATE TABLE custom_tools (
 ```sql
 CREATE TABLE channels (
     id TEXT PRIMARY KEY,
-    channel_type TEXT NOT NULL,          -- 'whatsapp' | 'discord' | 'webhook'
+    channel_type TEXT NOT NULL,          -- 'whatsapp' | 'slack' | 'email' | 'telegram' | 'discord' | 'teams'
     label TEXT NOT NULL,
     enabled BOOLEAN DEFAULT 1,
     config_json TEXT NOT NULL,
@@ -358,7 +358,7 @@ Workflow tools (`builtin.workflow_*`) provide the tool-layer abstraction for sch
 | `ProactiveScanTool` | `proactive-scan-tool.ts` | Owns `runProactiveScan()` logic (batch job orchestrates) |
 | `KnowledgeMaintenanceTool` | `knowledge-maintenance-tool.ts` | `runKnowledgeMaintenanceIfDue()` from `scheduler/knowledge-maintenance` |
 | `DbMaintenanceTool` | `db-maintenance-tool.ts` | `runDbMaintenanceIfDue()` from `db/maintenance` |
-| `EmailReadTool` | `email-read-tool.ts` | Owns `runEmailReadBatch()` logic (batch job orchestrates) |
+| `EmailTools` | `email-tools.ts` | Owns `builtin.email_send`, `builtin.email_read`, and exports `runEmailReadBatch()` for batch orchestration |
 
 **Prompt tools** (`PromptTool` class in `prompt-tool.ts`) wrap a system prompt and execute via `runAgentLoop()`. The class is generic/reusable; instances are created by the batch jobs that use them (e.g. `job-scout.ts` creates 5 PromptTool instances for search/extract/prepare/validate/digest).
 
@@ -369,6 +369,15 @@ Workflow tools (`builtin.workflow_*`) provide the tool-layer abstraction for sch
 **Orphaned tool_calls sanitization**: When the agent loop is interrupted mid-tool-execution, an assistant message with `tool_calls` may be saved to the DB without corresponding tool result messages. `dbMessagesToChat()` in `message-converter.ts` detects these orphaned sequences (assistant `tool_calls` where not all `tool_call_id`s have matching tool results) and strips them from the chat history sent to the LLM. This is read-time only — no DB data is modified — so broken threads auto-recover on next message send.
 
 **Discovery**: `discovery.ts` uses barrel exports from `agent/index.ts` (via `import * as agentExports from "./index"`) to dynamically discover all `BUILTIN_*_TOOLS` arrays and `*_REQUIRING_APPROVAL` arrays. To avoid circular dependencies, `discovery.ts` is **not** re-exported from the barrel — consumers import directly from `@/lib/agent/discovery`.
+
+### Channel Dispatch Architecture
+
+External channel delivery uses an abstract parent + factory pattern:
+
+- `CommunicationChannel` (`src/lib/channels/communication-channel.ts`) defines shared channel metadata accessors (`id`, `type`, `label`, `enabled`), parsed config handling, `capabilities`, and the `canSend()`/`send()` contract.
+- `createDefaultCommunicationChannelFactory()` (`src/lib/channels/communication-channel-factory.ts`) instantiates concrete channel classes (`DiscordChannel`, `WhatsAppChannel`, `EmailChannel`) using dependency injection for transport functions (`fetch`, Discord DM sender, SMTP helpers).
+- `sendChannelNotification()` (`src/lib/channels/notify.ts`) orchestrates delivery only: loads enabled channels, prefers IM channels first, then falls back to email, and delegates transport-specific logic to channel instances.
+- Unsupported channel types resolve to a non-sending `UnsupportedChannel` implementation, keeping dispatch behavior explicit without switch-heavy routing in callers.
 
 ---
 
@@ -400,7 +409,7 @@ Multi-layered defense against prompt injection across all input vectors:
 | **Knowledge Entry Validation** | `looksLikeInjection()` scans for 14 injection patterns and blocks suspicious entries from being stored | `knowledge/index.ts` |
 | **Knowledge Extraction Hardening** | User text wrapped in `<document>` tags; extraction prompt instructs LLM to ignore directives within documents | `knowledge/index.ts` |
 | **Vault Poisoning Prevention** | Web/browser tool results excluded from knowledge ingestion pipeline | `loop.ts` |
-| **External Message Tagging** | Discord and webhook messages tagged with `[External Channel Message from ...]` origin marker | `discord.ts`, `webhook/route.ts` |
+| **External Message Tagging** | Discord and webhook messages tagged with `[External Channel Message from ...]` origin marker | `discord-channel.ts`, `webhook/route.ts` |
 | **Historical Context Re-tagging** | Tool results reconstructed from DB history re-tagged as untrusted | `loop.ts` |
 
 ### HTTP Security Headers
@@ -581,7 +590,7 @@ Component tests use `jsdom` environment with the following mocks:
 | `tests/component/conversation-interrupt.test.tsx` | 8 | Interrupt during speaking/thinking, ⸺ transcript marker, brief-noise rejection, no interrupt in idle/listening, stopEverything cleanup, full cycle after interrupt |
 | `tests/integration/api/sse-concurrency.test.ts` | 7 | Concurrent SSE requests, stream cancellation mid-flight, post-disconnect token safety, independent stream isolation |
 | `tests/unit/api/chat-attachments.test.ts` | 16 | OOM-prevention size guards: MAX_INLINE_TEXT (512 KB), MAX_INLINE_IMAGE (5 MB), TEXT_MIME_TYPES coverage, preview size validation |
-| `tests/unit/channels/inbound-email.test.ts` | 5 | System sender classification priority over security keywords, severity assignment, summary content |
+| `tests/unit/channels/inbound-email.test.ts` | 5 | Inbound-email triage summary logic (implemented in `email-channel.ts`), severity assignment, summary content |
 | `tests/unit/components/chat-panel-split.test.ts` | 24 | ChatPanel split verification — subcomponent structure, memo isolation, shared types, props interface, state ownership, file size reduction |
 | `tests/unit/components/message-virtualization.test.ts` | 10 | Message list virtualization — useVirtualizer, windowed rendering, overscan, absolute positioning, auto-scroll via scrollToIndex, dynamic measurement |
 | `tests/unit/mcp/mcp-manager.test.ts` | 18 | listChanged auto-refresh, qualifyToolName 64-char enforcement, callTool truncated-name reverse mapping |

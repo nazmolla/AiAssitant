@@ -15,13 +15,12 @@ import { timingSafeEqual } from "crypto";
 import fs from "fs";
 import path from "path";
 import { notifyAdmin } from "@/lib/notifications";
-import { summarizeInboundUnknownEmail } from "@/lib/channels/inbound-email";
+import { buildThemedEmailBody, summarizeInboundUnknownEmail } from "@/lib/services/email-service-client";
 import {
-  buildThemedEmailBody,
   getEmailChannelConfig,
   isValidPort,
   sendSmtpMail,
-} from "@/lib/channels/email-transport";
+} from "@/lib/channels/email-channel";
 
 /**
  * Inbound webhook handler for channel messages.

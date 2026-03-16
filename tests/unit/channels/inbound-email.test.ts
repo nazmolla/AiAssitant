@@ -1,4 +1,4 @@
-import { summarizeInboundUnknownEmail } from "@/lib/channels/inbound-email";
+import { summarizeInboundUnknownEmail } from "@/lib/services/email-service-client";
 
 describe("summarizeInboundUnknownEmail", () => {
   it("classifies system sender with security keywords as system/low", () => {
@@ -51,3 +51,4 @@ describe("summarizeInboundUnknownEmail", () => {
     expect(result.summary).toContain("Test Subject");
   });
 });
+

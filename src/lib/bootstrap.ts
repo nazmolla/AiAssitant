@@ -1,7 +1,7 @@
 import { initializeDatabase, listMcpServers, addLog, listChannels, getDb } from "@/lib/db";
 import { startUnifiedSchedulerEngine } from "@/lib/scheduler/unified-engine";
 import { getMcpManager } from "@/lib/mcp";
-import { startDiscordBot } from "@/lib/channels/discord";
+import { startDiscordBot } from "@/lib/channels/discord-channel";
 import { loadCustomToolsFromDb } from "@/lib/tools/custom-tools";
 
 declare global {
@@ -91,9 +91,9 @@ function cleanupLegacySystemRunOnceSchedulesOnce(): void {
 }
 
 /**
- * Start background services (MCP connections, Discord bots) without
+ * Start background services (MCP connections, custom tools) without
  * blocking API route responses.  Called once after the critical path
- * (DB + scheduler) is ready.
+ * (DB + scheduler + Discord bots) is ready.
  */
 function startBackgroundServices(): void {
   if (globalThis.__nexus_bgServicesPromise) return;
@@ -117,17 +117,6 @@ function startBackgroundServices(): void {
         level: "error",
         source: "custom-tools",
         message: `Failed to load custom tools: ${err}`,
-        metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }),
-      });
-    }
-
-    try {
-      await startDiscordBots();
-    } catch (err) {
-      addLog({
-        level: "error",
-        source: "discord",
-        message: `Failed to auto-start Discord bots: ${err}`,
         metadata: JSON.stringify({ error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }),
       });
     }
@@ -174,17 +163,19 @@ export async function bootstrapRuntime(): Promise<void> {
         globalThis.__nexus_errorHandlersInstalled = true;
       }
 
-      // Critical path: DB + scheduler only — fast, no network I/O
+      // Critical path: DB + scheduler + Discord bots — fast, no network I/O
       initializeDatabase();
       cleanupLegacySystemRunOnceSchedulesOnce();
       startUnifiedSchedulerEngine();
+      await startDiscordBots();
 
       globalThis.__nexus_bootstrapped = true;
 
-      // Fire-and-forget: MCP connections + Discord bots run in background
+      // Fire-and-forget: MCP connections + custom tools run in background
       startBackgroundServices();
     })();
   }
 
   return globalThis.__nexus_bootstrapPromise;
 }
+

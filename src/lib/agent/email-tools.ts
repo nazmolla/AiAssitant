@@ -10,7 +10,7 @@ import {
   getImapSecureCandidatesForConfig,
   isValidPort,
   sendSmtpMail,
-} from "@/lib/channels/email-transport";
+} from "@/lib/channels/email-channel";
 import { simpleParser } from "mailparser";
 
 export const EMAIL_TOOL_NAMES = {
@@ -391,3 +391,4 @@ async function executeEmailRead(
 
   throw new Error(formatEmailConnectError(lastErr));
 }
+

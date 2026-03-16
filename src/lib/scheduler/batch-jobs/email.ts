@@ -2,13 +2,13 @@
  * Email Batch Job
  *
  * Thin orchestrator — schedules and triggers email read/processing runs.
- * All execution logic lives in EmailReadTool (src/lib/tools/email-read-tool.ts).
+ * All execution logic lives in Email tools (src/lib/tools/email-tools.ts).
  *
  * Called by:
  * - Unified scheduler engine via EmailBatchJob.executeStep()
  */
 
-import { runEmailReadBatch } from "@/lib/tools/email-read-tool";
+import { runEmailReadBatch } from "@/lib/tools/email-tools";
 import {
   BatchJob,
   type BatchJobParameterDefinition,

@@ -7,7 +7,7 @@ import { installAuthMocks, setMockUser } from "../../helpers/mock-auth";
 installAuthMocks();
 
 // Mock Discord bot — prevent real bot connections
-jest.mock("@/lib/channels/discord", () => ({
+jest.mock("@/lib/channels/discord-channel", () => ({
   startDiscordBot: jest.fn(async () => {}),
   stopDiscordBot: jest.fn(async () => {}),
   isDiscordBotActive: jest.fn(() => false),
@@ -197,3 +197,4 @@ describe("POST /api/config/channels", () => {
     mockSendMail.mockResolvedValue({ messageId: "test-msg-id" });
   });
 });
+

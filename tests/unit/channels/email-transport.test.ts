@@ -1,4 +1,5 @@
-import { buildThemedEmailBody, getEmailChannelConfig, isValidPort } from "@/lib/channels/email-transport";
+import { buildThemedEmailBody } from "@/lib/services/email-service-client";
+import { getEmailChannelConfig, isValidPort } from "@/lib/channels/email-channel";
 
 describe("buildThemedEmailBody", () => {
   test("renders key-value lines as structured details", () => {
@@ -79,3 +80,4 @@ describe("getEmailChannelConfig", () => {
     expect(isValidPort(587)).toBe(true);
   });
 });
+

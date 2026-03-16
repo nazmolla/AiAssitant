@@ -192,6 +192,12 @@ jest.mock("@/lib/tools/email-tools", () => ({
   isEmailTool: () => false,
   executeBuiltinEmailTool: jest.fn(),
   EMAIL_TOOLS_REQUIRING_APPROVAL: [],
+  emailReadTool: {
+    tools: [],
+    toolsRequiringApproval: [],
+    matches: () => false,
+    execute: jest.fn(),
+  },
 }));
 jest.mock("@/lib/tools/file-tools", () => ({
   BUILTIN_FILE_TOOLS: [],

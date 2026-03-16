@@ -8,14 +8,14 @@ import {
   getChannel,
   type ChannelType,
 } from "@/lib/db";
-import { startDiscordBot, stopDiscordBot, isDiscordBotActive } from "@/lib/channels/discord";
+import { startDiscordBot, stopDiscordBot, isDiscordBotActive } from "@/lib/channels/discord-channel";
 import {
   formatEmailConnectError,
   getEmailChannelConfig,
   isValidPort,
   sendSmtpMail,
   verifySmtpConfig,
-} from "@/lib/channels/email-transport";
+} from "@/lib/channels/email-channel";
 
 const VALID_CHANNEL_TYPES: ChannelType[] = [
   "whatsapp",
@@ -235,3 +235,4 @@ export async function DELETE(req: NextRequest) {
   deleteChannel(id);
   return NextResponse.json({ success: true });
 }
+
