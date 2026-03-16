@@ -111,7 +111,10 @@ describe("Knowledge Embeddings", () => {
     expect(embeddings.length).toBeGreaterThan(0);
     const found = embeddings.find((e) => e.knowledge_id === knowledgeId);
     expect(found).toBeDefined();
-    expect(JSON.parse(found!.embedding)).toEqual(fakeEmbedding);
+    expect(found!.embedding).toHaveLength(fakeEmbedding.length);
+    found!.embedding.forEach((value, idx) => {
+      expect(value).toBeCloseTo(fakeEmbedding[idx], 5);
+    });
   });
 
   test("listKnowledgeEmbeddings without user id returns empty", () => {

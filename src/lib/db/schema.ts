@@ -141,7 +141,12 @@ CREATE INDEX IF NOT EXISTS idx_user_knowledge_attribute ON user_knowledge(user_i
 
 CREATE TABLE IF NOT EXISTS knowledge_embeddings (
     knowledge_id INTEGER PRIMARY KEY REFERENCES user_knowledge(id) ON DELETE CASCADE,
-    embedding TEXT NOT NULL
+    embedding TEXT,
+    embedding_bin BLOB,
+    embedding_encoding TEXT NOT NULL DEFAULT 'f32le',
+    compression TEXT NOT NULL DEFAULT 'none',
+    is_archived INTEGER NOT NULL DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ═══ Threads (per-user) ═══

@@ -1,5 +1,12 @@
 import { getDb } from "./connection";
 import { stmt, PaginatedResult } from "./query-helpers";
+import { env } from "@/lib/env";
+import {
+  decodeEmbeddingFromBinary,
+  decodeEmbeddingFromJson,
+  encodeEmbeddingToBinary,
+  normalizeCompression,
+} from "@/lib/knowledge/vector-codec";
 
 export interface KnowledgeEntry {
   id: number;
@@ -138,30 +145,84 @@ export function deleteKnowledge(id: number): void {
 
 interface KnowledgeEmbeddingRow {
   knowledge_id: number;
-  embedding: string;
+  embedding: string | null;
+  embedding_bin: Buffer | null;
+  embedding_encoding: string | null;
+  compression: string | null;
+  is_archived?: number;
+}
+
+export interface ParsedKnowledgeEmbeddingRow {
+  knowledge_id: number;
+  embedding: number[];
 }
 
 export function upsertKnowledgeEmbedding(knowledgeId: number, embedding: number[]): void {
+  const compression = normalizeCompression(env.EMBEDDING_COMPRESSION);
+  const encoded = encodeEmbeddingToBinary(embedding, compression);
   getDb()
     .prepare(
-      `INSERT INTO knowledge_embeddings (knowledge_id, embedding)
-       VALUES (?, ?)
-       ON CONFLICT(knowledge_id) DO UPDATE SET embedding = excluded.embedding`
+      `INSERT INTO knowledge_embeddings (
+         knowledge_id, embedding, embedding_bin, embedding_encoding, compression, is_archived, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+       ON CONFLICT(knowledge_id) DO UPDATE SET
+         embedding = excluded.embedding,
+         embedding_bin = excluded.embedding_bin,
+         embedding_encoding = excluded.embedding_encoding,
+         compression = excluded.compression,
+         is_archived = 0,
+         updated_at = CURRENT_TIMESTAMP`
     )
-    .run(knowledgeId, JSON.stringify(embedding));
+    .run(knowledgeId, null, encoded.binary, encoded.encoding, encoded.compression);
 }
 
 /** List embeddings scoped to a user (via JOIN on user_knowledge) */
-export function listKnowledgeEmbeddings(userId?: string): KnowledgeEmbeddingRow[] {
+export function listKnowledgeEmbeddings(userId?: string): ParsedKnowledgeEmbeddingRow[] {
   if (!userId) return [];
-  return getDb()
+  const rows = getDb()
     .prepare(
-      `SELECT ke.knowledge_id, ke.embedding
+      `SELECT
+         ke.knowledge_id,
+         ke.embedding,
+         ke.embedding_bin,
+         ke.embedding_encoding,
+         ke.compression,
+         ke.is_archived
        FROM knowledge_embeddings ke
        JOIN user_knowledge uk ON ke.knowledge_id = uk.id
-       WHERE uk.user_id = ? OR uk.user_id IS NULL`
+       WHERE (uk.user_id = ? OR uk.user_id IS NULL)
+         AND coalesce(ke.is_archived, 0) = 0`
     )
     .all(userId) as KnowledgeEmbeddingRow[];
+
+  const parsed: ParsedKnowledgeEmbeddingRow[] = [];
+  for (const row of rows) {
+    const fromBinary = row.embedding_bin
+      ? decodeEmbeddingFromBinary(
+          row.embedding_bin,
+          row.embedding_encoding || "f32le",
+          row.compression || "none"
+        )
+      : null;
+    const vector = fromBinary || decodeEmbeddingFromJson(row.embedding);
+    if (vector && vector.length > 0) {
+      parsed.push({ knowledge_id: row.knowledge_id, embedding: vector });
+    }
+  }
+  return parsed;
+}
+
+export function listKnowledgeEntriesForArchival(cutoffDays: number, limit = 500): KnowledgeEntry[] {
+  return getDb()
+    .prepare(
+      `SELECT *
+       FROM user_knowledge
+       WHERE last_updated < datetime('now', '-' || ? || ' days')
+       ORDER BY last_updated ASC
+       LIMIT ?`
+    )
+    .all(cutoffDays, limit) as KnowledgeEntry[];
 }
 
 export function getKnowledgeEntriesByIds(ids: number[]): KnowledgeEntry[] {

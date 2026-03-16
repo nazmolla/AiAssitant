@@ -40,7 +40,7 @@ function randomVector(dim: number): number[] {
 function buildMockEmbeddings(count: number, dim = 128) {
   return Array.from({ length: count }, (_, i) => ({
     knowledge_id: i + 1,
-    embedding: JSON.stringify(randomVector(dim)),
+    embedding: randomVector(dim),
   }));
 }
 
@@ -91,7 +91,7 @@ describe("Vault cache behaviour", () => {
     const queryVec = randomVector(dim);
     const rows = buildMockEmbeddings(10, dim);
     // Make entry #5 identical to query (should rank #1)
-    rows[4].embedding = JSON.stringify(queryVec);
+    rows[4].embedding = queryVec;
 
     mockListEmbeddings.mockReturnValue(rows);
     mockGenerateEmbedding.mockResolvedValue(queryVec);
@@ -130,7 +130,7 @@ describe("Search latency benchmark", () => {
       const rows = buildMockEmbeddings(size, dim);
       const queryVec = randomVector(dim);
       // Guarantee at least one match by making entry #1 identical to query
-      rows[0].embedding = JSON.stringify(queryVec);
+      rows[0].embedding = queryVec;
 
       mockListEmbeddings.mockReturnValue(rows);
       mockGenerateEmbedding.mockResolvedValue(queryVec);

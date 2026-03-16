@@ -9,6 +9,7 @@ import {
 } from "@/lib/tools";
 import { v4 as uuid } from "uuid";
 import { env } from "@/lib/env";
+import { encodeEmbeddingToBinary, decodeEmbeddingFromJson, normalizeCompression } from "@/lib/knowledge/vector-codec";
 
 // ─── Helper: check if a table exists ─────────────────────────
 function tableExists(table: string): boolean {
@@ -26,6 +27,7 @@ const ALLOWED_TABLES = new Set([
   "approval_queue", "approval_preferences",
   "scheduler_schedules", "scheduler_tasks", "scheduler_runs",
   "scheduler_task_runs", "scheduler_claims", "scheduler_events",
+  "knowledge_embeddings",
 ]);
 
 // ─── Helper: get column names for a table ─────────────────────
@@ -320,6 +322,50 @@ function ensureKnowledgeSourceTypeColumn(): void {
      END
      WHERE source_type IS NULL OR source_type = '' OR source_type = 'manual'`
   ).run();
+}
+
+function ensureKnowledgeEmbeddingStorageColumns(): void {
+  if (!tableExists("knowledge_embeddings")) return;
+  const db = getDb();
+
+  addColumnIfMissing("knowledge_embeddings", "embedding_bin", "BLOB");
+  addColumnIfMissing("knowledge_embeddings", "embedding_encoding", "TEXT NOT NULL DEFAULT 'f32le'");
+  addColumnIfMissing("knowledge_embeddings", "compression", "TEXT NOT NULL DEFAULT 'none'");
+  addColumnIfMissing("knowledge_embeddings", "is_archived", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("knowledge_embeddings", "updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP");
+
+  db.exec("CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_archived ON knowledge_embeddings(is_archived, updated_at DESC)");
+
+  const rows = db
+    .prepare(
+      `SELECT knowledge_id, embedding
+       FROM knowledge_embeddings
+       WHERE embedding_bin IS NULL
+         AND embedding IS NOT NULL
+         AND length(embedding) > 0`
+    )
+    .all() as { knowledge_id: number; embedding: string }[];
+
+  if (rows.length === 0) return;
+
+  const compression = normalizeCompression(env.EMBEDDING_COMPRESSION);
+  const updateStmt = db.prepare(
+    `UPDATE knowledge_embeddings
+     SET embedding_bin = ?,
+         embedding_encoding = 'f32le',
+         compression = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE knowledge_id = ?`
+  );
+
+  db.transaction(() => {
+    for (const row of rows) {
+      const parsed = decodeEmbeddingFromJson(row.embedding);
+      if (!parsed || parsed.length === 0) continue;
+      const encoded = encodeEmbeddingToBinary(parsed, compression);
+      updateStmt.run(encoded.binary, encoded.compression, row.knowledge_id);
+    }
+  })();
 }
 
 function dedupeKnowledgeRows(): void {
@@ -832,6 +878,7 @@ export function initializeDatabase(): void {
   ensureUserIdColumns();
   ensureThreadClassificationColumns();
   ensureKnowledgeSourceTypeColumn();
+  ensureKnowledgeEmbeddingStorageColumns();
   if (env.NEXUS_DEDUPE_KNOWLEDGE_STARTUP) {
     dedupeKnowledgeRows();
   }

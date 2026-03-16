@@ -3,8 +3,10 @@ import {
   listKnowledgeEmbeddings,
   getKnowledgeEntriesByIds,
   searchKnowledge,
+  upsertKnowledgeEmbedding,
   type KnowledgeEntry,
 } from "@/lib/db";
+import { env } from "@/lib/env";
 
 interface SemanticMatch {
   id: number;
@@ -38,9 +40,8 @@ function getCachedEmbeddings(userId?: string): Map<number, number[]> {
   const stored = listKnowledgeEmbeddings(userId);
   const vectors = new Map<number, number[]>();
   for (const row of stored) {
-    const vec = parseEmbedding(row.embedding);
-    if (vec && vec.length > 0) {
-      vectors.set(row.knowledge_id, vec);
+    if (row.embedding.length > 0) {
+      vectors.set(row.knowledge_id, row.embedding);
     }
   }
 
@@ -109,8 +110,14 @@ export async function retrieveKnowledge(query: string, limit = 6, userId?: strin
 const MIN_SIMILARITY = 0.25;
 
 async function semanticSearch(query: string, limit: number, userId?: string): Promise<KnowledgeEntry[]> {
-  // Check cached embeddings FIRST to avoid an expensive API call when vault is empty
-  const vectors = getCachedEmbeddings(userId);
+  let vectors = getCachedEmbeddings(userId);
+  if (env.EMBEDDING_LAZY_INDEX) {
+    const hydrated = await hydrateEmbeddingsForActiveQuery(query, userId, vectors);
+    if (hydrated > 0) {
+      vectors = getCachedEmbeddings(userId);
+    }
+  }
+
   if (vectors.size === 0) return [];
 
   const embedding = await generateEmbedding(query);
@@ -135,6 +142,36 @@ async function semanticSearch(query: string, limit: number, userId?: string): Pr
     .filter((entry): entry is KnowledgeEntry => Boolean(entry));
 }
 
+async function hydrateEmbeddingsForActiveQuery(
+  query: string,
+  userId: string | undefined,
+  vectors: Map<number, number[]>
+): Promise<number> {
+  if (!userId || !query.trim()) return 0;
+
+  const candidates = searchKnowledge(query, userId).slice(0, Math.max(env.EMBEDDING_LAZY_INDEX_MAX_PER_QUERY * 2, 8));
+  const missing = candidates
+    .filter((entry) => !vectors.has(entry.id))
+    .slice(0, env.EMBEDDING_LAZY_INDEX_MAX_PER_QUERY);
+
+  if (missing.length === 0) return 0;
+
+  let hydrated = 0;
+  for (const entry of missing) {
+    const text = `${entry.entity} ${entry.attribute} ${entry.value}`;
+    const embedding = await generateEmbedding(text);
+    if (!embedding || embedding.length === 0) continue;
+    upsertKnowledgeEmbedding(entry.id, embedding);
+    hydrated += 1;
+  }
+
+  if (hydrated > 0) {
+    invalidateEmbeddingCache();
+  }
+
+  return hydrated;
+}
+
 function keywordFallback(query: string, limit: number, userId?: string): KnowledgeEntry[] {
   if (!query.trim()) return [];
   return searchKnowledge(query, userId).slice(0, limit);
@@ -150,15 +187,6 @@ function mergeEntries(primary: KnowledgeEntry[], secondary: KnowledgeEntry[]): K
     }
   }
   return merged;
-}
-
-function parseEmbedding(raw: string): number[] | null {
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {

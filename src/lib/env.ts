@@ -38,6 +38,24 @@ export const envSchema = z.object({
     .string()
     .default("0")
     .transform((v) => v === "1"),
+  EMBEDDING_COMPRESSION: z
+    .enum(["none", "gzip", "zstd"])
+    .default("gzip"),
+  EMBEDDING_LAZY_INDEX: z
+    .string()
+    .default("1")
+    .transform((v) => v === "1"),
+  EMBEDDING_LAZY_INDEX_MAX_PER_QUERY: z
+    .string()
+    .default("8")
+    .transform((v) => Math.max(parseInt(v, 10) || 8, 1)),
+  KNOWLEDGE_ARCHIVE_DAYS: z
+    .string()
+    .default("180")
+    .transform((v) => Math.max(parseInt(v, 10) || 180, 1)),
+  KNOWLEDGE_ARCHIVE_DB_PATH: z
+    .string()
+    .default(path.join(process.cwd(), "data", "knowledge-archive.db")),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

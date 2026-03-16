@@ -99,3 +99,23 @@ The **Conversation** tab provides hands-free voice mode:
 4. Use Auto/Manual toggle, voice selector, or Stop button as needed
 
 Requires HTTPS or localhost, plus configured STT, TTS, and LLM providers.
+
+---
+
+## Knowledge Storage Optimization (SQLite)
+
+Embeddings remain in SQLite (no external vector service required) using binary + compression storage.
+
+Environment settings:
+
+- `EMBEDDING_COMPRESSION` — `none` | `gzip` | `zstd` (default `gzip`)
+- `EMBEDDING_LAZY_INDEX` — `1` to generate missing embeddings on-demand during active retrieval
+- `EMBEDDING_LAZY_INDEX_MAX_PER_QUERY` — max missing records to hydrate per query
+- `KNOWLEDGE_ARCHIVE_DAYS` — archive threshold in days (default `180`)
+- `KNOWLEDGE_ARCHIVE_DB_PATH` — path to archive SQLite DB for old knowledge/embeddings
+
+Behavior:
+
+- Active knowledge stays in primary DB for fast transactional access
+- Older knowledge is archived into a separate SQLite archive DB by maintenance worker
+- Legacy JSON embeddings are migrated to binary/compressed form on startup
