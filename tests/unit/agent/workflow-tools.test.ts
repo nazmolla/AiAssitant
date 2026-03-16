@@ -123,20 +123,13 @@ describe("DbMaintenanceTool.execute()", () => {
 });
 
 describe("EmailReadTool.execute()", () => {
-  test("calls runEmailReadBatch with maxMessages from args", async () => {
-    await emailReadTool.execute(
-      "builtin.workflow_email_read", { maxMessages: 10 }, ctx,
-    );
-    const { runEmailReadBatch } = require("@/lib/scheduler");
-    expect(runEmailReadBatch).toHaveBeenCalledWith(10);
-  });
-
-  test("defaults maxMessages to 25", async () => {
-    await emailReadTool.execute(
+  test("calls runEmailReadBatch and returns completed status", async () => {
+    const result = await emailReadTool.execute(
       "builtin.workflow_email_read", {}, ctx,
     );
     const { runEmailReadBatch } = require("@/lib/scheduler");
-    expect(runEmailReadBatch).toHaveBeenCalledWith(25);
+    expect(runEmailReadBatch).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ status: "completed", kind: "email_read" });
   });
 });
 

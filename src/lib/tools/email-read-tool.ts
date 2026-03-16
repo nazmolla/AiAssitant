@@ -19,12 +19,7 @@ export class EmailReadTool extends BaseTool {
       description: "Read incoming emails and process them for the user.",
       inputSchema: {
         type: "object",
-        properties: {
-          maxMessages: {
-            type: "number",
-            description: "Maximum number of messages to read per run (default: 25).",
-          },
-        },
+        properties: {},
       },
     },
   ];
@@ -35,12 +30,11 @@ export class EmailReadTool extends BaseTool {
 
   async execute(
     _toolName: string,
-    args: Record<string, unknown>,
+    _args: Record<string, unknown>,
     _context: ToolExecutionContext,
   ): Promise<unknown> {
-    const maxMessages = typeof args.maxMessages === "number" ? args.maxMessages : 25;
     const { runEmailReadBatch } = await import("@/lib/scheduler");
-    await runEmailReadBatch(maxMessages);
+    await runEmailReadBatch();
     return { status: "completed", kind: "email_read" };
   }
 }
