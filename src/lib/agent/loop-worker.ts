@@ -55,6 +55,7 @@ import {
   type AgentResponse,
 } from "./loop";
 import { executeWithGatekeeper } from "./gatekeeper";
+import { processExecutedToolResult, processFailedToolResult } from "./tool-result-processor";
 
 /* ── Re-export for convenience ──────────────────────────────────── */
 export type { AgentResponse } from "./loop";
@@ -264,6 +265,7 @@ async function _runViaWorker(
   const knowledgeSnippets: string[] = [`[User]\n${userMessage}`];
   const toolsUsed: string[] = [];
   const pendingApprovals: string[] = [];
+  const collectedAttachments: AttachmentMeta[] = [];
 
   addLog({
     level: "thought",
@@ -331,44 +333,16 @@ async function _runViaWorker(
           });
         } else if (gkResult.status === "executed") {
           toolsUsed.push(toolCall.name);
-          const toolResultRaw = JSON.stringify(gkResult.result);
-          const toolResult = toolResultRaw.length > 15000
-            ? toolResultRaw.slice(0, 15000) + "\n... [truncated]"
-            : toolResultRaw;
-
-          // Save tool message to DB
-          const savedToolMsg = addMessage({
-            thread_id: threadId,
-            role: "tool",
-            content: toolResult,
-            tool_calls: null,
-            tool_results: JSON.stringify({ tool_call_id: toolCall.id, name: toolCall.name, result: gkResult.result }),
-            attachments: null,
-          });
-          onMessage?.(savedToolMsg);
+          const processed = processExecutedToolResult(toolCall, gkResult.result, threadId, onMessage);
+          collectedAttachments.push(...processed.attachments);
 
           results.push({
             toolCallId: toolCall.id,
             toolName: toolCall.name,
-            content: toolResult,
+            content: processed.llmContent,
           });
         } else {
-          // Error
-          const sanitizedError = (gkResult.error || "Unknown error")
-            .split("\n")[0]
-            .replace(/[A-Z]:[\\\/][^\s]+/g, "[path]")
-            .replace(/\/home\/[^\s]+/g, "[path]")
-            .slice(0, 200);
-          const errorContent = `[ERROR] Tool "${toolCall.name}" failed: ${sanitizedError}`;
-          const savedError = addMessage({
-            thread_id: threadId,
-            role: "tool",
-            content: errorContent,
-            tool_calls: null,
-            tool_results: JSON.stringify({ tool_call_id: toolCall.id, name: toolCall.name, error: gkResult.error }),
-            attachments: null,
-          });
-          onMessage?.(savedError);
+          const errorContent = processFailedToolResult(toolCall, gkResult.error, threadId, onMessage);
 
           results.push({
             toolCallId: toolCall.id,
@@ -393,15 +367,33 @@ async function _runViaWorker(
     knowledgeSnippets.push(`[Assistant]\n${workerResult.content}`);
   }
 
+  const finalAttachments = pendingApprovals.length === 0 && collectedAttachments.length > 0
+    ? JSON.stringify(collectedAttachments)
+    : null;
+
   const savedFinal = addMessage({
     thread_id: threadId,
     role: "assistant",
     content: finalContent,
     tool_calls: null,
     tool_results: null,
-    attachments: null,
+    attachments: finalAttachments,
   });
   onMessage?.(savedFinal);
+
+  if (finalAttachments) {
+    for (const att of collectedAttachments) {
+      addAttachment({
+        id: crypto.randomUUID(),
+        thread_id: threadId,
+        message_id: savedFinal.id,
+        filename: att.filename,
+        mime_type: att.mimeType,
+        size_bytes: att.sizeBytes,
+        storage_path: att.storagePath,
+      });
+    }
+  }
 
   addLog({
     level: "info",
@@ -420,6 +412,6 @@ async function _runViaWorker(
     content: finalContent,
     toolsUsed,
     pendingApprovals,
-    attachments: [],
+    attachments: pendingApprovals.length === 0 ? collectedAttachments : [],
   };
 }

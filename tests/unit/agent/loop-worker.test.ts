@@ -25,6 +25,7 @@ jest.mock("@/lib/agent/loop", () => ({
 
 const mockIsWorkerAvailable = jest.fn();
 const mockRunLlmInWorker = jest.fn();
+const mockExecuteWithGatekeeper = jest.fn();
 
 jest.mock("@/lib/agent/worker-manager", () => ({
   isWorkerAvailable: () => mockIsWorkerAvailable(),
@@ -84,7 +85,7 @@ jest.mock("@/lib/knowledge/retriever", () => ({
 }));
 
 jest.mock("@/lib/agent/gatekeeper", () => ({
-  executeWithGatekeeper: jest.fn(),
+  executeWithGatekeeper: (...args: unknown[]) => mockExecuteWithGatekeeper(...args),
 }));
 
 // Import module AFTER mocks are in place
@@ -173,6 +174,63 @@ describe("runAgentLoopWithWorker — worker path", () => {
     expect(mockRunLlmInWorker).toHaveBeenCalled();
     expect(mockRunAgentLoop).not.toHaveBeenCalled();
     expect(result.content).toBe("Hello from worker!");
+  });
+
+  test("persists tool-generated attachments from worker tool calls", async () => {
+    const db = jest.requireMock("@/lib/db") as {
+      addAttachment: jest.Mock;
+      addMessage: jest.Mock;
+    };
+
+    mockIsWorkerAvailable.mockReturnValue(true);
+    mockExecuteWithGatekeeper.mockResolvedValue({
+      status: "executed",
+      result: {
+        status: "created",
+        attachments: [
+          {
+            id: "att-1",
+            filename: "report.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 1234,
+            storagePath: "thread-7/att-1.pdf",
+          },
+        ],
+      },
+    });
+
+    mockRunLlmInWorker.mockImplementation(
+      (
+        _config: Record<string, unknown>,
+        _onToken: unknown,
+        _onStatus: unknown,
+        onToolRequest: (calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>, assistantContent: string | null) => Promise<unknown>,
+      ) => ({
+        promise: (async () => {
+          await onToolRequest(
+            [
+              {
+                id: "tool-call-1",
+                name: "builtin.file_generate",
+                arguments: { filename: "report", format: "pdf" },
+              },
+            ],
+            "Generating file",
+          );
+          return { content: "Done", iterations: 2 };
+        })(),
+      })
+    );
+
+    const result = await runAgentLoopWithWorker(
+      "thread-7", "generate report", undefined, undefined,
+      false, "user-1"
+    );
+
+    expect(mockExecuteWithGatekeeper).toHaveBeenCalled();
+    expect(db.addAttachment).toHaveBeenCalled();
+    expect(result.attachments).toHaveLength(1);
+    expect(result.attachments[0].filename).toBe("report.pdf");
   });
 });
 
