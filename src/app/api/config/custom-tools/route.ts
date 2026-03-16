@@ -16,6 +16,8 @@ import {
   upsertToolPolicy,
 } from "@/lib/db/queries";
 import { loadCustomToolsFromDb, validateImplementation } from "@/lib/tools/custom-tools";
+import { discoverAllTools } from "@/lib/agent/discovery";
+import { findDuplicateToolMatch } from "@/lib/tools/tool-duplicate-gate";
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -43,6 +45,27 @@ export async function POST(req: NextRequest) {
   // Check duplicate
   if (getCustomTool(fullName)) {
     return NextResponse.json({ error: `Tool "${fullName}" already exists` }, { status: 409 });
+  }
+
+  const duplicate = findDuplicateToolMatch(
+    {
+      name: fullName,
+      description,
+      inputSchema,
+    },
+    discoverAllTools().map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    })),
+  );
+  if (duplicate) {
+    return NextResponse.json(
+      {
+        error: `Tool is too similar to existing tool "${duplicate.toolName}" (score: ${duplicate.score.toFixed(2)}). Update the existing tool instead.`,
+      },
+      { status: 409 },
+    );
   }
 
   // Validate schema

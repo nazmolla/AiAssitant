@@ -19,6 +19,7 @@
 
 import type { ToolDefinition, ToolCall } from "@/lib/llm";
 import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
+import { findDuplicateToolMatch } from "./tool-duplicate-gate";
 import * as vm from "vm";
 import { ValidationError, NotFoundError, IntegrationError } from "@/lib/errors";
 
@@ -279,6 +280,22 @@ async function createCustomTool(args: Record<string, unknown>): Promise<unknown>
     );
   }
 
+  const architectureTools = await getArchitectureToolDefinitions();
+  const duplicate = findDuplicateToolMatch(
+    {
+      name: fullName,
+      description,
+      inputSchema,
+    },
+    architectureTools,
+  );
+  if (duplicate) {
+    throw new ValidationError(
+      `Custom tool is too similar to existing tool "${duplicate.toolName}" (score: ${duplicate.score.toFixed(2)}). ` +
+      `Use builtin.nexus_update_tool to evolve the existing tool instead of creating a duplicate.`
+    );
+  }
+
   // Validate inputSchema has required structure
   if (!inputSchema.type || inputSchema.type !== "object") {
     throw new ValidationError("inputSchema must have type: 'object'");
@@ -396,6 +413,19 @@ function listTools(): unknown {
     })),
     count: customToolsCache.length,
   };
+}
+
+async function getArchitectureToolDefinitions(): Promise<ToolDefinition[]> {
+  try {
+    const { discoverAllTools } = await import("@/lib/agent/discovery");
+    return discoverAllTools().map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    }));
+  } catch {
+    return getCustomToolDefinitions();
+  }
 }
 
 async function deleteCustomTool(args: Record<string, unknown>): Promise<unknown> {
@@ -579,7 +609,7 @@ export class CustomTools extends BaseTool {
 
   /** Dynamic: includes both toolmaker meta-tools and user-created tools */
   get tools(): ToolDefinition[] {
-    return [...BUILTIN_TOOLMAKER_TOOLS, ...getCustomToolDefinitions()];
+    return getCustomToolDefinitions();
   }
 
   /** Custom matcher — handles both custom.* prefix and builtin toolmaker tools */

@@ -143,6 +143,24 @@ describe("POST /api/config/custom-tools", () => {
     expect(res.status).toBe(409);
   });
 
+  test("returns 409 for semantic duplicate with different name", async () => {
+    setMockUser({ id: adminId, email: "admin-ct@example.com", role: "admin" });
+    const req = new NextRequest("http://localhost/api/config/custom-tools", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "api_test_tool_v2",
+        description: "An API test tool",
+        inputSchema: { type: "object", properties: { x: { type: "number" } } },
+        implementation: "return { doubledAgain: args.x * 2 };",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(409);
+    const data = await res.json();
+    expect(data.error).toMatch(/too similar/i);
+  });
+
   test("GET now returns the created tool", async () => {
     setMockUser({ id: adminId, email: "admin-ct@example.com", role: "admin" });
     const res = await GET();

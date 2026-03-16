@@ -4,6 +4,18 @@
 import { installAuthMocks, setMockUser } from "../../helpers/mock-auth";
 installAuthMocks();
 
+jest.mock("@/lib/mcp", () => ({
+  getMcpManager: () => ({
+    getAllTools: () => [
+      {
+        name: "demoMcp.list_devices",
+        description: "List connected devices from MCP server",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ],
+  }),
+}));
+
 import { setupTestDb, teardownTestDb, seedTestUser } from "../../helpers/test-db";
 import { NextRequest } from "next/server";
 import { GET, POST } from "@/app/api/policies/route";
@@ -41,6 +53,8 @@ describe("GET /api/policies", () => {
     const names = data.map((p: any) => p.tool_name);
     expect(names).toContain("builtin.web_search");
     expect(names).toContain("builtin.email_send");
+    expect(names).toContain("builtin.nexus_create_tool");
+    expect(names).toContain("demoMcp.list_devices");
   });
 });
 

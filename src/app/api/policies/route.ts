@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { listToolPolicies, upsertToolPolicy } from "@/lib/db";
+import { getMcpServer, listToolPolicies, upsertToolPolicy } from "@/lib/db";
 import { defaultRequiresApproval, discoverAllTools } from "@/lib/agent/discovery";
 
 export async function GET() {
@@ -12,9 +12,11 @@ export async function GET() {
 
   for (const tool of tools) {
     if (existing.has(tool.name)) continue;
+    const discoveredMcpId = tool.source === "mcp" ? tool.name.split(".")[0] || null : null;
+    const mcpId = discoveredMcpId && getMcpServer(discoveredMcpId) ? discoveredMcpId : null;
     upsertToolPolicy({
       tool_name: tool.name,
-      mcp_id: tool.source === "mcp" ? tool.name.split(".")[0] || null : null,
+      mcp_id: mcpId,
       requires_approval: defaultRequiresApproval(tool.name, tool.source),
       scope: "global",
     });

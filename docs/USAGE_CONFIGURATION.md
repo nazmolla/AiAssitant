@@ -45,6 +45,8 @@ Each discovered tool has two controls:
 - **Requires Approval** — whether human approval is needed before execution
 - **Scope** — **Global** (all users) or **User Only** (admin-only)
 
+Discovery is architecture-driven and includes all currently registered BaseTool categories, MCP-discovered tools, and enabled custom tools.
+
 ![Tool Policies](images/usage-settings-tool-policies.png)
 
 ---

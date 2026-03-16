@@ -213,6 +213,8 @@ CREATE TABLE custom_tools (
 );
 ```
 
+Custom tool creation is guarded by a duplicate-check gate: tools are rejected when they are semantically too similar to an existing tool definition (registered builtin/custom or MCP-discovered), even if the new tool name differs.
+
 ### F. Communication Channels
 
 ```sql

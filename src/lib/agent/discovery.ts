@@ -1,6 +1,6 @@
 import type { ToolDefinition, ToolCall } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
-import * as agentExports from "./index";
+import { ALL_TOOL_CATEGORIES } from "@/lib/tools";
 
 export interface DiscoveredTool extends ToolDefinition {
   source: "builtin" | "custom" | "mcp";
@@ -19,36 +19,24 @@ const TOOL_PREFIX_GROUPS: Array<{ prefix: string; group: string }> = [
   { prefix: "custom.", group: "Custom Tools" },
 ];
 
-function isToolDefinition(value: unknown): value is ToolDefinition {
-  return !!value && typeof value === "object" &&
-    typeof (value as { name?: unknown }).name === "string" &&
-    typeof (value as { description?: unknown }).description === "string";
-}
-
-function isToolDefinitionArray(value: unknown): value is ToolDefinition[] {
-  return Array.isArray(value) && value.every(isToolDefinition);
-}
-
-function collectExportedToolArrays(namePattern: RegExp): ToolDefinition[] {
-  const all: ToolDefinition[] = [];
-  for (const [key, value] of Object.entries(agentExports as Record<string, unknown>)) {
-    if (!namePattern.test(key)) continue;
-    if (!isToolDefinitionArray(value)) continue;
-    all.push(...value);
+function getRegisteredTools(): ToolDefinition[] {
+  const deduped = new Map<string, ToolDefinition>();
+  for (const category of ALL_TOOL_CATEGORIES) {
+    for (const tool of category.tools) {
+      deduped.set(tool.name, tool);
+    }
   }
-  return all;
+  return Array.from(deduped.values());
 }
 
 function collectApprovalRequiredToolNames(): Set<string> {
-  const allNames = new Set<string>();
-  for (const [key, value] of Object.entries(agentExports as Record<string, unknown>)) {
-    if (!/_REQUIRING_APPROVAL$/.test(key)) continue;
-    if (!Array.isArray(value)) continue;
-    for (const item of value) {
-      if (typeof item === "string") allNames.add(item);
+  const names = new Set<string>();
+  for (const category of ALL_TOOL_CATEGORIES) {
+    for (const toolName of category.toolsRequiringApproval) {
+      names.add(toolName);
     }
   }
-  return allNames;
+  return names;
 }
 
 const TOOLS_REQUIRING_APPROVAL = collectApprovalRequiredToolNames();
@@ -61,23 +49,11 @@ function inferGroup(toolName: string): string {
 }
 
 export function getAllBuiltinTools(): ToolDefinition[] {
-  const deduped = new Map<string, ToolDefinition>();
-  const arrays = collectExportedToolArrays(/^BUILTIN_.*_TOOLS$/);
-  for (const tool of arrays) {
-    deduped.set(tool.name, tool);
-  }
-  return Array.from(deduped.values());
+  return getRegisteredTools().filter((tool) => !tool.name.startsWith("custom."));
 }
 
 export function discoverAllTools(): DiscoveredTool[] {
-  const builtin = getAllBuiltinTools().map((tool) => ({
-    ...tool,
-    source: "builtin" as const,
-    group: inferGroup(tool.name),
-  }));
-
-  const getCustomToolDefinitions = (agentExports as { getCustomToolDefinitions?: () => ToolDefinition[] }).getCustomToolDefinitions;
-  const custom = (typeof getCustomToolDefinitions === "function" ? getCustomToolDefinitions() : []).map((tool) => ({
+  const registered = getRegisteredTools().map((tool) => ({
     ...tool,
     source: tool.name.startsWith("custom.") ? ("custom" as const) : ("builtin" as const),
     group: inferGroup(tool.name),
@@ -90,7 +66,7 @@ export function discoverAllTools(): DiscoveredTool[] {
   }));
 
   const deduped = new Map<string, DiscoveredTool>();
-  for (const tool of [...builtin, ...custom, ...mcp]) {
+  for (const tool of [...registered, ...mcp]) {
     deduped.set(tool.name, tool);
   }
   return Array.from(deduped.values());
