@@ -1007,6 +1007,12 @@ export class EmailReadTool extends BaseTool {
     },
   ];
 
+  constructor(
+    private readonly runEmailReadBatchFn: (context?: SchedulerBatchExecutionContext) => Promise<void> = runEmailReadBatch,
+  ) {
+    super();
+  }
+
   override matches(toolName: string): boolean {
     return toolName === this.toolNamePrefix;
   }
@@ -1016,7 +1022,7 @@ export class EmailReadTool extends BaseTool {
     _args: Record<string, unknown>,
     _context: ToolExecutionContext,
   ): Promise<unknown> {
-    await runEmailReadBatch();
+    await this.runEmailReadBatchFn();
     return { status: "completed", kind: "email_read" };
   }
 }

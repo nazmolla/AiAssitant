@@ -148,9 +148,13 @@ describe("DbMaintenanceTool.execute()", () => {
 
 describe("EmailReadTool.execute()", () => {
   test("runs email read batch and returns completed status", async () => {
-    const result = await emailReadTool.execute(
+    const runEmailReadBatchMock = jest.fn().mockResolvedValue(undefined);
+    const tool = new EmailReadTool(runEmailReadBatchMock);
+
+    const result = await tool.execute(
       "builtin.workflow_email_read", {}, ctx,
     );
+    expect(runEmailReadBatchMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ status: "completed", kind: "email_read" });
   });
 });
@@ -216,9 +220,18 @@ describe("WorkflowTools.execute() dispatch", () => {
   });
 
   test("dispatches to EmailReadTool for email_read", async () => {
-    const result = await workflowTools.execute(
+    const runEmailReadBatchMock = jest.fn().mockResolvedValue(undefined);
+    const customWorkflow = new WorkflowTools([
+      proactiveScanTool,
+      knowledgeMaintenanceTool,
+      dbMaintenanceTool,
+      new EmailReadTool(runEmailReadBatchMock),
+    ]);
+
+    const result = await customWorkflow.execute(
       "builtin.workflow_email_read", { maxMessages: 5 }, ctx,
     );
+    expect(runEmailReadBatchMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ status: "completed", kind: "email_read" });
   });
 
