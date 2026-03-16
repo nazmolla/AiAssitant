@@ -22,7 +22,7 @@ import * as http from "http";
 import * as https from "https";
 import * as fs from "fs";
 import { Client as SSHClient } from "ssh2";
-import { BaseTool, type ToolExecutionContext } from "./base-tool";
+import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 
 const execFileAsync = promisify(execFile);
 
@@ -959,6 +959,7 @@ export async function executeBuiltinNetworkTool(
 export class NetworkTools extends BaseTool {
   readonly name = "network";
   readonly toolNamePrefix = "builtin.net_";
+  readonly registrationOrder = 30;
   readonly tools = BUILTIN_NETWORK_TOOLS;
   readonly toolsRequiringApproval = [...NETWORK_TOOLS_REQUIRING_APPROVAL];
 
@@ -968,3 +969,4 @@ export class NetworkTools extends BaseTool {
 }
 
 export const networkTools = new NetworkTools();
+registerToolCategory(networkTools);

@@ -11,14 +11,16 @@ import {
   type StepExecutionResult,
   type LogFn,
 } from "./base";
+import { PromptTool } from "@/lib/tools/prompt-tool";
 
-/**
- * Built-in system prompts for each Job Scout pipeline step.
- * A shared per-run conversation thread is used so each step can reference
- * the output of the previous one, giving the agent full pipeline context.
- */
-const STEP_PROMPTS: Record<string, string> = {
-  "workflow.job_scout.search":
+/* ── Prompt tool instances for each Job Scout pipeline step ───── */
+
+const JOB_SEARCH_TOOL = new PromptTool({
+  toolName: "builtin.workflow_job_search",
+  displayName: "Job Search",
+  description:
+    "Search for relevant open job listings based on the user's configured job criteria and preferences.",
+  systemPrompt:
     "You are an AI job search specialist. Based on the user's configured job criteria and preferences, " +
     "search for relevant open job listings.\n\n" +
     "IMPORTANT REQUIREMENTS:\n" +
@@ -30,26 +32,65 @@ const STEP_PROMPTS: Record<string, string> = {
     "5. If web_search returns no results, try browser_navigate to visit job board URLs directly.\n" +
     "6. For each listing found, record: position title, company, location, compensation range (if visible), and the application URL.\n" +
     "7. If all searches fail, report every query attempted and suggest criteria adjustments.",
-  "workflow.job_scout.extract":
+});
+
+const JOB_EXTRACT_TOOL = new PromptTool({
+  toolName: "builtin.workflow_job_extract",
+  displayName: "Job Detail Extractor",
+  description:
+    "Extract comprehensive role details from job listings found by the search step.",
+  systemPrompt:
     "You are an AI job research specialist. Review all the job listings found by the search step " +
     "earlier in this conversation thread. The search results are in the messages above.\n\n" +
     "Extract comprehensive role details for each listing: key requirements, technology stack, culture signals, " +
     "compensation benchmarks, and seniority signals. Flag any listings that appear to be a strong match.\n\n" +
     "If no job listings are visible in the conversation above, state clearly that the search step produced no results " +
     "and recommend the pipeline owner verify their search criteria.",
-  "workflow.job_scout.prepare":
+});
+
+const JOB_PREPARE_TOOL = new PromptTool({
+  toolName: "builtin.workflow_job_prepare",
+  displayName: "Application Materials Preparer",
+  description:
+    "Prepare tailored resume bullet points and cover-letter outlines for top-matched job opportunities.",
+  systemPrompt:
     "You are an AI resume and cover-letter specialist. Based on all the listings and extracted details " +
     "in this pipeline conversation, prepare tailored application materials for the top-matched " +
     "opportunities. Include specific resume bullet points and a concise cover-letter outline per role.",
-  "workflow.job_scout.validate":
+});
+
+const JOB_VALIDATE_TOOL = new PromptTool({
+  toolName: "builtin.workflow_job_validate",
+  displayName: "Job Match Validator",
+  description:
+    "Review and score job opportunities on fit, growth potential, and compensation.",
+  systemPrompt:
     "You are an AI job-application coach. Review all listings, extracted details, and materials " +
     "prepared in this pipeline run. Score each opportunity on fit, growth potential, and compensation. " +
     "Produce a prioritised shortlist with recommended next actions for each.",
-  "workflow.job_scout.email":
+});
+
+const JOB_DIGEST_TOOL = new PromptTool({
+  toolName: "builtin.workflow_job_digest",
+  displayName: "Job Digest Sender",
+  description:
+    "Compose and send a digest summary covering top job matches, key insights, and recommended next steps.",
+  systemPrompt:
     "You are an AI communications specialist. Based on all work done in this pipeline run, compose a " +
     "digest summary for the pipeline owner covering: top job matches, key insights, materials prepared, " +
     "and recommended next steps. Send this summary via the available email or messaging tools.",
-};
+});
+
+/**
+ * Map handler names → PromptTool instances for this pipeline.
+ */
+const STEP_TOOLS: ReadonlyMap<string, PromptTool> = new Map([
+  ["workflow.job_scout.search", JOB_SEARCH_TOOL],
+  ["workflow.job_scout.extract", JOB_EXTRACT_TOOL],
+  ["workflow.job_scout.prepare", JOB_PREPARE_TOOL],
+  ["workflow.job_scout.validate", JOB_VALIDATE_TOOL],
+  ["workflow.job_scout.email", JOB_DIGEST_TOOL],
+]);
 
 export class JobScoutBatchJob extends BatchJob {
   readonly type = "job_scout" as const;
@@ -76,14 +117,20 @@ export class JobScoutBatchJob extends BatchJob {
     const logCtx = { scheduleId, runId, taskRunId, handlerName };
     const stepKey = handlerName.replace("workflow.job_scout.", "");
 
-    // Step-specific prompt: config can override the built-in default.
-    let stepPrompt = STEP_PROMPTS[handlerName] ?? `Execute job scout step: ${stepKey}.`;
+    // Resolve the prompt tool for this step
+    const promptTool = STEP_TOOLS.get(handlerName);
+    if (!promptTool) {
+      throw new Error(`Unknown job scout step: "${handlerName}"`);
+    }
+    const toolName = promptTool.toolNamePrefix;
+
     let stepUserId = "";
     let stepThreadId = ctx.pipelineThreadId ?? "";
+    let additionalContext = "";
 
     try {
       const parsed = JSON.parse(configJson || "{}");
-      if (typeof parsed.prompt === "string" && parsed.prompt) stepPrompt = parsed.prompt;
+      if (typeof parsed.prompt === "string" && parsed.prompt) additionalContext = parsed.prompt;
       if (typeof parsed.userId === "string" && parsed.userId) stepUserId = parsed.userId;
     } catch { /* use defaults */ }
 
@@ -103,8 +150,15 @@ export class JobScoutBatchJob extends BatchJob {
       log("info", `Created pipeline thread for job scout run.`, logCtx, { stepKey, threadId: stepThreadId });
     }
 
-    const { runAgentLoop } = await import("@/lib/agent");
-    const result = await runAgentLoop(stepThreadId, stepPrompt, undefined, undefined, undefined, stepUserId);
+    // Execute the workflow tool
+    const result = await promptTool.execute(toolName, {
+      threadId: stepThreadId,
+      userId: stepUserId,
+      additionalContext,
+    }, { threadId: stepThreadId, userId: stepUserId }) as {
+      response: string;
+      toolsUsed: string[];
+    };
 
     // Extract tool call details from thread messages for full visibility
     const toolCallDetails = this.extractToolCallDetails(stepThreadId);
@@ -115,11 +169,11 @@ export class JobScoutBatchJob extends BatchJob {
       userId: stepUserId,
       toolsUsed: result.toolsUsed ?? [],
       toolCallDetails,
-      response: result.content || "",
+      response: result.response || "",
     });
 
     // ── Pipeline Orchestrator: validate step output before proceeding ──
-    await this.orchestrate(stepKey, stepThreadId, stepUserId, stepPrompt, result.content, logCtx, log);
+    await this.orchestrate(stepKey, stepThreadId, stepUserId, logCtx, log);
 
     return {
       pipelineThreadId: stepThreadId,
@@ -130,7 +184,7 @@ export class JobScoutBatchJob extends BatchJob {
         userId: stepUserId,
         toolsUsed: result.toolsUsed ?? [],
         toolCallDetails,
-        response: result.content || "",
+        response: result.response || "",
       },
     };
   }
@@ -144,12 +198,14 @@ export class JobScoutBatchJob extends BatchJob {
     stepKey: string,
     threadId: string,
     userId: string,
-    stepPrompt: string,
-    content: string | undefined,
     logCtx: { scheduleId?: string; runId?: string; taskRunId?: string; handlerName?: string },
     log: LogFn,
   ): Promise<void> {
-    const responseText = (content || "").toLowerCase();
+    // Read the latest assistant message to check results
+    const threadMsgs = getThreadMessages(threadId);
+    const lastAssistant = [...threadMsgs].reverse().find((m) => m.role === "assistant");
+    const content = lastAssistant?.content || "";
+    const responseText = content.toLowerCase();
     const isEmptyOutput = !content || content.trim().length < 20;
     const indicatesNoResults = responseText.includes("zero results") ||
       responseText.includes("no results") ||
@@ -170,7 +226,7 @@ export class JobScoutBatchJob extends BatchJob {
     }
 
     if (stepKey !== "search" && (isEmptyOutput || indicatesMissingInput)) {
-      await this.injectPriorContext(stepKey, threadId, userId, stepPrompt, logCtx, log);
+      await this.injectPriorContext(stepKey, threadId, userId, logCtx, log);
     }
   }
 
@@ -186,7 +242,7 @@ export class JobScoutBatchJob extends BatchJob {
         stepKey: "search", originalResponse: (originalContent || "").slice(0, 500),
       });
 
-    const retryPrompt =
+    const retryContext =
       "The previous job search attempt returned zero results from web_search. " +
       "Try a different approach:\n" +
       "1. Use broader, simpler search queries (e.g., just the job title + location, without site: filters).\n" +
@@ -197,8 +253,13 @@ export class JobScoutBatchJob extends BatchJob {
       "Report every query you attempt and the result. If all searches genuinely return nothing, " +
       "state clearly what queries were tried and suggest the user verify their search criteria.";
 
-    const { runAgentLoop } = await import("@/lib/agent");
-    const retryResult = await runAgentLoop(threadId, retryPrompt, undefined, undefined, undefined, userId);
+    const searchTool = STEP_TOOLS.get("workflow.job_scout.search")!;
+    const retryResult = await searchTool.execute(searchTool.toolNamePrefix, {
+      threadId,
+      userId,
+      additionalContext: retryContext,
+    }, { threadId, userId }) as { response: string; toolsUsed: string[] };
+
     const retryToolCalls = this.extractToolCallDetails(threadId);
 
     log("info", `Job scout search retry completed.`, logCtx, {
@@ -206,7 +267,7 @@ export class JobScoutBatchJob extends BatchJob {
       threadId,
       toolsUsed: retryResult.toolsUsed ?? [],
       toolCallDetails: retryToolCalls,
-      response: retryResult.content || "",
+      response: retryResult.response || "",
     });
   }
 
@@ -214,7 +275,6 @@ export class JobScoutBatchJob extends BatchJob {
     stepKey: string,
     threadId: string,
     userId: string,
-    stepPrompt: string,
     logCtx: { scheduleId?: string; runId?: string; taskRunId?: string; handlerName?: string },
     log: LogFn,
   ): Promise<void> {
@@ -239,19 +299,24 @@ export class JobScoutBatchJob extends BatchJob {
         attachments: null,
       });
 
-      const { runAgentLoop } = await import("@/lib/agent");
-      const contextResult = await runAgentLoop(
-        threadId,
-        `Review the pipeline context provided above and ${stepPrompt}`,
-        undefined, undefined, undefined, userId,
-      );
+      // Re-execute the same step's tool with injected context
+      const handlerName = `workflow.job_scout.${stepKey}`;
+      const promptTool = STEP_TOOLS.get(handlerName);
 
-      log("info",
-        `Job scout step "${stepKey}" re-executed with injected context.`, logCtx, {
-          stepKey,
-          response: contextResult.content || "",
-          toolsUsed: contextResult.toolsUsed ?? [],
-        });
+      if (promptTool) {
+        const contextResult = await promptTool.execute(promptTool.toolNamePrefix, {
+          threadId,
+          userId,
+          additionalContext: "Review the pipeline context provided above and use it as your input data.",
+        }, { threadId, userId }) as { response: string; toolsUsed: string[] };
+
+        log("info",
+          `Job scout step "${stepKey}" re-executed with injected context.`, logCtx, {
+            stepKey,
+            response: contextResult.response || "",
+            toolsUsed: contextResult.toolsUsed ?? [],
+          });
+      }
     }
   }
 
@@ -282,8 +347,7 @@ export class JobScoutBatchJob extends BatchJob {
         execution_mode: "sync",
         sequence_no: 0,
         enabled: 1,
-        task_type: "prompt",
-        prompt: "Search for job listings matching the user's profile and preferences. Focus on roles that align with their experience and goals.",
+        config_json: { tool: JOB_SEARCH_TOOL.toolNamePrefix },
       },
       {
         task_key: "extract",
@@ -293,8 +357,7 @@ export class JobScoutBatchJob extends BatchJob {
         sequence_no: 1,
         enabled: 1,
         depends_on_task_key: "search",
-        task_type: "prompt",
-        prompt: "Extract detailed role information including responsibilities, requirements, and key qualifications from the listings found.",
+        config_json: { tool: JOB_EXTRACT_TOOL.toolNamePrefix },
       },
       {
         task_key: "prepare",
@@ -304,8 +367,7 @@ export class JobScoutBatchJob extends BatchJob {
         sequence_no: 2,
         enabled: 1,
         depends_on_task_key: "extract",
-        task_type: "prompt",
-        prompt: "Generate a tailored resume that highlights relevant skills and experience for the identified roles.",
+        config_json: { tool: JOB_PREPARE_TOOL.toolNamePrefix },
       },
       {
         task_key: "validate",
@@ -315,8 +377,7 @@ export class JobScoutBatchJob extends BatchJob {
         sequence_no: 3,
         enabled: 1,
         depends_on_task_key: "prepare",
-        task_type: "prompt",
-        prompt: "Validate that all identified job matches are relevant and meet the user's criteria.",
+        config_json: { tool: JOB_VALIDATE_TOOL.toolNamePrefix },
       },
       {
         task_key: "email",
@@ -326,8 +387,7 @@ export class JobScoutBatchJob extends BatchJob {
         sequence_no: 4,
         enabled: 1,
         depends_on_task_key: "validate",
-        task_type: "prompt",
-        prompt: "Prepare and send a summary email with the curated job matches and tailored resume to the user.",
+        config_json: { tool: JOB_DIGEST_TOOL.toolNamePrefix },
       },
     ];
   }

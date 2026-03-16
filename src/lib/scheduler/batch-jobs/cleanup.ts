@@ -1,4 +1,4 @@
-import { runDbMaintenanceIfDue } from "@/lib/db";
+import { dbMaintenanceTool } from "@/lib/tools/db-maintenance-tool";
 import {
   BatchJob,
   type BatchJobParameterDefinition,
@@ -24,12 +24,14 @@ export class CleanupBatchJob extends BatchJob {
 
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
-    const result = runDbMaintenanceIfDue();
+    const result = await dbMaintenanceTool.execute(dbMaintenanceTool.toolNamePrefix, {}, { threadId: "", userId: "" }) as {
+      status: string; kind: string; result: unknown;
+    };
     log("info", "DB maintenance task completed.", logCtx, {
-      maintenanceSkipped: result === null,
-      ...(result || {}),
+      maintenanceSkipped: result.result === null,
+      ...(result.result as Record<string, unknown> || {}),
     });
-    return { outputJson: { kind: "db_maintenance", result } };
+    return { outputJson: { kind: "db_maintenance", result: result.result } };
   }
 
   override getParameterDefinitions(): BatchJobParameterDefinition[] {

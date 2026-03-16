@@ -1,4 +1,4 @@
-import { runKnowledgeMaintenanceIfDue } from "@/lib/knowledge-maintenance";
+import { knowledgeMaintenanceTool } from "@/lib/tools/knowledge-maintenance-tool";
 import {
   BatchJob,
   type BatchJobParameterDefinition,
@@ -24,9 +24,11 @@ export class KnowledgeBatchJob extends BatchJob {
 
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
-    const result = runKnowledgeMaintenanceIfDue();
-    log("info", "Knowledge maintenance task completed.", logCtx, result as unknown as Record<string, unknown>);
-    return { outputJson: { kind: "knowledge_maintenance", result } };
+    const result = await knowledgeMaintenanceTool.execute(knowledgeMaintenanceTool.toolNamePrefix, {}, { threadId: "", userId: "" }) as {
+      status: string; kind: string; result: unknown;
+    };
+    log("info", "Knowledge maintenance task completed.", logCtx, result.result as Record<string, unknown>);
+    return { outputJson: { kind: "knowledge_maintenance", result: result.result } };
   }
 
   override getParameterDefinitions(): BatchJobParameterDefinition[] {

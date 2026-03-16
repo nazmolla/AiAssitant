@@ -18,7 +18,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { assertExternalUrl, assertExternalUrlWithResolve } from "@/lib/agent/ssrf";
 import { env } from "@/lib/env";
-import { BaseTool, type ToolExecutionContext } from "./base-tool";
+import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 import {
   BROWSER_DEFAULT_TIMEOUT_MS,
   BROWSER_NAVIGATION_TIMEOUT_MS,
@@ -971,6 +971,7 @@ process.on("beforeExit", async () => {
 export class BrowserTools extends BaseTool {
   readonly name = "browser";
   readonly toolNamePrefix = "builtin.browser_";
+  readonly registrationOrder = 10;
   readonly tools = BUILTIN_BROWSER_TOOLS;
   readonly toolsRequiringApproval = [...BROWSER_TOOLS_REQUIRING_APPROVAL];
 
@@ -980,3 +981,4 @@ export class BrowserTools extends BaseTool {
 }
 
 export const browserTools = new BrowserTools();
+registerToolCategory(browserTools);

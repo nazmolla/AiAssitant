@@ -316,9 +316,53 @@ All built-in tools use the `builtin.` prefix (e.g. `builtin.alexa_announce`, `bu
 
 **`multi_tool_use.parallel` expansion**: Some OpenAI models emit a synthetic `multi_tool_use.parallel` tool call instead of returning multiple separate `tool_calls` entries. The `expandMultiToolUse()` function in `discovery.ts` detects this pattern, extracts individual tool calls from the `tool_uses` array (stripping the `functions.` prefix from `recipient_name`), and generates individual `ToolCall` entries with sequential IDs. Applied in all dispatch paths: `loop.ts`, `conversation/respond`, and `agent-worker.js`.
 
-**Dispatch chain** (identical in `loop.ts`, `gatekeeper.ts`, `scheduler/index.ts`):
+**Dispatch chain** (via `ToolRegistry` — `tool-registry.ts`, `ALL_TOOL_CATEGORIES`):
 
-`isBuiltinWebTool → isBrowserTool → isFsTool → isFileTool → isNetworkTool → isEmailTool → isAlexaTool → isCustomTool → MCP fallback`
+`webTools → browserTools → fsTools → networkTools → emailTools → fileTools → alexaTools → workflowTools → customTools → MCP catch-all`
+
+**Tool categories**: 9 built-in `BaseTool` subclasses auto-discovered via self-registration into `ALL_TOOL_CATEGORIES` (`src/lib/tools/index.ts`), plus the MCP catch-all. Each category is a class extending `BaseTool` (abstract class in `base-tool.ts`) with `name`, `toolNamePrefix`, `tools: ToolDefinition[]`, `matches(toolName)`, and `execute(toolName, args, context)`.
+
+### Auto-Discovery (Self-Registration)
+
+Tool categories self-register at module load time — no hardcoded array to maintain.
+
+**Mechanism**: Each tool file calls `registerToolCategory(singleton)` at module scope after exporting its singleton. The barrel `index.ts` re-exports all tool modules (triggering side-effect registration), then exposes `ALL_TOOL_CATEGORIES = getRegisteredToolCategories()` which returns all registered categories sorted by `registrationOrder`.
+
+**`registrationOrder`** controls dispatch priority (lower = matched first). Built-in categories use 10-step gaps for easy insertion:
+
+| Order | Category | File |
+|-------|----------|------|
+| 0 | web | `web-tools.ts` |
+| 10 | browser | `browser-tools.ts` |
+| 20 | fs | `fs-tools.ts` |
+| 30 | network | `network-tools.ts` |
+| 40 | email | `email-tools.ts` |
+| 50 | file | `file-tools.ts` |
+| 60 | alexa | `alexa-tools.ts` |
+| 70 | workflow | `workflow-tools.ts` |
+| 1000 | custom | `custom-tools.ts` |
+
+**To add a new tool category**: (1) Create a file extending `BaseTool`, (2) set `registrationOrder`, (3) call `registerToolCategory(singleton)`, (4) add a re-export line in `index.ts`.
+
+**Test isolation**: `resetToolCategoryRegistry()` clears the registry for unit tests.
+
+**Deduplication**: `registerToolCategory()` silently ignores duplicate registrations (same `name`).
+
+### Workflow Tools Architecture
+
+Workflow tools (`builtin.workflow_*`) provide the tool-layer abstraction for scheduler batch jobs. The design follows two patterns:
+
+**System tools** are individual `BaseTool` subclasses in dedicated files under `src/lib/tools/`:
+| Tool Class | File | Delegates to |
+|------------|------|-------------|
+| `ProactiveScanTool` | `proactive-scan-tool.ts` | `runProactiveScan()` from `scheduler` |
+| `KnowledgeMaintenanceTool` | `knowledge-maintenance-tool.ts` | `runKnowledgeMaintenanceIfDue()` from `scheduler/knowledge-maintenance` |
+| `DbMaintenanceTool` | `db-maintenance-tool.ts` | `runDbMaintenanceIfDue()` from `db/maintenance` |
+| `EmailReadTool` | `email-read-tool.ts` | `runEmailReadBatch()` from `scheduler` |
+
+**Prompt tools** (`PromptTool` class in `prompt-tool.ts`) wrap a system prompt and execute via `runAgentLoop()`. The class is generic/reusable; instances are created by the batch jobs that use them (e.g. `job-scout.ts` creates 5 PromptTool instances for search/extract/prepare/validate/digest).
+
+**`WorkflowTools`** (`workflow-tools.ts`) is a composite `BaseTool` that aggregates all system tools via dependency injection. Its constructor accepts `children: ToolCategory[]` (defaults to the 4 system tools). Dispatch uses polymorphic `child.matches(toolName)` — no switch statements.
 
 **Name normalization**: The LLM sometimes strips the `builtin.` prefix when calling tools (e.g. `alexa_announce` instead of `builtin.alexa_announce`). The `normalizeToolName()` function in `discovery.ts` lazily builds a map of all known builtin short names and restores the prefix before dispatch. Applied in all three dispatch entry points.
 
@@ -543,5 +587,7 @@ Component tests use `jsdom` environment with the following mocks:
 | `tests/unit/mcp/mcp-manager.test.ts` | 18 | listChanged auto-refresh, qualifyToolName 64-char enforcement, callTool truncated-name reverse mapping |
 | `tests/unit/agent/expand-multi-tool-use.test.ts` | 10 | multi_tool_use.parallel expansion, mixed calls, missing parameters, empty recipient_name, bare multi_tool_use |
 | `tests/unit/agent/message-converter.test.ts` | 6 | Orphaned tool_calls stripping, partial tool result removal, complete sequence preservation, system message exclusion |
-| `tests/unit/agent/base-tool.test.ts` | 9 | BaseTool interface compliance, default matching, execute delegation, ALL_TOOL_CATEGORIES count, tool name prefix matching |
+| `tests/unit/agent/base-tool.test.ts` | 16 | BaseTool interface compliance, default matching, execute delegation, registrationOrder defaults, self-registration (register/dedupe/sort), ALL_TOOL_CATEGORIES auto-discovery (9 categories, sorted order, custom highest) |
+| `tests/unit/agent/prompt-tool.test.ts` | 21 | PromptTool construction (BaseTool inheritance, displayName, toolNamePrefix, default/custom input schema), matches (exact-match only), execute delegation to runAgentLoop, additionalContext appending, threadId/userId fallbacks and error handling |
+| `tests/unit/agent/workflow-tools.test.ts` | 42 | System tool BaseTool compliance (parameterized ×4 — 6 tests each), individual execute (proactive/knowledge/db/email with args verification), WorkflowTools composite dispatch, DI constructor with mock children, isWorkflowTool(), BUILTIN_WORKFLOW_TOOLS aggregation |
 | `tests/component/chat-area.test.tsx` | 28 | Empty state, message rendering, approval buttons (approve/deny/disabled/resolved), TTS button, restore-to-message button (user-only, callback, loading guard) |

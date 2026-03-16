@@ -1,4 +1,4 @@
-import { runEmailReadBatch } from "@/lib/scheduler";
+import { emailReadTool } from "@/lib/tools/email-read-tool";
 import {
   BatchJob,
   type BatchJobParameterDefinition,
@@ -24,7 +24,12 @@ export class EmailBatchJob extends BatchJob {
 
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
-    await runEmailReadBatch({ scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName });
+    let maxMessages = 25;
+    try {
+      const parsed = JSON.parse(ctx.configJson || "{}");
+      if (typeof parsed.maxMessages === "number") maxMessages = parsed.maxMessages;
+    } catch { /* use default */ }
+    await emailReadTool.execute(emailReadTool.toolNamePrefix, { maxMessages }, { threadId: "", userId: "" });
     log("info", "Email read task completed successfully.", logCtx);
     return { outputJson: { kind: "email_read_incoming" } };
   }

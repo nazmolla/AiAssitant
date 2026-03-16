@@ -12,7 +12,7 @@ import {
   sendSmtpMail,
 } from "@/lib/channels/email-transport";
 import { simpleParser } from "mailparser";
-import { BaseTool, type ToolExecutionContext } from "./base-tool";
+import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 
 export const EMAIL_TOOL_NAMES = {
   SEND: "builtin.email_send",
@@ -398,6 +398,7 @@ async function executeEmailRead(
 export class EmailTools extends BaseTool {
   readonly name = "email";
   readonly toolNamePrefix = "builtin.email_";
+  readonly registrationOrder = 40;
   readonly tools = BUILTIN_EMAIL_TOOLS;
   readonly toolsRequiringApproval = [...EMAIL_TOOLS_REQUIRING_APPROVAL];
 
@@ -408,3 +409,4 @@ export class EmailTools extends BaseTool {
 }
 
 export const emailTools = new EmailTools();
+registerToolCategory(emailTools);

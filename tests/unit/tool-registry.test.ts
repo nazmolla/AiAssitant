@@ -144,9 +144,9 @@ describe("getToolRegistry (singleton)", () => {
     expect(a).toBe(b);
   });
 
-  test("registers all 9 built-in categories", () => {
+  test("registers all 10 built-in categories", () => {
     const registry = getToolRegistry();
-    expect(registry.size).toBe(9);
+    expect(registry.size).toBe(10);
   });
 
   test("finds category for each builtin tool type", () => {
@@ -158,6 +158,7 @@ describe("getToolRegistry (singleton)", () => {
     expect(registry.findCategory("builtin.email_send")?.name).toBe("email");
     expect(registry.findCategory("builtin.file_generate")?.name).toBe("file");
     expect(registry.findCategory("builtin.alexa_announce")?.name).toBe("alexa");
+    expect(registry.findCategory("builtin.workflow_proactive_scan")?.name).toBe("workflow");
   });
 
   test("custom tools match the custom category", () => {

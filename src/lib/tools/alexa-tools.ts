@@ -12,7 +12,7 @@
 import type { ToolDefinition } from "@/lib/llm";
 import { getAppConfig, setAppConfig } from "@/lib/db/queries";
 import { encryptField, decryptField } from "@/lib/db/crypto";
-import { BaseTool, type ToolExecutionContext } from "./base-tool";
+import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 
 /* ══════════════════════════════════════════════════════════════════
    Constants
@@ -956,6 +956,7 @@ async function handleSetDndStatus(creds: AlexaCreds, args: Record<string, unknow
 export class AlexaTools extends BaseTool {
   readonly name = "alexa";
   readonly toolNamePrefix = "builtin.alexa_";
+  readonly registrationOrder = 60;
   readonly tools = BUILTIN_ALEXA_TOOLS;
   readonly toolsRequiringApproval = [...ALEXA_TOOLS_REQUIRING_APPROVAL];
 
@@ -965,3 +966,4 @@ export class AlexaTools extends BaseTool {
 }
 
 export const alexaTools = new AlexaTools();
+registerToolCategory(alexaTools);

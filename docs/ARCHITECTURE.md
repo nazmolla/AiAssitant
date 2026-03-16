@@ -348,11 +348,25 @@ src/
 │   │   ├── worker-manager.ts   # Worker lifecycle, IPC handling, 120s timeout
 │   │   ├── gatekeeper.ts       # HITL policy enforcement
 │   │   ├── discovery.ts        # Tool discovery, group inference, name normalization
-│   │   ├── custom-tools.ts     # Self-extending tool system (VM sandbox)
+│   │   └── tool-registry.ts    # ToolRegistry — dispatch loop, MCP catch-all
+│   ├── tools/                  # Tool category implementations (self-registering)
+│   │   ├── base-tool.ts        # BaseTool abstract class, ToolCategory interface, self-registration infra
+│   │   ├── index.ts            # Barrel export — re-exports trigger self-registration; ALL_TOOL_CATEGORIES auto-discovered
 │   │   ├── web-tools.ts        # Web search/fetch tools
 │   │   ├── browser-tools.ts    # Playwright browser automation
 │   │   ├── fs-tools.ts         # File system tools
-│   │   └── alexa-tools.ts      # Alexa Smart Home integration (14 tools)
+│   │   ├── network-tools.ts    # Network/HTTP tools
+│   │   ├── email-tools.ts      # Email send/receive tools
+│   │   ├── file-tools.ts       # File generation tools (PDF, DOCX, etc.)
+│   │   ├── alexa-tools.ts      # Alexa Smart Home integration (14 tools)
+│   │   ├── workflow-tools.ts   # Composite workflow tool (DI, polymorphic dispatch)
+│   │   ├── custom-tools.ts     # Self-extending tool system (VM sandbox)
+│   │   ├── prompt-tool.ts      # PromptTool class — wraps system prompt + runAgentLoop()
+│   │   ├── proactive-scan-tool.ts      # System tool: proactive scan
+│   │   ├── knowledge-maintenance-tool.ts # System tool: knowledge maintenance
+│   │   ├── db-maintenance-tool.ts      # System tool: DB maintenance
+│   │   ├── email-read-tool.ts          # System tool: email read batch
+│   │   └── tool-cap.ts         # MAX_TOOLS_PER_REQUEST cap logic
 │   ├── auth/                   # Authentication
 │   │   ├── options.ts          # NextAuth config (multi-user)
 │   │   ├── guard.ts            # requireUser/requireAdmin guards

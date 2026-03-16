@@ -18,7 +18,7 @@
  */
 
 import type { ToolDefinition, ToolCall } from "@/lib/llm";
-import { BaseTool, type ToolExecutionContext } from "./base-tool";
+import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 import * as vm from "vm";
 import { ValidationError, NotFoundError, IntegrationError } from "@/lib/errors";
 
@@ -574,6 +574,7 @@ async function runSandboxed(
 export class CustomTools extends BaseTool {
   readonly name = "custom";
   readonly toolNamePrefix = "custom.";
+  readonly registrationOrder = 1000;
   readonly toolsRequiringApproval = [...CUSTOM_TOOLS_REQUIRING_APPROVAL];
 
   /** Dynamic: includes both toolmaker meta-tools and user-created tools */
@@ -592,3 +593,4 @@ export class CustomTools extends BaseTool {
 }
 
 export const customTools = new CustomTools();
+registerToolCategory(customTools);

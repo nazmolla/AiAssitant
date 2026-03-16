@@ -1,14 +1,27 @@
 /**
- * Tools barrel export — auto-discovery entry point.
+ * Tools barrel export.
  *
- * ALL_TOOL_CATEGORIES is the single list of built-in tool categories
- * in registration order.  The registry loops over this array to
- * register categories — no manual adapter objects required.
+ * Tool categories self-register via `registerToolCategory()` at module
+ * scope (side-effect of the re-export imports below). ALL_TOOL_CATEGORIES
+ * is auto-discovered from the registry — no manual array to maintain.
+ *
+ * To add a new tool category:
+ *   1. Create `src/lib/tools/my-tools.ts` extending `BaseTool`
+ *   2. Set `registrationOrder` (dispatch priority; lower = matched first)
+ *   3. Call `registerToolCategory(myTools)` after the singleton export
+ *   4. Add a re-export line here for named imports
  *
  * @see https://github.com/nazmolla/AiAssitant/issues/132
  */
 
-export { BaseTool, type ToolCategory, type ToolExecutionContext } from "./base-tool";
+export {
+  BaseTool,
+  type ToolCategory,
+  type ToolExecutionContext,
+  registerToolCategory,
+  getRegisteredToolCategories,
+  resetToolCategoryRegistry,
+} from "./base-tool";
 
 export { webTools, WebTools, BUILTIN_WEB_TOOLS, isBuiltinWebTool, executeBuiltinWebTool } from "./web-tools";
 export { browserTools, BrowserTools, BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool, BROWSER_TOOLS_REQUIRING_APPROVAL } from "./browser-tools";
@@ -24,32 +37,28 @@ export {
 } from "./custom-tools";
 export { alexaTools, AlexaTools, BUILTIN_ALEXA_TOOLS, isAlexaTool, executeAlexaTool, ALEXA_TOOLS_REQUIRING_APPROVAL } from "./alexa-tools";
 export { getAlexaConfig, saveAlexaConfig } from "./alexa-tools";
+export { PromptTool, type PromptToolConfig } from "./prompt-tool";
+export {
+  workflowTools, WorkflowTools, BUILTIN_WORKFLOW_TOOLS, isWorkflowTool,
+  WORKFLOW_TOOLS_REQUIRING_APPROVAL,
+} from "./workflow-tools";
+export { proactiveScanTool, ProactiveScanTool } from "./proactive-scan-tool";
+export { knowledgeMaintenanceTool, KnowledgeMaintenanceTool } from "./knowledge-maintenance-tool";
+export { dbMaintenanceTool, DbMaintenanceTool } from "./db-maintenance-tool";
+export { emailReadTool, EmailReadTool } from "./email-read-tool";
 
 export { buildCappedToolList, MAX_TOOLS_PER_REQUEST } from "./tool-cap";
 
-// ── Auto-discovery list ───────────────────────────────────────
+// ── Auto-discovered tool categories ───────────────────────────
+//
+// Each *-tools.ts module self-registers via registerToolCategory()
+// as a side-effect of the re-export imports above.
+// No manual array — just sorted by registrationOrder.
 
-import { webTools } from "./web-tools";
-import { browserTools } from "./browser-tools";
-import { fsTools } from "./fs-tools";
-import { networkTools } from "./network-tools";
-import { emailTools } from "./email-tools";
-import { fileTools } from "./file-tools";
-import { alexaTools } from "./alexa-tools";
-import { customTools } from "./custom-tools";
-import type { BaseTool } from "./base-tool";
+import { getRegisteredToolCategories, type BaseTool } from "./base-tool";
 
 /**
- * All built-in tool categories in registration order.
+ * All built-in tool categories in dispatch order (auto-discovered).
  * MCP (catch-all) is handled separately by the registry.
  */
-export const ALL_TOOL_CATEGORIES: BaseTool[] = [
-  webTools,
-  browserTools,
-  fsTools,
-  networkTools,
-  emailTools,
-  fileTools,
-  alexaTools,
-  customTools,
-];
+export const ALL_TOOL_CATEGORIES: BaseTool[] = getRegisteredToolCategories();

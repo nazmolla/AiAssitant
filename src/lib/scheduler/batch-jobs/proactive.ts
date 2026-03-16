@@ -1,4 +1,4 @@
-import { runProactiveScan } from "@/lib/scheduler";
+import { proactiveScanTool } from "@/lib/tools/proactive-scan-tool";
 import {
   BatchJob,
   type BatchJobSubTaskTemplate,
@@ -23,7 +23,7 @@ export class ProactiveBatchJob extends BatchJob {
 
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
-    await runProactiveScan({ scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName });
+    await proactiveScanTool.execute(proactiveScanTool.toolNamePrefix, {}, { threadId: "", userId: "" });
     log("info", "Proactive scan task completed successfully.", logCtx);
     return { outputJson: { kind: "proactive_scan" } };
   }

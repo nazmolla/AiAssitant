@@ -24,7 +24,7 @@ import * as path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { env } from "@/lib/env";
-import { BaseTool, type ToolExecutionContext } from "./base-tool";
+import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 import {
   FS_MAX_READ_BYTES,
   FS_MAX_SCRIPT_OUTPUT,
@@ -919,6 +919,7 @@ export async function executeBuiltinFsTool(
 export class FsTools extends BaseTool {
   readonly name = "fs";
   readonly toolNamePrefix = "builtin.fs_";
+  readonly registrationOrder = 20;
   readonly tools = BUILTIN_FS_TOOLS;
   readonly toolsRequiringApproval = [...FS_TOOLS_REQUIRING_APPROVAL];
 
@@ -928,3 +929,4 @@ export class FsTools extends BaseTool {
 }
 
 export const fsTools = new FsTools();
+registerToolCategory(fsTools);

@@ -14,7 +14,7 @@ import {
   FILE_IMAGE_MIN_DIMENSION,
   FILE_IMAGE_MAX_DIMENSION,
 } from "@/lib/constants";
-import { BaseTool, type ToolExecutionContext } from "./base-tool";
+import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 
 const ATTACHMENTS_ROOT = path.join(process.cwd(), "data", "attachments");
 
@@ -269,6 +269,7 @@ export async function executeBuiltinFileTool(
 export class FileTools extends BaseTool {
   readonly name = "file";
   readonly toolNamePrefix = "builtin.file_";
+  readonly registrationOrder = 50;
   readonly tools = BUILTIN_FILE_TOOLS;
   readonly toolsRequiringApproval = [...FILE_TOOLS_REQUIRING_APPROVAL];
 
@@ -278,3 +279,4 @@ export class FileTools extends BaseTool {
 }
 
 export const fileTools = new FileTools();
+registerToolCategory(fileTools);

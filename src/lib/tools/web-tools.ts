@@ -12,7 +12,7 @@
 import type { ToolDefinition } from "@/lib/llm";
 import { URL } from "url";
 import { assertExternalUrl, assertExternalUrlWithResolve } from "@/lib/agent/ssrf";
-import { BaseTool, type ToolExecutionContext } from "./base-tool";
+import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 
 // ── Tool Definitions ──────────────────────────────────────────
 
@@ -409,6 +409,7 @@ export async function executeBuiltinWebTool(
 export class WebTools extends BaseTool {
   readonly name = "web";
   readonly toolNamePrefix = "builtin.web_";
+  readonly registrationOrder = 0;
   readonly tools = BUILTIN_WEB_TOOLS;
   readonly toolsRequiringApproval: string[] = [];
 
@@ -418,3 +419,4 @@ export class WebTools extends BaseTool {
 }
 
 export const webTools = new WebTools();
+registerToolCategory(webTools);
