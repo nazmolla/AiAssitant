@@ -41,6 +41,7 @@ ALLOW_SMOKE_FAIL="${DEPLOY_ALLOW_SMOKE_FAIL:-0}"   # set to 1 only for emergency
 # ── Helpers ────────────────────────────────────────────────────────
 rcmd()  { ssh -o LogLevel=ERROR "${REMOTE}" "$@" 2>/dev/null; }
 rcmd_long() { ssh -o LogLevel=ERROR -o ServerAliveInterval=15 -o ServerAliveCountMax=10 "${REMOTE}" "$@" 2>/dev/null; }
+rcmd_diag() { ssh -o LogLevel=ERROR "${REMOTE}" "$@"; }
 fail()  { echo ""; echo "  ✗ FAILED: $1"; exit 1; }
 step()  { echo ""; echo "[${1}/${STEPS}] ${2}"; }
 
@@ -106,6 +107,9 @@ echo "  ✓ Tarball: $(du -h ${TAR_NAME} | cut -f1)"
 # ── 3. Remote: backup database ────────────────────────────────────
 step 3 "Backing up remote database..."
 
+echo "  Remote storage snapshot:"
+rcmd "df -h ${REMOTE_DIR} /tmp 2>/dev/null | sed 's/^/    /'" || true
+
 # Check if remote dir exists (fresh install)
 if ! rcmd "test -d ${REMOTE_DIR}"; then
   echo "  First deploy — creating remote directory"
@@ -116,11 +120,17 @@ if ! rcmd "test -d ${REMOTE_DIR}"; then
   PRE_THREADS=0
 else
   # WAL checkpoint to flush any pending writes
-  rcmd "cd ${REMOTE_DIR} && test -f nexus.db && node -e 'try{require(\"better-sqlite3\")(\"./nexus.db\").pragma(\"wal_checkpoint(TRUNCATE)\");console.log(\"  WAL checkpointed\")}catch(e){console.log(\"  Checkpoint skipped:\",e.message)}' || echo '  No DB to checkpoint'"
+  rcmd "cd ${REMOTE_DIR} && test -f nexus.db && node -e 'try{require(\"better-sqlite3\")(\"./nexus.db\").pragma(\"wal_checkpoint(TRUNCATE)\");console.log(\"  WAL checkpointed\")}catch(e){console.log(\"  Checkpoint skipped:\",e.message)}' || echo '  No DB to checkpoint'" || true
 
   # Backup
   if rcmd "test -f ${REMOTE_DIR}/nexus.db"; then
-    rcmd "cd ${REMOTE_DIR} && cp nexus.db nexus.db.backup_${TIMESTAMP}"
+    if ! rcmd "cd ${REMOTE_DIR} && cp nexus.db nexus.db.backup_${TIMESTAMP}"; then
+      echo "  ✗ Backup copy failed; remote diagnostics:"
+      rcmd_diag "df -h ${REMOTE_DIR} /tmp | sed 's/^/    /'" || true
+      rcmd_diag "cd ${REMOTE_DIR} && ls -lh nexus.db nexus.db-wal nexus.db-shm 2>/dev/null | sed 's/^/    /'" || true
+      rcmd_diag "cd ${REMOTE_DIR} && sqlite3 nexus.db 'PRAGMA integrity_check;' 2>/dev/null | head -1 | sed 's/^/    integrity: /'" || true
+      fail "Remote DB backup copy failed (step 3)"
+    fi
     echo "  ✓ Backed up as nexus.db.backup_${TIMESTAMP}"
 
     # Prune old backups (keep MAX_BACKUPS)
