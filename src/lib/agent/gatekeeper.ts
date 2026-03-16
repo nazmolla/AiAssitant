@@ -16,7 +16,7 @@ import {
   getThread,
   findApprovalPreferenceDecision,
 } from "@/lib/db";
-import { notifyAdmin } from "@/lib/channels/notify";
+import { notifyAdmin } from "@/lib/notifications";
 import type { ToolCall } from "@/lib/llm";
 import { APPROVAL_REASON_MAX_CHARS, GATEKEEPER_RESULT_PREVIEW_CHARS } from "@/lib/constants";
 

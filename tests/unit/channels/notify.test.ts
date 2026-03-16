@@ -1,31 +1,24 @@
 /**
- * Unit tests — Notification dispatch (notifyAdmin)
+ * Unit tests — Channel delivery (sendChannelNotification)
  *
  * Validates:
- * - normalizeNotificationLevel() handles edge cases
- * - shouldNotifyForLevel() correctly filters by threshold
- * - notifyAdmin() dispatches via IM/email/in-app
- * - notifyAdmin() suppresses below-threshold events
+ * - sendChannelNotification() dispatches via IM/email
+ * - Backward-compatible re-exports from channels/notify
+ *
+ * Note: Notification lifecycle tests (in-app creation, threshold logic)
+ * are in tests/unit/notifications.test.ts.
  */
 
 // ── Mocks ────────────────────────────────────────────────────────
 
-const mockListUsersWithPermissions = jest.fn();
 const mockListChannels = jest.fn();
 const mockListChannelUserMappings = jest.fn();
 const mockAddLog = jest.fn();
-const mockGetUserProfile = jest.fn();
-const mockGetUserById = jest.fn();
-const mockCreateNotification = jest.fn();
 
 jest.mock("@/lib/db", () => ({
-  listUsersWithPermissions: (...a: unknown[]) => mockListUsersWithPermissions(...a),
   listChannels: (...a: unknown[]) => mockListChannels(...a),
   listChannelUserMappings: (...a: unknown[]) => mockListChannelUserMappings(...a),
   addLog: (...a: unknown[]) => mockAddLog(...a),
-  getUserProfile: (...a: unknown[]) => mockGetUserProfile(...a),
-  getUserById: (...a: unknown[]) => mockGetUserById(...a),
-  createNotification: (...a: unknown[]) => mockCreateNotification(...a),
 }));
 
 const mockSendDiscordDm = jest.fn();
@@ -47,68 +40,33 @@ jest.mock("@/lib/channels/email-transport", () => ({
   sendSmtpMail: (...a: unknown[]) => mockSendSmtpMail(...a),
 }));
 
-import { notifyAdmin, getUserNotificationLevel } from "@/lib/channels/notify";
+// Mock @/lib/notifications to prevent circular dependency in tests
+jest.mock("@/lib/notifications", () => ({
+  notify: jest.fn(),
+  notifyAdmin: jest.fn(),
+  getUserNotificationLevel: jest.fn(() => "disaster"),
+  shouldNotifyForLevel: jest.fn(() => true),
+  normalizeNotificationLevel: jest.fn((v: unknown) => typeof v === "string" ? v : "disaster"),
+}));
+
+import { sendChannelNotification } from "@/lib/channels/notify";
 
 beforeEach(() => {
   jest.clearAllMocks();
-  // Default: admin exists, enabled, disaster threshold
-  mockListUsersWithPermissions.mockReturnValue([
-    { id: "admin-1", email: "admin@test.com", role: "admin", enabled: 1 },
-  ]);
-  mockGetUserById.mockReturnValue({ id: "admin-1", email: "admin@test.com", role: "admin" });
-  mockGetUserProfile.mockReturnValue(null); // defaults to disaster threshold
   mockListChannels.mockReturnValue([]);
   mockListChannelUserMappings.mockReturnValue([]);
 });
 
 // ── Tests ────────────────────────────────────────────────────────
 
-describe("getUserNotificationLevel", () => {
-  test("defaults to disaster when no profile", () => {
-    mockGetUserProfile.mockReturnValue(null);
-    expect(getUserNotificationLevel("user-1")).toBe("disaster");
-  });
-
-  test("reads level from profile", () => {
-    mockGetUserProfile.mockReturnValue({ notification_level: "low" });
-    expect(getUserNotificationLevel("user-1")).toBe("low");
-  });
-
-  test("normalizes invalid values to disaster", () => {
-    mockGetUserProfile.mockReturnValue({ notification_level: "garbage" });
-    expect(getUserNotificationLevel("user-1")).toBe("disaster");
-  });
-});
-
-describe("notifyAdmin", () => {
-  test("returns false when no admins exist", async () => {
-    mockListUsersWithPermissions.mockReturnValue([]);
-    const result = await notifyAdmin("test message");
+describe("sendChannelNotification", () => {
+  test("returns false when no channels configured", async () => {
+    mockListChannels.mockReturnValue([]);
+    const result = await sendChannelNotification("user-1", "user@test.com", "msg", "subj");
     expect(result).toBe(false);
-  });
-
-  test("creates in-app notification", async () => {
-    mockGetUserProfile.mockReturnValue({ notification_level: "low" });
-    await notifyAdmin("Alert!", "Test", { level: "disaster" });
-    expect(mockCreateNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: "admin-1",
-        title: "Test",
-        body: "Alert!",
-      })
-    );
-  });
-
-  test("suppresses notification when below user threshold", async () => {
-    // User threshold is disaster-only, event is low
-    mockGetUserProfile.mockReturnValue({ notification_level: "disaster" });
-    const result = await notifyAdmin("Low priority", "Test", { level: "low" });
-    expect(result).toBe(false);
-    expect(mockCreateNotification).not.toHaveBeenCalled();
   });
 
   test("dispatches via Discord when IM channel is available", async () => {
-    mockGetUserProfile.mockReturnValue({ notification_level: "low" });
     mockListChannels.mockReturnValue([
       { id: "ch-1", channel_type: "discord", enabled: 1, config_json: "{}" },
     ]);
@@ -117,38 +75,66 @@ describe("notifyAdmin", () => {
     ]);
     mockSendDiscordDm.mockResolvedValue(undefined);
 
-    const result = await notifyAdmin("Alert!", "Test", { level: "high" });
+    const result = await sendChannelNotification("admin-1", "admin@test.com", "Alert!", "Test");
     expect(result).toBe(true);
     expect(mockSendDiscordDm).toHaveBeenCalledWith("ch-1", "discord-user-123", "Alert!");
   });
 
   test("falls back to email when no IM channels", async () => {
-    mockGetUserProfile.mockReturnValue({ notification_level: "low" });
     mockListChannels.mockReturnValue([
       { id: "ch-email", channel_type: "email", enabled: 1, config_json: "{}" },
     ]);
     mockSendSmtpMail.mockResolvedValue(undefined);
 
-    const result = await notifyAdmin("Alert!", "Test Subject", { level: "high" });
+    const result = await sendChannelNotification("admin-1", "admin@test.com", "Alert!", "Test Subject");
     expect(result).toBe(true);
     expect(mockSendSmtpMail).toHaveBeenCalled();
   });
 
-  test("notifies specific user when userId provided", async () => {
-    mockGetUserById.mockReturnValue({ id: "user-5", email: "user5@test.com" });
-    mockGetUserProfile.mockReturnValue({ notification_level: "low" });
+  test("skips disabled channels", async () => {
+    mockListChannels.mockReturnValue([
+      { id: "ch-1", channel_type: "discord", enabled: 0, config_json: "{}" },
+    ]);
+    const result = await sendChannelNotification("admin-1", "admin@test.com", "msg", "subj");
+    expect(result).toBe(false);
+  });
+
+  test("logs warning on IM send failure and continues to email", async () => {
+    mockListChannels.mockReturnValue([
+      { id: "ch-im", channel_type: "discord", enabled: 1, config_json: "{}" },
+      { id: "ch-email", channel_type: "email", enabled: 1, config_json: "{}" },
+    ]);
+    mockListChannelUserMappings.mockReturnValue([
+      { user_id: "admin-1", external_id: "discord-user-123" },
+    ]);
+    mockSendDiscordDm.mockRejectedValue(new Error("Discord API down"));
+    mockSendSmtpMail.mockResolvedValue(undefined);
+
+    const result = await sendChannelNotification("admin-1", "admin@test.com", "msg", "subj");
+    expect(result).toBe(true);
+    expect(mockAddLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        level: "warn",
+        message: expect.stringContaining("Failed channel notification via discord"),
+      })
+    );
+    expect(mockSendSmtpMail).toHaveBeenCalled();
+  });
+
+  test("returns false when email is empty", async () => {
     mockListChannels.mockReturnValue([
       { id: "ch-email", channel_type: "email", enabled: 1, config_json: "{}" },
     ]);
-    mockSendSmtpMail.mockResolvedValue(undefined);
+    const result = await sendChannelNotification("admin-1", "", "msg", "subj");
+    expect(result).toBe(false);
+  });
+});
 
-    const result = await notifyAdmin("Direct message", "Test", {
-      level: "medium",
-      userId: "user-5",
-    });
-    expect(result).toBe(true);
-    expect(mockCreateNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "user-5" })
-    );
+describe("backward-compatible re-exports", () => {
+  test("notifyAdmin and notify are re-exported", async () => {
+    const mod = await import("@/lib/channels/notify");
+    expect(mod.notifyAdmin).toBeDefined();
+    expect(mod.notify).toBeDefined();
+    expect(mod.getUserNotificationLevel).toBeDefined();
   });
 });

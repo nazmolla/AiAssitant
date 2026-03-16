@@ -5,46 +5,14 @@
  * volume increases) are blocked during quiet hours (10 PM – 8 AM).
  */
 
-// Mock the scheduler module to access isQuietHours / isNoisyTool
-// without pulling in the full scheduler dependency graph.
-jest.mock("cron", () => ({ CronJob: jest.fn() }));
-jest.mock("@/lib/mcp", () => ({ getMcpManager: jest.fn() }));
-jest.mock("@/lib/llm", () => ({ createChatProvider: jest.fn() }));
-jest.mock("@/lib/agent", () => ({}));
-jest.mock("@/lib/agent/discovery", () => ({ normalizeToolName: (n: string) => n }));
+// Mock the shared module's sole DB dependency so it can load
+// without pulling in the full application stack.
 jest.mock("@/lib/db", () => ({
   addLog: jest.fn(),
-  getAppConfig: jest.fn(),
-  getDb: jest.fn(),
+  listUsersWithPermissions: jest.fn(() => []),
 }));
-jest.mock("@/lib/knowledge", () => ({}));
-jest.mock("@/lib/knowledge/retriever", () => ({}));
-jest.mock("mailparser", () => ({}));
-jest.mock("@/lib/channels/email-transport", () => ({
-  getEmailChannelConfig: jest.fn(() => ({
-    smtpHost: "",
-    smtpPort: 587,
-    smtpSecure: null,
-    smtpUser: "",
-    smtpPass: "",
-    fromAddress: "",
-    imapHost: "",
-    imapPort: 993,
-    imapSecure: null,
-    imapUser: "",
-    imapPass: "",
-  })),
-  isValidPort: jest.fn(() => true),
-  getImapSecureCandidatesForConfig: jest.fn(() => [true]),
-  createImapClient: jest.fn(() => ({ on: jest.fn() })),
-  buildThemedEmailBody: jest.fn(() => ({ text: "", html: "" })),
-  sendSmtpMail: jest.fn(),
-  formatEmailConnectError: jest.fn((e: unknown) => String(e)),
-}));
-jest.mock("@/lib/channels/inbound-email", () => ({}));
-jest.mock("@/lib/channels/notify", () => ({}));
 
-import { isQuietHours, isNoisyTool } from "@/lib/scheduler";
+import { isQuietHours, isNoisyTool } from "@/lib/scheduler/shared";
 
 describe("Quiet hours", () => {
   const realDate = global.Date;

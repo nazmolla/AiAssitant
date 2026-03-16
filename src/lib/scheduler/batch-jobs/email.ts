@@ -1,4 +1,14 @@
-import { emailReadTool } from "@/lib/tools/email-read-tool";
+﻿/**
+ * Email Batch Job
+ *
+ * Thin orchestrator — schedules and triggers email read/processing runs.
+ * All execution logic lives in EmailReadTool (src/lib/tools/email-read-tool.ts).
+ *
+ * Called by:
+ * - Unified scheduler engine via EmailBatchJob.executeStep()
+ */
+
+import { runEmailReadBatch } from "@/lib/tools/email-read-tool";
 import {
   BatchJob,
   type BatchJobParameterDefinition,
@@ -7,6 +17,10 @@ import {
   type StepExecutionResult,
   type LogFn,
 } from "./base";
+
+export { runEmailReadBatch };
+
+/* ── Batch Job Class ──────────────────────────────────────────────── */
 
 export class EmailBatchJob extends BatchJob {
   readonly type = "email" as const;
@@ -24,12 +38,12 @@ export class EmailBatchJob extends BatchJob {
 
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
-    let maxMessages = 25;
-    try {
-      const parsed = JSON.parse(ctx.configJson || "{}");
-      if (typeof parsed.maxMessages === "number") maxMessages = parsed.maxMessages;
-    } catch { /* use default */ }
-    await emailReadTool.execute(emailReadTool.toolNamePrefix, { maxMessages }, { threadId: "", userId: "" });
+    await runEmailReadBatch({
+      scheduleId: ctx.scheduleId,
+      runId: ctx.runId,
+      taskRunId: ctx.taskRunId,
+      handlerName: ctx.handlerName,
+    });
     log("info", "Email read task completed successfully.", logCtx);
     return { outputJson: { kind: "email_read_incoming" } };
   }

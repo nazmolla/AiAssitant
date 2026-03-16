@@ -11,9 +11,23 @@
  * @see https://github.com/nazmolla/AiAssitant/issues/145
  */
 
-jest.mock("@/lib/scheduler", () => ({
-  runProactiveScan: jest.fn().mockResolvedValue(undefined),
-  runEmailReadBatch: jest.fn().mockResolvedValue(undefined),
+jest.mock("@/lib/agent", () => ({
+  runAgentLoop: jest.fn().mockResolvedValue({
+    content: "ok",
+    toolsUsed: [],
+    pendingApprovals: 0,
+  }),
+}));
+
+jest.mock("@/lib/mcp", () => ({
+  getMcpManager: jest.fn(() => ({
+    getConnectedServerIds: jest.fn(() => []),
+    getAllTools: jest.fn(() => []),
+  })),
+}));
+
+jest.mock("@/lib/tools/custom-tools", () => ({
+  getCustomToolDefinitions: jest.fn(() => []),
 }));
 
 jest.mock("@/lib/knowledge-maintenance", () => ({
@@ -21,7 +35,19 @@ jest.mock("@/lib/knowledge-maintenance", () => ({
 }));
 
 jest.mock("@/lib/db", () => ({
-  ...jest.requireActual("@/lib/db"),
+  addLog: jest.fn(),
+  createThread: jest.fn(() => ({ id: "thread-test" })),
+  getAppConfig: jest.fn(() => null),
+  setAppConfig: jest.fn(),
+  getToolPolicy: jest.fn(() => ({ requires_approval: 0 })),
+  listChannels: jest.fn(() => []),
+  getUserById: jest.fn(() => null),
+  getUserByEmail: jest.fn(() => null),
+  isUserEnabled: jest.fn(() => false),
+  findActiveChannelThread: jest.fn(() => null),
+  getChannelImapState: jest.fn(() => ({ lastImapUid: 0, lastImapUidvalidity: 0 })),
+  updateChannelImapState: jest.fn(),
+  listUsersWithPermissions: jest.fn(() => [{ id: "admin-test", role: "admin", enabled: 1 }]),
   runDbMaintenanceIfDue: jest.fn().mockReturnValue({ deletedLogs: 0, vacuumed: false }),
 }));
 
@@ -90,13 +116,11 @@ describe.each([
    ══════════════════════════════════════════════════════════════════ */
 
 describe("ProactiveScanTool.execute()", () => {
-  test("calls runProactiveScan and returns result", async () => {
+  test("runs proactive scan and returns result", async () => {
     const result = await proactiveScanTool.execute(
       "builtin.workflow_proactive_scan", {}, ctx,
     );
     expect(result).toEqual({ status: "completed", kind: "proactive_scan" });
-    const { runProactiveScan } = require("@/lib/scheduler");
-    expect(runProactiveScan).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -123,12 +147,10 @@ describe("DbMaintenanceTool.execute()", () => {
 });
 
 describe("EmailReadTool.execute()", () => {
-  test("calls runEmailReadBatch and returns completed status", async () => {
+  test("runs email read batch and returns completed status", async () => {
     const result = await emailReadTool.execute(
       "builtin.workflow_email_read", {}, ctx,
     );
-    const { runEmailReadBatch } = require("@/lib/scheduler");
-    expect(runEmailReadBatch).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ status: "completed", kind: "email_read" });
   });
 });
@@ -194,11 +216,10 @@ describe("WorkflowTools.execute() dispatch", () => {
   });
 
   test("dispatches to EmailReadTool for email_read", async () => {
-    await workflowTools.execute(
+    const result = await workflowTools.execute(
       "builtin.workflow_email_read", { maxMessages: 5 }, ctx,
     );
-    const { runEmailReadBatch } = require("@/lib/scheduler");
-    expect(runEmailReadBatch).toHaveBeenCalled();
+    expect(result).toEqual({ status: "completed", kind: "email_read" });
   });
 
   test("throws for unknown workflow tool name", async () => {

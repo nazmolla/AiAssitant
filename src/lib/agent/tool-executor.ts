@@ -6,7 +6,7 @@
 
 import type { ToolCall } from "@/lib/llm";
 import { addLog, getUserById } from "@/lib/db";
-import { notifyAdmin } from "@/lib/channels/notify";
+import { notifyAdmin } from "@/lib/notifications";
 import { getToolRegistry } from "./tool-registry";
 import { extractApprovalReason } from "./approval-handler";
 

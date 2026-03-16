@@ -14,7 +14,7 @@ import { v4 as uuid } from "uuid";
 import { timingSafeEqual } from "crypto";
 import fs from "fs";
 import path from "path";
-import { notifyAdmin } from "@/lib/channels/notify";
+import { notifyAdmin } from "@/lib/notifications";
 import { summarizeInboundUnknownEmail } from "@/lib/channels/inbound-email";
 import {
   buildThemedEmailBody,

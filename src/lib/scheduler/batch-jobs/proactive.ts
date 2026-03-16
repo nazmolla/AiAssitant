@@ -1,4 +1,14 @@
-import { proactiveScanTool } from "@/lib/tools/proactive-scan-tool";
+/**
+ * Proactive Batch Job
+ *
+ * Thin orchestrator — schedules and triggers proactive scans.
+ * All execution logic lives in ProactiveScanTool (src/lib/tools/proactive-scan-tool.ts).
+ *
+ * Called by:
+ * - Unified scheduler engine via ProactiveBatchJob.executeStep()
+ */
+
+import { runProactiveScan } from "@/lib/tools/proactive-scan-tool";
 import {
   BatchJob,
   type BatchJobSubTaskTemplate,
@@ -6,6 +16,10 @@ import {
   type StepExecutionResult,
   type LogFn,
 } from "./base";
+
+export { runProactiveScan };
+
+/* ── Batch Job Class ──────────────────────────────────────────────── */
 
 export class ProactiveBatchJob extends BatchJob {
   readonly type = "proactive" as const;
@@ -23,7 +37,12 @@ export class ProactiveBatchJob extends BatchJob {
 
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
-    await proactiveScanTool.execute(proactiveScanTool.toolNamePrefix, {}, { threadId: "", userId: "" });
+    await runProactiveScan({
+      scheduleId: ctx.scheduleId,
+      runId: ctx.runId,
+      taskRunId: ctx.taskRunId,
+      handlerName: ctx.handlerName,
+    });
     log("info", "Proactive scan task completed successfully.", logCtx);
     return { outputJson: { kind: "proactive_scan" } };
   }

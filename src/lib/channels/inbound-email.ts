@@ -1,4 +1,4 @@
-import type { NotificationLevel } from "@/lib/channels/notify";
+import type { NotificationLevel } from "@/lib/notifications";
 
 export interface InboundUnknownEmailSummary {
   summary: string;

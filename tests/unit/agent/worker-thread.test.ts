@@ -218,8 +218,9 @@ jest.mock("@/lib/agent/gatekeeper", () => ({
     result: { content: "tool result" },
   })),
 }));
-jest.mock("@/lib/channels/notify", () => ({
+jest.mock("@/lib/notifications", () => ({
   notifyAdmin: jest.fn(async () => {}),
+  notify: jest.fn(async () => {}),
 }));
 
 /* ── Tests ─────────────────────────────────────────────────────────── */

@@ -355,10 +355,10 @@ Workflow tools (`builtin.workflow_*`) provide the tool-layer abstraction for sch
 **System tools** are individual `BaseTool` subclasses in dedicated files under `src/lib/tools/`:
 | Tool Class | File | Delegates to |
 |------------|------|-------------|
-| `ProactiveScanTool` | `proactive-scan-tool.ts` | `runProactiveScan()` from `scheduler` |
+| `ProactiveScanTool` | `proactive-scan-tool.ts` | Owns `runProactiveScan()` logic (batch job orchestrates) |
 | `KnowledgeMaintenanceTool` | `knowledge-maintenance-tool.ts` | `runKnowledgeMaintenanceIfDue()` from `scheduler/knowledge-maintenance` |
 | `DbMaintenanceTool` | `db-maintenance-tool.ts` | `runDbMaintenanceIfDue()` from `db/maintenance` |
-| `EmailReadTool` | `email-read-tool.ts` | `runEmailReadBatch()` from `scheduler` |
+| `EmailReadTool` | `email-read-tool.ts` | Owns `runEmailReadBatch()` logic (batch job orchestrates) |
 
 **Prompt tools** (`PromptTool` class in `prompt-tool.ts`) wrap a system prompt and execute via `runAgentLoop()`. The class is generic/reusable; instances are created by the batch jobs that use them (e.g. `job-scout.ts` creates 5 PromptTool instances for search/extract/prepare/validate/digest).
 
