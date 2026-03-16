@@ -12,11 +12,18 @@ jest.mock("@/lib/channels/discord-channel", () => {
   };
 });
 
+jest.mock("@/lib/services/email-service-client", () => {
+  const actual = jest.requireActual("@/lib/services/email-service-client");
+  return {
+    ...actual,
+    buildThemedEmailBody: (...a: unknown[]) => mockBuildThemedEmailBody(...a),
+  };
+});
+
 jest.mock("@/lib/channels/email-channel", () => {
   const actual = jest.requireActual("@/lib/channels/email-channel");
   return {
     ...actual,
-    buildThemedEmailBody: (...a: unknown[]) => mockBuildThemedEmailBody(...a),
     getEmailChannelConfig: (...a: unknown[]) => mockGetEmailChannelConfig(...a),
     isValidPort: (...a: unknown[]) => mockIsValidPort(...a),
     sendSmtpMail: (...a: unknown[]) => mockSendSmtpMail(...a),
