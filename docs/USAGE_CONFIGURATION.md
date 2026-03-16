@@ -62,6 +62,7 @@ Configure inbound/outbound messaging integrations.
 | WhatsApp | Webhook messaging |
 | Discord | Bot interaction (mentions, DM, slash commands) |
 | Email | Two-way SMTP + IMAP |
+| Phone Call | Voice webhook flow using conversation capability |
 | Webhook | Generic inbound API endpoint |
 
 ---

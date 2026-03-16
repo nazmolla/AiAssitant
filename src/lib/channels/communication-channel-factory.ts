@@ -12,6 +12,7 @@ import { WhatsAppChannelBuilder } from "@/lib/channels/whatsapp-channel";
 import { SlackChannelBuilder } from "@/lib/channels/slack-channel";
 import { TeamsChannelBuilder } from "@/lib/channels/teams-channel";
 import { EmailChannelBuilder } from "@/lib/channels/email-channel";
+import { PhoneChannelBuilder } from "@/lib/channels/phone-channel-builder";
 import { UnsupportedChannelBuilder } from "@/lib/channels/unsupported-channel";
 import type { CommunicationChannel } from "@/lib/channels/communication-channel";
 import type { CommunicationChannelBuilder } from "@/lib/channels/channel-builder";
@@ -66,6 +67,7 @@ export function buildDefaultChannelBuilders(
       isValidPortFn,
       sendSmtpMailFn,
     ),
+    new PhoneChannelBuilder(),
     new UnsupportedChannelBuilder(),
   ];
 }

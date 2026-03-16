@@ -9,7 +9,7 @@ function stmt(sql: string) { return _cachedStmt(sql, getDb); }
 
 // ─── Channels ────────────────────────────────────────────────
 
-export type ChannelType = "whatsapp" | "slack" | "email" | "telegram" | "discord" | "teams";
+export type ChannelType = "whatsapp" | "slack" | "email" | "telegram" | "discord" | "teams" | "phone";
 
 export interface ChannelRecord {
   id: string;

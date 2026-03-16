@@ -24,6 +24,7 @@ const VALID_CHANNEL_TYPES: ChannelType[] = [
   "telegram",
   "discord",
   "teams",
+  "phone",
 ];
 
 async function sendEmailChannelSelfTest(config: Record<string, unknown>): Promise<void> {

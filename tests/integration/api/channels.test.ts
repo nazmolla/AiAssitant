@@ -117,6 +117,23 @@ describe("POST /api/config/channels", () => {
     expect(data.channel_type).toBe("slack");
   });
 
+  test("creates a phone channel", async () => {
+    setMockUser({ id: userId, email: "ch-user@test.com", role: "user" });
+    const req = new NextRequest("http://localhost/api/config/channels", {
+      method: "POST",
+      body: JSON.stringify({
+        label: "Phone Calls",
+        channelType: "phone",
+        config: { provider: "twilio", voiceName: "alice" },
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.channel_type).toBe("phone");
+  });
+
   test("created channel appears in GET list with secrets masked", async () => {
     setMockUser({ id: userId, email: "ch-user@test.com", role: "user" });
     const res = await GET();

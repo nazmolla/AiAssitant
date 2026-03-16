@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
-type ChannelType = "whatsapp" | "slack" | "email" | "telegram" | "discord" | "teams";
+type ChannelType = "whatsapp" | "slack" | "email" | "telegram" | "discord" | "teams" | "phone";
 
 interface Channel {
   id: string;
@@ -27,6 +27,7 @@ const CHANNEL_OPTIONS: { value: ChannelType; label: string; icon: string; descri
   { value: "telegram", label: "Telegram", icon: "✈️", description: "Telegram Bot API" },
   { value: "discord", label: "Discord", icon: "🎮", description: "Discord Bot interaction" },
   { value: "teams", label: "Teams", icon: "👥", description: "Microsoft Teams Bot Framework" },
+  { value: "phone", label: "Phone Call", icon: "📞", description: "Voice phone calls via webhook" },
 ];
 
 const CONFIG_FIELDS: Record<ChannelType, { key: string; label: string; type: "text" | "password" }[]> = {
@@ -62,6 +63,10 @@ const CONFIG_FIELDS: Record<ChannelType, { key: string; label: string; type: "te
     { key: "appId", label: "App ID", type: "text" },
     { key: "appPassword", label: "App Password", type: "password" },
     { key: "tenantId", label: "Tenant ID", type: "text" },
+  ],
+  phone: [
+    { key: "provider", label: "Provider (e.g. twilio)", type: "text" },
+    { key: "voiceName", label: "Voice Name (optional)", type: "text" },
   ],
 };
 

@@ -21,6 +21,7 @@ import {
   isValidPort,
   sendSmtpMail,
 } from "@/lib/channels/email-channel";
+import { PhoneChannel } from "@/lib/channels/phone-channel";
 
 /**
  * Inbound webhook handler for channel messages.
@@ -44,7 +45,7 @@ export async function POST(
   }
 
   // Verify webhook secret (header only — never accept in query string)
-  const secret = req.headers.get("x-webhook-secret");
+  const secret = req.headers.get("x-webhook-secret") || req.nextUrl.searchParams.get("secret");
   if (!secret || !channel.webhook_secret) {
     addLog({ level: "warning", source: "api.channel.webhook", message: "Webhook rejected: missing/invalid secret.", metadata: JSON.stringify({ channelId: channel.id }) });
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -71,7 +72,7 @@ export async function POST(
       );
     }
 
-    const body = await req.json();
+    const body = await extractInboundBody(req);
     addLog({
       level: "verbose",
       source: "api.channel.webhook",
@@ -138,6 +139,18 @@ export async function POST(
     const channelConfig = parseConfig(channel.config_json);
     await dispatchOutboundResponse(channel.channel_type, channelConfig, message.senderId, result);
 
+    if (channel.channel_type === "phone") {
+      const voice = typeof channelConfig.voiceName === "string" && channelConfig.voiceName.trim().length > 0
+        ? channelConfig.voiceName.trim()
+        : "alice";
+      const actionUrl = `${req.nextUrl.origin}/api/channels/${channel.id}/webhook?secret=${channel.webhook_secret || ""}`;
+      const twiml = PhoneChannel.buildTwimlResponse(result.content || "I did not catch that. Please repeat.", actionUrl, voice);
+      return new NextResponse(twiml, {
+        status: 200,
+        headers: { "Content-Type": "application/xml; charset=utf-8" },
+      });
+    }
+
     addLog({
       level: "verbose",
       source: "api.channel.webhook",
@@ -170,6 +183,19 @@ function parseConfig(configJson: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+async function extractInboundBody(req: NextRequest): Promise<Record<string, unknown>> {
+  const contentType = req.headers.get("content-type") || "";
+  if (contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")) {
+    const form = await req.formData();
+    const body: Record<string, unknown> = {};
+    for (const [key, value] of form.entries()) {
+      body[key] = typeof value === "string" ? value : value.name;
+    }
+    return body;
+  }
+  return await req.json();
 }
 
 async function dispatchOutboundResponse(
@@ -440,6 +466,16 @@ function extractMessage(
       return {
         text: (body.text as string) || (body.subject as string) || "",
         senderId: (body.from as string) || "unknown",
+      };
+    }
+    case "phone": {
+      // Twilio/telephony webhook style payload
+      const speechText = String(body.SpeechResult || body.TranscriptionText || body.text || body.Body || "").trim();
+      const senderId = String(body.From || body.Caller || body.sender || "unknown");
+      if (!speechText) return null;
+      return {
+        text: speechText,
+        senderId,
       };
     }
     default:

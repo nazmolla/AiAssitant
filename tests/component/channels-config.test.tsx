@@ -82,6 +82,7 @@ describe("ChannelsConfig — interactions", () => {
     expect(screen.getAllByText(/WhatsApp/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/Slack/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/Telegram/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Phone Call/).length).toBeGreaterThanOrEqual(1);
   });
 
   test("selecting channel type shows config form, then submitting calls POST", async () => {
