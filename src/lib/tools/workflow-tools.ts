@@ -29,7 +29,7 @@ const SYSTEM_TOOLS: BaseTool[] = [
   knowledgeMaintenanceTool,
   dbMaintenanceTool,
   emailReadTool,
-];
+].filter((tool): tool is BaseTool => Boolean(tool));
 
 /** All tool definitions aggregated from child tools */
 export const BUILTIN_WORKFLOW_TOOLS: ToolDefinition[] =

@@ -5,10 +5,12 @@ import { bootstrapRuntime } from "@/lib/bootstrap";
 import {
   isUserEnabled,
   getUserById,
+} from "@/lib/db/user-queries";
+import {
   getApiKeyByRawKey,
   touchApiKey,
-} from "@/lib/db";
-import type { ApiKeyScope } from "@/lib/db/queries";
+  type ApiKeyScope,
+} from "@/lib/db/api-key-queries";
 
 const runtimeReady = bootstrapRuntime();
 

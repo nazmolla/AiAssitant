@@ -32,7 +32,7 @@ export function buildAuthConfig(): NextAuthConfig {
           }
 
           const { compare, hash } = await import("bcryptjs");
-          const { getUserByEmail, getUserCount, createUser, isUserEnabled } = await import("@/lib/db");
+          const { getUserByEmail, getUserCount, createUser, isUserEnabled } = await import("@/lib/db/user-queries");
           const { validatePassword } = await import("@/lib/auth/password-policy");
 
           const existing = getUserByEmail(email);
@@ -95,7 +95,7 @@ export function buildAuthConfig(): NextAuthConfig {
         // OAuth providers (Azure AD, Google)
         if (!account?.providerAccountId) return false;
 
-        const { getUserByExternalSub, getUserByEmail, getUserCount, createUser, isUserEnabled } = await import("@/lib/db");
+        const { getUserByExternalSub, getUserByEmail, getUserCount, createUser, isUserEnabled } = await import("@/lib/db/user-queries");
 
         const providerId = account.provider === "azure-ad" ? "azure-ad" : "google";
         const subId = account.providerAccountId;
@@ -148,7 +148,7 @@ export function buildAuthConfig(): NextAuthConfig {
             // user.id is already our users.id from authorize()
             token.userId = user.id;
           } else if (account?.providerAccountId) {
-            const { getUserByExternalSub, getUserByEmail } = await import("@/lib/db");
+            const { getUserByExternalSub, getUserByEmail } = await import("@/lib/db/user-queries");
             // OAuth — look up by external sub or email
             const bySubId = getUserByExternalSub(account.providerAccountId);
             if (bySubId) {
@@ -164,7 +164,7 @@ export function buildAuthConfig(): NextAuthConfig {
 
         // Backfill userId for existing sessions from before multi-user migration
         if (!token.userId && token.email) {
-          const { getUserByEmail } = await import("@/lib/db");
+          const { getUserByEmail } = await import("@/lib/db/user-queries");
           const byEmail = getUserByEmail(token.email as string);
           if (byEmail) {
             token.userId = byEmail.id;
@@ -173,7 +173,7 @@ export function buildAuthConfig(): NextAuthConfig {
 
         // Fetch role from DB on every token refresh
         if (token.userId) {
-          const { getUserById, isUserEnabled: isEnabled } = await import("@/lib/db");
+          const { getUserById, isUserEnabled: isEnabled } = await import("@/lib/db/user-queries");
           const dbUser = getUserById(token.userId as string);
           if (dbUser) {
             token.role = dbUser.role ?? "user";

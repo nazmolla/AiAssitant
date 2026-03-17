@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { compare, hash } from "bcryptjs";
 import { requireUser } from "@/lib/auth/guard";
-import { getUserById, updateUserPassword, addLog } from "@/lib/db";
+import { getUserById, updateUserPassword } from "@/lib/db/user-queries";
+import { addLog } from "@/lib/db/log-queries";
 import { validatePassword } from "@/lib/auth/password-policy";
 
 const LOCAL_SALT_ROUNDS = 12;

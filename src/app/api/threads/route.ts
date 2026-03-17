@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { listThreadsPaginated, createThread, addLog } from "@/lib/db";
-import { initializeDatabase } from "@/lib/db";
+import { initializeDatabase } from "@/lib/db/init";
 import { THREADS_DEFAULT_LIMIT, THREADS_MAX_LIMIT } from "@/lib/constants";
 
 let dbReady = false;

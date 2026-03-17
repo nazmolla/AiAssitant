@@ -43,6 +43,16 @@ jest.mock("@/lib/db", () => ({
   touchApiKey: (...args: unknown[]) => mockTouchApiKey(...args),
 }));
 
+jest.mock("@/lib/db/user-queries", () => ({
+  getUserById: (...args: unknown[]) => mockGetUserById(...args),
+  isUserEnabled: (...args: unknown[]) => mockIsUserEnabled(...args),
+}));
+
+jest.mock("@/lib/db/api-key-queries", () => ({
+  getApiKeyByRawKey: (...args: unknown[]) => mockGetApiKeyByRawKey(...args),
+  touchApiKey: (...args: unknown[]) => mockTouchApiKey(...args),
+}));
+
 import {
   requireUser,
   requireAdmin,

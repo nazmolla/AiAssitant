@@ -6,7 +6,7 @@ import {
   deleteAuthProvider,
   getAuthProvider,
   type AuthProviderType,
-} from "@/lib/db";
+} from "@/lib/db/auth-provider-queries";
 
 const VALID_TYPES = new Set<AuthProviderType>(["azure-ad", "google", "discord"]);
 

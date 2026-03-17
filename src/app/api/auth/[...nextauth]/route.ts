@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import MicrosoftEntraId from "next-auth/providers/microsoft-entra-id";
 import Google from "next-auth/providers/google";
 import { buildAuthConfig } from "@/lib/auth/auth";
-import { getEnabledAuthProviders } from "@/lib/db";
+import { getEnabledAuthProviders } from "@/lib/db/auth-provider-queries";
 
 // Actions that next-auth v5 does NOT support — client SDKs or older
 // integrations may still POST to these, producing noisy UnknownAction errors.

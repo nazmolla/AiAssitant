@@ -1,4 +1,5 @@
-import { initializeDatabase, listMcpServers, addLog, listChannels, getDb } from "@/lib/db";
+import { listMcpServers, addLog, listChannels, getDb } from "@/lib/db";
+import { initializeDatabase } from "@/lib/db/init";
 import { startUnifiedSchedulerEngine } from "@/lib/scheduler/unified-engine";
 import { getMcpManager } from "@/lib/mcp";
 import { startDiscordBot } from "@/lib/channels/discord-channel";
