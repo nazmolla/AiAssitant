@@ -12,9 +12,7 @@ import { z } from "zod";
 
 export const createLlmProviderSchema = z.object({
   label: z.string().min(1, "label is required.").transform((v) => v.trim()),
-  provider_type: z.enum(["azure-openai", "openai", "anthropic", "litellm"], {
-    errorMap: () => ({ message: "provider_type is invalid." }),
-  }),
+  provider_type: z.enum(["azure-openai", "openai", "anthropic", "litellm"]),
   purpose: z.enum(["chat", "embedding", "tts", "stt"]).default("chat"),
   config: z.record(z.string(), z.unknown()),
   is_default: z.boolean().optional().default(false),
