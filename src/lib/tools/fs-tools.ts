@@ -320,11 +320,12 @@ export const BUILTIN_FS_TOOLS: ToolDefinition[] = [
  */
 const FS_ALLOWED_ROOT = env.FS_ALLOWED_ROOT;
 
+class FsExecution {
 /**
  * Resolve a path, making relative paths relative to cwd,
  * then enforce that the result is within FS_ALLOWED_ROOT.
  */
-function resolvePath(p: string): string {
+static resolvePath(p: string): string {
   const resolved = path.resolve(p);
   // Resolve symlinks to prevent symlink-based path traversal
   let realResolved: string;
@@ -363,7 +364,7 @@ function resolvePath(p: string): string {
 }
 
 /** Simple glob-like pattern matching (supports * and ?). */
-function matchPattern(name: string, pattern: string): boolean {
+static matchPattern(name: string, pattern: string): boolean {
   const regex = new RegExp(
     "^" +
       pattern
@@ -377,7 +378,7 @@ function matchPattern(name: string, pattern: string): boolean {
 }
 
 /** Recursively walk a directory, collecting entries (async, bounded). */
-async function walkDirAsync(
+static async walkDirAsync(
   dir: string,
   pattern: string | undefined,
   maxEntries: number,
@@ -401,7 +402,7 @@ async function walkDirAsync(
     // Skip heavy/system dirs
     if (entry.isDirectory() && (entry.name === "node_modules" || entry.name === ".git")) continue;
 
-    const matches = !pattern || matchPattern(entry.name, pattern);
+    const matches = !pattern || FsExecution.matchPattern(entry.name, pattern);
     if (matches) {
       let size = 0;
       try {
@@ -415,15 +416,15 @@ async function walkDirAsync(
     }
 
     if (entry.isDirectory()) {
-      await walkDirAsync(fullPath, pattern, maxEntries, results, level + 1);
+      await FsExecution.walkDirAsync(fullPath, pattern, maxEntries, results, level + 1);
     }
   }
 }
 
 // ── Tool Implementations ──────────────────────────────────────
 
-async function fsReadFile(args: Record<string, unknown>): Promise<unknown> {
-  const filePath = resolvePath(args.filePath as string);
+static async fsReadFile(args: Record<string, unknown>): Promise<unknown> {
+  const filePath = FsExecution.resolvePath(args.filePath as string);
   const encoding = (args.encoding as BufferEncoding) || "utf-8";
 
   let stat: fs.Stats;
@@ -499,7 +500,7 @@ async function fsReadFile(args: Record<string, unknown>): Promise<unknown> {
   };
 }
 
-function decodeHtmlEntities(input: string): string {
+static decodeHtmlEntities(input: string): string {
   return input
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
@@ -511,8 +512,8 @@ function decodeHtmlEntities(input: string): string {
     .replace(/&#x2F;/gi, "/");
 }
 
-function extractReadableText(raw: string): string {
-  return decodeHtmlEntities(
+static extractReadableText(raw: string): string {
+  return FsExecution.decodeHtmlEntities(
     raw
       .replace(/<!--[\s\S]*?-->/g, " ")
       .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
@@ -524,8 +525,8 @@ function extractReadableText(raw: string): string {
   );
 }
 
-async function fsExtractText(args: Record<string, unknown>): Promise<unknown> {
-  const filePath = resolvePath(args.filePath as string);
+static async fsExtractText(args: Record<string, unknown>): Promise<unknown> {
+  const filePath = FsExecution.resolvePath(args.filePath as string);
   const encoding = (args.encoding as BufferEncoding) || "utf-8";
   const byteOffset = typeof args.offset === "number" ? Math.max(0, args.offset) : 0;
   const requestedLen = typeof args.length === "number" ? args.length : FS_EXTRACT_DEFAULT_BYTES;
@@ -571,7 +572,7 @@ async function fsExtractText(args: Record<string, unknown>): Promise<unknown> {
   }
 
   const raw = buf.toString(encoding);
-  const extracted = extractReadableText(raw);
+  const extracted = FsExecution.extractReadableText(raw);
   const text = extracted.length > maxChars ? extracted.slice(0, maxChars) : extracted;
 
   return {
@@ -585,8 +586,8 @@ async function fsExtractText(args: Record<string, unknown>): Promise<unknown> {
   };
 }
 
-async function fsReadDirectory(args: Record<string, unknown>): Promise<unknown> {
-  const dirPath = resolvePath(args.dirPath as string);
+static async fsReadDirectory(args: Record<string, unknown>): Promise<unknown> {
+  const dirPath = FsExecution.resolvePath(args.dirPath as string);
   const recursive = (args.recursive as boolean) || false;
   const pattern = args.pattern as string | undefined;
 
@@ -602,14 +603,14 @@ async function fsReadDirectory(args: Record<string, unknown>): Promise<unknown> 
 
   if (recursive) {
     const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
-    await walkDirAsync(dirPath, pattern, FS_WALK_DIR_LIMIT, results);
+    await FsExecution.walkDirAsync(dirPath, pattern, FS_WALK_DIR_LIMIT, results);
     return { dirPath, entryCount: results.length, entries: results };
   }
 
   const entries = await fsp.readdir(dirPath, { withFileTypes: true });
   const items = await Promise.all(
     entries
-      .filter((e) => !pattern || matchPattern(e.name, pattern))
+      .filter((e) => !pattern || FsExecution.matchPattern(e.name, pattern))
       .map(async (e) => {
         const fp = path.join(dirPath, e.name);
         let size = 0;
@@ -627,8 +628,8 @@ async function fsReadDirectory(args: Record<string, unknown>): Promise<unknown> 
   return { dirPath, entryCount: items.length, entries: items };
 }
 
-async function fsFileInfo(args: Record<string, unknown>): Promise<unknown> {
-  const targetPath = resolvePath(args.targetPath as string);
+static async fsFileInfo(args: Record<string, unknown>): Promise<unknown> {
+  const targetPath = FsExecution.resolvePath(args.targetPath as string);
 
   let stat: fs.Stats;
   try {
@@ -648,8 +649,8 @@ async function fsFileInfo(args: Record<string, unknown>): Promise<unknown> {
   };
 }
 
-async function fsSearchFiles(args: Record<string, unknown>): Promise<unknown> {
-  const dirPath = resolvePath(args.dirPath as string);
+static async fsSearchFiles(args: Record<string, unknown>): Promise<unknown> {
+  const dirPath = FsExecution.resolvePath(args.dirPath as string);
   const pattern = args.pattern as string;
   const maxResults = Math.min((args.maxResults as number) || 50, 200);
 
@@ -660,7 +661,7 @@ async function fsSearchFiles(args: Record<string, unknown>): Promise<unknown> {
   }
 
   const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
-  await walkDirAsync(dirPath, pattern, maxResults, results);
+  await FsExecution.walkDirAsync(dirPath, pattern, maxResults, results);
 
   return {
     dirPath,
@@ -670,8 +671,8 @@ async function fsSearchFiles(args: Record<string, unknown>): Promise<unknown> {
   };
 }
 
-async function fsCreateFile(args: Record<string, unknown>): Promise<unknown> {
-  const filePath = resolvePath(args.filePath as string);
+static async fsCreateFile(args: Record<string, unknown>): Promise<unknown> {
+  const filePath = FsExecution.resolvePath(args.filePath as string);
   const content = args.content as string;
   const encoding = (args.encoding as BufferEncoding) || "utf-8";
 
@@ -702,8 +703,8 @@ async function fsCreateFile(args: Record<string, unknown>): Promise<unknown> {
   };
 }
 
-async function fsUpdateFile(args: Record<string, unknown>): Promise<unknown> {
-  const filePath = resolvePath(args.filePath as string);
+static async fsUpdateFile(args: Record<string, unknown>): Promise<unknown> {
+  const filePath = FsExecution.resolvePath(args.filePath as string);
 
   let fileStat: fs.Stats;
   try {
@@ -762,8 +763,8 @@ async function fsUpdateFile(args: Record<string, unknown>): Promise<unknown> {
   throw new Error("Provide one of: content (full overwrite), search+replace, or appendContent.");
 }
 
-async function fsDeleteFile(args: Record<string, unknown>): Promise<unknown> {
-  const filePath = resolvePath(args.filePath as string);
+static async fsDeleteFile(args: Record<string, unknown>): Promise<unknown> {
+  const filePath = FsExecution.resolvePath(args.filePath as string);
 
   let fileStat: fs.Stats;
   try {
@@ -785,8 +786,8 @@ async function fsDeleteFile(args: Record<string, unknown>): Promise<unknown> {
   };
 }
 
-async function fsDeleteDirectory(args: Record<string, unknown>): Promise<unknown> {
-  const dirPath = resolvePath(args.dirPath as string);
+static async fsDeleteDirectory(args: Record<string, unknown>): Promise<unknown> {
+  const dirPath = FsExecution.resolvePath(args.dirPath as string);
 
   let dirStat: fs.Stats;
   try {
@@ -800,7 +801,7 @@ async function fsDeleteDirectory(args: Record<string, unknown>): Promise<unknown
 
   // Count contents before deletion (walkDir is bounded / sync — acceptable for pre-delete audit)
   const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
-  await walkDirAsync(dirPath, undefined, 1000, results);
+  await FsExecution.walkDirAsync(dirPath, undefined, 1000, results);
 
   await fsp.rm(dirPath, { recursive: true, force: true });
 
@@ -811,9 +812,9 @@ async function fsDeleteDirectory(args: Record<string, unknown>): Promise<unknown
   };
 }
 
-async function fsExecuteScript(args: Record<string, unknown>): Promise<unknown> {
+static async fsExecuteScript(args: Record<string, unknown>): Promise<unknown> {
   const command = args.command as string;
-  const cwd = args.cwd ? resolvePath(args.cwd as string) : process.cwd();
+  const cwd = args.cwd ? FsExecution.resolvePath(args.cwd as string) : process.cwd();
   const timeout = Math.min((args.timeout as number) || FS_SCRIPT_TIMEOUT_MS, 120_000);
 
   if (!command || typeof command !== "string" || command.trim().length === 0) {
@@ -872,47 +873,52 @@ async function fsExecuteScript(args: Record<string, unknown>): Promise<unknown> 
   }
 }
 
-// ── Public API ────────────────────────────────────────────────
-
-/**
- * Check whether a tool name is a built-in filesystem tool.
- */
-export function isFsTool(name: string): boolean {
+static isTool(name: string): boolean {
   return Object.values(FS_TOOL_NAMES).includes(name as any);
 }
 
-/**
- * Execute a built-in filesystem tool and return the result.
- */
-export async function executeBuiltinFsTool(
+static async executeBuiltin(
   name: string,
   args: Record<string, unknown>
 ): Promise<unknown> {
   switch (name) {
     case FS_TOOL_NAMES.READ_FILE:
-      return fsReadFile(args);
+      return FsExecution.fsReadFile(args);
     case FS_TOOL_NAMES.EXTRACT_TEXT:
-      return fsExtractText(args);
+      return FsExecution.fsExtractText(args);
     case FS_TOOL_NAMES.READ_DIR:
-      return fsReadDirectory(args);
+      return FsExecution.fsReadDirectory(args);
     case FS_TOOL_NAMES.FILE_INFO:
-      return fsFileInfo(args);
+      return FsExecution.fsFileInfo(args);
     case FS_TOOL_NAMES.SEARCH_FILES:
-      return fsSearchFiles(args);
+      return FsExecution.fsSearchFiles(args);
     case FS_TOOL_NAMES.CREATE_FILE:
-      return fsCreateFile(args);
+      return FsExecution.fsCreateFile(args);
     case FS_TOOL_NAMES.UPDATE_FILE:
-      return fsUpdateFile(args);
+      return FsExecution.fsUpdateFile(args);
     case FS_TOOL_NAMES.DELETE_FILE:
-      return fsDeleteFile(args);
+      return FsExecution.fsDeleteFile(args);
     case FS_TOOL_NAMES.DELETE_DIR:
-      return fsDeleteDirectory(args);
+      return FsExecution.fsDeleteDirectory(args);
     case FS_TOOL_NAMES.EXECUTE_SCRIPT:
-      return fsExecuteScript(args);
+      return FsExecution.fsExecuteScript(args);
     default:
       throw new Error(`Unknown built-in fs tool: "${name}"`);
   }
 }
+}
+
+// ── Public API ────────────────────────────────────────────────
+
+/**
+ * Check whether a tool name is a built-in filesystem tool.
+ */
+export const isFsTool = FsExecution.isTool.bind(FsExecution);
+
+/**
+ * Execute a built-in filesystem tool and return the result.
+ */
+export const executeBuiltinFsTool = FsExecution.executeBuiltin.bind(FsExecution);
 
 // ── BaseTool class wrapper ────────────────────────────────────
 
@@ -923,8 +929,16 @@ export class FsTools extends BaseTool {
   readonly tools = BUILTIN_FS_TOOLS;
   readonly toolsRequiringApproval = [...FS_TOOLS_REQUIRING_APPROVAL];
 
+  static isTool(name: string): boolean {
+    return FsExecution.isTool(name);
+  }
+
+  static async executeBuiltin(name: string, args: Record<string, unknown>): Promise<unknown> {
+    return FsExecution.executeBuiltin(name, args);
+  }
+
   async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
-    return executeBuiltinFsTool(toolName, args);
+    return FsTools.executeBuiltin(toolName, args);
   }
 }
 

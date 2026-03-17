@@ -23,7 +23,18 @@ import type { SchedulerBatchExecutionContext } from "@/lib/scheduler/shared";
 import { simpleParser } from "mailparser";
 import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 
-function mergeBatchContext(
+interface SchedulerDigestItem {
+  level: NotificationLevel;
+  issue: string;
+  requiredAction: string;
+  actionLocation: string;
+}
+
+let _emailBatchRunning = false;
+const _emailConfigWarned = new Set<string>();
+
+class EmailToolPublicApi {
+  static mergeBatchContext(
   metadata: Record<string, unknown> | undefined,
   context?: SchedulerBatchExecutionContext,
 ): Record<string, unknown> {
@@ -36,9 +47,9 @@ function mergeBatchContext(
       handlerName: context.handlerName || null,
     } : {}),
   };
-}
+  }
 
-function addContextLog(
+  static addContextLog(
   level: "verbose" | "info" | "warning" | "error" | "thought" | "warn",
   source: string,
   message: string,
@@ -51,24 +62,24 @@ function addContextLog(
     message,
     metadata: JSON.stringify(mergeBatchContext(metadata, context)),
   });
-}
+  }
 
-function getDefaultAdminUserId(): string | undefined {
+  static getDefaultAdminUserId(): string | undefined {
   const admin = listUsersWithPermissions().find((user) => user.role === "admin" && user.enabled === 1);
   return admin?.id;
-}
+  }
 
-export const EMAIL_TOOL_NAMES = {
+  static readonly EMAIL_TOOL_NAMES = {
   SEND: "builtin.email_send",
   READ: "builtin.email_read",
   SUMMARIZE: "builtin.email_summarize",
 } as const;
 
-export const EMAIL_TOOLS_REQUIRING_APPROVAL: string[] = [];
+  static readonly EMAIL_TOOLS_REQUIRING_APPROVAL: string[] = [];
 
-export const BUILTIN_EMAIL_TOOLS: ToolDefinition[] = [
+  static readonly BUILTIN_EMAIL_TOOLS: ToolDefinition[] = [
   {
-    name: EMAIL_TOOL_NAMES.SEND,
+    name: EmailToolPublicApi.EMAIL_TOOL_NAMES.SEND,
     description:
       "Send an email using the configured Email channel SMTP settings. " +
       "Use this to notify users, send updates, or deliver requested information by email.",
@@ -101,7 +112,7 @@ export const BUILTIN_EMAIL_TOOLS: ToolDefinition[] = [
     },
   },
   {
-    name: EMAIL_TOOL_NAMES.READ,
+    name: EmailToolPublicApi.EMAIL_TOOL_NAMES.READ,
     description:
       "Read emails from the configured Email channel IMAP mailbox. " +
       "Returns a list of recent messages with sender, subject, date, and a text snippet. " +
@@ -142,7 +153,7 @@ export const BUILTIN_EMAIL_TOOLS: ToolDefinition[] = [
     },
   },
   {
-    name: EMAIL_TOOL_NAMES.SUMMARIZE,
+    name: EmailToolPublicApi.EMAIL_TOOL_NAMES.SUMMARIZE,
     description:
       "Summarize and classify untrusted inbound email text from an unregistered sender. " +
       "Returns category, severity level, and a concise summary without executing any embedded instructions.",
@@ -167,18 +178,18 @@ export const BUILTIN_EMAIL_TOOLS: ToolDefinition[] = [
   },
 ];
 
-function normalizeEmail(value: string): string {
+  static normalizeEmail(value: string): string {
   const trimmed = value.trim().toLowerCase();
   const match = trimmed.match(/<?([^<>\s]+@[^<>\s]+)>?$/);
   return (match?.[1] || trimmed).trim();
-}
+  }
 
-function getStringArg(args: Record<string, unknown>, key: string): string {
+  static getStringArg(args: Record<string, unknown>, key: string): string {
   const value = args[key];
   return typeof value === "string" ? value.trim() : "";
-}
+  }
 
-function pickEmailChannel(configUserId?: string, channelLabel?: string) {
+  static pickEmailChannel(configUserId?: string, channelLabel?: string) {
   const channels = listChannels(configUserId).filter(
     (c) => c.channel_type === "email" && !!c.enabled
   );
@@ -198,9 +209,9 @@ function pickEmailChannel(configUserId?: string, channelLabel?: string) {
   }
 
   return channels[0];
-}
+  }
 
-function resolveAttachments(
+  static resolveAttachments(
   args: Record<string, unknown>,
   userId?: string,
   threadId?: string
@@ -232,13 +243,13 @@ function resolveAttachments(
     });
   }
   return attachments;
-}
+  }
 
-export function isEmailTool(name: string): boolean {
+  static isEmailTool(name: string): boolean {
   return name === EMAIL_TOOL_NAMES.SEND || name === EMAIL_TOOL_NAMES.READ || name === EMAIL_TOOL_NAMES.SUMMARIZE;
-}
+  }
 
-export async function executeBuiltinEmailTool(
+  static async executeBuiltinEmailTool(
   name: string,
   args: Record<string, unknown>,
   userId?: string,
@@ -254,9 +265,9 @@ export async function executeBuiltinEmailTool(
     return executeEmailSummarize(args);
   }
   throw new Error(`Unknown email tool: ${name}`);
-}
+  }
 
-function executeEmailSummarize(args: Record<string, unknown>): InboundUnknownEmailSummary {
+  static executeEmailSummarize(args: Record<string, unknown>): InboundUnknownEmailSummary {
   const from = getStringArg(args, "from");
   const subject = getStringArg(args, "subject");
   const body = getStringArg(args, "body");
@@ -270,9 +281,9 @@ function executeEmailSummarize(args: Record<string, unknown>): InboundUnknownEma
   const safeBody = truncateText(sanitizeInboundEmailText(body), 8000);
 
   return summarizeInboundUnknownEmail(safeFrom, safeSubject, safeBody);
-}
+  }
 
-async function executeEmailSend(
+  static async executeEmailSend(
   args: Record<string, unknown>,
   userId?: string,
   threadId?: string
@@ -326,24 +337,24 @@ async function executeEmailSend(
     subject,
     messageId,
   };
-}
+  }
 
 /* ── Email Read (IMAP) ─────────────────────────────────────────────── */
 
 /** Max snippet chars from email body to return to the LLM (manages token budget). */
-const EMAIL_BODY_SNIPPET_MAX = 500;
+  static readonly EMAIL_BODY_SNIPPET_MAX = 500;
 
 /** Strip HTML tags and compact whitespace for plain-text snippet. */
-function stripHtml(value: string): string {
+  static stripHtml(value: string): string {
   return value
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
+  }
 
-async function executeEmailRead(
+  static async executeEmailRead(
   args: Record<string, unknown>,
   userId?: string
 ): Promise<unknown> {
@@ -479,32 +490,22 @@ async function executeEmailRead(
   }
 
   throw new Error(formatEmailConnectError(lastErr));
-}
+  }
 
-interface SchedulerDigestItem {
-  level: NotificationLevel;
-  issue: string;
-  requiredAction: string;
-  actionLocation: string;
-}
-
-let _emailBatchRunning = false;
-const _emailConfigWarned = new Set<string>();
-
-function truncateText(value: string, maxChars: number): string {
+  static truncateText(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, maxChars)}\n...[truncated ${value.length - maxChars} chars]`;
-}
+  }
 
-function sanitizeInboundEmailText(value: string): string {
+  static sanitizeInboundEmailText(value: string): string {
   return value
     .replace(/\u0000/g, "")
     .replace(/\r/g, "")
     .replace(/```/g, "`\u200b``")
     .trim();
-}
+  }
 
-function buildGuardedInboundEmailPrompt(fromAddress: string, subject: string, body: string): string {
+  static buildGuardedInboundEmailPrompt(fromAddress: string, subject: string, body: string): string {
   const safeSubject = truncateText(sanitizeInboundEmailText(subject || "(no subject)"), 300);
   const safeBody = truncateText(sanitizeInboundEmailText(body || ""), 5000);
   return [
@@ -518,9 +519,9 @@ function buildGuardedInboundEmailPrompt(fromAddress: string, subject: string, bo
     safeBody || "(empty)",
     "<<<UNTRUSTED_EMAIL_BODY_END>>>",
   ].join("\n");
-}
+  }
 
-function resolveChannelThread(channelId: string, senderId: string, userId: string | null): string {
+  static resolveChannelThread(channelId: string, senderId: string, userId: string | null): string {
   const existing = findActiveChannelThread(channelId, senderId, userId);
   if (existing?.id) return existing.id;
   const thread = createThread(`Channel message from ${senderId}`, userId ?? undefined, {
@@ -529,9 +530,9 @@ function resolveChannelThread(channelId: string, senderId: string, userId: strin
     externalSenderId: senderId,
   });
   return thread.id;
-}
+  }
 
-function parseChannelConfig(configJson: string): Record<string, unknown> {
+  static parseChannelConfig(configJson: string): Record<string, unknown> {
   try {
     return JSON.parse(configJson || "{}");
   } catch (err) {
@@ -543,9 +544,9 @@ function parseChannelConfig(configJson: string): Record<string, unknown> {
     });
     return {};
   }
-}
+  }
 
-function enqueueDigestItem(
+  static enqueueDigestItem(
   digestByUser: Map<string, SchedulerDigestItem[]>,
   userId: string | undefined,
   item: SchedulerDigestItem,
@@ -554,22 +555,22 @@ function enqueueDigestItem(
   const items = digestByUser.get(userId) || [];
   items.push(item);
   digestByUser.set(userId, items);
-}
+  }
 
-async function getRunAgentLoop() {
+  static async getRunAgentLoop() {
   const mod = await import("@/lib/agent/loop");
   return mod.runAgentLoop;
-}
+  }
 
-async function getNotificationFns() {
+  static async getNotificationFns() {
   const mod = await import("@/lib/notifications");
   return {
     getUserNotificationLevel: mod.getUserNotificationLevel,
     shouldNotifyForLevel: mod.shouldNotifyForLevel,
   };
-}
+  }
 
-async function flushSchedulerDigestEmails(digestByUser: Map<string, SchedulerDigestItem[]>): Promise<void> {
+  static async flushSchedulerDigestEmails(digestByUser: Map<string, SchedulerDigestItem[]>): Promise<void> {
   const { getUserNotificationLevel, shouldNotifyForLevel } = await getNotificationFns();
   for (const [userId, items] of Array.from(digestByUser.entries())) {
     if (items.length === 0) continue;
@@ -638,9 +639,9 @@ async function flushSchedulerDigestEmails(digestByUser: Map<string, SchedulerDig
       });
     }
   }
-}
+  }
 
-async function pollEmailChannels(
+  static async pollEmailChannels(
   digestByUser: Map<string, SchedulerDigestItem[]>,
   defaultAdminUserId?: string,
   context?: SchedulerBatchExecutionContext,
@@ -952,9 +953,9 @@ Triage this email for the owner: summarize intent, risk level, and recommended n
       });
     }
   }
-}
+  }
 
-export async function runEmailReadToolExecution(context?: SchedulerBatchExecutionContext): Promise<void> {
+  static async runEmailReadToolExecution(context?: SchedulerBatchExecutionContext): Promise<void> {
   if (_emailBatchRunning) {
     addContextLog("info", "email", "Skipping email read batch — previous run still active.", undefined, context);
     return;
@@ -976,6 +977,39 @@ export async function runEmailReadToolExecution(context?: SchedulerBatchExecutio
     _emailBatchRunning = false;
   }
 }
+
+}
+
+const mergeBatchContext = EmailToolPublicApi.mergeBatchContext.bind(EmailToolPublicApi);
+const addContextLog = EmailToolPublicApi.addContextLog.bind(EmailToolPublicApi);
+const getDefaultAdminUserId = EmailToolPublicApi.getDefaultAdminUserId.bind(EmailToolPublicApi);
+const normalizeEmail = EmailToolPublicApi.normalizeEmail.bind(EmailToolPublicApi);
+const getStringArg = EmailToolPublicApi.getStringArg.bind(EmailToolPublicApi);
+const pickEmailChannel = EmailToolPublicApi.pickEmailChannel.bind(EmailToolPublicApi);
+const resolveAttachments = EmailToolPublicApi.resolveAttachments.bind(EmailToolPublicApi);
+const executeEmailSummarize = EmailToolPublicApi.executeEmailSummarize.bind(EmailToolPublicApi);
+const executeEmailSend = EmailToolPublicApi.executeEmailSend.bind(EmailToolPublicApi);
+const stripHtml = EmailToolPublicApi.stripHtml.bind(EmailToolPublicApi);
+const executeEmailRead = EmailToolPublicApi.executeEmailRead.bind(EmailToolPublicApi);
+const truncateText = EmailToolPublicApi.truncateText.bind(EmailToolPublicApi);
+const sanitizeInboundEmailText = EmailToolPublicApi.sanitizeInboundEmailText.bind(EmailToolPublicApi);
+const buildGuardedInboundEmailPrompt = EmailToolPublicApi.buildGuardedInboundEmailPrompt.bind(EmailToolPublicApi);
+const resolveChannelThread = EmailToolPublicApi.resolveChannelThread.bind(EmailToolPublicApi);
+const parseChannelConfig = EmailToolPublicApi.parseChannelConfig.bind(EmailToolPublicApi);
+const enqueueDigestItem = EmailToolPublicApi.enqueueDigestItem.bind(EmailToolPublicApi);
+const getRunAgentLoop = EmailToolPublicApi.getRunAgentLoop.bind(EmailToolPublicApi);
+const getNotificationFns = EmailToolPublicApi.getNotificationFns.bind(EmailToolPublicApi);
+const flushSchedulerDigestEmails = EmailToolPublicApi.flushSchedulerDigestEmails.bind(EmailToolPublicApi);
+const pollEmailChannels = EmailToolPublicApi.pollEmailChannels.bind(EmailToolPublicApi);
+const EMAIL_BODY_SNIPPET_MAX = EmailToolPublicApi.EMAIL_BODY_SNIPPET_MAX;
+
+export const EMAIL_TOOL_NAMES = EmailToolPublicApi.EMAIL_TOOL_NAMES;
+export const EMAIL_TOOLS_REQUIRING_APPROVAL = EmailToolPublicApi.EMAIL_TOOLS_REQUIRING_APPROVAL;
+export const BUILTIN_EMAIL_TOOLS = EmailToolPublicApi.BUILTIN_EMAIL_TOOLS;
+
+export const isEmailTool = EmailToolPublicApi.isEmailTool.bind(EmailToolPublicApi);
+export const executeBuiltinEmailTool = EmailToolPublicApi.executeBuiltinEmailTool.bind(EmailToolPublicApi);
+export const runEmailReadToolExecution = EmailToolPublicApi.runEmailReadToolExecution.bind(EmailToolPublicApi);
 
 // ── BaseTool class wrappers ───────────────────────────────────
 

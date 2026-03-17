@@ -22,20 +22,7 @@ import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./bas
 import { findDuplicateToolMatch } from "./tool-duplicate-gate";
 import * as vm from "vm";
 import { ValidationError, NotFoundError, IntegrationError } from "@/lib/errors";
-
-function emitCustomToolLog(level: "verbose" | "warning" | "error", args: unknown[]): void {
-  try {
-    const { addLog } = require("@/lib/db/queries") as { addLog: (log: { level: string; source: string | null; message: string; metadata: string | null }) => void };
-    addLog({
-      level,
-      source: "custom-tool",
-      message: "Sandbox console output",
-      metadata: JSON.stringify({ args }),
-    });
-  } catch {
-    // Avoid throwing from log path during bootstrapping or tests.
-  }
-}
+import { SANDBOX_TIMEOUT_MS, SANDBOX_VALIDATION_TIMEOUT_MS } from "@/lib/constants";
 
 // ── Tool Names ────────────────────────────────────────────────
 
@@ -171,343 +158,6 @@ interface CustomToolEntry {
 /** In-memory cache of custom tools. Loaded from DB on startup. */
 let customToolsCache: CustomToolEntry[] = [];
 
-// ── DB Operations ─────────────────────────────────────────────
-
-export function loadCustomToolsFromDb(): void {
-  try {
-    const { listCustomTools } = require("@/lib/db/queries");
-    const rows = listCustomTools();
-    customToolsCache = rows.map((r: any) => ({
-      name: r.name,
-      description: r.description,
-      inputSchema: JSON.parse(r.input_schema),
-      implementation: r.implementation,
-      enabled: !!r.enabled,
-      createdAt: r.created_at,
-    }));
-  } catch {
-    customToolsCache = [];
-  }
-}
-
-// ── Public API ────────────────────────────────────────────────
-
-/**
- * Check if a tool name is a custom tool.
- */
-export function isCustomTool(name: string): boolean {
-  return name.startsWith(CUSTOM_TOOL_PREFIX) ||
-    name === TOOL_CREATOR_NAME ||
-    name === TOOL_UPDATE_NAME ||
-    name === TOOL_LIST_NAME ||
-    name === TOOL_DELETE_NAME;
-}
-
-/**
- * Get ToolDefinition[] for all enabled custom tools + the toolmaker tools.
- */
-export function getCustomToolDefinitions(): ToolDefinition[] {
-  const customDefs: ToolDefinition[] = customToolsCache
-    .filter((t) => t.enabled)
-    .map((t) => ({
-      name: t.name,
-      description: t.description,
-      inputSchema: t.inputSchema,
-    }));
-
-  return [...BUILTIN_TOOLMAKER_TOOLS, ...customDefs];
-}
-
-/**
- * Execute a custom tool (or a toolmaker built-in).
- */
-export async function executeCustomTool(
-  name: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  // Toolmaker built-ins
-  if (name === TOOL_CREATOR_NAME) {
-    return createCustomTool(args);
-  }
-  if (name === TOOL_UPDATE_NAME) {
-    return updateCustomTool(args);
-  }
-  if (name === TOOL_LIST_NAME) {
-    return listTools();
-  }
-  if (name === TOOL_DELETE_NAME) {
-    return deleteCustomTool(args);
-  }
-
-  // Custom tool execution
-  const tool = customToolsCache.find((t) => t.name === name && t.enabled);
-  if (!tool) {
-    throw new NotFoundError(`Custom tool "${name}" not found or is disabled.`);
-  }
-
-  return runSandboxed(tool.implementation, args);
-}
-
-// ── Tool Creation ─────────────────────────────────────────────
-
-async function createCustomTool(args: Record<string, unknown>): Promise<unknown> {
-  const rawName = args.toolName as string;
-  const description = args.description as string;
-  const inputSchema = args.inputSchema as Record<string, unknown>;
-  const implementation = args.implementation as string;
-
-  if (!rawName || !description || !inputSchema || !implementation) {
-    throw new ValidationError("Missing required fields: toolName, description, inputSchema, implementation");
-  }
-
-  // Sanitize the name
-  const safeName = rawName
-    .replace(/^custom\./, "")
-    .replace(/[^a-z0-9_]/gi, "_")
-    .toLowerCase();
-  const fullName = `${CUSTOM_TOOL_PREFIX}${safeName}`;
-
-  // Validate name length
-  if (safeName.length < 2 || safeName.length > 64) {
-    throw new ValidationError("Tool name must be 2-64 characters.");
-  }
-
-  // Check for duplicates — guide the agent to use update instead
-  if (customToolsCache.some((t) => t.name === fullName)) {
-    throw new ValidationError(
-      `Custom tool "${fullName}" already exists. ` +
-      `Use builtin.nexus_update_tool to modify its implementation, description, or schema.`
-    );
-  }
-
-  const architectureTools = await getArchitectureToolDefinitions();
-  const duplicate = findDuplicateToolMatch(
-    {
-      name: fullName,
-      description,
-      inputSchema,
-    },
-    architectureTools,
-  );
-  if (duplicate) {
-    throw new ValidationError(
-      `Custom tool is too similar to existing tool "${duplicate.toolName}" (score: ${duplicate.score.toFixed(2)}). ` +
-      `Use builtin.nexus_update_tool to evolve the existing tool instead of creating a duplicate.`
-    );
-  }
-
-  // Validate inputSchema has required structure
-  if (!inputSchema.type || inputSchema.type !== "object") {
-    throw new ValidationError("inputSchema must have type: 'object'");
-  }
-
-  // Validate the implementation compiles and runs in the sandbox
-  const validationError = validateImplementation(implementation);
-  if (validationError) {
-    throw new ValidationError(validationError);
-  }
-
-  // Save to DB
-  const { createCustomToolRecord, upsertToolPolicy } = require("@/lib/db/queries");
-  createCustomToolRecord({
-    name: fullName,
-    description,
-    inputSchema: JSON.stringify(inputSchema),
-    implementation,
-  });
-
-  // Auto-create a tool policy so it shows in the policies UI
-  upsertToolPolicy({
-    tool_name: fullName,
-    mcp_id: null,
-    requires_approval: 0,
-    scope: "global",
-  });
-
-  // Update cache
-  customToolsCache.push({
-    name: fullName,
-    description,
-    inputSchema,
-    implementation,
-    enabled: true,
-    createdAt: new Date().toISOString(),
-  });
-
-  return {
-    status: "created",
-    toolName: fullName,
-    message: `Custom tool "${fullName}" created successfully. It is now available for use.`,
-  };
-}
-
-async function updateCustomTool(args: Record<string, unknown>): Promise<unknown> {
-  const rawName = args.toolName as string;
-  if (!rawName) throw new ValidationError("toolName is required.");
-
-  const fullName = rawName.startsWith(CUSTOM_TOOL_PREFIX) ? rawName : `${CUSTOM_TOOL_PREFIX}${rawName}`;
-  const idx = customToolsCache.findIndex((t) => t.name === fullName);
-  if (idx === -1) {
-    throw new NotFoundError(`Custom tool "${fullName}" not found. Use builtin.nexus_create_tool to create it first.`);
-  }
-
-  const existing = customToolsCache[idx];
-  const newDescription = typeof args.description === "string" ? args.description : existing.description;
-  const newInputSchema = (args.inputSchema && typeof args.inputSchema === "object")
-    ? args.inputSchema as Record<string, unknown>
-    : existing.inputSchema;
-  const newImplementation = typeof args.implementation === "string" ? args.implementation : existing.implementation;
-
-  // Validate inputSchema structure if changed
-  if (args.inputSchema) {
-    if (!newInputSchema.type || newInputSchema.type !== "object") {
-      throw new ValidationError("inputSchema must have type: 'object'");
-    }
-  }
-
-  // Validate implementation if changed
-  if (typeof args.implementation === "string") {
-    const validationError = validateImplementation(newImplementation);
-    if (validationError) {
-      throw new ValidationError(validationError);
-    }
-  }
-
-  // Update in DB
-  const { updateCustomToolRecord } = require("@/lib/db/queries");
-  updateCustomToolRecord(fullName, {
-    description: newDescription,
-    inputSchema: JSON.stringify(newInputSchema),
-    implementation: newImplementation,
-  });
-
-  // Update cache
-  customToolsCache[idx] = {
-    ...existing,
-    description: newDescription,
-    inputSchema: newInputSchema,
-    implementation: newImplementation,
-  };
-
-  const changed: string[] = [];
-  if (typeof args.description === "string") changed.push("description");
-  if (args.inputSchema) changed.push("inputSchema");
-  if (typeof args.implementation === "string") changed.push("implementation");
-
-  return {
-    status: "updated",
-    toolName: fullName,
-    fieldsUpdated: changed,
-    message: `Custom tool "${fullName}" updated successfully (${changed.join(", ")}).`,
-  };
-}
-
-function listTools(): unknown {
-  return {
-    tools: customToolsCache.map((t) => ({
-      name: t.name,
-      description: t.description,
-      enabled: t.enabled,
-      createdAt: t.createdAt,
-      inputSchema: t.inputSchema,
-    })),
-    count: customToolsCache.length,
-  };
-}
-
-async function getArchitectureToolDefinitions(): Promise<ToolDefinition[]> {
-  try {
-    const { discoverAllTools } = await import("@/lib/agent/discovery");
-    return discoverAllTools().map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-    }));
-  } catch {
-    return getCustomToolDefinitions();
-  }
-}
-
-async function deleteCustomTool(args: Record<string, unknown>): Promise<unknown> {
-  const rawName = args.toolName as string;
-  if (!rawName) throw new ValidationError("toolName is required.");
-
-  const fullName = rawName.startsWith(CUSTOM_TOOL_PREFIX) ? rawName : `${CUSTOM_TOOL_PREFIX}${rawName}`;
-  const idx = customToolsCache.findIndex((t) => t.name === fullName);
-  if (idx === -1) {
-    throw new NotFoundError(`Custom tool "${fullName}" not found.`);
-  }
-
-  // Remove from DB
-  const { deleteCustomToolRecord } = require("@/lib/db/queries");
-  deleteCustomToolRecord(fullName);
-
-  // Also remove the tool policy
-  try {
-    const db = require("@/lib/db/connection").getDb();
-    db.prepare("DELETE FROM tool_policies WHERE tool_name = ?").run(fullName);
-  } catch (err) {
-    emitCustomToolLog("verbose", ["Tool policy cleanup skipped", fullName, err instanceof Error ? err.message : String(err)]);
-  }
-
-  // Remove from cache
-  customToolsCache.splice(idx, 1);
-
-  return {
-    status: "deleted",
-    toolName: fullName,
-    message: `Custom tool "${fullName}" has been deleted.`,
-  };
-}
-
-// ── Sandboxed Execution ───────────────────────────────────────
-
-import { SANDBOX_TIMEOUT_MS, SANDBOX_VALIDATION_TIMEOUT_MS } from "@/lib/constants";
-
-/**
- * Build the sandbox context object used for both validation and execution.
- */
-function buildSandboxContext(args: Record<string, unknown>): Record<string, unknown> {
-  return {
-    // Safe globals
-    JSON,
-    Math,
-    Date,
-    RegExp,
-    URL,
-    URLSearchParams,
-    Buffer,
-    console: {
-      log: (...a: unknown[]) => emitCustomToolLog("verbose", a),
-      warn: (...a: unknown[]) => emitCustomToolLog("warning", a),
-      error: (...a: unknown[]) => emitCustomToolLog("error", a),
-    },
-    parseInt,
-    parseFloat,
-    isNaN,
-    isFinite,
-    encodeURIComponent,
-    decodeURIComponent,
-    encodeURI,
-    decodeURI,
-    atob: (s: string) => Buffer.from(s, "base64").toString("binary"),
-    btoa: (s: string) => Buffer.from(s, "binary").toString("base64"),
-
-    // Network access (controlled)
-    fetch: globalThis.fetch,
-    setTimeout: globalThis.setTimeout,
-    clearTimeout: globalThis.clearTimeout,
-
-    // The args passed to the tool
-    __args__: args,
-    __result__: undefined as unknown,
-  };
-}
-
-/**
- * Globals that are NOT available in the sandbox.
- * We do a static check before compilation to catch common mistakes early.
- */
 const FORBIDDEN_GLOBALS = [
   "process", "require", "module", "exports", "__dirname", "__filename",
   "global", "globalThis",
@@ -516,88 +166,400 @@ const FORBIDDEN_GLOBAL_PATTERN = new RegExp(
   `\\b(${FORBIDDEN_GLOBALS.join("|")})\\b`
 );
 
-/**
- * Validate implementation code by compiling and dry-running it in the sandbox.
- * Returns null if valid, or an error message string if invalid.
- */
-export function validateImplementation(code: string): string | null {
-  // Step 0: Check for references to forbidden globals (not available in sandbox)
-  const forbiddenMatch = code.match(FORBIDDEN_GLOBAL_PATTERN);
-  if (forbiddenMatch) {
-    return (
-      `Implementation code references "${forbiddenMatch[1]}" which is not available in the sandbox. ` +
-      `Available globals: fetch, JSON, Math, Date, RegExp, URL, URLSearchParams, Buffer, console, setTimeout, clearTimeout, ` +
-      `parseInt, parseFloat, isNaN, isFinite, encodeURIComponent, decodeURIComponent, encodeURI, decodeURI, atob, btoa.`
+class CustomToolRuntime {
+  static emitCustomToolLog(level: "verbose" | "warning" | "error", args: unknown[]): void {
+    try {
+      const { addLog } = require("@/lib/db/queries") as { addLog: (log: { level: string; source: string | null; message: string; metadata: string | null }) => void };
+      addLog({
+        level,
+        source: "custom-tool",
+        message: "Sandbox console output",
+        metadata: JSON.stringify({ args }),
+      });
+    } catch {
+    }
+  }
+
+  static loadCustomToolsFromDb(): void {
+    try {
+      const { listCustomTools } = require("@/lib/db/queries");
+      const rows = listCustomTools();
+      customToolsCache = rows.map((r: any) => ({
+        name: r.name,
+        description: r.description,
+        inputSchema: JSON.parse(r.input_schema),
+        implementation: r.implementation,
+        enabled: !!r.enabled,
+        createdAt: r.created_at,
+      }));
+    } catch {
+      customToolsCache = [];
+    }
+  }
+
+  static isCustomTool(name: string): boolean {
+    return name.startsWith(CUSTOM_TOOL_PREFIX) ||
+      name === TOOL_CREATOR_NAME ||
+      name === TOOL_UPDATE_NAME ||
+      name === TOOL_LIST_NAME ||
+      name === TOOL_DELETE_NAME;
+  }
+
+  static getCustomToolDefinitions(): ToolDefinition[] {
+    const customDefs: ToolDefinition[] = customToolsCache
+      .filter((t) => t.enabled)
+      .map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      }));
+
+    return [...BUILTIN_TOOLMAKER_TOOLS, ...customDefs];
+  }
+
+  static async executeCustomTool(
+    name: string,
+    args: Record<string, unknown>
+  ): Promise<unknown> {
+    if (name === TOOL_CREATOR_NAME) {
+      return CustomToolRuntime.createCustomTool(args);
+    }
+    if (name === TOOL_UPDATE_NAME) {
+      return CustomToolRuntime.updateCustomTool(args);
+    }
+    if (name === TOOL_LIST_NAME) {
+      return CustomToolRuntime.listTools();
+    }
+    if (name === TOOL_DELETE_NAME) {
+      return CustomToolRuntime.deleteCustomTool(args);
+    }
+
+    const tool = customToolsCache.find((t) => t.name === name && t.enabled);
+    if (!tool) {
+      throw new NotFoundError(`Custom tool "${name}" not found or is disabled.`);
+    }
+
+    return CustomToolRuntime.runSandboxed(tool.implementation, args);
+  }
+
+  static async createCustomTool(args: Record<string, unknown>): Promise<unknown> {
+    const rawName = args.toolName as string;
+    const description = args.description as string;
+    const inputSchema = args.inputSchema as Record<string, unknown>;
+    const implementation = args.implementation as string;
+
+    if (!rawName || !description || !inputSchema || !implementation) {
+      throw new ValidationError("Missing required fields: toolName, description, inputSchema, implementation");
+    }
+
+    const safeName = rawName
+      .replace(/^custom\./, "")
+      .replace(/[^a-z0-9_]/gi, "_")
+      .toLowerCase();
+    const fullName = `${CUSTOM_TOOL_PREFIX}${safeName}`;
+
+    if (safeName.length < 2 || safeName.length > 64) {
+      throw new ValidationError("Tool name must be 2-64 characters.");
+    }
+
+    if (customToolsCache.some((t) => t.name === fullName)) {
+      throw new ValidationError(
+        `Custom tool "${fullName}" already exists. ` +
+        `Use builtin.nexus_update_tool to modify its implementation, description, or schema.`
+      );
+    }
+
+    const architectureTools = await CustomToolRuntime.getArchitectureToolDefinitions();
+    const duplicate = findDuplicateToolMatch(
+      {
+        name: fullName,
+        description,
+        inputSchema,
+      },
+      architectureTools,
     );
+    if (duplicate) {
+      throw new ValidationError(
+        `Custom tool is too similar to existing tool "${duplicate.toolName}" (score: ${duplicate.score.toFixed(2)}). ` +
+        `Use builtin.nexus_update_tool to evolve the existing tool instead of creating a duplicate.`
+      );
+    }
+
+    if (!inputSchema.type || inputSchema.type !== "object") {
+      throw new ValidationError("inputSchema must have type: 'object'");
+    }
+
+    const validationError = CustomToolRuntime.validateImplementation(implementation);
+    if (validationError) {
+      throw new ValidationError(validationError);
+    }
+
+    const { createCustomToolRecord, upsertToolPolicy } = require("@/lib/db/queries");
+    createCustomToolRecord({
+      name: fullName,
+      description,
+      inputSchema: JSON.stringify(inputSchema),
+      implementation,
+    });
+
+    upsertToolPolicy({
+      tool_name: fullName,
+      mcp_id: null,
+      requires_approval: 0,
+      scope: "global",
+    });
+
+    customToolsCache.push({
+      name: fullName,
+      description,
+      inputSchema,
+      implementation,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    return {
+      status: "created",
+      toolName: fullName,
+      message: `Custom tool "${fullName}" created successfully. It is now available for use.`,
+    };
   }
 
-  // Step 1: Check basic JS syntax (wrap in async to allow await)
-  try {
-    new Function("args", `return (async () => { ${code} })();`);
-  } catch (err: any) {
-    return `Implementation code has syntax errors: ${err.message}`;
+  static async updateCustomTool(args: Record<string, unknown>): Promise<unknown> {
+    const rawName = args.toolName as string;
+    if (!rawName) throw new ValidationError("toolName is required.");
+
+    const fullName = rawName.startsWith(CUSTOM_TOOL_PREFIX) ? rawName : `${CUSTOM_TOOL_PREFIX}${rawName}`;
+    const idx = customToolsCache.findIndex((t) => t.name === fullName);
+    if (idx === -1) {
+      throw new NotFoundError(`Custom tool "${fullName}" not found. Use builtin.nexus_create_tool to create it first.`);
+    }
+
+    const existing = customToolsCache[idx];
+    const newDescription = typeof args.description === "string" ? args.description : existing.description;
+    const newInputSchema = (args.inputSchema && typeof args.inputSchema === "object")
+      ? args.inputSchema as Record<string, unknown>
+      : existing.inputSchema;
+    const newImplementation = typeof args.implementation === "string" ? args.implementation : existing.implementation;
+
+    if (args.inputSchema) {
+      if (!newInputSchema.type || newInputSchema.type !== "object") {
+        throw new ValidationError("inputSchema must have type: 'object'");
+      }
+    }
+
+    if (typeof args.implementation === "string") {
+      const validationError = CustomToolRuntime.validateImplementation(newImplementation);
+      if (validationError) {
+        throw new ValidationError(validationError);
+      }
+    }
+
+    const { updateCustomToolRecord } = require("@/lib/db/queries");
+    updateCustomToolRecord(fullName, {
+      description: newDescription,
+      inputSchema: JSON.stringify(newInputSchema),
+      implementation: newImplementation,
+    });
+
+    customToolsCache[idx] = {
+      ...existing,
+      description: newDescription,
+      inputSchema: newInputSchema,
+      implementation: newImplementation,
+    };
+
+    const changed: string[] = [];
+    if (typeof args.description === "string") changed.push("description");
+    if (args.inputSchema) changed.push("inputSchema");
+    if (typeof args.implementation === "string") changed.push("implementation");
+
+    return {
+      status: "updated",
+      toolName: fullName,
+      fieldsUpdated: changed,
+      message: `Custom tool "${fullName}" updated successfully (${changed.join(", ")}).`,
+    };
   }
 
-  // Step 2: Compile in the actual VM sandbox context to catch
-  // references to unavailable globals, scope issues, etc.
-  const sandbox = buildSandboxContext({});
-  vm.createContext(sandbox);
+  static listTools(): unknown {
+    return {
+      tools: customToolsCache.map((t) => ({
+        name: t.name,
+        description: t.description,
+        enabled: t.enabled,
+        createdAt: t.createdAt,
+        inputSchema: t.inputSchema,
+      })),
+      count: customToolsCache.length,
+    };
+  }
 
-  const wrappedCode = `
+  static async getArchitectureToolDefinitions(): Promise<ToolDefinition[]> {
+    try {
+      const { discoverAllTools } = await import("@/lib/agent/discovery");
+      return discoverAllTools().map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      }));
+    } catch {
+      return CustomToolRuntime.getCustomToolDefinitions();
+    }
+  }
+
+  static async deleteCustomTool(args: Record<string, unknown>): Promise<unknown> {
+    const rawName = args.toolName as string;
+    if (!rawName) throw new ValidationError("toolName is required.");
+
+    const fullName = rawName.startsWith(CUSTOM_TOOL_PREFIX) ? rawName : `${CUSTOM_TOOL_PREFIX}${rawName}`;
+    const idx = customToolsCache.findIndex((t) => t.name === fullName);
+    if (idx === -1) {
+      throw new NotFoundError(`Custom tool "${fullName}" not found.`);
+    }
+
+    const { deleteCustomToolRecord } = require("@/lib/db/queries");
+    deleteCustomToolRecord(fullName);
+
+    try {
+      const db = require("@/lib/db/connection").getDb();
+      db.prepare("DELETE FROM tool_policies WHERE tool_name = ?").run(fullName);
+    } catch (err) {
+      CustomToolRuntime.emitCustomToolLog("verbose", ["Tool policy cleanup skipped", fullName, err instanceof Error ? err.message : String(err)]);
+    }
+
+    customToolsCache.splice(idx, 1);
+
+    return {
+      status: "deleted",
+      toolName: fullName,
+      message: `Custom tool "${fullName}" has been deleted.`,
+    };
+  }
+
+  static buildSandboxContext(args: Record<string, unknown>): Record<string, unknown> {
+    return {
+      JSON,
+      Math,
+      Date,
+      RegExp,
+      URL,
+      URLSearchParams,
+      Buffer,
+      console: {
+        log: (...a: unknown[]) => CustomToolRuntime.emitCustomToolLog("verbose", a),
+        warn: (...a: unknown[]) => CustomToolRuntime.emitCustomToolLog("warning", a),
+        error: (...a: unknown[]) => CustomToolRuntime.emitCustomToolLog("error", a),
+      },
+      parseInt,
+      parseFloat,
+      isNaN,
+      isFinite,
+      encodeURIComponent,
+      decodeURIComponent,
+      encodeURI,
+      decodeURI,
+      atob: (s: string) => Buffer.from(s, "base64").toString("binary"),
+      btoa: (s: string) => Buffer.from(s, "binary").toString("base64"),
+      fetch: globalThis.fetch,
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+      __args__: args,
+      __result__: undefined as unknown,
+    };
+  }
+
+  static validateImplementation(code: string): string | null {
+    const forbiddenMatch = code.match(FORBIDDEN_GLOBAL_PATTERN);
+    if (forbiddenMatch) {
+      return (
+        `Implementation code references "${forbiddenMatch[1]}" which is not available in the sandbox. ` +
+        `Available globals: fetch, JSON, Math, Date, RegExp, URL, URLSearchParams, Buffer, console, setTimeout, clearTimeout, ` +
+        `parseInt, parseFloat, isNaN, isFinite, encodeURIComponent, decodeURIComponent, encodeURI, decodeURI, atob, btoa.`
+      );
+    }
+
+    try {
+      new Function("args", `return (async () => { ${code} })();`);
+    } catch (err: any) {
+      return `Implementation code has syntax errors: ${err.message}`;
+    }
+
+    const sandbox = CustomToolRuntime.buildSandboxContext({});
+    vm.createContext(sandbox);
+
+    const wrappedCode = `
     (async () => {
       const args = __args__;
       ${code}
     })().then(r => { __result__ = r; }).catch(e => { __result__ = { __error__: e.message || String(e) }; });
   `;
 
-  try {
-    const script = new vm.Script(wrappedCode, { filename: "custom-tool-validate.js" });
-    script.runInContext(sandbox, { timeout: SANDBOX_VALIDATION_TIMEOUT_MS });
-  } catch (err: any) {
-    return `Implementation code failed sandbox compilation: ${err.message}`;
+    try {
+      const script = new vm.Script(wrappedCode, { filename: "custom-tool-validate.js" });
+      script.runInContext(sandbox, { timeout: SANDBOX_VALIDATION_TIMEOUT_MS });
+    } catch (err: any) {
+      return `Implementation code failed sandbox compilation: ${err.message}`;
+    }
+
+    return null;
   }
 
-  return null;
+  static async runSandboxed(
+    code: string,
+    args: Record<string, unknown>
+  ): Promise<unknown> {
+    const sandbox = CustomToolRuntime.buildSandboxContext(args);
+    vm.createContext(sandbox);
+
+    const wrappedCode = `
+    (async () => {
+      const args = __args__;
+      ${code}
+    })().then(r => { __result__ = r; }).catch(e => { __result__ = { __error__: e.message || String(e) }; });
+  `;
+
+    const script = new vm.Script(wrappedCode, {
+      filename: "custom-tool.js",
+    });
+
+    script.runInContext(sandbox, { timeout: SANDBOX_TIMEOUT_MS });
+
+    const start = Date.now();
+    while (sandbox.__result__ === undefined && Date.now() - start < SANDBOX_TIMEOUT_MS) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    const result = sandbox.__result__;
+    if (result && typeof result === "object" && "__error__" in (result as Record<string, unknown>)) {
+      throw new IntegrationError((result as Record<string, unknown>).__error__ as string);
+    }
+
+    return result ?? { status: "completed", note: "Tool returned no explicit value." };
+  }
 }
+
+// ── DB Operations ─────────────────────────────────────────────
+
+export const loadCustomToolsFromDb = CustomToolRuntime.loadCustomToolsFromDb.bind(CustomToolRuntime);
+
+// ── Public API ────────────────────────────────────────────────
 
 /**
- * Execute custom tool code in a VM sandbox with limited globals.
+ * Check if a tool name is a custom tool.
  */
-async function runSandboxed(
-  code: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  const sandbox = buildSandboxContext(args);
-  vm.createContext(sandbox);
+export const isCustomTool = CustomToolRuntime.isCustomTool.bind(CustomToolRuntime);
 
-  // Wrap the user code in an async IIFE
-  const wrappedCode = `
-    (async () => {
-      const args = __args__;
-      ${code}
-    })().then(r => { __result__ = r; }).catch(e => { __result__ = { __error__: e.message || String(e) }; });
-  `;
+/**
+ * Get ToolDefinition[] for all enabled custom tools + the toolmaker tools.
+ */
+export const getCustomToolDefinitions = CustomToolRuntime.getCustomToolDefinitions.bind(CustomToolRuntime);
 
-  const script = new vm.Script(wrappedCode, {
-    filename: "custom-tool.js",
-  });
-
-  script.runInContext(sandbox, { timeout: SANDBOX_TIMEOUT_MS });
-
-  // The wrapped code is async, so we need to wait for the promise
-  // Give it up to SANDBOX_TIMEOUT_MS to complete
-  const start = Date.now();
-  while (sandbox.__result__ === undefined && Date.now() - start < SANDBOX_TIMEOUT_MS) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-
-  const result = sandbox.__result__;
-  if (result && typeof result === "object" && "__error__" in (result as Record<string, unknown>)) {
-    throw new IntegrationError((result as Record<string, unknown>).__error__ as string);
-  }
-
-  return result ?? { status: "completed", note: "Tool returned no explicit value." };
-}
+/**
+ * Execute a custom tool (or a toolmaker built-in).
+ */
+export const executeCustomTool = CustomToolRuntime.executeCustomTool.bind(CustomToolRuntime);
+export const validateImplementation = CustomToolRuntime.validateImplementation.bind(CustomToolRuntime);
 
 // ── BaseTool class wrapper ────────────────────────────────────
 
@@ -609,16 +571,16 @@ export class CustomTools extends BaseTool {
 
   /** Dynamic: includes both toolmaker meta-tools and user-created tools */
   get tools(): ToolDefinition[] {
-    return getCustomToolDefinitions();
+    return CustomToolRuntime.getCustomToolDefinitions();
   }
 
   /** Custom matcher — handles both custom.* prefix and builtin toolmaker tools */
   matches(toolName: string): boolean {
-    return isCustomTool(toolName);
+    return CustomToolRuntime.isCustomTool(toolName);
   }
 
   async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
-    return executeCustomTool(toolName, args);
+    return CustomToolRuntime.executeCustomTool(toolName, args);
   }
 }
 

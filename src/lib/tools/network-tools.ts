@@ -231,91 +231,86 @@ export const BUILTIN_NETWORK_TOOLS: ToolDefinition[] = [
 /**
  * Sanitize a hostname/IP to prevent command injection.
  */
-function sanitizeHost(host: string): string {
-  // Allow only alphanumeric, dots, hyphens, colons (IPv6), and percent (zone IDs)
-  const cleaned = host.trim();
-  if (!/^[a-zA-Z0-9.\-:%]+$/.test(cleaned)) {
-    throw new Error(`Invalid host: "${host}". Only alphanumeric characters, dots, hyphens, and colons are allowed.`);
-  }
-  if (cleaned.length > 253) {
-    throw new Error("Hostname too long (max 253 characters).");
-  }
-  return cleaned;
-}
-
-function sanitizeSubnetCidr(subnet: string): string {
-  const cleaned = subnet.trim();
-
-  // Allow plain IPv4 or IPv4 CIDR notation for network scans.
-  const cidrMatch = cleaned.match(/^(\d{1,3}(?:\.\d{1,3}){3})(?:\/(\d{1,2}))?$/);
-  if (!cidrMatch) {
-    throw new Error(
-      `Invalid subnet: "${subnet}". Expected IPv4 CIDR notation like "192.168.0.0/24".`
-    );
+class NetworkSanitizer {
+  static sanitizeHost(host: string): string {
+    const cleaned = host.trim();
+    if (!/^[a-zA-Z0-9.\-:%]+$/.test(cleaned)) {
+      throw new Error(`Invalid host: "${host}". Only alphanumeric characters, dots, hyphens, and colons are allowed.`);
+    }
+    if (cleaned.length > 253) {
+      throw new Error("Hostname too long (max 253 characters).");
+    }
+    return cleaned;
   }
 
-  const ip = cidrMatch[1];
-  const prefix = cidrMatch[2] ? Number(cidrMatch[2]) : 24;
-  const octets = ip.split(".").map((part) => Number(part));
-  if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
-    throw new Error(`Invalid subnet IP: "${subnet}".`);
-  }
-  if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) {
-    throw new Error(`Invalid subnet prefix in "${subnet}". CIDR prefix must be between 0 and 32.`);
+  static sanitizeSubnetCidr(subnet: string): string {
+    const cleaned = subnet.trim();
+    const cidrMatch = cleaned.match(/^(\d{1,3}(?:\.\d{1,3}){3})(?:\/(\d{1,2}))?$/);
+    if (!cidrMatch) {
+      throw new Error(
+        `Invalid subnet: "${subnet}". Expected IPv4 CIDR notation like "192.168.0.0/24".`
+      );
+    }
+
+    const ip = cidrMatch[1];
+    const prefix = cidrMatch[2] ? Number(cidrMatch[2]) : 24;
+    const octets = ip.split(".").map((part) => Number(part));
+    if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+      throw new Error(`Invalid subnet IP: "${subnet}".`);
+    }
+    if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) {
+      throw new Error(`Invalid subnet prefix in "${subnet}". CIDR prefix must be between 0 and 32.`);
+    }
+
+    return `${octets.join(".")}/${prefix}`;
   }
 
-  return `${octets.join(".")}/${prefix}`;
-}
-
-/**
- * Sanitize a username for SSH.
- */
-function sanitizeUsername(username: string): string {
-  const cleaned = username.trim();
-  if (!/^[a-zA-Z0-9._-]+$/.test(cleaned)) {
-    throw new Error(`Invalid username: "${username}". Only alphanumeric, dots, underscores, and hyphens allowed.`);
+  static sanitizeUsername(username: string): string {
+    const cleaned = username.trim();
+    if (!/^[a-zA-Z0-9._-]+$/.test(cleaned)) {
+      throw new Error(`Invalid username: "${username}". Only alphanumeric, dots, underscores, and hyphens allowed.`);
+    }
+    return cleaned;
   }
-  return cleaned;
 }
 
 // ── 1. Ping ───────────────────────────────────────────────────
 
-async function netPing(args: Record<string, unknown>): Promise<unknown> {
-  const host = sanitizeHost(args.host as string);
-  const count = Math.min(Math.max((args.count as number) || NET_PING_DEFAULT_COUNT, 1), NET_PING_MAX_COUNT);
+class NetworkPingRuntime {
+  static async netPing(args: Record<string, unknown>): Promise<unknown> {
+    const host = NetworkSanitizer.sanitizeHost(args.host as string);
+    const count = Math.min(Math.max((args.count as number) || NET_PING_DEFAULT_COUNT, 1), NET_PING_MAX_COUNT);
 
-  // Cross-platform ping: Linux uses -c, Windows uses -n
-  const isWindows = process.platform === "win32";
-  const countFlag = isWindows ? "-n" : "-c";
+    const isWindows = process.platform === "win32";
+    const countFlag = isWindows ? "-n" : "-c";
 
-  try {
-    const { stdout, stderr } = await execFileAsync("ping", [countFlag, String(count), host], {
-      timeout: NET_CMD_TIMEOUT_MS,
-      maxBuffer: NET_MAX_OUTPUT,
-    });
+    try {
+      const { stdout, stderr } = await execFileAsync("ping", [countFlag, String(count), host], {
+        timeout: NET_CMD_TIMEOUT_MS,
+        maxBuffer: NET_MAX_OUTPUT,
+      });
 
-    // Parse basic stats from ping output
-    const lines = stdout.split("\n").filter((l) => l.trim());
-    const statsLine = lines.find((l) => /packets transmitted/i.test(l) || /Packets: Sent/i.test(l));
-    const rttLine = lines.find((l) => /rtt|round-trip|Minimum/i.test(l));
+      const lines = stdout.split("\n").filter((l) => l.trim());
+      const statsLine = lines.find((l) => /packets transmitted/i.test(l) || /Packets: Sent/i.test(l));
+      const rttLine = lines.find((l) => /rtt|round-trip|Minimum/i.test(l));
 
-    return {
-      host,
-      reachable: !stderr.includes("100% packet loss") && !stdout.includes("100% packet loss"),
-      count,
-      output: stdout.slice(0, NET_MAX_OUTPUT),
-      stats: statsLine?.trim() || null,
-      rtt: rttLine?.trim() || null,
-    };
-  } catch (err: any) {
-    // Ping returns non-zero exit code if host is unreachable
-    return {
-      host,
-      reachable: false,
-      count,
-      output: (err.stdout || "").slice(0, NET_MAX_OUTPUT),
-      error: err.stderr || err.message,
-    };
+      return {
+        host,
+        reachable: !stderr.includes("100% packet loss") && !stdout.includes("100% packet loss"),
+        count,
+        output: stdout.slice(0, NET_MAX_OUTPUT),
+        stats: statsLine?.trim() || null,
+        rtt: rttLine?.trim() || null,
+      };
+    } catch (err: any) {
+      return {
+        host,
+        reachable: false,
+        count,
+        output: (err.stdout || "").slice(0, NET_MAX_OUTPUT),
+        error: err.stderr || err.message,
+      };
+    }
   }
 }
 
@@ -328,8 +323,10 @@ interface DeviceEntry {
   vendor: string | null;
 }
 
-async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
-  const subnet = args.subnet ? sanitizeSubnetCidr(args.subnet as string) : null;
+class NetworkRuntime {
+
+static async netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
+  const subnet = args.subnet ? NetworkSanitizer.sanitizeSubnetCidr(args.subnet as string) : null;
   const method = (args.method as string) || "auto";
 
   const devices: DeviceEntry[] = [];
@@ -344,7 +341,7 @@ async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
         maxBuffer: NET_MAX_OUTPUT,
       });
       scanMethod = "arp-scan";
-      parseArpScanOutput(stdout, devices);
+      NetworkRuntime.parseArpScanOutput(stdout, devices);
     } catch {
       // arp-scan not available or failed; try arp -a
       if (method === "arp" || method === "auto") {
@@ -354,7 +351,7 @@ async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
             maxBuffer: NET_MAX_OUTPUT,
           });
           scanMethod = "arp -a";
-          parseArpTableOutput(stdout, devices);
+          NetworkRuntime.parseArpTableOutput(stdout, devices);
         } catch {
           // arp also failed
         }
@@ -371,7 +368,7 @@ async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
         maxBuffer: NET_MAX_OUTPUT,
       });
       scanMethod = "nmap";
-      parseNmapPingScanOutput(stdout, devices);
+      NetworkRuntime.parseNmapPingScanOutput(stdout, devices);
     } catch {
       // nmap not available
     }
@@ -379,10 +376,10 @@ async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
 
   // Last resort: ping sweep (slow but universal)
   if (method === "auto" && devices.length === 0) {
-    const baseSubnet = subnet || await detectLocalSubnet();
+    const baseSubnet = subnet || await NetworkRuntime.detectLocalSubnet();
     if (baseSubnet) {
       scanMethod = "ping-sweep";
-      await pingSweep(baseSubnet, devices);
+      await NetworkRuntime.pingSweep(baseSubnet, devices);
     }
   }
 
@@ -394,7 +391,7 @@ async function netScanNetwork(args: Record<string, unknown>): Promise<unknown> {
   };
 }
 
-function parseArpScanOutput(output: string, devices: DeviceEntry[]): void {
+static parseArpScanOutput(output: string, devices: DeviceEntry[]): void {
   // arp-scan output: "192.168.0.1\t00:11:22:33:44:55\tVendor Name"
   const lines = output.split("\n");
   for (const line of lines) {
@@ -410,7 +407,7 @@ function parseArpScanOutput(output: string, devices: DeviceEntry[]): void {
   }
 }
 
-function parseArpTableOutput(output: string, devices: DeviceEntry[]): void {
+static parseArpTableOutput(output: string, devices: DeviceEntry[]): void {
   // Linux arp -a: "hostname (192.168.0.1) at 00:11:22:33:44:55 [ether] on eth0"
   // macOS arp -a: "? (192.168.0.1) at 0:11:22:33:44:55 on en0 ifscope [ethernet]"
   const lines = output.split("\n");
@@ -428,7 +425,7 @@ function parseArpTableOutput(output: string, devices: DeviceEntry[]): void {
   }
 }
 
-function parseNmapPingScanOutput(output: string, devices: DeviceEntry[]): void {
+static parseNmapPingScanOutput(output: string, devices: DeviceEntry[]): void {
   // nmap -sn output blocks:
   // Nmap scan report for hostname (192.168.0.1)
   // Host is up (0.0050s latency).
@@ -450,7 +447,7 @@ function parseNmapPingScanOutput(output: string, devices: DeviceEntry[]): void {
   }
 }
 
-async function detectLocalSubnet(): Promise<string | null> {
+static async detectLocalSubnet(): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync("ip", ["route"], { timeout: NET_IP_ROUTE_TIMEOUT_MS });
     const match = stdout.match(/src\s+(\d+\.\d+\.\d+\.\d+)/);
@@ -465,7 +462,7 @@ async function detectLocalSubnet(): Promise<string | null> {
   return "192.168.0.0/24";
 }
 
-async function pingSweep(subnet: string, devices: DeviceEntry[]): Promise<void> {
+static async pingSweep(subnet: string, devices: DeviceEntry[]): Promise<void> {
   // Parse subnet (simple /24 support)
   const match = subnet.match(/^(\d+\.\d+\.\d+)\.\d+\/24$/);
   if (!match) return;
@@ -501,14 +498,14 @@ async function pingSweep(subnet: string, devices: DeviceEntry[]): Promise<void> 
 // ── 3. Port Scan ─────────────────────────────────────────────
 
 /** Common ports to scan when no specific ports are given. */
-const COMMON_PORTS = [
+static readonly COMMON_PORTS = [
   21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 554, 993, 995,
   1080, 1433, 1883, 2049, 3000, 3306, 3389, 5000, 5432, 5900, 5901, 6379,
   8000, 8080, 8123, 8443, 8883, 8888, 9000, 9090, 9200, 27017, 32400, 49152,
 ];
 
 /** Well-known service names for port descriptions. */
-const PORT_SERVICES: Record<number, string> = {
+static readonly PORT_SERVICES: Record<number, string> = {
   21: "FTP",
   22: "SSH",
   23: "Telnet",
@@ -551,17 +548,17 @@ const PORT_SERVICES: Record<number, string> = {
   49152: "UPnP",
 };
 
-async function netScanPorts(args: Record<string, unknown>): Promise<unknown> {
-  const host = sanitizeHost(args.host as string);
+static async netScanPorts(args: Record<string, unknown>): Promise<unknown> {
+  const host = NetworkSanitizer.sanitizeHost(args.host as string);
   const portsStr = (args.ports as string) || null;
   const perPortTimeout = Math.min((args.timeout as number) || NET_PORT_SCAN_TIMEOUT_MS, 10_000);
 
   let portsToScan: number[];
 
   if (portsStr) {
-    portsToScan = parsePorts(portsStr);
+    portsToScan = NetworkRuntime.parsePorts(portsStr);
   } else {
-    portsToScan = [...COMMON_PORTS];
+    portsToScan = [...NetworkRuntime.COMMON_PORTS];
   }
 
   // Limit total ports to prevent abuse
@@ -577,13 +574,13 @@ async function netScanPorts(args: Record<string, unknown>): Promise<unknown> {
   for (let i = 0; i < portsToScan.length; i += BATCH_SIZE) {
     const batch = portsToScan.slice(i, i + BATCH_SIZE);
     const results = await Promise.all(
-      batch.map((port) => checkPort(host, port, perPortTimeout))
+      batch.map((port) => NetworkRuntime.checkPort(host, port, perPortTimeout))
     );
     for (let j = 0; j < results.length; j++) {
       if (results[j]) {
         openPorts.push({
           port: batch[j],
-          service: PORT_SERVICES[batch[j]] || null,
+          service: NetworkRuntime.PORT_SERVICES[batch[j]] || null,
         });
       } else {
         closedCount.value++;
@@ -599,7 +596,7 @@ async function netScanPorts(args: Record<string, unknown>): Promise<unknown> {
   };
 }
 
-function parsePorts(portsStr: string): number[] {
+static parsePorts(portsStr: string): number[] {
   const ports: Set<number> = new Set();
   const parts = portsStr.split(",").map((s) => s.trim());
   for (const part of parts) {
@@ -618,7 +615,7 @@ function parsePorts(portsStr: string): number[] {
   return Array.from(ports).sort((a, b) => a - b);
 }
 
-function checkPort(host: string, port: number, timeout: number): Promise<boolean> {
+static checkPort(host: string, port: number, timeout: number): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = new net.Socket();
     socket.setTimeout(timeout);
@@ -640,9 +637,9 @@ function checkPort(host: string, port: number, timeout: number): Promise<boolean
 
 // ── 4. SSH Connect (via ssh2 library — no password in process list) ──
 
-async function netConnectSsh(args: Record<string, unknown>): Promise<unknown> {
-  const host = sanitizeHost(args.host as string);
-  const username = sanitizeUsername(args.username as string);
+static async netConnectSsh(args: Record<string, unknown>): Promise<unknown> {
+  const host = NetworkSanitizer.sanitizeHost(args.host as string);
+  const username = NetworkSanitizer.sanitizeUsername(args.username as string);
   const command = args.command as string;
   const port = (args.port as number) || 22;
   const keyPath = args.keyPath as string | undefined;
@@ -769,7 +766,7 @@ async function netConnectSsh(args: Record<string, unknown>): Promise<unknown> {
 
 // ── 5. HTTP Request ──────────────────────────────────────────
 
-async function netHttpRequest(args: Record<string, unknown>): Promise<unknown> {
+static async netHttpRequest(args: Record<string, unknown>): Promise<unknown> {
   const url = args.url as string;
   const method = ((args.method as string) || "GET").toUpperCase();
   const headers = (args.headers as Record<string, string>) || {};
@@ -865,7 +862,7 @@ async function netHttpRequest(args: Record<string, unknown>): Promise<unknown> {
 
 // ── 6. Wake-on-LAN ──────────────────────────────────────────
 
-async function netWakeOnLan(args: Record<string, unknown>): Promise<unknown> {
+static async netWakeOnLan(args: Record<string, unknown>): Promise<unknown> {
   const macAddress = args.macAddress as string;
   const broadcastAddr = (args.broadcastAddress as string) || "255.255.255.255";
   const port = (args.port as number) || 9;
@@ -919,40 +916,46 @@ async function netWakeOnLan(args: Record<string, unknown>): Promise<unknown> {
     });
   });
 }
+}
 
 // ── Public API ────────────────────────────────────────────────
 
 /**
  * Check whether a tool name is a built-in network tool.
  */
-export function isNetworkTool(name: string): boolean {
-  return Object.values(NET_TOOL_NAMES).includes(name as any);
-}
+class NetworkPublicApi {
+  static isNetworkTool(name: string): boolean {
+    return Object.values(NET_TOOL_NAMES).includes(name as any);
+  }
 
 /**
  * Execute a built-in network tool and return the result.
  */
-export async function executeBuiltinNetworkTool(
-  name: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  switch (name) {
-    case NET_TOOL_NAMES.PING:
-      return netPing(args);
-    case NET_TOOL_NAMES.SCAN_NETWORK:
-      return netScanNetwork(args);
-    case NET_TOOL_NAMES.SCAN_PORTS:
-      return netScanPorts(args);
-    case NET_TOOL_NAMES.CONNECT_SSH:
-      return netConnectSsh(args);
-    case NET_TOOL_NAMES.HTTP_REQUEST:
-      return netHttpRequest(args);
-    case NET_TOOL_NAMES.WAKE_ON_LAN:
-      return netWakeOnLan(args);
-    default:
-      throw new Error(`Unknown built-in network tool: "${name}"`);
+  static async executeBuiltinNetworkTool(
+    name: string,
+    args: Record<string, unknown>
+  ): Promise<unknown> {
+    switch (name) {
+      case NET_TOOL_NAMES.PING:
+        return NetworkPingRuntime.netPing(args);
+      case NET_TOOL_NAMES.SCAN_NETWORK:
+        return NetworkRuntime.netScanNetwork(args);
+      case NET_TOOL_NAMES.SCAN_PORTS:
+        return NetworkRuntime.netScanPorts(args);
+      case NET_TOOL_NAMES.CONNECT_SSH:
+        return NetworkRuntime.netConnectSsh(args);
+      case NET_TOOL_NAMES.HTTP_REQUEST:
+        return NetworkRuntime.netHttpRequest(args);
+      case NET_TOOL_NAMES.WAKE_ON_LAN:
+        return NetworkRuntime.netWakeOnLan(args);
+      default:
+        throw new Error(`Unknown built-in network tool: "${name}"`);
+    }
   }
 }
+
+export const isNetworkTool = NetworkPublicApi.isNetworkTool.bind(NetworkPublicApi);
+export const executeBuiltinNetworkTool = NetworkPublicApi.executeBuiltinNetworkTool.bind(NetworkPublicApi);
 
 // ── BaseTool class wrapper ────────────────────────────────────
 
@@ -964,7 +967,7 @@ export class NetworkTools extends BaseTool {
   readonly toolsRequiringApproval = [...NETWORK_TOOLS_REQUIRING_APPROVAL];
 
   async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
-    return executeBuiltinNetworkTool(toolName, args);
+    return NetworkPublicApi.executeBuiltinNetworkTool(toolName, args);
   }
 }
 

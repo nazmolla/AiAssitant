@@ -433,130 +433,15 @@ class BrowserSession {
 
 // Singleton browser session
 let _session: BrowserSession | null = null;
-
-function getSession(): BrowserSession {
-  if (!_session) {
-    _session = new BrowserSession();
-  }
-  return _session;
-}
-
-// ── Helper: Page Summary ──────────────────────────────────────
-
-async function pageSummary(page: Page): Promise<string> {
-  const title = await page.title();
-  const url = page.url();
-  return `[Page] ${title}\n[URL] ${url}`;
-}
-
-async function getInteractiveElements(
-  page: Page,
-  scope?: string,
-  types?: string[],
-  max: number = 30
-): Promise<string> {
-  const include = types || ["links", "buttons", "inputs", "selects", "textareas"];
-  const container = scope || "body";
-  const lines: string[] = [];
-
-  const elements = await page.evaluate(
-    ({ container, include, max }) => {
-      const root = document.querySelector(container) || document.body;
-      const result: { tag: string; type: string; selector: string; text: string; name: string; placeholder: string; href: string }[] = [];
-
-      function addEls(els: NodeListOf<Element>, tag: string) {
-        els.forEach((el) => {
-          if (result.length >= max * include.length) return;
-          try {
-            const text = (el as HTMLElement).innerText?.trim().slice(0, 80) || "";
-            const id = el.id ? `#${el.id}` : "";
-            const name = el.getAttribute("name") || "";
-            // className can be SVGAnimatedString on SVG elements, handle safely
-            let cls = "";
-            try {
-              const cn = typeof el.className === "string" ? el.className : el.getAttribute("class") || "";
-              if (cn) {
-                cls = "." + cn.split(/\s+/).filter((c: string) => c && !c.includes(":") && c.length < 40).slice(0, 2).join(".");
-              }
-            } catch {}
-            const type = el.getAttribute("type") || "";
-            const placeholder = el.getAttribute("placeholder") || "";
-            const href = el.getAttribute("href") || "";
-            const ariaLabel = el.getAttribute("aria-label") || "";
-            let selector = el.tagName.toLowerCase();
-            if (id) selector += id;
-            else if (name) selector += `[name="${name}"]`;
-            else if (cls && cls.length > 1) selector += cls;
-            else if (type) selector += `[type="${type}"]`;
-
-            result.push({
-              tag: el.tagName.toLowerCase(),
-              type,
-              selector,
-              text: text || ariaLabel,
-              name,
-              placeholder,
-              href: href.slice(0, 120),
-            });
-          } catch {
-            // Skip elements that can't be introspected
-          }
-        });
-      }
-
-      if (include.includes("links"))
-        addEls(root.querySelectorAll("a[href]"), "a");
-      if (include.includes("buttons"))
-        addEls(root.querySelectorAll("button, input[type='button'], input[type='submit'], [role='button']"), "button");
-      if (include.includes("inputs"))
-        addEls(root.querySelectorAll("input:not([type='hidden']):not([type='submit']):not([type='button'])"), "input");
-      if (include.includes("selects"))
-        addEls(root.querySelectorAll("select"), "select");
-      if (include.includes("textareas"))
-        addEls(root.querySelectorAll("textarea"), "textarea");
-
-      return result;
-    },
-    { container, include, max }
-  );
-
-  if (!elements.length) return "(no interactive elements found)";
-
-  for (const el of elements) {
-    let desc = `  [${el.tag}]`;
-    if (el.type) desc += ` type=${el.type}`;
-    desc += ` selector="${el.selector}"`;
-    if (el.text) desc += ` text="${el.text.slice(0, 60)}"`;
-    if (el.placeholder) desc += ` placeholder="${el.placeholder}"`;
-    if (el.href) desc += ` href="${el.href}"`;
-    lines.push(desc);
-  }
-
-  return lines.join("\n");
-}
-
 // ── Tool Executor ─────────────────────────────────────────────
 
-export function isBrowserTool(name: string): boolean {
-  return name.startsWith("builtin.browser_");
-}
-
-export async function executeBrowserTool(
-  name: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  const session = getSession();
-
-  // Serialize browser operations to prevent concurrent page mutations
-  return session.withLock(() => _executeBrowserToolInner(session, name, args));
-}
-
-async function _executeBrowserToolInner(
-  session: BrowserSession,
-  name: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  switch (name) {
+class BrowserExecution {
+  static async executeBrowserToolInner(
+    session: BrowserSession,
+    name: string,
+    args: Record<string, unknown>
+  ): Promise<unknown> {
+    switch (name) {
     // ── Navigate ────────────────────────────────────────────
     case "builtin.browser_navigate": {
       const page = await session.getPage();
@@ -599,7 +484,7 @@ async function _executeBrowserToolInner(
       } catch {}
 
       // Get interactive elements (limited)
-      const elements = await getInteractiveElements(page, undefined, undefined, 15);
+      const elements = await BrowserTools.getInteractiveElements(page, undefined, undefined, 15);
 
       return {
         status: "navigated",
@@ -627,11 +512,11 @@ async function _executeBrowserToolInner(
       await page.waitForTimeout(BROWSER_SETTLE_DELAY_MS);
 
       const afterUrl = page.url();
-      const summary = await pageSummary(page);
+      const summary = await BrowserTools.pageSummary(page);
       return {
         status: "clicked",
         urlChanged: beforeUrl !== afterUrl,
-        ...parsePageInfo(summary),
+        ...BrowserTools.parsePageInfo(summary),
       };
     }
 
@@ -653,12 +538,12 @@ async function _executeBrowserToolInner(
         await page.waitForTimeout(2000);
       }
 
-      const summary = await pageSummary(page);
+      const summary = await BrowserTools.pageSummary(page);
       return {
         status: "typed",
         selector,
         pressedEnter: pressEnter,
-        ...parsePageInfo(summary),
+        ...BrowserTools.parsePageInfo(summary),
       };
     }
 
@@ -723,10 +608,10 @@ async function _executeBrowserToolInner(
         }
       }
 
-      const summary = await pageSummary(page);
+      const summary = await BrowserTools.pageSummary(page);
       return {
         status: "form_filled",
-        ...parsePageInfo(summary),
+        ...BrowserTools.parsePageInfo(summary),
         fieldResults: results,
       };
     }
@@ -767,9 +652,9 @@ async function _executeBrowserToolInner(
         .trim()
         .slice(0, maxLen);
 
-      const summary = await pageSummary(page);
+      const summary = await BrowserTools.pageSummary(page);
       return {
-        ...parsePageInfo(summary),
+        ...BrowserTools.parsePageInfo(summary),
         contentLength: text.length,
         content: text,
       };
@@ -778,15 +663,15 @@ async function _executeBrowserToolInner(
     // ── Get Interactive Elements ────────────────────────────
     case "builtin.browser_get_elements": {
       const page = await session.getPage();
-      const elements = await getInteractiveElements(
+      const elements = await BrowserTools.getInteractiveElements(
         page,
         args.selector as string | undefined,
         args.types as string[] | undefined,
         (args.maxResults as number) || BROWSER_MAX_ELEMENTS
       );
-      const summary = await pageSummary(page);
+      const summary = await BrowserTools.pageSummary(page);
       return {
-        ...parsePageInfo(summary),
+        ...BrowserTools.parsePageInfo(summary),
         elements,
       };
     }
@@ -812,10 +697,10 @@ async function _executeBrowserToolInner(
         });
       }
 
-      const summary = await pageSummary(page);
+      const summary = await BrowserTools.pageSummary(page);
       return {
         status: "screenshot_taken",
-        ...parsePageInfo(summary),
+        ...BrowserTools.parsePageInfo(summary),
         screenshotPath: filepath,
         relativePath: `data/screenshots/${filename}`,
       };
@@ -849,8 +734,8 @@ async function _executeBrowserToolInner(
       const page = await session.getPage();
       await page.goBack({ waitUntil: "domcontentloaded" });
       await page.waitForTimeout(1000);
-      const summary = await pageSummary(page);
-      return { status: "navigated_back", ...parsePageInfo(summary) };
+      const summary = await BrowserTools.pageSummary(page);
+      return { status: "navigated_back", ...BrowserTools.parsePageInfo(summary) };
     }
 
     // ── Wait ────────────────────────────────────────────────
@@ -934,36 +819,24 @@ async function _executeBrowserToolInner(
           throw new Error(`Tab index ${args.index} not found. Total tabs: ${pages.length}`);
         }
         await targetPage.bringToFront();
-        const summary = await pageSummary(targetPage);
-        return { status: "switched", ...parsePageInfo(summary) };
+        const summary = await BrowserTools.pageSummary(targetPage);
+        return { status: "switched", ...BrowserTools.parsePageInfo(summary) };
       }
 
       throw new Error('action must be "list" or "switch".');
     }
 
-    default:
-      throw new Error(`Unknown browser tool: "${name}"`);
+      default:
+        throw new Error(`Unknown browser tool: "${name}"`);
+    }
   }
-}
-
-// ── Helper ────────────────────────────────────────────────────
-
-function parsePageInfo(summary: string): { title: string; url: string } {
-  const titleMatch = summary.match(/\[Page\] (.*)/);
-  const urlMatch = summary.match(/\[URL\] (.*)/);
-  return {
-    title: titleMatch ? titleMatch[1] : "",
-    url: urlMatch ? urlMatch[1] : "",
-  };
 }
 
 /**
  * Close browser on process exit.
  */
 process.on("beforeExit", async () => {
-  if (_session) {
-    await _session.close();
-  }
+  await BrowserTools.closeActiveSession();
 });
 
 // ── BaseTool class wrapper ────────────────────────────────────
@@ -975,10 +848,134 @@ export class BrowserTools extends BaseTool {
   readonly tools = BUILTIN_BROWSER_TOOLS;
   readonly toolsRequiringApproval = [...BROWSER_TOOLS_REQUIRING_APPROVAL];
 
+  static isTool(name: string): boolean {
+    return name.startsWith("builtin.browser_");
+  }
+
+  static getSession(): BrowserSession {
+    if (!_session) {
+      _session = new BrowserSession();
+    }
+    return _session;
+  }
+
+  static async closeActiveSession(): Promise<void> {
+    if (_session) {
+      await _session.close();
+    }
+  }
+
+  static async pageSummary(page: Page): Promise<string> {
+    const title = await page.title();
+    const url = page.url();
+    return `[Page] ${title}\n[URL] ${url}`;
+  }
+
+  static async getInteractiveElements(
+    page: Page,
+    scope?: string,
+    types?: string[],
+    max: number = 30
+  ): Promise<string> {
+    const include = types || ["links", "buttons", "inputs", "selects", "textareas"];
+    const container = scope || "body";
+    const lines: string[] = [];
+
+    const elements = await page.evaluate(
+      ({ container, include, max }) => {
+        const root = document.querySelector(container) || document.body;
+        const result: { tag: string; type: string; selector: string; text: string; name: string; placeholder: string; href: string }[] = [];
+
+        function addEls(els: NodeListOf<Element>, tag: string) {
+          els.forEach((el) => {
+            if (result.length >= max * include.length) return;
+            try {
+              const text = (el as HTMLElement).innerText?.trim().slice(0, 80) || "";
+              const id = el.id ? `#${el.id}` : "";
+              const name = el.getAttribute("name") || "";
+              let cls = "";
+              try {
+                const cn = typeof el.className === "string" ? el.className : el.getAttribute("class") || "";
+                if (cn) {
+                  cls = "." + cn.split(/\s+/).filter((c: string) => c && !c.includes(":") && c.length < 40).slice(0, 2).join(".");
+                }
+              } catch {}
+              const type = el.getAttribute("type") || "";
+              const placeholder = el.getAttribute("placeholder") || "";
+              const href = el.getAttribute("href") || "";
+              const ariaLabel = el.getAttribute("aria-label") || "";
+              let selector = el.tagName.toLowerCase();
+              if (id) selector += id;
+              else if (name) selector += `[name="${name}"]`;
+              else if (cls && cls.length > 1) selector += cls;
+              else if (type) selector += `[type="${type}"]`;
+
+              result.push({
+                tag: el.tagName.toLowerCase(),
+                type,
+                selector,
+                text: text || ariaLabel,
+                name,
+                placeholder,
+                href: href.slice(0, 120),
+              });
+            } catch {
+            }
+          });
+        }
+
+        if (include.includes("links"))
+          addEls(root.querySelectorAll("a[href]"), "a");
+        if (include.includes("buttons"))
+          addEls(root.querySelectorAll("button, input[type='button'], input[type='submit'], [role='button']"), "button");
+        if (include.includes("inputs"))
+          addEls(root.querySelectorAll("input:not([type='hidden']):not([type='submit']):not([type='button'])"), "input");
+        if (include.includes("selects"))
+          addEls(root.querySelectorAll("select"), "select");
+        if (include.includes("textareas"))
+          addEls(root.querySelectorAll("textarea"), "textarea");
+
+        return result;
+      },
+      { container, include, max }
+    );
+
+    if (!elements.length) return "(no interactive elements found)";
+
+    for (const el of elements) {
+      let desc = `  [${el.tag}]`;
+      if (el.type) desc += ` type=${el.type}`;
+      desc += ` selector="${el.selector}"`;
+      if (el.text) desc += ` text="${el.text.slice(0, 60)}"`;
+      if (el.placeholder) desc += ` placeholder="${el.placeholder}"`;
+      if (el.href) desc += ` href="${el.href}"`;
+      lines.push(desc);
+    }
+
+    return lines.join("\n");
+  }
+
+  static parsePageInfo(summary: string): { title: string; url: string } {
+    const titleMatch = summary.match(/\[Page\] (.*)/);
+    const urlMatch = summary.match(/\[URL\] (.*)/);
+    return {
+      title: titleMatch ? titleMatch[1] : "",
+      url: urlMatch ? urlMatch[1] : "",
+    };
+  }
+
+  static async executeBuiltin(name: string, args: Record<string, unknown>): Promise<unknown> {
+    const session = BrowserTools.getSession();
+    return session.withLock(() => BrowserExecution.executeBrowserToolInner(session, name, args));
+  }
+
   async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
-    return executeBrowserTool(toolName, args);
+    return BrowserTools.executeBuiltin(toolName, args);
   }
 }
+
+export const isBrowserTool = BrowserTools.isTool.bind(BrowserTools);
+export const executeBrowserTool = BrowserTools.executeBuiltin.bind(BrowserTools);
 
 export const browserTools = new BrowserTools();
 registerToolCategory(browserTools);

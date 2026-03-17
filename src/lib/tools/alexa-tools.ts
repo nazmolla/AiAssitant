@@ -43,232 +43,11 @@ const WHITE_COLORS = ["warm_white", "soft_white", "white", "daylight_white", "co
 const cache = new Map<string, { value: unknown; ts: number }>();
 const CACHE_TTL = 5 * 60 * 1000;
 
-function getCached<T>(key: string): T | null {
-  const c = cache.get(key);
-  if (c && Date.now() - c.ts < CACHE_TTL) return c.value as T;
-  return null;
-}
-function setCache(key: string, value: unknown) {
-  cache.set(key, { value, ts: Date.now() });
-}
-
 /* ══════════════════════════════════════════════════════════════════
    Credential helpers
    ══════════════════════════════════════════════════════════════════ */
 
 interface AlexaCreds { ubidMain: string; atMain: string }
-
-export function getAlexaConfig(): AlexaCreds | null {
-  const raw1 = getAppConfig("alexa.ubid_main");
-  const raw2 = getAppConfig("alexa.at_main");
-  if (!raw1 || !raw2) return null;
-  const ubidMain = decryptField(raw1);
-  const atMain = decryptField(raw2);
-  if (!ubidMain || !atMain) return null;
-  return { ubidMain, atMain };
-}
-
-export function saveAlexaConfig(ubidMain: string, atMain: string): void {
-  setAppConfig("alexa.ubid_main", encryptField(ubidMain)!);
-  setAppConfig("alexa.at_main", encryptField(atMain)!);
-}
-
-function requireCreds(): AlexaCreds {
-  const c = getAlexaConfig();
-  if (!c) throw new Error("Alexa credentials not configured. Go to Settings → Alexa to set UBID_MAIN and AT_MAIN.");
-  return c;
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   Alexa API helpers
-   ══════════════════════════════════════════════════════════════════ */
-
-function buildHeaders(creds: AlexaCreds, extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    Cookie: `csrf=1; ubid-main=${creds.ubidMain}; at-main=${creds.atMain}`,
-    Csrf: "1",
-    Accept: "application/json; charset=utf-8",
-    "Accept-Language": "en-US",
-    "User-Agent": USER_AGENT,
-    ...extra,
-  };
-}
-
-async function alexaFetch(url: string, creds: AlexaCreds, opts: { method?: string; body?: string; extra?: Record<string, string> } = {}) {
-  const res = await fetch(url, {
-    method: opts.method ?? "GET",
-    headers: buildHeaders(creds, opts.extra ?? {}),
-    ...(opts.body ? { body: opts.body } : {}),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Alexa API ${res.status}: ${text.slice(0, 300)}`);
-  }
-  return res.json();
-}
-
-/* ── Dynamic discovery helpers ─────────────────────────────────── */
-
-async function getAccountInfo(creds: AlexaCreds) {
-  const ck = "account_info";
-  const c = getCached<{ customerId: string }>(ck);
-  if (c) return c;
-
-  const data = await alexaFetch(COMMS_ACCOUNTS_ENDPOINT, creds) as Array<{ directedId: string; signedInUser: boolean }>;
-  const primary = data.find((a) => a.signedInUser) || data[0];
-  if (!primary) throw new Error("No Alexa account found");
-  const info = { customerId: primary.directedId };
-  setCache(ck, info);
-  return info;
-}
-
-async function getAlexaDevices(creds: AlexaCreds) {
-  const ck = "alexa_devices";
-  const c = getCached<{ devices: unknown[] }>(ck);
-  if (c) return c.devices;
-
-  const data = await alexaFetch(DEVICES_ENDPOINT, creds) as { devices: unknown[] };
-  setCache(ck, data);
-  return data.devices;
-}
-
-async function getCustomerSmartHomeEndpoints(creds: AlexaCreds) {
-  const ck = "customer_shm_endpoints";
-  const c = getCached<unknown[]>(ck);
-  if (c) return c;
-
-  const query = `
-    query CustomerSmartHome {
-      endpoints(endpointsQueryParams: { paginationParams: { disablePagination: true } }) {
-        items {
-          endpointId
-          id
-          friendlyName
-          displayCategories { all { value } primary { value } }
-          legacyIdentifiers {
-            chrsIdentifier { entityId }
-            dmsIdentifier {
-              deviceType { type value { text } }
-              deviceSerialNumber { type value { text } }
-            }
-          }
-          legacyAppliance { applianceId applianceTypes friendlyName entityId mergedApplianceIds capabilities }
-        }
-      }
-    }`;
-  const data = await alexaFetch(GRAPHQL_ENDPOINT, creds, {
-    method: "POST",
-    body: JSON.stringify({ query }),
-    extra: { "Content-Type": "application/json", "X-Amzn-Marketplace-Id": "ATVPDKIKX0DER", "X-Amzn-Client": "AlexaApp", "X-Amzn-Os-Name": "android" },
-  }) as { data?: { endpoints?: { items?: unknown[] } } };
-  const items = data.data?.endpoints?.items ?? [];
-  setCache(ck, items);
-  return items;
-}
-
-async function getSmartHomeFavorites(creds: AlexaCreds) {
-  const ck = "shm_favorites";
-  const c = getCached<unknown[]>(ck);
-  if (c) return c;
-
-  const query = `
-    fragment FavoriteMetadata on Favorite {
-      resource { id __typename }
-      favoriteFriendlyName
-      displayInfo {
-        displayCategories {
-          primary { isCustomerSpecified isDiscovered value sources __typename }
-          all { isCustomerSpecified isDiscovered value sources __typename }
-          __typename
-        }
-        __typename
-      }
-      alternateIdentifiers {
-        legacyIdentifiers {
-          chrsIdentifier { entityId __typename }
-          dmsIdentifier {
-            deviceSerialNumber { type value { text __typename } __typename }
-            deviceType { type value { text __typename } __typename }
-            __typename
-          }
-          __typename
-        }
-        __typename
-      }
-      type rank active variant __typename
-    }
-    query ListFavoritesForHomeChannel($requestedTypes: [String!]) {
-      favorites(listFavoritesInput: {requestedTypes: $requestedTypes}) {
-        favorites { ...FavoriteMetadata __typename }
-        __typename
-      }
-    }`;
-  const data = await alexaFetch(GRAPHQL_ENDPOINT, creds, {
-    method: "POST",
-    body: JSON.stringify({
-      operationName: "ListFavoritesForHomeChannel",
-      variables: { requestedTypes: ["AEA", "ALEXA_LIST", "AWAY_LIGHTING", "DEVICE_SHORTCUT", "DTG", "ENDPOINT", "SHORTCUT", "STATIC_ENTERTAINMENT"] },
-      query,
-    }),
-    extra: { "Content-Type": "application/json", "X-Amzn-Marketplace-Id": "ATVPDKIKX0DER", "X-Amzn-Client": "AlexaApp", "X-Amzn-Os-Name": "android" },
-  }) as { data?: { favorites?: { favorites?: unknown[] } } };
-  const favs = data.data?.favorites?.favorites ?? [];
-  setCache(ck, favs);
-  return favs;
-}
-
-async function getSmartHomeEntities(creds: AlexaCreds) {
-  const favs = await getSmartHomeFavorites(creds) as Array<{ active: boolean; type: string }>;
-  return favs.filter((f) => f.active && f.type === "ENDPOINT");
-}
-
-function extractEntityId(device: Record<string, unknown>): string {
-  const alt = device.alternateIdentifiers as Record<string, unknown> | undefined;
-  const leg = alt?.legacyIdentifiers as Record<string, unknown> | undefined;
-  const chrs = leg?.chrsIdentifier as { entityId?: string } | undefined;
-  if (chrs?.entityId) return chrs.entityId;
-  const ident = device.identifier as { entityId?: string } | undefined;
-  if (ident?.entityId) return ident.entityId;
-  const res = device.resource as { id?: string } | undefined;
-  if (res?.id?.includes("endpoint.")) return res.id.replace("amzn1.alexa.endpoint.", "");
-  return (device.serialNumber as string) || res?.id || "";
-}
-
-function buildEndpointId(entityId: string): string {
-  return entityId.startsWith("amzn1.alexa.endpoint.") ? entityId : `amzn1.alexa.endpoint.${entityId}`;
-}
-
-async function getPrimaryLight(creds: AlexaCreds) {
-  const entities = await getSmartHomeEntities(creds) as Array<Record<string, unknown>>;
-  const lights = entities.filter((d) => {
-    const di = d.displayInfo as { displayCategories?: { primary?: { value?: string } } } | undefined;
-    return di?.displayCategories?.primary?.value === "LIGHT";
-  });
-  if (lights.length === 0) throw new Error("No smart home light devices found");
-  return lights[0];
-}
-
-async function getLightApplianceId(creds: AlexaCreds): Promise<string> {
-  const endpoints = await getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
-  const lightDevice = endpoints.find((ep) => {
-    const dc = ep.displayCategories as { primary?: { value?: string } } | undefined;
-    return dc?.primary?.value === "LIGHT";
-  });
-  if (!lightDevice) throw new Error("No light device found");
-  const la = lightDevice.legacyAppliance as { applianceId?: string } | undefined;
-  return la?.applianceId ?? "";
-}
-
-async function getEchoDeviceEntityId(creds: AlexaCreds): Promise<string> {
-  const endpoints = await getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
-  const echo = endpoints.find((ep) => {
-    const dc = ep.displayCategories as { primary?: { value?: string } } | undefined;
-    return dc?.primary?.value === "ALEXA_VOICE_ENABLED";
-  });
-  if (!echo) throw new Error("No Echo device found");
-  const leg = echo.legacyIdentifiers as { chrsIdentifier?: { entityId?: string } } | undefined;
-  return leg?.chrsIdentifier?.entityId || (echo.entityId as string) || "";
-}
 
 /* ══════════════════════════════════════════════════════════════════
    Tool Definitions
@@ -417,71 +196,278 @@ export const ALEXA_TOOLS_REQUIRING_APPROVAL: string[] = [
   "builtin.alexa_set_dnd_status",
 ];
 
-/* ══════════════════════════════════════════════════════════════════
-   Public API (follows existing tool-module pattern)
-   ══════════════════════════════════════════════════════════════════ */
-
-export function isAlexaTool(name: string): boolean {
-  return ALEXA_TOOL_NAMES.has(name);
-}
-
-export async function executeAlexaTool(
-  name: string,
-  args: Record<string, unknown>,
-): Promise<unknown> {
-  const creds = requireCreds();
-
-  switch (name) {
-    case "builtin.alexa_announce":
-      return handleAnnounce(creds, args);
-    case "builtin.alexa_get_bedroom_state":
-      return handleGetBedroomState(creds);
-    case "builtin.alexa_list_lights":
-      return handleListLights(creds);
-    case "builtin.alexa_set_light_power":
-      return handleSetLightPower(creds, args);
-    case "builtin.alexa_set_light_brightness":
-      return handleSetLightBrightness(creds, args);
-    case "builtin.alexa_set_light_color":
-      return handleSetLightColor(creds, args);
-    case "builtin.alexa_get_music_status":
-      return handleGetMusicStatus(creds);
-    case "builtin.alexa_get_device_volumes":
-      return handleGetDeviceVolumes(creds);
-    case "builtin.alexa_set_device_volume":
-      return handleSetDeviceVolume(creds, args);
-    case "builtin.alexa_adjust_device_volume":
-      return handleAdjustDeviceVolume(creds, args);
-    case "builtin.alexa_get_all_sensor_data":
-      return handleGetAllSensorData(creds);
-    case "builtin.alexa_list_smarthome_devices":
-      return handleListSmarthomeDevices(creds);
-    case "builtin.alexa_get_dnd_status":
-      return handleGetDndStatus(creds);
-    case "builtin.alexa_set_dnd_status":
-      return handleSetDndStatus(creds, args);
-    default:
-      throw new Error(`Unknown Alexa tool: ${name}`);
+class AlexaPublicApi {
+  static getAlexaConfig(): AlexaCreds | null {
+    const raw1 = getAppConfig("alexa.ubid_main");
+    const raw2 = getAppConfig("alexa.at_main");
+    if (!raw1 || !raw2) return null;
+    const ubidMain = decryptField(raw1);
+    const atMain = decryptField(raw2);
+    if (!ubidMain || !atMain) return null;
+    return { ubidMain, atMain };
   }
-}
 
-/* ══════════════════════════════════════════════════════════════════
-   Tool Handlers
-   ══════════════════════════════════════════════════════════════════ */
+  static saveAlexaConfig(ubidMain: string, atMain: string): void {
+    setAppConfig("alexa.ubid_main", encryptField(ubidMain)!);
+    setAppConfig("alexa.at_main", encryptField(atMain)!);
+  }
 
-// ── Announce ─────────────────────────────────────────────────────
+  static isAlexaTool(name: string): boolean {
+    return ALEXA_TOOL_NAMES.has(name);
+  }
 
-async function handleAnnounce(creds: AlexaCreds, args: Record<string, unknown>) {
+  static async executeAlexaTool(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown> {
+    const creds = this.requireCreds();
+
+    switch (name) {
+      case "builtin.alexa_announce":
+        return this.handleAnnounce(creds, args);
+      case "builtin.alexa_get_bedroom_state":
+        return this.handleGetBedroomState(creds);
+      case "builtin.alexa_list_lights":
+        return this.handleListLights(creds);
+      case "builtin.alexa_set_light_power":
+        return this.handleSetLightPower(creds, args);
+      case "builtin.alexa_set_light_brightness":
+        return this.handleSetLightBrightness(creds, args);
+      case "builtin.alexa_set_light_color":
+        return this.handleSetLightColor(creds, args);
+      case "builtin.alexa_get_music_status":
+        return this.handleGetMusicStatus(creds);
+      case "builtin.alexa_get_device_volumes":
+        return this.handleGetDeviceVolumes(creds);
+      case "builtin.alexa_set_device_volume":
+        return this.handleSetDeviceVolume(creds, args);
+      case "builtin.alexa_adjust_device_volume":
+        return this.handleAdjustDeviceVolume(creds, args);
+      case "builtin.alexa_get_all_sensor_data":
+        return this.handleGetAllSensorData(creds);
+      case "builtin.alexa_list_smarthome_devices":
+        return this.handleListSmarthomeDevices(creds);
+      case "builtin.alexa_get_dnd_status":
+        return this.handleGetDndStatus(creds);
+      case "builtin.alexa_set_dnd_status":
+        return this.handleSetDndStatus(creds, args);
+      default:
+        throw new Error(`Unknown Alexa tool: ${name}`);
+    }
+  }
+
+  private static getCached<T>(key: string): T | null {
+    const c = cache.get(key);
+    if (c && Date.now() - c.ts < CACHE_TTL) return c.value as T;
+    return null;
+  }
+
+  private static setCache(key: string, value: unknown) {
+    cache.set(key, { value, ts: Date.now() });
+  }
+
+  private static requireCreds(): AlexaCreds {
+    const c = this.getAlexaConfig();
+    if (!c) throw new Error("Alexa credentials not configured. Go to Settings → Alexa to set UBID_MAIN and AT_MAIN.");
+    return c;
+  }
+
+  private static buildHeaders(creds: AlexaCreds, extra: Record<string, string> = {}): Record<string, string> {
+    return {
+      Cookie: `csrf=1; ubid-main=${creds.ubidMain}; at-main=${creds.atMain}`,
+      Csrf: "1",
+      Accept: "application/json; charset=utf-8",
+      "Accept-Language": "en-US",
+      "User-Agent": USER_AGENT,
+      ...extra,
+    };
+  }
+
+  private static async alexaFetch(url: string, creds: AlexaCreds, opts: { method?: string; body?: string; extra?: Record<string, string> } = {}) {
+    const res = await fetch(url, {
+      method: opts.method ?? "GET",
+      headers: this.buildHeaders(creds, opts.extra ?? {}),
+      ...(opts.body ? { body: opts.body } : {}),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Alexa API ${res.status}: ${text.slice(0, 300)}`);
+    }
+    return res.json();
+  }
+
+  private static async getAccountInfo(creds: AlexaCreds) {
+    const ck = "account_info";
+    const c = this.getCached<{ customerId: string }>(ck);
+    if (c) return c;
+
+    const data = await this.alexaFetch(COMMS_ACCOUNTS_ENDPOINT, creds) as Array<{ directedId: string; signedInUser: boolean }>;
+    const primary = data.find((a) => a.signedInUser) || data[0];
+    if (!primary) throw new Error("No Alexa account found");
+    const info = { customerId: primary.directedId };
+    this.setCache(ck, info);
+    return info;
+  }
+
+  private static async getAlexaDevices(creds: AlexaCreds) {
+    const ck = "alexa_devices";
+    const c = this.getCached<{ devices: unknown[] }>(ck);
+    if (c) return c.devices;
+
+    const data = await this.alexaFetch(DEVICES_ENDPOINT, creds) as { devices: unknown[] };
+    this.setCache(ck, data);
+    return data.devices;
+  }
+
+  private static async getCustomerSmartHomeEndpoints(creds: AlexaCreds) {
+    const ck = "customer_shm_endpoints";
+    const c = this.getCached<unknown[]>(ck);
+    if (c) return c;
+
+    const query = `
+      query CustomerSmartHome {
+        endpoints(endpointsQueryParams: { paginationParams: { disablePagination: true } }) {
+          items {
+            endpointId
+            id
+            friendlyName
+            displayCategories { all { value } primary { value } }
+            legacyIdentifiers {
+              chrsIdentifier { entityId }
+              dmsIdentifier {
+                deviceType { type value { text } }
+                deviceSerialNumber { type value { text } }
+              }
+            }
+            legacyAppliance { applianceId applianceTypes friendlyName entityId mergedApplianceIds capabilities }
+          }
+        }
+      }`;
+    const data = await this.alexaFetch(GRAPHQL_ENDPOINT, creds, {
+      method: "POST",
+      body: JSON.stringify({ query }),
+      extra: { "Content-Type": "application/json", "X-Amzn-Marketplace-Id": "ATVPDKIKX0DER", "X-Amzn-Client": "AlexaApp", "X-Amzn-Os-Name": "android" },
+    }) as { data?: { endpoints?: { items?: unknown[] } } };
+    const items = data.data?.endpoints?.items ?? [];
+    this.setCache(ck, items);
+    return items;
+  }
+
+  private static async getSmartHomeFavorites(creds: AlexaCreds) {
+    const ck = "shm_favorites";
+    const c = this.getCached<unknown[]>(ck);
+    if (c) return c;
+
+    const query = `
+      fragment FavoriteMetadata on Favorite {
+        resource { id __typename }
+        favoriteFriendlyName
+        displayInfo {
+          displayCategories {
+            primary { isCustomerSpecified isDiscovered value sources __typename }
+            all { isCustomerSpecified isDiscovered value sources __typename }
+            __typename
+          }
+          __typename
+        }
+        alternateIdentifiers {
+          legacyIdentifiers {
+            chrsIdentifier { entityId __typename }
+            dmsIdentifier {
+              deviceSerialNumber { type value { text __typename } __typename }
+              deviceType { type value { text __typename } __typename }
+              __typename
+            }
+            __typename
+          }
+          __typename
+        }
+        type rank active variant __typename
+      }
+      query ListFavoritesForHomeChannel($requestedTypes: [String!]) {
+        favorites(listFavoritesInput: {requestedTypes: $requestedTypes}) {
+          favorites { ...FavoriteMetadata __typename }
+          __typename
+        }
+      }`;
+    const data = await this.alexaFetch(GRAPHQL_ENDPOINT, creds, {
+      method: "POST",
+      body: JSON.stringify({
+        operationName: "ListFavoritesForHomeChannel",
+        variables: { requestedTypes: ["AEA", "ALEXA_LIST", "AWAY_LIGHTING", "DEVICE_SHORTCUT", "DTG", "ENDPOINT", "SHORTCUT", "STATIC_ENTERTAINMENT"] },
+        query,
+      }),
+      extra: { "Content-Type": "application/json", "X-Amzn-Marketplace-Id": "ATVPDKIKX0DER", "X-Amzn-Client": "AlexaApp", "X-Amzn-Os-Name": "android" },
+    }) as { data?: { favorites?: { favorites?: unknown[] } } };
+    const favs = data.data?.favorites?.favorites ?? [];
+    this.setCache(ck, favs);
+    return favs;
+  }
+
+  private static async getSmartHomeEntities(creds: AlexaCreds) {
+    const favs = await this.getSmartHomeFavorites(creds) as Array<{ active: boolean; type: string }>;
+    return favs.filter((f) => f.active && f.type === "ENDPOINT");
+  }
+
+  private static extractEntityId(device: Record<string, unknown>): string {
+    const alt = device.alternateIdentifiers as Record<string, unknown> | undefined;
+    const leg = alt?.legacyIdentifiers as Record<string, unknown> | undefined;
+    const chrs = leg?.chrsIdentifier as { entityId?: string } | undefined;
+    if (chrs?.entityId) return chrs.entityId;
+    const ident = device.identifier as { entityId?: string } | undefined;
+    if (ident?.entityId) return ident.entityId;
+    const res = device.resource as { id?: string } | undefined;
+    if (res?.id?.includes("endpoint.")) return res.id.replace("amzn1.alexa.endpoint.", "");
+    return (device.serialNumber as string) || res?.id || "";
+  }
+
+  private static buildEndpointId(entityId: string): string {
+    return entityId.startsWith("amzn1.alexa.endpoint.") ? entityId : `amzn1.alexa.endpoint.${entityId}`;
+  }
+
+  private static async getPrimaryLight(creds: AlexaCreds) {
+    const entities = await this.getSmartHomeEntities(creds) as Array<Record<string, unknown>>;
+    const lights = entities.filter((d) => {
+      const di = d.displayInfo as { displayCategories?: { primary?: { value?: string } } } | undefined;
+      return di?.displayCategories?.primary?.value === "LIGHT";
+    });
+    if (lights.length === 0) throw new Error("No smart home light devices found");
+    return lights[0];
+  }
+
+  private static async getLightApplianceId(creds: AlexaCreds): Promise<string> {
+    const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
+    const lightDevice = endpoints.find((ep) => {
+      const dc = ep.displayCategories as { primary?: { value?: string } } | undefined;
+      return dc?.primary?.value === "LIGHT";
+    });
+    if (!lightDevice) throw new Error("No light device found");
+    const la = lightDevice.legacyAppliance as { applianceId?: string } | undefined;
+    return la?.applianceId ?? "";
+  }
+
+  private static async getEchoDeviceEntityId(creds: AlexaCreds): Promise<string> {
+    const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
+    const echo = endpoints.find((ep) => {
+      const dc = ep.displayCategories as { primary?: { value?: string } } | undefined;
+      return dc?.primary?.value === "ALEXA_VOICE_ENABLED";
+    });
+    if (!echo) throw new Error("No Echo device found");
+    const leg = echo.legacyIdentifiers as { chrsIdentifier?: { entityId?: string } } | undefined;
+    return leg?.chrsIdentifier?.entityId || (echo.entityId as string) || "";
+  }
+
+  private static async handleAnnounce(creds: AlexaCreds, args: Record<string, unknown>) {
   const name = ((args.name as string) ?? "").trim();
   const message = ((args.message as string) ?? "").trim();
   if (!name || !message) throw new Error('Both "name" and "message" are required.');
   if (name.length > 40) throw new Error("Name must be 40 characters or fewer.");
   if (message.length > 145) throw new Error("Message must be 145 characters or fewer.");
 
-  const accountInfo = await getAccountInfo(creds);
+  const accountInfo = await this.getAccountInfo(creds);
   const url = `https://alexa-comms-mobile-service.amazon.com/users/${accountInfo.customerId}/announcements`;
 
-  const data = await alexaFetch(url, creds, {
+  const data = await this.alexaFetch(url, creds, {
     method: "POST",
     body: JSON.stringify({
       type: "announcement/text",
@@ -499,25 +485,25 @@ async function handleAnnounce(creds: AlexaCreds, args: Record<string, unknown>) 
 
 // ── Bedroom State ────────────────────────────────────────────────
 
-async function handleGetBedroomState(creds: AlexaCreds) {
+  private static async handleGetBedroomState(creds: AlexaCreds) {
   const stateRequests: Array<{ entityId: string; entityType: string }> = [];
   const added = new Set<string>();
 
   // Strategy 1: Echo device entity ID
   try {
-    const echoId = await getEchoDeviceEntityId(creds);
+    const echoId = await this.getEchoDeviceEntityId(creds);
     if (echoId && !added.has(echoId)) { stateRequests.push({ entityId: echoId, entityType: "ENTITY" }); added.add(echoId); }
   } catch { /* skip */ }
 
   // Strategy 2: Light appliance ID
   try {
-    const lightId = await getLightApplianceId(creds);
+    const lightId = await this.getLightApplianceId(creds);
     if (lightId && !added.has(lightId)) { stateRequests.push({ entityId: lightId, entityType: "APPLIANCE" }); added.add(lightId); }
   } catch { /* skip */ }
 
   // Strategy 3: All smart home endpoints
   try {
-    const endpoints = await getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
+    const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
     for (const ep of endpoints) {
       const leg = ep.legacyIdentifiers as Record<string, unknown> | undefined;
       const entityId = (leg?.chrsIdentifier as { entityId?: string })?.entityId || (ep.entityId as string);
@@ -532,7 +518,7 @@ async function handleGetBedroomState(creds: AlexaCreds) {
 
   // Strategy 4: AlexaBridge entities from devices API
   try {
-    const devices = await getAlexaDevices(creds) as Array<Record<string, unknown>>;
+    const devices = await this.getAlexaDevices(creds) as Array<Record<string, unknown>>;
     for (const d of devices) {
       const sn = d.serialNumber as string; const dt = d.deviceType as string;
       if (sn && dt) {
@@ -544,7 +530,7 @@ async function handleGetBedroomState(creds: AlexaCreds) {
 
   if (stateRequests.length === 0) return { error: "No devices found" };
 
-  const rawData = await alexaFetch(PHOENIX_ENDPOINT, creds, {
+  const rawData = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
     method: "POST",
     body: JSON.stringify({ stateRequests }),
     extra: { "Content-Type": "application/json; charset=utf-8" },
@@ -594,15 +580,15 @@ async function handleGetBedroomState(creds: AlexaCreds) {
 
 // ── List Lights ──────────────────────────────────────────────────
 
-async function handleListLights(creds: AlexaCreds) {
-  const entities = await getSmartHomeEntities(creds) as Array<Record<string, unknown>>;
+  private static async handleListLights(creds: AlexaCreds) {
+  const entities = await this.getSmartHomeEntities(creds) as Array<Record<string, unknown>>;
   const lights = entities.filter((d) => {
     const di = d.displayInfo as { displayCategories?: { primary?: { value?: string } } } | undefined;
     return di?.displayCategories?.primary?.value === "LIGHT";
   });
   return {
     lights: lights.map((d) => ({
-      id: extractEntityId(d),
+      id: this.extractEntityId(d),
       name: (d.favoriteFriendlyName as string) || "Smart Light",
       capabilities: ["power", "brightness", "color", "colorTemperature"],
     })),
@@ -611,19 +597,19 @@ async function handleListLights(creds: AlexaCreds) {
 
 // ── Set Light Power ──────────────────────────────────────────────
 
-async function handleSetLightPower(creds: AlexaCreds, args: Record<string, unknown>) {
+  private static async handleSetLightPower(creds: AlexaCreds, args: Record<string, unknown>) {
   const on = args.on as boolean;
   if (typeof on !== "boolean") throw new Error("'on' must be a boolean.");
 
-  const pl = await getPrimaryLight(creds);
-  const entityId = extractEntityId(pl);
-  const endpointId = buildEndpointId(entityId);
+  const pl = await this.getPrimaryLight(creds);
+  const entityId = this.extractEntityId(pl);
+  const endpointId = this.buildEndpointId(entityId);
   const operation = on ? "turnOn" : "turnOff";
 
   // Use device info for GraphQL headers
   let deviceTypeId = "A2TF17PFR55MTB";
   try {
-    const endpoints = await getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
+    const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
     const echo = endpoints.find((ep) => {
       const dc = ep.displayCategories as { primary?: { value?: string } } | undefined;
       return dc?.primary?.value === "ALEXA_VOICE_ENABLED";
@@ -645,7 +631,7 @@ async function handleSetLightPower(creds: AlexaCreds, args: Record<string, unkno
       }
     }`;
 
-  const result = await alexaFetch(GRAPHQL_ENDPOINT, creds, {
+  const result = await this.alexaFetch(GRAPHQL_ENDPOINT, creds, {
     method: "POST",
     body: JSON.stringify({ operationName: "togglePowerFeatureForEndpoint", variables: { endpointId, featureOperationName: operation }, query: gqlQuery }),
     extra: {
@@ -665,15 +651,15 @@ async function handleSetLightPower(creds: AlexaCreds, args: Record<string, unkno
 
 // ── Set Light Brightness ─────────────────────────────────────────
 
-async function handleSetLightBrightness(creds: AlexaCreds, args: Record<string, unknown>) {
+  private static async handleSetLightBrightness(creds: AlexaCreds, args: Record<string, unknown>) {
   const level = args.level as number;
   if (typeof level !== "number" || level < 0 || level > 100) throw new Error("Brightness must be 0–100.");
 
   let entityId = args.id as string | undefined;
-  if (!entityId) entityId = await getLightApplianceId(creds);
+  if (!entityId) entityId = await this.getLightApplianceId(creds);
 
   const brightness = (level / 100).toString();
-  const result = await alexaFetch(PHOENIX_ENDPOINT, creds, {
+  const result = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
     method: "PUT",
     body: JSON.stringify({ controlRequests: [{ entityId, entityType: "APPLIANCE", parameters: { action: "setBrightness", brightness } }] }),
     extra: { "Content-Type": "application/json; charset=utf-8" },
@@ -684,13 +670,13 @@ async function handleSetLightBrightness(creds: AlexaCreds, args: Record<string, 
 
 // ── Set Light Color ──────────────────────────────────────────────
 
-async function handleSetLightColor(creds: AlexaCreds, args: Record<string, unknown>) {
+  private static async handleSetLightColor(creds: AlexaCreds, args: Record<string, unknown>) {
   const mode = args.mode as string;
   const value = args.value as string | number;
   if (!mode || value === undefined) throw new Error("mode and value are required.");
 
   let entityId = args.id as string | undefined;
-  if (!entityId) entityId = await getLightApplianceId(creds);
+  if (!entityId) entityId = await this.getLightApplianceId(creds);
 
   let actionParams: Record<string, unknown>;
 
@@ -707,7 +693,7 @@ async function handleSetLightColor(creds: AlexaCreds, args: Record<string, unkno
     throw new Error(`Unsupported color. Supported names: ${SUPPORTED_COLORS.join(", ")}. Or use mode 'tempK' with 2200–6500.`);
   }
 
-  const result = await alexaFetch(PHOENIX_ENDPOINT, creds, {
+  const result = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
     method: "PUT",
     body: JSON.stringify({ controlRequests: [{ entityId, entityType: "APPLIANCE", parameters: actionParams }] }),
     extra: { "Content-Type": "application/json; charset=utf-8" },
@@ -718,9 +704,9 @@ async function handleSetLightColor(creds: AlexaCreds, args: Record<string, unkno
 
 // ── Music Status ─────────────────────────────────────────────────
 
-async function handleGetMusicStatus(creds: AlexaCreds) {
+  private static async handleGetMusicStatus(creds: AlexaCreds) {
   // Find primary Echo device serial + type
-  const endpoints = await getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
+  const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
   const echo = endpoints.find((ep) => {
     const dc = ep.displayCategories as { primary?: { value?: string } } | undefined;
     return dc?.primary?.value === "ALEXA_VOICE_ENABLED";
@@ -734,7 +720,7 @@ async function handleGetMusicStatus(creds: AlexaCreds) {
   if (!deviceSerial || !deviceType) return { isPlaying: false, error: "Missing device serial/type" };
 
   const npUrl = `https://alexa.amazon.com/api/np/list-media-sessions?deviceSerialNumber=${deviceSerial}&deviceType=${deviceType}`;
-  const data = await alexaFetch(npUrl, creds) as {
+  const data = await this.alexaFetch(npUrl, creds) as {
     mediaSessionList?: Array<{
       playerState?: string;
       nowPlayingData?: {
@@ -768,17 +754,17 @@ async function handleGetMusicStatus(creds: AlexaCreds) {
 
 // ── Device Volumes ───────────────────────────────────────────────
 
-async function handleGetDeviceVolumes(creds: AlexaCreds) {
-  return alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } });
+  private static async handleGetDeviceVolumes(creds: AlexaCreds) {
+  return this.alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } });
 }
 
 // ── Set Device Volume ────────────────────────────────────────────
 
-async function handleSetDeviceVolume(creds: AlexaCreds, args: Record<string, unknown>) {
+  private static async handleSetDeviceVolume(creds: AlexaCreds, args: Record<string, unknown>) {
   const volume = args.volume as number;
   if (typeof volume !== "number" || volume < 0 || volume > 100) throw new Error("Volume must be 0–100.");
 
-  const volumesData = await alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } }) as {
+  const volumesData = await this.alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } }) as {
     volumes?: Array<{ deviceType: string; dsn: string; speakerVolume: number }>;
   };
   if (!volumesData.volumes?.length) throw new Error("No devices found.");
@@ -794,7 +780,7 @@ async function handleSetDeviceVolume(creds: AlexaCreds, args: Record<string, unk
 
   const amount = volume - target.speakerVolume;
   const url = `https://alexa.amazon.com/api/devices/${target.deviceType}/${target.dsn}/audio/v2/speakerVolume`;
-  const result = await alexaFetch(url, creds, {
+  const result = await this.alexaFetch(url, creds, {
     method: "PUT",
     body: JSON.stringify({ dsn: target.dsn, deviceType: target.deviceType, amount, volume: target.speakerVolume, muted: false, synchronous: true }),
     extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
@@ -805,11 +791,11 @@ async function handleSetDeviceVolume(creds: AlexaCreds, args: Record<string, unk
 
 // ── Adjust Device Volume ─────────────────────────────────────────
 
-async function handleAdjustDeviceVolume(creds: AlexaCreds, args: Record<string, unknown>) {
+  private static async handleAdjustDeviceVolume(creds: AlexaCreds, args: Record<string, unknown>) {
   const amount = args.amount as number;
   if (typeof amount !== "number" || amount < -100 || amount > 100) throw new Error("Amount must be -100 to +100.");
 
-  const volumesData = await alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } }) as {
+  const volumesData = await this.alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } }) as {
     volumes?: Array<{ deviceType: string; dsn: string; speakerVolume: number }>;
   };
   if (!volumesData.volumes?.length) throw new Error("No devices found.");
@@ -824,7 +810,7 @@ async function handleAdjustDeviceVolume(creds: AlexaCreds, args: Record<string, 
   }
 
   const url = `https://alexa.amazon.com/api/devices/${target.deviceType}/${target.dsn}/audio/v2/speakerVolume`;
-  const result = await alexaFetch(url, creds, {
+  const result = await this.alexaFetch(url, creds, {
     method: "PUT",
     body: JSON.stringify({ dsn: target.dsn, deviceType: target.deviceType, amount, volume: target.speakerVolume, muted: false, synchronous: true }),
     extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
@@ -835,8 +821,8 @@ async function handleAdjustDeviceVolume(creds: AlexaCreds, args: Record<string, 
 
 // ── All Sensor Data ──────────────────────────────────────────────
 
-async function handleGetAllSensorData(creds: AlexaCreds) {
-  const devices = await getAlexaDevices(creds) as Array<Record<string, unknown>>;
+  private static async handleGetAllSensorData(creds: AlexaCreds) {
+  const devices = await this.getAlexaDevices(creds) as Array<Record<string, unknown>>;
   const stateRequests: Array<{ entityId: string; entityType: string }> = [];
 
   for (const device of devices) {
@@ -855,7 +841,7 @@ async function handleGetAllSensorData(creds: AlexaCreds) {
 
   if (stateRequests.length === 0) return { sensors: [], message: "No sensors found" };
 
-  const data = await alexaFetch(PHOENIX_ENDPOINT, creds, {
+  const data = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
     method: "POST",
     body: JSON.stringify({ stateRequests }),
     extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
@@ -893,8 +879,8 @@ async function handleGetAllSensorData(creds: AlexaCreds) {
 
 // ── List Smart Home Devices ──────────────────────────────────────
 
-async function handleListSmarthomeDevices(creds: AlexaCreds) {
-  const endpoints = await getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
+  private static async handleListSmarthomeDevices(creds: AlexaCreds) {
+  const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
   return {
     devices: endpoints.map((ep) => ({
       endpointId: ep.endpointId,
@@ -909,8 +895,8 @@ async function handleListSmarthomeDevices(creds: AlexaCreds) {
 
 // ── DND Status ───────────────────────────────────────────────────
 
-async function handleGetDndStatus(creds: AlexaCreds) {
-  const data = await alexaFetch(DND_LIST_ENDPOINT, creds, {
+  private static async handleGetDndStatus(creds: AlexaCreds) {
+  const data = await this.alexaFetch(DND_LIST_ENDPOINT, creds, {
     extra: { "Cache-Control": "no-cache" },
   }) as { doNotDisturbDeviceStatusList: Array<{ deviceSerialNumber: string; deviceType: string; enabled: boolean }> };
 
@@ -928,14 +914,14 @@ async function handleGetDndStatus(creds: AlexaCreds) {
 
 // ── Set DND Status ───────────────────────────────────────────────
 
-async function handleSetDndStatus(creds: AlexaCreds, args: Record<string, unknown>) {
+  private static async handleSetDndStatus(creds: AlexaCreds, args: Record<string, unknown>) {
   const dsn = args.deviceSerialNumber as string;
   const deviceType = args.deviceType as string;
   const enabled = args.enabled as boolean;
   if (!dsn || !deviceType) throw new Error("deviceSerialNumber and deviceType are required.");
   if (typeof enabled !== "boolean") throw new Error("enabled must be a boolean.");
 
-  const result = await alexaFetch(DND_STATUS_ENDPOINT, creds, {
+  const result = await this.alexaFetch(DND_STATUS_ENDPOINT, creds, {
     method: "PUT",
     body: JSON.stringify({ deviceSerialNumber: dsn, deviceType, enabled }),
     extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
@@ -950,6 +936,13 @@ async function handleSetDndStatus(creds: AlexaCreds, args: Record<string, unknow
     lastUpdate: new Date().toISOString(),
   };
 }
+
+}
+
+export const getAlexaConfig = AlexaPublicApi.getAlexaConfig.bind(AlexaPublicApi);
+export const saveAlexaConfig = AlexaPublicApi.saveAlexaConfig.bind(AlexaPublicApi);
+export const isAlexaTool = AlexaPublicApi.isAlexaTool.bind(AlexaPublicApi);
+export const executeAlexaTool = AlexaPublicApi.executeAlexaTool.bind(AlexaPublicApi);
 
 // ── BaseTool class wrapper ────────────────────────────────────
 

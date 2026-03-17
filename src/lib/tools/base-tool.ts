@@ -82,37 +82,43 @@ export abstract class BaseTool implements ToolCategory {
 
 // ── Self-registration infrastructure ──────────────────────────
 
-const _toolCategoryRegistry: BaseTool[] = [];
-let _registrySorted = false;
+export class ToolCategoryRegistry {
+  private static readonly toolCategoryRegistry: BaseTool[] = [];
+  private static registrySorted = false;
 
-/**
- * Register a tool category for auto-discovery.
- * Called at module scope by each top-level tool file.
- * Duplicate registrations (same `name`) are silently ignored.
- */
-export function registerToolCategory(tool: BaseTool): void {
-  if (!_toolCategoryRegistry.some((t) => t.name === tool.name)) {
-    _toolCategoryRegistry.push(tool);
-    _registrySorted = false;
+  /**
+   * Register a tool category for auto-discovery.
+   * Called at module scope by each top-level tool file.
+   * Duplicate registrations (same `name`) are silently ignored.
+   */
+  static register(tool: BaseTool): void {
+    if (!ToolCategoryRegistry.toolCategoryRegistry.some((t) => t.name === tool.name)) {
+      ToolCategoryRegistry.toolCategoryRegistry.push(tool);
+      ToolCategoryRegistry.registrySorted = false;
+    }
+  }
+
+  /**
+   * Return all registered tool categories sorted by `registrationOrder`.
+   * This is the auto-discovered replacement for a hardcoded array.
+   */
+  static getAll(): BaseTool[] {
+    if (!ToolCategoryRegistry.registrySorted) {
+      ToolCategoryRegistry.toolCategoryRegistry.sort((a, b) => a.registrationOrder - b.registrationOrder);
+      ToolCategoryRegistry.registrySorted = true;
+    }
+    return ToolCategoryRegistry.toolCategoryRegistry;
+  }
+
+  /**
+   * Clear the category registry. Used in tests.
+   */
+  static reset(): void {
+    ToolCategoryRegistry.toolCategoryRegistry.length = 0;
+    ToolCategoryRegistry.registrySorted = false;
   }
 }
 
-/**
- * Return all registered tool categories sorted by `registrationOrder`.
- * This is the auto-discovered replacement for a hardcoded array.
- */
-export function getRegisteredToolCategories(): BaseTool[] {
-  if (!_registrySorted) {
-    _toolCategoryRegistry.sort((a, b) => a.registrationOrder - b.registrationOrder);
-    _registrySorted = true;
-  }
-  return _toolCategoryRegistry;
-}
-
-/**
- * Clear the category registry. Used in tests.
- */
-export function resetToolCategoryRegistry(): void {
-  _toolCategoryRegistry.length = 0;
-  _registrySorted = false;
-}
+export const registerToolCategory = ToolCategoryRegistry.register.bind(ToolCategoryRegistry);
+export const getRegisteredToolCategories = ToolCategoryRegistry.getAll.bind(ToolCategoryRegistry);
+export const resetToolCategoryRegistry = ToolCategoryRegistry.reset.bind(ToolCategoryRegistry);
