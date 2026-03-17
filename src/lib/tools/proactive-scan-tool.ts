@@ -205,7 +205,7 @@ export async function runProactiveScan(context?: SchedulerBatchExecutionContext)
 }
 
 async function runProactiveScanInner(): Promise<ProactiveScanResult> {
-  const defaultAdminUserId = getDefaultAdminUserId();
+  const defaultAdminUserId = getDefaultAdminUserId() ?? "";
 
   addLog({
     level: "info",
