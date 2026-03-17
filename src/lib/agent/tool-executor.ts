@@ -5,10 +5,9 @@
  */
 
 import type { ToolCall } from "@/lib/llm";
-import { addLog, getUserById } from "@/lib/db";
-import { notifyAdmin } from "@/lib/notifications";
 import { getToolRegistry } from "./tool-registry";
 import { extractApprovalReason } from "./approval-handler";
+import { defaultToolExecutorDeps, type ToolExecutorDeps } from "./tool-executor-deps";
 
 /**
  * All tools (built-in + custom + MCP) now have policy entries in the DB,
@@ -17,9 +16,9 @@ import { extractApprovalReason } from "./approval-handler";
 export async function executeToolWithPolicy(
   toolCall: ToolCall,
   threadId: string,
-  reasoning?: string
+  reasoning?: string,
+  deps: ToolExecutorDeps = defaultToolExecutorDeps,
 ): Promise<import("./gatekeeper").GatekeeperResult> {
-  const { getToolPolicy, createApprovalRequest, updateThreadStatus, addMessage: addMsg, getThread, findApprovalPreferenceDecision, getChannel } = await import("@/lib/db");
   const { normalizeToolName } = await import("./discovery");
 
   // Normalize tool name — the LLM sometimes strips the "builtin." prefix
@@ -28,10 +27,10 @@ export async function executeToolWithPolicy(
   const reason = extractApprovalReason(reasoning, toolCall.arguments);
   const nlRequest = reason;
 
-  const policy = getToolPolicy(toolCall.name);
+  const policy = deps.getToolPolicy(toolCall.name);
 
   if (policy && policy.requires_approval === 0) {
-    addLog({
+    deps.addLog({
       level: "info",
       source: "hitl",
       message: `Approval bypassed by policy for tool \"${toolCall.name}\" (requires_approval=0).`,
@@ -41,10 +40,10 @@ export async function executeToolWithPolicy(
 
   // Default-deny: if no policy exists, require approval (matches gatekeeper behavior).
   if (!policy || policy.requires_approval) {
-    const thread = getThread(threadId);
-    const requesterUser = thread?.user_id ? getUserById(thread.user_id) : null;
+    const thread = deps.getThread(threadId);
+    const requesterUser = thread?.user_id ? deps.getUserById(thread.user_id) : null;
     const requester = requesterUser?.display_name || requesterUser?.email || thread?.external_sender_id || "Unknown requester";
-    const channel = thread?.channel_id ? getChannel(thread.channel_id) : undefined;
+    const channel = thread?.channel_id ? deps.getChannel(thread.channel_id) : undefined;
     const source = thread?.thread_type === "interactive"
       ? "chat"
       : channel?.channel_type === "email"
@@ -52,7 +51,7 @@ export async function executeToolWithPolicy(
         : "proactive";
 
     const preferenceDecision = thread?.user_id
-      ? findApprovalPreferenceDecision(
+        ? deps.findApprovalPreferenceDecision(
           thread.user_id,
           toolCall.name,
           JSON.stringify(toolCall.arguments),
@@ -62,7 +61,7 @@ export async function executeToolWithPolicy(
       : null;
 
     if (preferenceDecision === "approved") {
-      addLog({
+      deps.addLog({
         level: "info",
         source: "hitl",
         message: `Auto-approved by saved preference for tool "${toolCall.name}".`,
@@ -71,7 +70,7 @@ export async function executeToolWithPolicy(
     }
 
     if (preferenceDecision === "rejected") {
-      addLog({
+      deps.addLog({
         level: "info",
         source: "hitl",
         message: `Auto-rejected by saved preference for tool "${toolCall.name}".`,
@@ -81,7 +80,7 @@ export async function executeToolWithPolicy(
     }
 
     if (preferenceDecision === "ignored") {
-      addLog({
+      deps.addLog({
         level: "info",
         source: "hitl",
         message: `Auto-ignored by saved preference for tool "${toolCall.name}".`,
@@ -92,7 +91,7 @@ export async function executeToolWithPolicy(
 
     if (preferenceDecision !== "approved") {
     if (!reason) {
-      addLog({
+      deps.addLog({
         level: "warning",
         source: "hitl",
         message: `Skipped approval for tool "${toolCall.name}" because no reason was provided.`,
@@ -114,8 +113,8 @@ export async function executeToolWithPolicy(
         tool_call_id: toolCall.id,
       });
 
-      updateThreadStatus(threadId, "awaiting_user_confirmation");
-      addMsg({
+      deps.updateThreadStatus(threadId, "awaiting_user_confirmation");
+      deps.addMessage({
         thread_id: threadId,
         role: "system",
         content:
@@ -133,14 +132,14 @@ export async function executeToolWithPolicy(
       return { status: "pending_approval", approvalId: `inline-${threadId}-${Date.now()}` };
     }
 
-    addLog({
+    deps.addLog({
       level: "info",
       source: "hitl",
       message: `Tool "${toolCall.name}" requires approval (${source}).`,
       metadata: JSON.stringify({ threadId, args: toolCall.arguments, requester, source }),
     });
 
-    const approval = createApprovalRequest({
+    const approval = deps.createApprovalRequest({
       thread_id: threadId,
       tool_name: toolCall.name,
       args: JSON.stringify(toolCall.arguments),
@@ -161,8 +160,8 @@ export async function executeToolWithPolicy(
 
     // Only freeze interactive threads; proactive/email workflows stay asynchronous.
     if (thread?.thread_type === "interactive") {
-      updateThreadStatus(threadId, "awaiting_approval");
-      addMsg({
+      deps.updateThreadStatus(threadId, "awaiting_approval");
+      deps.addMessage({
         thread_id: threadId,
         role: "system",
         content: `⏸️ Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
@@ -173,13 +172,13 @@ export async function executeToolWithPolicy(
     }
 
     try {
-      await notifyAdmin(
+      await deps.notifyAdmin(
         `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nRequester: ${requester}\nReason: ${reason}`,
         "Nexus Approval Required",
         { level: "medium", notificationType: "approval_required" }
       );
     } catch (err) {
-      addLog({
+      deps.addLog({
         level: "warning",
         source: "hitl",
         message: "Failed to send approval notification.",
@@ -199,7 +198,7 @@ export async function executeToolWithPolicy(
       { threadId }
     );
 
-    addLog({
+    deps.addLog({
       level: "info",
       source: "agent",
       message: `Tool "${toolCall.name}" executed successfully.`,
@@ -207,7 +206,7 @@ export async function executeToolWithPolicy(
     });
     return { status: "executed", result };
   } catch (err: any) {
-    addLog({
+    deps.addLog({
       level: "error",
       source: "agent",
       message: `Tool "${toolCall.name}" failed: ${err.message}`,

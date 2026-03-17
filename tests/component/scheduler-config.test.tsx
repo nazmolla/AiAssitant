@@ -1,8 +1,9 @@
 /**
  * Interaction tests for SchedulerConfig.
  *
- * Tests: render batch type buttons, open modal, fill parameters, change recurrence,
- * save calls POST, cancel closes modal, error message, success message.
+ * Tests: render batch type buttons, open modal, correct parameter fields per type,
+ * POST payload uses batch_type (not batch_job_type), all parameter inputs are selects,
+ * cancel closes modal without POST, error/success messaging.
  *
  * @jest-environment jsdom
  */
@@ -29,7 +30,7 @@ function setupFetch(options?: { ok?: boolean; error?: string }) {
   fetchMock = jest.fn().mockImplementation((_url: string, opts?: RequestInit) => {
     if (opts?.method === "POST") {
       if (ok) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: "schedule-new" }) });
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, schedule_id: "schedule-new" }) });
       }
       return Promise.resolve({
         ok: false,
@@ -55,7 +56,7 @@ describe("SchedulerConfig — interactions", () => {
     expect(screen.getByText("New Email Reading Batch")).toBeInTheDocument();
   });
 
-  test("clicking a batch type button opens the modal", async () => {
+  test("clicking a batch type button opens the modal with OK and Cancel buttons", async () => {
     setupFetch();
     const { SchedulerConfig } = await import("@/components/scheduler-config");
     await act(async () => { render(<SchedulerConfig />); });
@@ -64,69 +65,131 @@ describe("SchedulerConfig — interactions", () => {
       fireEvent.click(screen.getByText("New Proactive Scheduler"));
     });
 
-    // Modal should show batch type in title
     await waitFor(() => {
       expect(screen.getByText(/batch scheduler.*proactive/i)).toBeInTheDocument();
     });
 
-    // OK and Cancel buttons
     expect(screen.getByRole("button", { name: /^ok$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
   });
 
-  test("shows correct parameter fields based on batch type", async () => {
+  test("proactive batch shows no parameter fields (it has none)", async () => {
     setupFetch();
     const { SchedulerConfig } = await import("@/components/scheduler-config");
     await act(async () => { render(<SchedulerConfig />); });
 
-    // Open proactive modal
     await act(async () => {
       fireEvent.click(screen.getByText("New Proactive Scheduler"));
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Interval")).toBeInTheDocument();
-      expect(screen.getByText("Calendar Sources")).toBeInTheDocument();
+      expect(screen.getByText(/no parameters required/i)).toBeInTheDocument();
     });
   });
 
-  test("filling parameters and clicking OK calls POST with correct payload", async () => {
+  test("knowledge batch shows Poll Interval dropdown", async () => {
     setupFetch();
     const { SchedulerConfig } = await import("@/components/scheduler-config");
     await act(async () => { render(<SchedulerConfig />); });
 
-    // Open proactive modal
     await act(async () => {
-      fireEvent.click(screen.getByText("New Proactive Scheduler"));
+      fireEvent.click(screen.getByText("New Knowledge Maintenance"));
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Interval")).toBeInTheDocument();
+      expect(screen.getByText("Poll Interval")).toBeInTheDocument();
+    });
+  });
+
+  test("cleanup batch shows Log Level dropdown", async () => {
+    setupFetch();
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    await act(async () => { render(<SchedulerConfig />); });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("New Log Cleanup / Maintenance"));
     });
 
-    // Fill a parameter
-    const paramInputs = screen.getAllByRole("textbox");
-    // The first textbox in the modal should be a parameter field
-    if (paramInputs.length > 0) {
-      await act(async () => {
-        fireEvent.change(paramInputs[0], { target: { value: "5 minute" } });
-      });
-    }
+    await waitFor(() => {
+      expect(screen.getByText("Minimum Log Level to Clean")).toBeInTheDocument();
+    });
+  });
 
-    // Click OK
+  test("email batch shows Max Messages dropdown", async () => {
+    setupFetch();
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    await act(async () => { render(<SchedulerConfig />); });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("New Email Reading Batch"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Max Messages Per Run")).toBeInTheDocument();
+    });
+  });
+
+  test("POST payload sends batch_type (not batch_job_type) and parameters (not batch_parameters)", async () => {
+    setupFetch();
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    await act(async () => { render(<SchedulerConfig />); });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("New Email Reading Batch"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^ok$/i })).toBeInTheDocument();
+    });
+
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /^ok$/i }));
     });
 
-    const postCalls = fetchMock.mock.calls.filter(
-      ([u, o]: [string, RequestInit?]) => u.includes("/api/scheduler/schedules") && o?.method === "POST"
-    );
-    expect(postCalls.length).toBe(1);
-    const body = JSON.parse(postCalls[0][1].body as string);
-    expect(body.batch_job_type).toBe("proactive");
-    expect(body.name).toBeDefined();
-    expect(body.trigger_type).toBe("interval");
-    expect(body.trigger_expr).toBeDefined();
+    await waitFor(() => {
+      const postCalls = fetchMock.mock.calls.filter(
+        ([u, o]: [string, RequestInit?]) => u.includes("/api/scheduler/schedules") && o?.method === "POST"
+      );
+      expect(postCalls.length).toBe(1);
+      const body = JSON.parse(postCalls[0][1].body as string);
+
+      // Must use correct API field names
+      expect(body).toHaveProperty("batch_type", "email");
+      expect(body).not.toHaveProperty("batch_job_type");
+      expect(body).toHaveProperty("parameters");
+      expect(body).not.toHaveProperty("batch_parameters");
+
+      // Parameters must contain the email-specific key with the selected value
+      expect(body.parameters).toHaveProperty("maxMessages");
+    });
+  });
+
+  test("cleanup POST payload includes logLevel parameter", async () => {
+    setupFetch();
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    await act(async () => { render(<SchedulerConfig />); });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("New Log Cleanup / Maintenance"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^ok$/i })).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^ok$/i }));
+    });
+
+    await waitFor(() => {
+      const postCalls = fetchMock.mock.calls.filter(
+        ([u, o]: [string, RequestInit?]) => u.includes("/api/scheduler/schedules") && o?.method === "POST"
+      );
+      expect(postCalls.length).toBe(1);
+      const body = JSON.parse(postCalls[0][1].body as string);
+      expect(body.batch_type).toBe("cleanup");
+      expect(body.parameters).toHaveProperty("logLevel");
+    });
   });
 
   test("Cancel button closes the modal without calling POST", async () => {
@@ -142,25 +205,22 @@ describe("SchedulerConfig — interactions", () => {
       expect(screen.getByText(/batch scheduler.*email/i)).toBeInTheDocument();
     });
 
-    // Click Cancel
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     });
 
-    // Modal should close — title should disappear
     await waitFor(() => {
       expect(screen.queryByText(/batch scheduler.*email/i)).not.toBeInTheDocument();
     });
 
-    // No POST should have been made
     const postCalls = fetchMock.mock.calls.filter(
       ([, o]: [string, RequestInit?]) => o?.method === "POST"
     );
     expect(postCalls.length).toBe(0);
   });
 
-  test("server error displays error message", async () => {
-    setupFetch({ ok: false, error: "Schedule name already exists" });
+  test("server error message is displayed", async () => {
+    setupFetch({ ok: false, error: "batch_type must be one of proactive|knowledge|cleanup|email|job_scout" });
     const { SchedulerConfig } = await import("@/components/scheduler-config");
     await act(async () => { render(<SchedulerConfig />); });
 
@@ -177,7 +237,7 @@ describe("SchedulerConfig — interactions", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Schedule name already exists")).toBeInTheDocument();
+      expect(screen.getByText(/batch_type must be one of/i)).toBeInTheDocument();
     });
   });
 
@@ -200,22 +260,6 @@ describe("SchedulerConfig — interactions", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/created successfully/i)).toBeInTheDocument();
-    });
-  });
-
-  test("each batch type shows its own parameters", async () => {
-    setupFetch();
-    const { SchedulerConfig } = await import("@/components/scheduler-config");
-    await act(async () => { render(<SchedulerConfig />); });
-
-    // Open cleanup modal
-    await act(async () => {
-      fireEvent.click(screen.getByText("New Log Cleanup / Maintenance"));
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Older Than (days)")).toBeInTheDocument();
-      expect(screen.getByText("Retention Policy")).toBeInTheDocument();
     });
   });
 });

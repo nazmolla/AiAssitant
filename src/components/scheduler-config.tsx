@@ -13,25 +13,59 @@ type BatchJobType = "proactive" | "knowledge" | "cleanup" | "email";
 interface BatchJobParam {
   key: string;
   label: string;
-  description?: string;
+  options: { value: string; label: string }[];
+  defaultValue: string;
 }
 
+/**
+ * Parameter definitions that mirror the BatchJobParameterDefinition in each batch job class.
+ * Proactive has no parameters.
+ * Knowledge: pollSeconds
+ * Cleanup: logLevel
+ * Email: maxMessages
+ */
 const batchParameterDefs: Record<BatchJobType, BatchJobParam[]> = {
-  proactive: [
-    { key: "proactive_interval", label: "Interval", description: "Recurrence interval (e.g., 10 minute)" },
-    { key: "calendar_sources", label: "Calendar Sources", description: "CSV list of calendar identifiers to scan" },
-  ],
+  proactive: [],
   knowledge: [
-    { key: "knowledge_scan_interval", label: "Scan Interval", description: "How often to scan for new documents" },
-    { key: "max_knowledge_docs_per_run", label: "Max Docs/Run", description: "Limit documents processed per run" },
+    {
+      key: "pollSeconds",
+      label: "Poll Interval",
+      options: [
+        { value: "30", label: "30 seconds" },
+        { value: "60", label: "1 minute" },
+        { value: "120", label: "2 minutes" },
+        { value: "300", label: "5 minutes" },
+        { value: "600", label: "10 minutes" },
+      ],
+      defaultValue: "60",
+    },
   ],
   cleanup: [
-    { key: "cleanup_older_than_days", label: "Older Than (days)", description: "Delete logs older than N days" },
-    { key: "cleanup_retention_policy", label: "Retention Policy", description: "Retention policy identifier" },
+    {
+      key: "logLevel",
+      label: "Minimum Log Level to Clean",
+      options: [
+        { value: "verbose", label: "Verbose (all logs)" },
+        { value: "info", label: "Info and below" },
+        { value: "warning", label: "Warning and below" },
+        { value: "error", label: "Error only" },
+      ],
+      defaultValue: "warning",
+    },
   ],
   email: [
-    { key: "email_accounts", label: "Email Accounts", description: "CSV list of email accounts to read from" },
-    { key: "email_sync_interval", label: "Sync Interval", description: "How often to poll email" },
+    {
+      key: "maxMessages",
+      label: "Max Messages Per Run",
+      options: [
+        { value: "10", label: "10 messages" },
+        { value: "25", label: "25 messages" },
+        { value: "50", label: "50 messages" },
+        { value: "100", label: "100 messages" },
+        { value: "200", label: "200 messages" },
+      ],
+      defaultValue: "25",
+    },
   ],
 };
 
@@ -132,7 +166,12 @@ export function SchedulerConfig() {
 
   const openBatchCreateModal = (type: BatchJobType) => {
     setBatchModalType(type);
-    setBatchParameters({});
+    // Initialise parameters with defaults so they are never empty on submit
+    const defaults: Record<string, string> = {};
+    for (const param of batchParameterDefs[type]) {
+      defaults[param.key] = param.defaultValue;
+    }
+    setBatchParameters(defaults);
     setDetailName(`New ${type} Scheduler`);
     setDetailTriggerType("interval");
     setDetailTriggerExpr("every:10:minute");
@@ -156,8 +195,8 @@ export function SchedulerConfig() {
           name: detailName.trim(),
           trigger_type: detailTriggerType,
           trigger_expr: normalizedTriggerExpr,
-          batch_job_type: batchModalType,
-          batch_parameters: batchParameters,
+          batch_type: batchModalType,
+          parameters: batchParameters,
           tasks: detailTasks.map((t, index) => ({
             task_key: t.task_key.trim(),
             name: t.name.trim(),
@@ -242,19 +281,26 @@ export function SchedulerConfig() {
             </button>
             <Collapse in={tabExpanded.parameters}>
               <div className="rounded border border-white/[0.08] p-3">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {(batchParameterDefs[batchModalType] || []).map((param) => (
-                    <div key={param.key} className="space-y-1">
-                      <label className="text-xs text-muted-foreground">{param.label}</label>
-                      <input
-                        className="w-full rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
-                        value={batchParameters[param.key] ?? ""}
-                        onChange={(e) => setBatchParameters((prev) => ({ ...prev, [param.key]: e.target.value }))}
-                        placeholder={param.description}
-                      />
-                    </div>
-                  ))}
-                </div>
+                {(batchParameterDefs[batchModalType] || []).length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No parameters required for this batch type.</p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(batchParameterDefs[batchModalType] || []).map((param) => (
+                      <div key={param.key} className="space-y-1">
+                        <label className="text-xs text-muted-foreground">{param.label}</label>
+                        <select
+                          className="w-full rounded border border-white/[0.08] bg-background px-2 py-1 text-xs"
+                          value={batchParameters[param.key] ?? param.defaultValue}
+                          onChange={(e) => setBatchParameters((prev) => ({ ...prev, [param.key]: e.target.value }))}
+                        >
+                          {param.options.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </Collapse>
 

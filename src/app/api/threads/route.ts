@@ -1,18 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { listThreadsPaginated, createThread, addLog } from "@/lib/db";
+import { listThreadsPaginated, createThread } from "@/lib/db/thread-queries";
+import { addLog } from "@/lib/db/log-queries";
 import { initializeDatabase } from "@/lib/db/init";
 import { THREADS_DEFAULT_LIMIT, THREADS_MAX_LIMIT } from "@/lib/constants";
 
 let dbReady = false;
 
+type ThreadsRouteDeps = {
+  requireUser: typeof requireUser;
+  listThreadsPaginated: typeof listThreadsPaginated;
+  createThread: typeof createThread;
+  addLog: typeof addLog;
+  initializeDatabase: typeof initializeDatabase;
+};
+
+const deps: ThreadsRouteDeps = {
+  requireUser,
+  listThreadsPaginated,
+  createThread,
+  addLog,
+  initializeDatabase,
+};
+
 function ensureThreadRouteDbReady(): { ok: true } | { ok: false; response: NextResponse } {
   if (dbReady) return { ok: true };
 
   try {
-    initializeDatabase();
+    deps.initializeDatabase();
     dbReady = true;
-    addLog({
+    deps.addLog({
       level: "verbose",
       source: "api.threads",
       message: "Database initialized for threads route.",
@@ -20,7 +37,7 @@ function ensureThreadRouteDbReady(): { ok: true } | { ok: false; response: NextR
     });
     return { ok: true };
   } catch (err) {
-    addLog({
+    deps.addLog({
       level: "critical",
       source: "api.threads",
       message: "Failed to initialize database for threads route.",
@@ -35,17 +52,17 @@ export async function GET(req: NextRequest) {
   if (!dbState.ok) return dbState.response;
 
   try {
-    const auth = await requireUser();
+    const auth = await deps.requireUser();
     if ("error" in auth) return auth.error;
 
     const url = req.nextUrl;
     const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") || String(THREADS_DEFAULT_LIMIT), 10) || THREADS_DEFAULT_LIMIT, 1), THREADS_MAX_LIMIT);
     const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
 
-    const result = listThreadsPaginated(auth.user.id, limit, offset);
+    const result = deps.listThreadsPaginated(auth.user.id, limit, offset);
     return NextResponse.json(result);
   } catch (err) {
-    addLog({
+    deps.addLog({
       level: "error",
       source: "api.threads",
       message: "Failed to fetch threads.",
@@ -60,12 +77,12 @@ export async function POST(req: NextRequest) {
   if (!dbState.ok) return dbState.response;
 
   try {
-    const auth = await requireUser();
+    const auth = await deps.requireUser();
     if ("error" in auth) return auth.error;
 
     const body = await req.json();
-    const thread = createThread(body.title, auth.user.id);
-    addLog({
+    const thread = deps.createThread(body.title, auth.user.id);
+    deps.addLog({
       level: "verbose",
       source: "api.threads",
       message: "Created new thread.",
@@ -73,7 +90,7 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json(thread, { status: 201 });
   } catch (err) {
-    addLog({
+    deps.addLog({
       level: "error",
       source: "api.threads",
       message: "Failed to create thread.",

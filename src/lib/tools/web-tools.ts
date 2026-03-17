@@ -105,8 +105,23 @@ interface RuntimeSearchProvider {
 // ── User-Agent ────────────────────────────────────────────────
 
 const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const WEB_SEARCH_TIMEOUT_MS = 15000;
+
+/** Common browser-like headers that reduce bot-detection on search endpoints */
+const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent": USER_AGENT,
+  "Accept-Language": "en-US,en;q=0.9",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Cache-Control": "no-cache",
+  "Pragma": "no-cache",
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-User": "?1",
+  "Upgrade-Insecure-Requests": "1",
+  "DNT": "1",
+};
 
 
 // ── BaseTool class wrapper ────────────────────────────────────
@@ -185,17 +200,22 @@ export class WebTools extends BaseTool {
     return maybeError.name === "AbortError" || maybeError.message?.toLowerCase() === "aborted";
   }
 
-  private static async fetchWithTimeout(url: string, accept: string, extraHeaders?: Record<string, string>): Promise<Response> {
+  private static async fetchWithTimeout(
+    url: string,
+    accept: string,
+    extraHeaders?: Record<string, string>,
+    forSearch: boolean = false
+  ): Promise<Response> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), WEB_SEARCH_TIMEOUT_MS);
 
+    const headers: Record<string, string> = forSearch
+      ? { ...BROWSER_HEADERS, Accept: accept, ...(extraHeaders || {}) }
+      : { "User-Agent": USER_AGENT, Accept: accept, ...(extraHeaders || {}) };
+
     try {
       return await fetch(url, {
-        headers: {
-          "User-Agent": USER_AGENT,
-          Accept: accept,
-          ...(extraHeaders || {}),
-        },
+        headers,
         signal: controller.signal,
       });
     } catch (error) {
@@ -269,7 +289,7 @@ export class WebTools extends BaseTool {
 
   private static async searchDuckDuckGoHtml(query: string, maxResults: number): Promise<SearchResult[]> {
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    const response = await WebTools.fetchWithTimeout(searchUrl, "text/html");
+    const response = await WebTools.fetchWithTimeout(searchUrl, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", undefined, true);
     if (!response.ok) {
       throw new Error(`Search request failed: ${response.status} ${response.statusText}`);
     }
@@ -278,7 +298,7 @@ export class WebTools extends BaseTool {
 
   private static async searchDuckDuckGoInstant(query: string, maxResults: number): Promise<SearchResult[]> {
     const searchUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-    const response = await WebTools.fetchWithTimeout(searchUrl, "application/json");
+    const response = await WebTools.fetchWithTimeout(searchUrl, "application/json", undefined, true);
     if (!response.ok) {
       throw new Error(`Search request failed: ${response.status} ${response.statusText}`);
     }

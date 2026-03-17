@@ -1,4 +1,5 @@
 import type { ChannelRecord } from "@/lib/db/channel-queries";
+import { addLog } from "@/lib/db/log-queries";
 import {
   BaseCommunicationChannel,
   type ChannelSendRequest,
@@ -49,7 +50,26 @@ export class PhoneChannel extends BaseCommunicationChannel {
     }
 
     const voiceName = this.getVoiceName();
-    const twiml = buildTwimlResponse(message, "", voiceName);
+
+    // Build the Gather action URL so the callee can respond and the call
+    // continues as a two-way conversation.  Requires NEXTAUTH_URL to be set
+    // so Twilio can reach back to this server.
+    const baseUrl = (process.env.NEXTAUTH_URL || "").replace(/\/$/, "");
+    const actionUrl = baseUrl
+      ? `${baseUrl}/api/channels/${this.channel.id}/webhook?secret=${this.channel.webhook_secret || ""}`
+      : "";
+
+    if (!actionUrl) {
+      // Fallback: announcement-only if base URL is not configured
+      addLog({
+        level: "warning",
+        source: "channel.phone",
+        message: "NEXTAUTH_URL is not set — outbound call will be announcement-only (no two-way conversation).",
+        metadata: JSON.stringify({ channelId: this.channel.id }),
+      });
+    }
+
+    const twiml = buildTwimlResponse(message, actionUrl, voiceName);
 
     await callTwilioApi(accountSid, authToken, fromNumber, toNumber, twiml, this.fetchFn);
   }

@@ -1,23 +1,28 @@
-﻿## Bug Report
+## Feature Request
+Improve dependency-injection boundaries and repository structure hygiene for maintainability and safer runtime behavior.
 
-**Problem:** The default notification_level in the user profile schema is "disaster", but no notification call site ever emits at disaster level. All notifications use "medium" (approvals, general email) or "high" (security emails) or "low" (system emails). Result: every notification is silently suppressed for users who have not explicitly changed their profile setting.
+## Use Case
+Current API route handlers and tool execution paths still contain direct DB/policy coupling that makes testing and change isolation harder. The repository also has script/root sprawl and runtime artifacts that should be organized and ignored consistently.
 
-**Use Case:** As a user on default settings, I should receive approval notifications, security alerts, and other important system notifications without manually adjusting my profile.
+## Acceptance Criteria
+1. API route DI seams are improved for key routes (thread/chat/admin/log-related handlers) by reducing direct DB imports/calls and routing through injectable services or helper modules.
+2. Tool executor policy wiring is decoupled from hard-coded direct dependencies and supports clearer injection/override boundaries.
+3. Scripts are categorized into clear folders (`scripts/db`, `scripts/ops`, `scripts/debug`) with imports/paths updated.
+4. Root-level script clutter is reduced via consolidation/relocation where appropriate.
+5. `.gitignore` is hardened to exclude runtime/generated artifacts currently prone to accidental tracking.
+6. Documentation is updated to reflect script/test architecture locations and conventions.
+7. Lint, full Jest, vulnerability audit, deploy via `deploy.sh`, and post-deploy health/log checks all pass.
 
-**Acceptance Criteria:**
-1. Change default notification_level from "disaster" to "medium" in DB schema, EMPTY_PROFILE, and profile upsert fallback
-2. Existing users with "disaster" threshold get migrated to "medium" via DB migration
-3. Unit tests validate shouldNotifyForLevel() logic at all threshold/event combinations
-4. Unit tests validate that the default profile includes a sensible notification_level
-5. Documentation updated to reflect the change
+## Technical Notes
+- Preserve existing behavior and command interfaces unless compatibility shims are required.
+- Favor small, composable service adapters for DI rather than broad rewrites.
+- Keep changes surgical and aligned with existing TypeScript/Next.js project conventions.
+- Avoid secret exposure and avoid any changes that read or leak production secret values.
 
-**Technical Notes:**
-- Affected files: schema.ts, init.ts, user-queries.ts, use-profile-data.ts, notify.ts
-- The scheduler digest filtering in scheduler/index.ts uses the same logic and is equally affected
-- No existing tests cover the notification threshold filtering
-
-**Test Considerations:**
-- Unit tests for shouldNotifyForLevel() across all 4x4 threshold/event combinations
-- Unit test for normalizeNotificationLevel() edge cases
-- Unit test verifying EMPTY_PROFILE default
-- Integration-level validation that notifyAdmin delivers when threshold allows
+## Test Considerations
+- Unit tests for newly introduced DI seams/adapters.
+- Integration tests for updated API route behavior (success/error/auth paths).
+- Verify no regressions in workflow tools/tool policy execution.
+- Run full suite: `npx jest --forceExit`.
+- Run lint: `npm run lint -- --max-warnings 0`.
+- Run vulnerability audit: `npm audit --audit-level=moderate`.

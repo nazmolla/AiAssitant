@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { runAgentLoopWithWorker } from "@/lib/agent";
-import { getThread } from "@/lib/db";
+import { getThread } from "@/lib/db/thread-queries";
 import type { ContentPart } from "@/lib/llm";
 import { createSSEStream, sseResponse, sseEvent } from "@/lib/sse";
 import {
@@ -13,15 +13,27 @@ import {
 /** Prevent Next.js from caching SSE responses */
 export const dynamic = "force-dynamic";
 
+type ThreadChatRouteDeps = {
+  requireUser: typeof requireUser;
+  runAgentLoopWithWorker: typeof runAgentLoopWithWorker;
+  getThread: typeof getThread;
+};
+
+const deps: ThreadChatRouteDeps = {
+  requireUser,
+  runAgentLoopWithWorker,
+  getThread,
+};
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ threadId: string }> }
 ) {
   const { threadId } = await params;
-  const auth = await requireUser();
+  const auth = await deps.requireUser();
   if ("error" in auth) return auth.error;
 
-  const thread = getThread(threadId);
+  const thread = deps.getThread(threadId);
   if (!thread) {
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
   }
@@ -74,6 +86,7 @@ export async function POST(
   (async () => {
     try {
       const response = await runAgentLoopWithWorker(
+        
         threadId,
         message || "(see attached files)",
         contentParts,
