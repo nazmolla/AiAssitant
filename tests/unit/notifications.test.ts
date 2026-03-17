@@ -145,6 +145,27 @@ describe("getUserNotificationLevel", () => {
 // ── notify() ─────────────────────────────────────────────────────
 
 describe("notify", () => {
+  test("uses injected dependencies when provided", async () => {
+    const deps = {
+      listUsersWithPermissions: jest.fn(() => [{ id: "dep-admin", email: "dep@test.com", role: "admin", enabled: 1 }]),
+      addLog: jest.fn(),
+      getUserProfile: jest.fn(() => ({ notification_level: "low" })),
+      getUserById: jest.fn(() => null),
+      createNotification: jest.fn(),
+      sendChannelNotification: jest.fn().mockResolvedValue(true),
+    };
+
+    const result = await notify("Injected path", "DI Test", { level: "medium" }, deps);
+
+    expect(result).toBe(true);
+    expect(deps.listUsersWithPermissions).toHaveBeenCalledTimes(1);
+    expect(deps.getUserProfile).toHaveBeenCalledWith("dep-admin");
+    expect(deps.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "dep-admin", title: "DI Test" })
+    );
+    expect(deps.sendChannelNotification).toHaveBeenCalledWith("dep-admin", "dep@test.com", "Injected path", "DI Test");
+  });
+
   test("returns false when no admins exist", async () => {
     mockListUsersWithPermissions.mockReturnValue([]);
     const result = await notify("test message");

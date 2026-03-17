@@ -52,6 +52,7 @@ const AuthConfig = dynamic(() => import("@/components/auth-config").then(m => ({
 const ToolPolicies = dynamic(() => import("@/components/tool-policies").then(m => ({ default: m.ToolPolicies })), { ssr: false });
 const CustomToolsConfig = dynamic(() => import("@/components/custom-tools-config").then(m => ({ default: m.CustomToolsConfig })), { ssr: false });
 const LoggingConfig = dynamic(() => import("@/components/logging-config").then(m => ({ default: m.LoggingConfig })), { ssr: false });
+const SearchProvidersConfig = dynamic(() => import("@/components/search-providers-config").then(m => ({ default: m.SearchProvidersConfig })), { ssr: false });
 const AlexaConfig = dynamic(() => import("@/components/alexa-config").then(m => ({ default: m.AlexaConfig })), { ssr: false });
 const WhisperConfig = dynamic(() => import("@/components/whisper-config").then(m => ({ default: m.WhisperConfig })), { ssr: false });
 const SchedulerConfig = dynamic(() => import("@/components/scheduler-config").then(m => ({ default: m.SchedulerConfig })), { ssr: false });
@@ -369,6 +370,7 @@ const SETTINGS_PAGES: SettingsPage[] = [
   { key: "alexa", label: "Alexa", icon: "🔊" },
   { key: "whisper", label: "Local Whisper", icon: "🎤", adminOnly: true },
   { key: "logging", label: "Logging", icon: "🧾" },
+  { key: "search-providers", label: "Search Providers", icon: "🔎", adminOnly: true },
   { key: "db-management", label: "DB Management", icon: "🗄️", adminOnly: true },
   { key: "custom-tools", label: "Custom Tools", icon: "🔧", adminOnly: true },
   { key: "auth", label: "Authentication", icon: "🔐", adminOnly: true },
@@ -387,6 +389,7 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
   alexa: { title: "Alexa Smart Home", subtitle: "Connect your Amazon Alexa account to control smart home devices, make announcements, and read sensors." },
   whisper: { title: "Local Whisper", subtitle: "Deploy and configure a local Whisper server as a fallback for cloud Speech-to-Text." },
   logging: { title: "Logging", subtitle: "Server-wide log levels, retention boundary, and cleanup tools." },
+  "search-providers": { title: "Search Providers", subtitle: "Configure DB-backed web search providers and fallback order for builtin web_search." },
   "db-management": { title: "DB Management", subtitle: "Monitor DB growth, resource usage, and automate cleanup policies in one place." },
   "custom-tools": { title: "Custom Tools", subtitle: "Agent-created tools that extend Nexus capabilities at runtime." },
   auth: { title: "Authentication", subtitle: "Configure OAuth login providers, API keys, and external integrations." },
@@ -506,6 +509,7 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
           {active === "alexa" && <AlexaConfig />}
           {active === "whisper" && userRole === "admin" && <WhisperConfig />}
           {active === "logging" && <LoggingConfig />}
+          {active === "search-providers" && userRole === "admin" && <SearchProvidersConfig />}
           {active === "db-management" && userRole === "admin" && <DbManagementConfig />}
           {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
           {active === "auth" && userRole === "admin" && <AuthConfig />}

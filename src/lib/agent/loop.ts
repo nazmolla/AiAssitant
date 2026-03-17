@@ -51,6 +51,40 @@ import { processExecutedToolResult, processFailedToolResult } from "./tool-resul
 
 const yieldLoop = () => new Promise<void>((r) => setImmediate(r));
 
+export interface AgentLoopDependencies {
+  selectProvider: typeof selectProvider;
+  selectFallbackProvider: typeof selectFallbackProvider;
+  buildFilteredToolList: typeof buildFilteredToolList;
+  addMessage: typeof addMessage;
+  getThreadMessages: typeof getThreadMessages;
+  addAttachment: typeof addAttachment;
+  addLog: typeof addLog;
+  executeToolWithPolicy: typeof executeToolWithPolicy;
+  persistScheduledTasksFromMessage: typeof persistScheduledTasksFromMessage;
+  processInlineApproval: typeof processInlineApproval;
+  maybeUpdateThreadTitle: typeof maybeUpdateThreadTitle;
+  persistKnowledgeFromTurn: typeof persistKnowledgeFromTurn;
+  processExecutedToolResult: typeof processExecutedToolResult;
+  processFailedToolResult: typeof processFailedToolResult;
+}
+
+const defaultAgentLoopDependencies: AgentLoopDependencies = {
+  selectProvider,
+  selectFallbackProvider,
+  buildFilteredToolList,
+  addMessage,
+  getThreadMessages,
+  addAttachment,
+  addLog,
+  executeToolWithPolicy,
+  persistScheduledTasksFromMessage,
+  processInlineApproval,
+  maybeUpdateThreadTitle,
+  persistKnowledgeFromTurn,
+  processExecutedToolResult,
+  processFailedToolResult,
+};
+
 
 export interface AgentResponse {
   content: string;
@@ -81,16 +115,17 @@ export async function runAgentLoop(
   userId?: string,
   onMessage?: (msg: Message) => void,
   onStatus?: (status: { step: string; detail?: string }) => void,
-  onToken?: (token: string) => void | Promise<void>
+  onToken?: (token: string) => void | Promise<void>,
+  deps: AgentLoopDependencies = defaultAgentLoopDependencies
 ): Promise<AgentResponse> {
   // Use the orchestrator to pick the best model for this task
   onStatus?.({ step: "Selecting model", detail: "Classifying task complexity…" });
   const hasImages = contentParts?.some((p) => p.type === "image_url") ?? false;
-  let orchestration = selectProvider(userMessage || "continuation", hasImages);
+  let orchestration = deps.selectProvider(userMessage || "continuation", hasImages);
   let provider = orchestration.provider;
   onStatus?.({ step: "Selecting model", detail: `Task: ${orchestration.taskType} → ${orchestration.providerLabel}` });
 
-  const tools = await buildFilteredToolList(userId);
+  const tools = await deps.buildFilteredToolList(userId);
 
   if (!continuation) {
     // Build attachment metadata JSON
@@ -106,7 +141,7 @@ export async function runAgentLoop(
         : null;
 
     // Save the user message (with attachment metadata)
-    const savedMsg = addMessage({
+    const savedMsg = deps.addMessage({
       thread_id: threadId,
       role: "user",
       content: userMessage,
@@ -119,7 +154,7 @@ export async function runAgentLoop(
     // Persist attachment records in the attachments table
     if (attachmentsMeta) {
       for (const att of attachmentsMeta) {
-        addAttachment({
+        deps.addAttachment({
           id: att.id,
           thread_id: threadId,
           message_id: savedMsg.id,
@@ -132,13 +167,13 @@ export async function runAgentLoop(
     }
 
     // Persist user-requested future/recurring tasks into scheduler queue.
-    persistScheduledTasksFromMessage(threadId, userMessage, userId);
+    deps.persistScheduledTasksFromMessage(threadId, userMessage, userId);
 
     // Inline approval flow for interactive threads
-    const approvalResult = await processInlineApproval(threadId, userMessage, onMessage, onStatus);
+    const approvalResult = await deps.processInlineApproval(threadId, userMessage, onMessage, onStatus);
     if (approvalResult.handled) {
       if ("resumeContinuation" in approvalResult) {
-        return runAgentLoop(threadId, "", undefined, undefined, true, userId, onMessage, onStatus, onToken);
+        return runAgentLoop(threadId, "", undefined, undefined, true, userId, onMessage, onStatus, onToken, deps);
       }
       if ("response" in approvalResult) {
         return approvalResult.response;
@@ -149,7 +184,7 @@ export async function runAgentLoop(
   // In continuation mode, extract the last user message from DB for knowledge retrieval
   const queryText = continuation
     ? (() => {
-        const msgs = getThreadMessages(threadId);
+        const msgs = deps.getThreadMessages(threadId);
         const lastUser = [...msgs].reverse().find((m) => m.role === "user");
         return lastUser?.content || "";
       })()
@@ -161,7 +196,7 @@ export async function runAgentLoop(
   const knowledgeContext = await buildKnowledgeContext(queryText, userId, onStatus);
   onStatus?.({ step: "Building context", detail: "Loading user profile and chat history" });
   const profileContext = buildProfileContext(userId);
-  const dbMessages = getThreadMessages(threadId);
+  const dbMessages = deps.getThreadMessages(threadId);
   const chatMessages = dbMessagesToChat(dbMessages, continuation ? undefined : contentParts);
 
   const toolsUsed: string[] = [];
@@ -169,7 +204,7 @@ export async function runAgentLoop(
   const screenshotAttachments: AttachmentMeta[] = [];
   let iterations = 0;
 
-  addLog({
+  deps.addLog({
     level: "thought",
     source: "agent",
     message: continuation
@@ -198,7 +233,7 @@ export async function runAgentLoop(
       );
     } catch (primaryErr) {
       // Attempt fallback to another provider
-      const fallback = selectFallbackProvider(userMessage || "continuation", [orchestration.providerLabel], hasImages);
+      const fallback = deps.selectFallbackProvider(userMessage || "continuation", [orchestration.providerLabel], hasImages);
       if (fallback) {
         console.warn(`[agent] Primary provider ${orchestration.providerLabel} failed (${primaryErr instanceof Error ? primaryErr.message : primaryErr}), falling back to ${fallback.providerLabel}`);
         onStatus?.({ step: "Falling back", detail: `${orchestration.providerLabel} failed — trying ${fallback.providerLabel}` });
@@ -226,7 +261,7 @@ export async function runAgentLoop(
       const toolCalls = expandMultiToolUse(response.toolCalls);
 
       // Save the assistant message with tool calls
-      const savedThinking = addMessage({
+      const savedThinking = deps.addMessage({
         thread_id: threadId,
         role: "assistant",
         content: response.content,
@@ -246,7 +281,7 @@ export async function runAgentLoop(
       for (const toolCall of toolCalls) {
         await yieldLoop(); // yield between tool executions
         onStatus?.({ step: "Executing tool", detail: toolCall.name });
-        const result = await executeToolWithPolicy(toolCall, threadId, response.content || undefined);
+        const result = await deps.executeToolWithPolicy(toolCall, threadId, response.content || undefined);
 
         if (result.status === "pending_approval") {
           pendingApprovals.push(toolCall.name);
@@ -257,7 +292,7 @@ export async function runAgentLoop(
           });
         } else if (result.status === "executed") {
           toolsUsed.push(toolCall.name);
-          const processed = processExecutedToolResult(toolCall, result.result, threadId, onMessage);
+          const processed = deps.processExecutedToolResult(toolCall, result.result, threadId, onMessage);
           screenshotAttachments.push(...processed.attachments);
 
           chatMessages.push({
@@ -272,7 +307,7 @@ export async function runAgentLoop(
             knowledgeSnippets.push(`[Tool ${toolCall.name}]\n${rawResult.slice(0, 4000)}`);
           }
         } else {
-          const errorContent = processFailedToolResult(toolCall, result.error, threadId, onMessage);
+          const errorContent = deps.processFailedToolResult(toolCall, result.error, threadId, onMessage);
           chatMessages.push({
             role: "tool",
             content: errorContent,
@@ -292,7 +327,7 @@ export async function runAgentLoop(
         }
 
         screenshotAttachments.length = 0;
-        persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId).catch(() => {});
+        deps.persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId).catch(() => {});
         return { content: finalContent, toolsUsed, pendingApprovals, attachments: [] };
       }
 
@@ -306,7 +341,7 @@ export async function runAgentLoop(
     const finalAttachments = attachmentsForResponse.length > 0
       ? JSON.stringify(attachmentsForResponse)
       : null;
-    const savedFinal = addMessage({
+    const savedFinal = deps.addMessage({
       thread_id: threadId,
       role: "assistant",
       content: finalContent,
@@ -319,7 +354,7 @@ export async function runAgentLoop(
     // Persist screenshot attachments on the final assistant message too
     if (attachmentsForResponse.length > 0) {
       for (const att of attachmentsForResponse) {
-        addAttachment({
+        deps.addAttachment({
           id: crypto.randomUUID(), // new ID for this message's copy
           thread_id: threadId,
           message_id: savedFinal.id,
@@ -333,7 +368,7 @@ export async function runAgentLoop(
     // Clear for next iteration
     screenshotAttachments.length = 0;
 
-    addLog({
+    deps.addLog({
       level: "info",
       source: "agent",
       message: `Agent completed response in ${iterations} iteration(s).`,
@@ -344,16 +379,16 @@ export async function runAgentLoop(
     // the response — the user already has the content, keeping the SSE open
     // just shows a lingering "Generating response" spinner.
     if (!continuation) {
-      maybeUpdateThreadTitle(threadId, queryText, finalText).catch(() => {});
+      deps.maybeUpdateThreadTitle(threadId, queryText, finalText).catch(() => {});
     }
-    persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId).catch(() => {});
+    deps.persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId).catch(() => {});
 
     return { content: finalContent, toolsUsed, pendingApprovals, attachments: attachmentsForResponse };
   }
 
   // Max iterations reached
   const fallback = "I've reached the maximum number of tool iterations. Please try rephrasing your request.";
-  const savedFallback = addMessage({
+  const savedFallback = deps.addMessage({
     thread_id: threadId,
     role: "assistant",
     content: fallback,
@@ -364,7 +399,7 @@ export async function runAgentLoop(
   onMessage?.(savedFallback);
 
   knowledgeSnippets.push(`[Assistant]\n${fallback}`);
-  persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId).catch(() => {});
+  deps.persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId).catch(() => {});
 
   return { content: fallback, toolsUsed, pendingApprovals, attachments: [] };
 }

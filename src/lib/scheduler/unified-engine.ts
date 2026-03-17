@@ -18,6 +18,12 @@ import {
   updateSchedulerScheduleAfterDispatch,
   listEnabledSchedulerTaskHandlers,
 } from "@/lib/db";
+import {
+  SCHEDULER_POLL_MS,
+  SCHEDULER_LEASE_SECONDS,
+  SCHEDULER_BATCH_SIZE,
+  SCHEDULER_RESPONSE_PREVIEW_CHARS,
+} from "@/lib/constants";
 import { computeSchedulerNextRunAt } from "@/lib/scheduler/next-run";
 import { findBatchJobForHandler } from "@/lib/scheduler/batch-jobs";
 import { getAllHandlerNames } from "@/lib/scheduler/batch-jobs";
@@ -32,6 +38,27 @@ interface SchedulerLogContext {
 /* ── Handler registry ─────────────────────────────────────────────── */
 
 const handlerRegistry = new Set<string>();
+
+interface SchedulerEngineDependencies {
+  listEnabledSchedulerTaskHandlers: typeof listEnabledSchedulerTaskHandlers;
+  getAllHandlerNames: typeof getAllHandlerNames;
+  addLog: typeof addLog;
+}
+
+const defaultSchedulerEngineDependencies: SchedulerEngineDependencies = {
+  listEnabledSchedulerTaskHandlers,
+  getAllHandlerNames,
+  addLog,
+};
+
+let schedulerEngineDependencies: SchedulerEngineDependencies = defaultSchedulerEngineDependencies;
+
+export function configureSchedulerEngineDependencies(overrides: Partial<SchedulerEngineDependencies>): void {
+  schedulerEngineDependencies = {
+    ...schedulerEngineDependencies,
+    ...overrides,
+  };
+}
 
 /**
  * Register a scheduler handler name.
@@ -50,19 +77,10 @@ function populateHandlerRegistry(): void {
   // Built-in generic handler
   registerHandler("agent.prompt");
   // Batch-job handlers discovered dynamically
-  for (const name of getAllHandlerNames()) {
+  for (const name of schedulerEngineDependencies.getAllHandlerNames()) {
     registerHandler(name);
   }
 }
-
-/* ── Engine configuration ─────────────────────────────────────────── */
-
-import {
-  SCHEDULER_POLL_MS,
-  SCHEDULER_LEASE_SECONDS,
-  SCHEDULER_BATCH_SIZE,
-  SCHEDULER_RESPONSE_PREVIEW_CHARS,
-} from "@/lib/constants";
 
 export interface SchedulerEngineConfig {
   pollMs?: number;
@@ -88,16 +106,17 @@ export function resetSchedulerEngine(): void {
   engineState.pollMs = SCHEDULER_POLL_MS;
   engineState.leaseSeconds = SCHEDULER_LEASE_SECONDS;
   handlerRegistry.clear();
+  schedulerEngineDependencies = defaultSchedulerEngineDependencies;
 }
 
 const WORKER_ID = `scheduler-worker-${process.pid}`;
 
 function validateRegisteredHandlers(): void {
-  const handlers = listEnabledSchedulerTaskHandlers();
+  const handlers = schedulerEngineDependencies.listEnabledSchedulerTaskHandlers();
   const unknown = handlers.filter((h) => !handlerRegistry.has(h.handler_name));
   if (unknown.length === 0) return;
 
-  addLog({
+  schedulerEngineDependencies.addLog({
     level: "error",
     source: "scheduler-engine",
     message: "Found enabled scheduler tasks with unregistered handlers.",
@@ -122,7 +141,7 @@ function dispatchDueSchedules(): void {
     );
     addSchedulerEvent(run.id, "run_dispatched", `Dispatched ${tasks.length} task(s)`, null, JSON.stringify({ scheduleId: schedule.id }));
 
-    addLog({
+    schedulerEngineDependencies.addLog({
       level: "info",
       source: "scheduler-engine",
       message: `Dispatched run ${run.id.slice(0, 8)} for schedule \"${schedule.name}\" with ${tasks.length} task(s).`,
@@ -142,7 +161,7 @@ function serializeLogRef(context: SchedulerLogContext): string {
 }
 
 function logSchedulerExecution(level: "verbose" | "info" | "warning" | "error", message: string, context: SchedulerLogContext, details?: Record<string, unknown>): void {
-  addLog({
+  schedulerEngineDependencies.addLog({
     level,
     source: "scheduler-engine",
     message,
@@ -378,7 +397,7 @@ export function startUnifiedSchedulerEngine(config?: SchedulerEngineConfig): voi
 
   engineState.timer = setInterval(() => {
     engineTick().catch((err) => {
-      addLog({
+      schedulerEngineDependencies.addLog({
         level: "error",
         source: "scheduler-engine",
         message: `Unified scheduler engine tick failed: ${err}`,
@@ -387,7 +406,7 @@ export function startUnifiedSchedulerEngine(config?: SchedulerEngineConfig): voi
     });
   }, engineState.pollMs);
 
-  addLog({
+  schedulerEngineDependencies.addLog({
     level: "info",
     source: "scheduler-engine",
     message: "Unified scheduler engine started.",
@@ -399,7 +418,7 @@ export function stopUnifiedSchedulerEngine(): void {
   if (!engineState.timer) return;
   clearInterval(engineState.timer);
   engineState.timer = null;
-  addLog({
+  schedulerEngineDependencies.addLog({
     level: "info",
     source: "scheduler-engine",
     message: "Unified scheduler engine stopped.",

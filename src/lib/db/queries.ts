@@ -19,3 +19,4 @@ export * from "./custom-tool-queries";
 export * from "./api-key-queries";
 export * from "./notification-queries";
 export * from "./scheduler-queries";
+export * from "./search-provider-queries";

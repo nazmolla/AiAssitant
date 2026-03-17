@@ -280,6 +280,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `GET/PUT` | `/api/config/profile` | User | Get/update user profile (user-scoped) |
 | `GET/POST/DELETE` | `/api/config/user-emails` | User | Get/add/remove secondary email addresses for multi-email support |
 | `GET/PUT` | `/api/config/alexa` | Admin | Get masked / store encrypted Alexa Smart Home credentials |
+| `GET/PUT` | `/api/config/search-providers` | Admin | Get/update DB-backed web search provider config (enabled flags, priority, encrypted API keys) |
 | `GET/POST/PUT/DELETE` | `/api/config/custom-tools` | Admin | Manage agent-created custom tools |
 | `POST` | `/api/channels/[channelId]/webhook` | Webhook | Receive inbound messages from channels |
 | `POST` | `/api/attachments` | User | Upload file attachments |

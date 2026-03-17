@@ -12,6 +12,7 @@
 import type { ToolDefinition } from "@/lib/llm";
 import { URL } from "url";
 import { assertExternalUrl, assertExternalUrlWithResolve } from "@/lib/agent/ssrf";
+import { getWebSearchProviderConfig, type WebSearchProviderType } from "@/lib/db";
 import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 
 // ── Tool Definitions ──────────────────────────────────────────
@@ -88,44 +89,71 @@ interface SearchResult {
   snippet: string;
 }
 
+interface SearchProviderAttempt {
+  provider: string;
+  error?: string;
+  resultCount: number;
+}
+
+interface RuntimeSearchProvider {
+  type: WebSearchProviderType;
+  enabled: boolean;
+  priority: number;
+  apiKey?: string;
+}
+
 // ── User-Agent ────────────────────────────────────────────────
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const WEB_SEARCH_TIMEOUT_MS = 15000;
 
-// ── Web Search Implementation ─────────────────────────────────
+function decodeBasicEntities(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
 
-async function webSearch(
-  query: string,
-  maxResults: number = 8
-): Promise<SearchResult[]> {
-  maxResults = Math.min(maxResults, 20);
+function isAbortLikeError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { name?: string; message?: string };
+  return maybeError.name === "AbortError" || maybeError.message?.toLowerCase() === "aborted";
+}
 
-  // Use DuckDuckGo HTML search (no API key needed)
-  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+async function fetchWithTimeout(url: string, accept: string, extraHeaders?: Record<string, string>): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WEB_SEARCH_TIMEOUT_MS);
 
-  const response = await fetch(searchUrl, {
-    headers: {
-      "User-Agent": USER_AGENT,
-      Accept: "text/html",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Search request failed: ${response.status} ${response.statusText}`);
+  try {
+    return await fetch(url, {
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: accept,
+        ...(extraHeaders || {}),
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (isAbortLikeError(error)) {
+      throw new Error(`Search request timed out after ${WEB_SEARCH_TIMEOUT_MS}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
+}
 
-  const html = await response.text();
+function parseDuckDuckGoHtmlResults(html: string, maxResults: number): SearchResult[] {
   const results: SearchResult[] = [];
 
-  // Parse DuckDuckGo HTML results
-  // Results are in <div class="result"> blocks
   const resultBlocks = html.split(/class="result\s/);
 
   for (let i = 1; i < resultBlocks.length && results.length < maxResults; i++) {
     const block = resultBlocks[i];
-
-    // Extract title and URL from the result link
     const linkMatch = block.match(
       /class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/
     );
@@ -134,28 +162,194 @@ async function webSearch(
     let url = linkMatch[1];
     const titleHtml = linkMatch[2];
 
-    // DuckDuckGo wraps URLs in a redirect — extract the actual URL
     const uddgMatch = url.match(/uddg=([^&]+)/);
     if (uddgMatch) {
       url = decodeURIComponent(uddgMatch[1]);
     }
 
-    // Extract snippet
     const snippetMatch = block.match(
       /class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|td|div|span)>/
     );
     const snippetHtml = snippetMatch ? snippetMatch[1] : "";
 
-    // Strip HTML tags
-    const title = titleHtml.replace(/<[^>]+>/g, "").trim();
-    const snippet = snippetHtml.replace(/<[^>]+>/g, "").trim();
+    const title = decodeBasicEntities(titleHtml.replace(/<[^>]+>/g, "")).trim();
+    const snippet = decodeBasicEntities(snippetHtml.replace(/<[^>]+>/g, "")).trim();
 
     if (title && url.startsWith("http")) {
       results.push({ title, url, snippet });
     }
   }
 
+  if (results.length === 0) {
+    const linkRegex = /<a[^>]*class=["'][^"']*result__a[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = linkRegex.exec(html)) !== null && results.length < maxResults) {
+      let url = match[1];
+      const title = decodeBasicEntities(match[2].replace(/<[^>]+>/g, "")).trim();
+      const uddgMatch = url.match(/uddg=([^&]+)/);
+      if (uddgMatch) {
+        url = decodeURIComponent(uddgMatch[1]);
+      }
+
+      if (!title || !url.startsWith("http")) {
+        continue;
+      }
+
+      const duplicate = results.some((result) => result.url === url);
+      if (!duplicate) {
+        results.push({ title, url, snippet: "" });
+      }
+    }
+  }
+
   return results;
+}
+
+async function searchDuckDuckGoHtml(query: string, maxResults: number): Promise<SearchResult[]> {
+  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  const response = await fetchWithTimeout(searchUrl, "text/html");
+  if (!response.ok) {
+    throw new Error(`Search request failed: ${response.status} ${response.statusText}`);
+  }
+  return parseDuckDuckGoHtmlResults(await response.text(), maxResults);
+}
+
+async function searchDuckDuckGoInstant(query: string, maxResults: number): Promise<SearchResult[]> {
+  const searchUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+  const response = await fetchWithTimeout(searchUrl, "application/json");
+  if (!response.ok) {
+    throw new Error(`Search request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const payload = await response.json() as {
+    Results?: Array<{ FirstURL?: string; Text?: string }>;
+    RelatedTopics?: Array<{ FirstURL?: string; Text?: string; Topics?: Array<{ FirstURL?: string; Text?: string }> }>;
+  };
+
+  const results: SearchResult[] = [];
+
+  const add = (url?: string, text?: string) => {
+    if (!url || !url.startsWith("http") || !text || results.length >= maxResults) return;
+    const duplicate = results.some((result) => result.url === url);
+    if (duplicate) return;
+    results.push({ title: text, url, snippet: text });
+  };
+
+  for (const item of payload.Results ?? []) {
+    add(item.FirstURL, item.Text);
+  }
+
+  for (const item of payload.RelatedTopics ?? []) {
+    if (item.Topics && Array.isArray(item.Topics)) {
+      for (const nested of item.Topics) {
+        add(nested.FirstURL, nested.Text);
+      }
+    } else {
+      add(item.FirstURL, item.Text);
+    }
+    if (results.length >= maxResults) break;
+  }
+
+  return results;
+}
+
+async function searchBrave(query: string, maxResults: number, apiKey: string): Promise<SearchResult[]> {
+  if (!apiKey.trim()) {
+    throw new Error("Missing API key");
+  }
+
+  const count = Math.min(Math.max(maxResults, 1), 20);
+  const searchUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`;
+  const response = await fetchWithTimeout(searchUrl, "application/json, text/plain, */*", {
+    "X-Subscription-Token": apiKey,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Search request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const payload = await response.json() as {
+    web?: {
+      results?: Array<{ title?: string; url?: string; description?: string }>;
+    };
+  };
+
+  const results: SearchResult[] = [];
+  for (const item of payload.web?.results ?? []) {
+    if (!item.url || !item.title) continue;
+    if (!item.url.startsWith("http")) continue;
+    results.push({
+      title: item.title,
+      url: item.url,
+      snippet: item.description || "",
+    });
+    if (results.length >= count) break;
+  }
+
+  return results;
+}
+
+function getRuntimeSearchProviders(): RuntimeSearchProvider[] {
+  const configured = getWebSearchProviderConfig();
+  return configured
+    .map((provider) => ({
+      type: provider.type,
+      enabled: provider.enabled,
+      priority: provider.priority,
+      apiKey: provider.apiKey,
+    }))
+    .sort((left, right) => left.priority - right.priority);
+}
+
+// ── Web Search Implementation ─────────────────────────────────
+
+async function webSearch(
+  query: string,
+  maxResults: number = 8
+): Promise<{ results: SearchResult[]; providerUsed: string; attempts: SearchProviderAttempt[] }> {
+  maxResults = Math.min(maxResults, 20);
+
+  const configuredProviders = getRuntimeSearchProviders().filter((provider) => provider.enabled);
+  const providers: Array<{ name: string; search: (searchQuery: string, limit: number) => Promise<SearchResult[]> }> = configuredProviders.map((provider) => {
+    if (provider.type === "duckduckgo-html") {
+      return { name: provider.type, search: searchDuckDuckGoHtml };
+    }
+    if (provider.type === "duckduckgo-instant") {
+      return { name: provider.type, search: searchDuckDuckGoInstant };
+    }
+    return {
+      name: provider.type,
+      search: (searchQuery: string, limit: number) => searchBrave(searchQuery, limit, provider.apiKey || ""),
+    };
+  });
+
+  if (providers.length === 0) {
+    throw new Error("No enabled search providers configured.");
+  }
+
+  const attempts: SearchProviderAttempt[] = [];
+  const failures: string[] = [];
+
+  for (const provider of providers) {
+    try {
+      const providerResults = await provider.search(query, maxResults);
+      attempts.push({ provider: provider.name, resultCount: providerResults.length });
+      if (providerResults.length > 0) {
+        return { results: providerResults, providerUsed: provider.name, attempts };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      attempts.push({ provider: provider.name, resultCount: 0, error: message });
+      failures.push(`${provider.name}: ${message}`);
+    }
+  }
+
+  if (failures.length === providers.length) {
+    throw new Error(`All search providers failed. ${failures.join(" | ")}`);
+  }
+
+  return { results: [], providerUsed: "none", attempts };
 }
 
 // ── Web Fetch Implementation ──────────────────────────────────
@@ -362,14 +556,16 @@ export async function executeBuiltinWebTool(
 ): Promise<unknown> {
   switch (name) {
     case "builtin.web_search": {
-      const results = await webSearch(
+      const search = await webSearch(
         args.query as string,
         (args.maxResults as number) || 8
       );
       return {
         query: args.query,
-        resultCount: results.length,
-        results,
+        resultCount: search.results.length,
+        providerUsed: search.providerUsed,
+        attempts: search.attempts,
+        results: search.results,
       };
     }
 

@@ -20,6 +20,24 @@ import { sendChannelNotification } from "@/lib/channels/notify";
 
 export type NotificationLevel = "low" | "medium" | "high" | "disaster";
 
+export interface NotificationDependencies {
+  listUsersWithPermissions: typeof listUsersWithPermissions;
+  addLog: typeof addLog;
+  getUserProfile: typeof getUserProfile;
+  getUserById: typeof getUserById;
+  createNotification: typeof createNotification;
+  sendChannelNotification: typeof sendChannelNotification;
+}
+
+const defaultNotificationDependencies: NotificationDependencies = {
+  listUsersWithPermissions,
+  addLog,
+  getUserProfile,
+  getUserById,
+  createNotification,
+  sendChannelNotification,
+};
+
 const NOTIFICATION_LEVEL_ORDER: NotificationLevel[] = ["disaster", "high", "medium", "low"];
 
 export function normalizeNotificationLevel(value: unknown): NotificationLevel {
@@ -38,8 +56,11 @@ export function shouldNotifyForLevel(userThreshold: NotificationLevel, eventLeve
   return eventIndex <= thresholdIndex;
 }
 
-export function getUserNotificationLevel(userId: string): NotificationLevel {
-  const profile = getUserProfile(userId);
+export function getUserNotificationLevel(
+  userId: string,
+  deps: Pick<NotificationDependencies, "getUserProfile"> = defaultNotificationDependencies
+): NotificationLevel {
+  const profile = deps.getUserProfile(userId);
   return normalizeNotificationLevel(profile?.notification_level);
 }
 
@@ -61,21 +82,22 @@ export interface NotifyOptions {
 export async function notify(
   message: string,
   subject = "Nexus Notification",
-  options: NotifyOptions = {}
+  options: NotifyOptions = {},
+  deps: NotificationDependencies = defaultNotificationDependencies
 ): Promise<boolean> {
   const level = options.level ?? "disaster";
 
   let targetUser: { id: string; email: string } | undefined;
 
   if (options.userId) {
-    const specific = getUserById(options.userId);
+    const specific = deps.getUserById(options.userId);
     if (specific) {
       targetUser = { id: specific.id, email: specific.email };
     }
   }
 
   if (!targetUser) {
-    const admins = listUsersWithPermissions().filter((u) => u.role === "admin" && u.enabled === 1);
+    const admins = deps.listUsersWithPermissions().filter((u) => u.role === "admin" && u.enabled === 1);
     if (admins.length === 0) return false;
     const admin = admins[0];
     targetUser = { id: admin.id, email: admin.email };
@@ -85,7 +107,7 @@ export async function notify(
   try {
     const nType: NotificationType = options.notificationType
       ?? (level === "disaster" || level === "high" ? "system_error" : "info");
-    createNotification({
+    deps.createNotification({
       userId: targetUser.id,
       type: nType,
       title: subject,
@@ -96,9 +118,9 @@ export async function notify(
   }
 
   // ── Channel delivery — gated by user threshold ────────────────
-  const threshold = getUserNotificationLevel(targetUser.id);
+  const threshold = getUserNotificationLevel(targetUser.id, deps);
   if (!shouldNotifyForLevel(threshold, level)) {
-    addLog({
+    deps.addLog({
       level: "info",
       source: "notifications",
       message: `Channel delivery suppressed by user threshold (event=${level}, threshold=${threshold}).`,
@@ -107,7 +129,7 @@ export async function notify(
     return false;
   }
 
-  return sendChannelNotification(targetUser.id, targetUser.email, message, subject);
+  return deps.sendChannelNotification(targetUser.id, targetUser.email, message, subject);
 }
 
 /** Backward-compatible alias for notify(). */

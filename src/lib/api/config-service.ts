@@ -13,6 +13,10 @@ export const configService = {
   saveLogging: (min_level: string) => apiClient.put("/api/config/logging", { min_level }),
   cleanLogs: (body: unknown) => apiClient.post("/api/config/logging", body),
 
+  // Search providers
+  getSearchProviders: () => apiClient.get<unknown>("/api/config/search-providers"),
+  saveSearchProviders: (providers: unknown) => apiClient.put("/api/config/search-providers", { providers }),
+
   // Profile
   getProfile: () => apiClient.get<unknown>("/api/config/profile"),
   saveProfile: (profile: unknown) => apiClient.put("/api/config/profile", profile),

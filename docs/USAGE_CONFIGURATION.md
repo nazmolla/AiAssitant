@@ -89,6 +89,24 @@ Compatible servers: **faster-whisper-server** (Python/CUDA) or **whisper.cpp** (
 
 ---
 
+## Search Providers
+
+Configure web-search providers directly in Settings (admin-only), without environment variables.
+
+1. Settings → Search Providers
+2. Enable/disable providers and set priority order
+3. Add/update provider API keys where required (stored encrypted in DB)
+4. Save to apply runtime fallback order
+
+Current providers:
+
+- DuckDuckGo (HTML + Instant Answer API fallback)
+- Brave Search API
+
+At runtime, Nexus attempts enabled providers by priority until one succeeds or all fail.
+
+---
+
 ## Voice Conversation
 
 The **Conversation** tab provides hands-free voice mode:
