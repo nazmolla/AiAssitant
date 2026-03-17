@@ -24,19 +24,19 @@ import { emailReadTool } from "./email-tools";
 /**
  * All system workflow tools, injected as proper BaseTool instances.
  */
-const SYSTEM_TOOLS: BaseTool[] = [
+const SYSTEM_TOOLS: ToolCategory[] = [
   proactiveScanTool,
   knowledgeMaintenanceTool,
   dbMaintenanceTool,
   emailReadTool,
-].filter((tool): tool is BaseTool => Boolean(tool));
+];
 
 /** All tool definitions aggregated from child tools */
 export const BUILTIN_WORKFLOW_TOOLS: ToolDefinition[] =
-  SYSTEM_TOOLS.flatMap((t) => t.tools);
+  SYSTEM_TOOLS.flatMap((t) => t?.tools ?? []);
 
 export const WORKFLOW_TOOLS_REQUIRING_APPROVAL: string[] =
-  SYSTEM_TOOLS.flatMap((t) => t.toolsRequiringApproval);
+  SYSTEM_TOOLS.flatMap((t) => t?.toolsRequiringApproval ?? []);
 
 export function isWorkflowTool(name: string): boolean {
   return name.startsWith("builtin.workflow_");
