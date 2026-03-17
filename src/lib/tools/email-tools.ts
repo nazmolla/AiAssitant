@@ -21,7 +21,7 @@ import {
 import type { NotificationLevel } from "@/lib/notifications";
 import type { SchedulerBatchExecutionContext } from "@/lib/scheduler/shared";
 import { simpleParser } from "mailparser";
-import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
+import { BaseTool, type ToolExecutionContext } from "./base-tool";
 
 interface SchedulerDigestItem {
   level: NotificationLevel;
@@ -990,19 +990,6 @@ export const runEmailReadToolExecution = EmailToolPublicApi.runEmailReadToolExec
 
 // ── BaseTool class wrappers ───────────────────────────────────
 
-export class EmailTools extends BaseTool {
-  readonly name = "email";
-  readonly toolNamePrefix = "builtin.email_";
-  readonly registrationOrder = 40;
-  readonly tools = BUILTIN_EMAIL_TOOLS;
-  readonly toolsRequiringApproval = [...EMAIL_TOOLS_REQUIRING_APPROVAL];
-
-  async execute(toolName: string, args: Record<string, unknown>, context: ToolExecutionContext): Promise<unknown> {
-    const thread = getThread(context.threadId);
-    return EmailToolPublicApi.executeBuiltinEmailTool(toolName, args, thread?.user_id ?? undefined, context.threadId);
-  }
-}
-
 export class EmailReadTool extends BaseTool {
   readonly name = "email_read";
   readonly toolNamePrefix = "builtin.workflow_email_read";
@@ -1038,7 +1025,5 @@ export class EmailReadTool extends BaseTool {
   }
 }
 
-export const emailTools = new EmailTools();
-registerToolCategory(emailTools);
 export const emailReadTool = new EmailReadTool();
 

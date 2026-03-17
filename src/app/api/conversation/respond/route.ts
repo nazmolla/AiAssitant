@@ -8,8 +8,7 @@ import {
   isBrowserTool, executeBrowserTool,
   isFsTool, executeBuiltinFsTool,
   isNetworkTool, executeBuiltinNetworkTool,
-  isEmailTool, executeBuiltinEmailTool,
-  isPhoneTool, executeBuiltinPhoneTool,
+  isCommunicationTool, executeBuiltinCommunicationTool,
   isFileTool, executeBuiltinFileTool,
   isAlexaTool, executeAlexaTool,
   isCustomTool, executeCustomTool, getCustomToolDefinitions,
@@ -330,10 +329,8 @@ async function executeConversationTool(
       result = await executeBuiltinFsTool(tc.name, tc.arguments);
     } else if (isNetworkTool(tc.name)) {
       result = await executeBuiltinNetworkTool(tc.name, tc.arguments);
-    } else if (isEmailTool(tc.name)) {
-      result = await executeBuiltinEmailTool(tc.name, tc.arguments, userId, undefined);
-    } else if (isPhoneTool(tc.name)) {
-      result = await executeBuiltinPhoneTool(tc.name, tc.arguments, userId);
+    } else if (isCommunicationTool(tc.name)) {
+      result = await executeBuiltinCommunicationTool(tc.name, tc.arguments, { threadId: "", userId });
     } else if (isFileTool(tc.name)) {
       result = await executeBuiltinFileTool(tc.name, tc.arguments, {});
     } else if (isAlexaTool(tc.name)) {

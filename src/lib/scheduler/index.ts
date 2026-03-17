@@ -22,10 +22,8 @@ import {
   executeBuiltinFsTool,
   isNetworkTool,
   executeBuiltinNetworkTool,
-  isEmailTool,
-  executeBuiltinEmailTool,
-  isPhoneTool,
-  executeBuiltinPhoneTool,
+  isCommunicationTool,
+  executeBuiltinCommunicationTool,
   isFileTool,
   executeBuiltinFileTool,
   isCustomTool,
@@ -100,11 +98,11 @@ async function executeSchedulerTool(
   if (isNetworkTool(toolName)) {
     return { skipped: false, result: await executeBuiltinNetworkTool(toolName, args) };
   }
-  if (isEmailTool(toolName)) {
-    return { skipped: false, result: await executeBuiltinEmailTool(toolName, args) };
-  }
-  if (isPhoneTool(toolName)) {
-    return { skipped: false, result: await executeBuiltinPhoneTool(toolName, args) };
+  if (isCommunicationTool(toolName)) {
+    return {
+      skipped: false,
+      result: await executeBuiltinCommunicationTool(toolName, args, { threadId: "", userId: undefined }),
+    };
   }
   if (isAlexaTool(toolName)) {
     return { skipped: false, result: await executeAlexaTool(toolName, args) };

@@ -8,8 +8,12 @@ export { BUILTIN_WEB_TOOLS, isBuiltinWebTool, executeBuiltinWebTool } from "@/li
 export { BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool, BROWSER_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/browser-tools";
 export { BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool, FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/fs-tools";
 export { BUILTIN_NETWORK_TOOLS, isNetworkTool, executeBuiltinNetworkTool, NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/network-tools";
-export { BUILTIN_EMAIL_TOOLS, isEmailTool, executeBuiltinEmailTool, EMAIL_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/email-tools";
-export { BUILTIN_PHONE_TOOLS, isPhoneTool, executeBuiltinPhoneTool, PHONE_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/phone-tools";
+export {
+	BUILTIN_COMMUNICATION_TOOLS,
+	isCommunicationTool,
+	executeBuiltinCommunicationTool,
+	COMMUNICATION_TOOLS_REQUIRING_APPROVAL,
+} from "@/lib/tools/communication-tools";
 export { BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool, FILE_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/file-tools";
 export { isCustomTool, executeCustomTool, getCustomToolDefinitions, loadCustomToolsFromDb, validateImplementation, BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/custom-tools";
 export { BUILTIN_ALEXA_TOOLS, isAlexaTool, executeAlexaTool, ALEXA_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/alexa-tools";

@@ -6,7 +6,7 @@ import {
 	callTwilioApi,
 	type PhoneConfig,
 } from "@/lib/services/phone-service";
-import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
+import { BaseTool, type ToolExecutionContext } from "./base-tool";
 
 export const PHONE_TOOL_NAMES = {
 	CALL: "builtin.phone_call",
@@ -153,5 +153,3 @@ export class PhoneTools extends BaseTool {
 export const isPhoneTool = PhoneTools.isTool.bind(PhoneTools);
 export const executeBuiltinPhoneTool = PhoneTools.executeBuiltin.bind(PhoneTools);
 
-export const phoneTools = new PhoneTools();
-registerToolCategory(phoneTools);

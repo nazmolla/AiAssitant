@@ -64,7 +64,8 @@ describe("GET /api/mcp/tools", () => {
     const builtinTools = data.filter((t: any) => t.source === "builtin");
     expect(builtinTools.length).toBeGreaterThan(0);
     const builtinNames = builtinTools.map((t: any) => t.name);
-    expect(builtinNames).toContain("builtin.email_send");
+    expect(builtinNames).toContain("builtin.channel_send");
+    expect(builtinNames).toContain("builtin.channel_receive");
     expect(builtinNames).toContain("builtin.file_generate");
 
     // Check grouping metadata
@@ -72,8 +73,8 @@ describe("GET /api/mcp/tools", () => {
     expect(webTools.length).toBeGreaterThan(0);
     expect(webTools[0].source).toBe("builtin");
 
-    const emailTools = data.filter((t: any) => t.group === "Email Tools");
-    expect(emailTools.length).toBeGreaterThan(0);
+    const communicationTools = data.filter((t: any) => t.group === "Communication Channels");
+    expect(communicationTools.length).toBeGreaterThan(0);
 
     const fileTools = data.filter((t: any) => t.group === "File Generation");
     expect(fileTools.length).toBeGreaterThan(0);

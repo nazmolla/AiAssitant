@@ -361,7 +361,8 @@ Workflow tools (`builtin.workflow_*`) provide the tool-layer abstraction for sch
 | `ProactiveScanTool` | `proactive-scan-tool.ts` | Owns `runProactiveScan()` logic (batch job orchestrates) |
 | `KnowledgeMaintenanceTool` | `knowledge-maintenance-tool.ts` | `runKnowledgeMaintenanceIfDue()` from `scheduler/knowledge-maintenance` |
 | `DbMaintenanceTool` | `db-maintenance-tool.ts` | `runDbMaintenanceIfDue()` from `db/maintenance` |
-| `EmailTools` | `email-tools.ts` | Owns `builtin.email_send`, `builtin.email_read`, and exports `runEmailReadBatch()` for batch orchestration |
+| `CommunicationTools` | `communication-tools.ts` | Owns `builtin.channel_send`, `builtin.channel_receive` across channel factory-backed transports |
+| `EmailReadTool` | `email-tools.ts` | Exports workflow email batch execution (`builtin.workflow_email_read`) |
 
 **Prompt tools** (`PromptTool` class in `prompt-tool.ts`) wrap a system prompt and execute via `runAgentLoop()`. Prompt text used across agent loop, multi-agent orchestration, scheduler batch jobs, proactive scans, knowledge extraction, voice conversation, and title generation is centralized in `src/lib/prompts/index.ts` for single-source maintenance.
 

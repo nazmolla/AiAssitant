@@ -30,7 +30,7 @@ describe("normalizeToolName", () => {
     expect(normalizeToolName("web_search")).toBe("builtin.web_search");
     expect(normalizeToolName("fs_read_file")).toBe("builtin.fs_read_file");
     expect(normalizeToolName("net_ping")).toBe("builtin.net_ping");
-    expect(normalizeToolName("email_send")).toBe("builtin.email_send");
+    expect(normalizeToolName("channel_send")).toBe("builtin.channel_send");
     expect(normalizeToolName("file_generate")).toBe("builtin.file_generate");
   });
 

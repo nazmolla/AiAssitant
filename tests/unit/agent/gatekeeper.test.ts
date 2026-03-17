@@ -17,7 +17,7 @@ import {
 } from "@/lib/db/queries";
 import { FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/fs-tools";
 import { NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/network-tools";
-import { EMAIL_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/email-tools";
+import { COMMUNICATION_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/communication-tools";
 import { ALEXA_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/alexa-tools";
 
 // Mock MCP manager so executeWithGatekeeper can call tools
@@ -144,8 +144,9 @@ describe("Tool policy seeding", () => {
     expect(policyNames).toContain("builtin.net_ping");
     expect(policyNames).toContain("builtin.net_scan_network");
 
-    // Email tools should have policies
-    expect(policyNames).toContain("builtin.email_send");
+    // Communication tools should have policies
+    expect(policyNames).toContain("builtin.channel_send");
+    expect(policyNames).toContain("builtin.channel_receive");
 
     // Custom toolmaker tools should have policies
     expect(policyNames).toContain("builtin.nexus_create_tool");
@@ -167,8 +168,8 @@ describe("Tool policy seeding", () => {
     const createTool = getToolPolicy("builtin.nexus_create_tool");
     expect(createTool?.requires_approval).toBe(1);
 
-    const emailSend = getToolPolicy("builtin.email_send");
-    expect(emailSend?.requires_approval).toBe(0);
+    const channelSend = getToolPolicy("builtin.channel_send");
+    expect(channelSend?.requires_approval).toBe(0);
 
     // Safe: no approval required
     const webSearch = getToolPolicy("builtin.web_search");
@@ -181,8 +182,9 @@ describe("Tool policy seeding", () => {
     expect(browserNav?.requires_approval).toBe(0);
   });
 
-  test("Email send tool is not in approval-required defaults", () => {
-    expect(EMAIL_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.email_send");
+  test("Communication tools are not in approval-required defaults", () => {
+    expect(COMMUNICATION_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.channel_send");
+    expect(COMMUNICATION_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.channel_receive");
   });
 
   test("Alexa mutating tools are defined in ALEXA_TOOLS_REQUIRING_APPROVAL", () => {

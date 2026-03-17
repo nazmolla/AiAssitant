@@ -476,9 +476,10 @@ function seedAllBuiltinToolPolicies(): void {
   })();
 }
 
-function ensureEmailToolPolicyDefaults(): void {
+function ensureCommunicationToolPolicyDefaults(): void {
   const db = getDb();
-  db.prepare("UPDATE tool_policies SET requires_approval = 0 WHERE tool_name = ?").run("builtin.email_send");
+  db.prepare("UPDATE tool_policies SET requires_approval = 0 WHERE tool_name = ?").run("builtin.channel_send");
+  db.prepare("UPDATE tool_policies SET requires_approval = 0 WHERE tool_name = ?").run("builtin.channel_receive");
 }
 
 function ensureScreenSharingColumn(): void {
@@ -899,7 +900,7 @@ export function initializeDatabase(): void {
   normalizeAgentLogLevels();
   ensureServerLoggingDefaults();
   seedAllBuiltinToolPolicies();
-  ensureEmailToolPolicyDefaults();
+  ensureCommunicationToolPolicyDefaults();
   encryptExistingSecrets();
   revokeExpiredKeys();
   warnIfDbShrunk();

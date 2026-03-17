@@ -27,8 +27,15 @@ export { webTools, WebTools, BUILTIN_WEB_TOOLS, isBuiltinWebTool, executeBuiltin
 export { browserTools, BrowserTools, BUILTIN_BROWSER_TOOLS, isBrowserTool, executeBrowserTool, BROWSER_TOOLS_REQUIRING_APPROVAL } from "./browser-tools";
 export { fsTools, FsTools, BUILTIN_FS_TOOLS, isFsTool, executeBuiltinFsTool, FS_TOOLS_REQUIRING_APPROVAL, FS_TOOL_NAMES } from "./fs-tools";
 export { networkTools, NetworkTools, BUILTIN_NETWORK_TOOLS, isNetworkTool, executeBuiltinNetworkTool, NETWORK_TOOLS_REQUIRING_APPROVAL, NET_TOOL_NAMES } from "./network-tools";
-export { emailTools, EmailTools, BUILTIN_EMAIL_TOOLS, isEmailTool, executeBuiltinEmailTool, EMAIL_TOOLS_REQUIRING_APPROVAL, EMAIL_TOOL_NAMES } from "./email-tools";
-export { phoneTools, PhoneTools, BUILTIN_PHONE_TOOLS, isPhoneTool, executeBuiltinPhoneTool, PHONE_TOOLS_REQUIRING_APPROVAL, PHONE_TOOL_NAMES } from "./phone-tools";
+export {
+  communicationTools,
+  CommunicationTools,
+  BUILTIN_COMMUNICATION_TOOLS,
+  isCommunicationTool,
+  executeBuiltinCommunicationTool,
+  COMMUNICATION_TOOLS_REQUIRING_APPROVAL,
+  COMMUNICATION_TOOL_NAMES,
+} from "./communication-tools";
 export { fileTools, FileTools, BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool, FILE_TOOLS_REQUIRING_APPROVAL, FILE_TOOL_NAMES } from "./file-tools";
 export {
   customTools, CustomTools,

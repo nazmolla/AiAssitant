@@ -144,10 +144,10 @@ describe("getToolRegistry (singleton)", () => {
     expect(a).toBe(b);
   });
 
-  test("registers all 11 built-in categories and custom", () => {
+  test("registers all 10 built-in categories and custom", () => {
     const registry = getToolRegistry();
-    // 11 built-in categories (web, browser, fs, multi_agent_dispatch, network, email, phone, file, alexa, workflow, custom) + 1 MCP = 12
-    expect(registry.size).toBe(12);
+    // 10 built-in categories (web, browser, fs, multi_agent_dispatch, network, communication, file, alexa, workflow, custom) + 1 MCP = 11
+    expect(registry.size).toBe(11);
   });
 
   test("finds category for each builtin tool type", () => {
@@ -156,7 +156,7 @@ describe("getToolRegistry (singleton)", () => {
     expect(registry.findCategory("builtin.browser_navigate")?.name).toBe("browser");
     expect(registry.findCategory("builtin.fs_read_file")?.name).toBe("fs");
     expect(registry.findCategory("builtin.net_ping")?.name).toBe("network");
-    expect(registry.findCategory("builtin.email_send")?.name).toBe("email");
+    expect(registry.findCategory("builtin.channel_send")?.name).toBe("communication");
     expect(registry.findCategory("builtin.file_generate")?.name).toBe("file");
     expect(registry.findCategory("builtin.alexa_announce")?.name).toBe("alexa");
     expect(registry.findCategory("builtin.workflow_proactive_scan")?.name).toBe("workflow");

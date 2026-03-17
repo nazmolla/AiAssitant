@@ -52,7 +52,8 @@ describe("GET /api/policies", () => {
     expect(data.length).toBeGreaterThan(0);
     const names = data.map((p: any) => p.tool_name);
     expect(names).toContain("builtin.web_search");
-    expect(names).toContain("builtin.email_send");
+    expect(names).toContain("builtin.channel_send");
+    expect(names).toContain("builtin.channel_receive");
     expect(names).toContain("builtin.nexus_create_tool");
     expect(names).toContain("demoMcp.list_devices");
   });

@@ -136,7 +136,7 @@ flowchart LR
 
 The system follows a **Sense-Think-Act** loop. It observes its environment through MCP servers, built-in web/browser/file-system tools, and communication channels — then acts autonomously grounded in per-user knowledge.
 
-This loop also supports end-to-end career workflows: discover relevant jobs from public listings (including LinkedIn links via web search), tailor a resume per role with file generation tools, and deliver a ready-to-submit package through the email tool.
+This loop also supports end-to-end career workflows: discover relevant jobs from public listings (including LinkedIn links via web search), tailor a resume per role with file generation tools, and deliver a ready-to-submit package through unified communication channel tools (`builtin.channel_send`).
 
 1. **Sense** — Receive input from web chat, Discord, WhatsApp, webhooks, or the proactive scheduler
 2. **Think** — Retrieve relevant knowledge via cache-first semantic search (skipped entirely if the user's knowledge vault is empty), construct a context-rich prompt, and call the LLM
@@ -365,7 +365,8 @@ src/
 │   │   ├── proactive-scan-tool.ts      # System tool: proactive scan
 │   │   ├── knowledge-maintenance-tool.ts # System tool: knowledge maintenance
 │   │   ├── db-maintenance-tool.ts      # System tool: DB maintenance
-│   │   ├── email-tools.ts              # Unified email tools (send/read + workflow email batch exports)
+│   │   ├── communication-tools.ts      # Unified communication channel tools (send/receive across channel types)
+│   │   ├── email-tools.ts              # Email channel internals + workflow email batch exports (not a standalone tool category)
 │   │   └── tool-cap.ts         # MAX_TOOLS_PER_REQUEST cap logic
 │   ├── auth/                   # Authentication
 │   │   ├── options.ts          # NextAuth config (multi-user)
