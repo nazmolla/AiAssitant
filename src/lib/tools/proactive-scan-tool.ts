@@ -26,12 +26,15 @@ import {
 } from "@/lib/db";
 import {
   type SchedulerBatchExecutionContext,
-  isQuietHours,
-  QUIET_HOURS_START,
-  QUIET_HOURS_END,
   getDefaultAdminUserId,
   mergeBatchContext,
 } from "@/lib/scheduler/shared";
+import {
+  buildProactiveScanMessagePrompt,
+  buildExplorationFollowupMessagePrompt,
+  PROACTIVE_PRIMARY_TASK_PROMPT,
+  PROACTIVE_FOLLOWUP_TASK_PROMPT,
+} from "@/lib/prompts";
 
 /* â”€â”€ Proactive Scan Prompt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
@@ -42,67 +45,13 @@ function buildProactiveScanMessage(
   lastToolsUsed: string[],
   mustTryTools: string[]
 ): string {
-  const now = new Date();
-  const quiet = isQuietHours();
-  const quietNote = quiet
-    ? `\n\n**QUIET HOURS ACTIVE (${QUIET_HOURS_START}:00â€“${QUIET_HOURS_END}:00)** â€” Do NOT use any audio-producing tools (announcements, TTS, playing media, increasing volume). Read-only queries and muting/lowering volume are fine.`
-    : "";
-
-  const serverSection = connectedServers.length > 0
-    ? `\n\n## Connected MCP servers (USE THESE â€” they are your primary data sources)\n${connectedServers.map((s) => `- **${s}** (call tools prefixed with \`${s}.\`)`).join("\n")}\nTotal MCP tools available: ${mcpToolCount}`
-    : "\n\n## No MCP servers connected\nYou have no external service integrations right now. Focus on built-in tools (web search, network scan, file system, email).";
-
-  const customSection = customToolNames.length > 0
-    ? `\n\n## Custom tools you created previously\n${customToolNames.map((n) => `- ${n}`).join("\n")}\nConsider using these if relevant.`
-    : "";
-
-  const noveltySection = lastToolsUsed.length > 0
-    ? `\n\n## Novelty requirement\nLast scan used: ${lastToolsUsed.slice(0, 8).join(", ")}.\nThis scan MUST include at least one different discovery/action path. Do not only repeat last scan's exact tools unless no alternatives exist.`
-    : "";
-
-  const mustTrySection = mustTryTools.length > 0
-    ? `\n\n## Mandatory exploration candidates (policy-safe first)\nChoose at least ONE of these tools in this scan: ${mustTryTools.join(", ")}.\nIf one fails, immediately try the next candidate.`
-    : "";
-
-  return `[Proactive Scan â€” ${now.toISOString()}]
-
-You are running as the Nexus proactive observer. This is an autonomous background scan â€” no human is in this conversation. Your job is to actively discover, monitor, and improve the owner's smart home and environment.${serverSection}${customSection}${noveltySection}${mustTrySection}
-
-## Your approach â€” Multi-round discovery
-You MUST call tools to do real work. A scan that does not call any tools is a FAILED scan. Follow these steps:
-
-1. **Discover**: Call tools to list devices, get states, check sensors, query services. Start with broad discovery tools (e.g. list all devices, get entity states, check what's available in each connected service).
-2. **Gather**: Based on discovery results, call more specific tools to get detailed status, readings, or metrics that look interesting or need attention.
-3. **Analyze**: Compare what you found against the owner's known preferences, time of day, patterns, and common sense.
-4. **Act**: If something needs action â€” do it (or create an approval request for destructive actions). Examples: adjust thermostat, turn off forgotten lights, announce a reminder, send a notification.
-5. **Learn**: If you discover a recurring pattern that could benefit from a custom tool, create one using nexus_create_tool. If an existing custom tool has issues, update it with nexus_update_tool.
-
-## What to look for
-- Smart home device states (lights left on, thermostat settings, door/window sensors, media players)
-- Environmental data (temperature, humidity, weather, air quality)
-- Service health (MCP server connectivity, device online/offline status)
-- Opportunities for automation (time-based routines, energy savings, comfort optimization)
-- Anomalies or unexpected states (devices in wrong state for time of day, unusual readings)
-- Media server status, recently added content, playback state
-- Network device status
-- Camera fleet discovery and capability mapping (RTSP/ONVIF/API surfaces where available)
-- Occupancy inference opportunities using available infrastructure (motion, wifi presence, media activity, room signals)
-
-## Rules
-- **You MUST call at least one tool** â€” start by calling a listing/discovery tool from the connected MCP servers above
-- **You MUST perform at least one exploratory step that was NOT in the previous scan** unless every alternative tool fails
-- **NEVER ask questions.** No human is reading this. Do not end your thoughts with questions like "Should Iâ€¦?", "Would the owner preferâ€¦?", or "Is this worth investigating?". Instead, decide and act. You are the proactive agent â€” make the call yourself based on context, owner preferences, time of day, and common sense.
-- If a tool fails or a service is disconnected, note it and move on â€” don't treat transient failures as disasters
-- Smart home / IoT events are NEVER "disaster" severity
-- Do NOT send notifications about tool failures or service hiccups
-- Combine data from multiple sources for cross-service intelligence (e.g. weather + thermostat + time of day)
-- After gathering data, ALWAYS provide a summary of what you found and any actions taken â€” state facts and decisions, never questions${quietNote}
-
-## Policy behavior
-- Respect tool policy settings strictly. If a tool is configured with approval OFF, execute it directly.
-- Prefer no-approval tools for broad exploration first, then escalate to approval-required tools only when necessary for meaningful progress.
-
-Begin your proactive scan now. Start by calling discovery tools on each connected MCP server.`;
+  return buildProactiveScanMessagePrompt(
+    connectedServers,
+    mcpToolCount,
+    customToolNames,
+    lastToolsUsed,
+    mustTryTools,
+  );
 }
 
 /* â”€â”€ Exploration Strategy Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -162,17 +111,7 @@ function shouldRunExplorationFollowup(
 }
 
 function buildExplorationFollowupMessage(connectedServers: string[], mustTryTools: string[]): string {
-  const serverList = connectedServers.length > 0 ? connectedServers.join(", ") : "none";
-  return `[Proactive Exploration Follow-up]
-Previous proactive pass was too repetitive or shallow.
-
-You must run a focused exploration pass now.
-- Connected servers: ${serverList}
-- Mandatory: execute at least one network/camera/occupancy discovery action.
-- Mandatory: if available, attempt one toolmaker action (nexus_create_tool or nexus_update_tool) that improves camera/occupancy intelligence.
-- Candidate tools: ${mustTryTools.length > 0 ? mustTryTools.join(", ") : "Use any available discovery/toolmaker tools"}
-
-Do not repeat the previous summary pattern. Produce concrete discoveries, actions taken, and next automation opportunities.`;
+  return buildExplorationFollowupMessagePrompt(connectedServers, mustTryTools);
 }
 
 /* â”€â”€ Proactive Scan Execution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -261,7 +200,7 @@ async function runProactiveScanInner(): Promise<ProactiveScanResult> {
   // the task as failed and surface the error to the user rather than silently
   // completing with empty output.
   const primaryResult = await orchestrator.run(
-    "Perform a proactive smart home and environment scan: discover device states, check for anomalies, take appropriate actions, and report findings.",
+    PROACTIVE_PRIMARY_TASK_PROMPT,
     {
       userId: defaultAdminUserId,
       threadId: scanThread.id,
@@ -284,7 +223,7 @@ async function runProactiveScanInner(): Promise<ProactiveScanResult> {
     followupThreadId = followupThread.id;
     const followupOrchestrator = new OrchestratorAgent(registry);
     const followupResult = await followupOrchestrator.run(
-      "Perform a targeted exploration pass: focus on network/camera/occupancy discovery and toolmaker actions.",
+      PROACTIVE_FOLLOWUP_TASK_PROMPT,
       {
         userId: defaultAdminUserId,
         threadId: followupThread.id,

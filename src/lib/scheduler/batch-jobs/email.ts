@@ -21,21 +21,7 @@ import {
   type LogFn,
 } from "./base";
 import { OrchestratorAgent, AgentRegistry } from "@/lib/agent/multi-agent";
-
-/* ── Email management task description for the orchestrator ───── */
-
-const EMAIL_TASK =
-  "Manage the email inbox: scan for unread messages, classify each by sender and intent, " +
-  "and respond appropriately.\n\n" +
-  "Steps to complete:\n" +
-  "1. Scan: Use email_manager to fetch all unread emails from every configured channel. " +
-  "List each email with sender, subject, date, and a short body snippet.\n" +
-  "2. Classify: For each email determine sender type (registered user / external), " +
-  "intent (question / request / notification / complaint / spam / other), urgency, and required action.\n" +
-  "3. Respond: Send replies to emails from known registered users. " +
-  "For unknown external senders, notify the admin with a summary.\n" +
-  "4. Report: Finish with a concise summary — how many emails processed, how many replies sent, " +
-  "and any items needing manual follow-up.";
+import { EMAIL_BATCH_TASK_PROMPT } from "@/lib/prompts";
 
 export class EmailBatchJob extends BatchJob {
   readonly type = "email" as const;
@@ -84,7 +70,7 @@ export class EmailBatchJob extends BatchJob {
     const registry = AgentRegistry.getInstance();
     const orchestrator = new OrchestratorAgent(registry);
     const result = await orchestrator.run(
-      additionalContext ? `${EMAIL_TASK}\n\n## User context\n${additionalContext}` : EMAIL_TASK,
+      additionalContext ? `${EMAIL_BATCH_TASK_PROMPT}\n\n## User context\n${additionalContext}` : EMAIL_BATCH_TASK_PROMPT,
       { userId, threadId: runThreadId },
     );
 

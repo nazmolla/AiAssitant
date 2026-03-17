@@ -363,7 +363,7 @@ Workflow tools (`builtin.workflow_*`) provide the tool-layer abstraction for sch
 | `DbMaintenanceTool` | `db-maintenance-tool.ts` | `runDbMaintenanceIfDue()` from `db/maintenance` |
 | `EmailTools` | `email-tools.ts` | Owns `builtin.email_send`, `builtin.email_read`, and exports `runEmailReadBatch()` for batch orchestration |
 
-**Prompt tools** (`PromptTool` class in `prompt-tool.ts`) wrap a system prompt and execute via `runAgentLoop()`. The class is generic/reusable; instances are created by the batch jobs that use them (e.g. `job-scout.ts` creates 5 PromptTool instances for search/extract/prepare/validate/digest).
+**Prompt tools** (`PromptTool` class in `prompt-tool.ts`) wrap a system prompt and execute via `runAgentLoop()`. Prompt text used across agent loop, multi-agent orchestration, scheduler batch jobs, proactive scans, knowledge extraction, voice conversation, and title generation is centralized in `src/lib/prompts/index.ts` for single-source maintenance.
 
 **`WorkflowTools`** (`workflow-tools.ts`) is a composite `BaseTool` that aggregates all system tools via dependency injection. Its constructor accepts `children: ToolCategory[]` (defaults to the 4 system tools). Dispatch uses polymorphic `child.matches(toolName)` — no switch statements.
 
@@ -406,11 +406,11 @@ Multi-layered defense against prompt injection across all input vectors:
 
 | Layer | Defense | Location |
 |-------|---------|----------|
-| **System Prompt Hardening** | Anti-injection rules instruct the LLM to never follow instructions found in tool results, knowledge entries, or external messages | `loop.ts` |
+| **System Prompt Hardening** | Anti-injection rules instruct the LLM to never follow instructions found in tool results, knowledge entries, or external messages | `prompts/index.ts`, `loop.ts` |
 | **Untrusted Content Tagging** | Tool results from web/browser tools wrapped in `<untrusted_external_content>` XML tags | `loop.ts` |
 | **Knowledge Vault Isolation** | Knowledge context delimited with `<knowledge_context type="user_data">` trust boundary; entries marked as DATA, not instructions | `loop.ts` |
 | **Knowledge Entry Validation** | `looksLikeInjection()` scans for 14 injection patterns and blocks suspicious entries from being stored | `knowledge/index.ts` |
-| **Knowledge Extraction Hardening** | User text wrapped in `<document>` tags; extraction prompt instructs LLM to ignore directives within documents | `knowledge/index.ts` |
+| **Knowledge Extraction Hardening** | User text wrapped in `<document>` tags; extraction prompt instructs LLM to ignore directives within documents | `prompts/index.ts`, `knowledge/index.ts` |
 | **Vault Poisoning Prevention** | Web/browser tool results excluded from knowledge ingestion pipeline | `loop.ts` |
 | **External Message Tagging** | Discord and webhook messages tagged with `[External Channel Message from ...]` origin marker | `discord-channel.ts`, `webhook/route.ts` |
 | **Historical Context Re-tagging** | Tool results reconstructed from DB history re-tagged as untrusted | `loop.ts` |

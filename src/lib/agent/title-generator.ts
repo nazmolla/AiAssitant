@@ -9,6 +9,7 @@ import {
   addLog,
 } from "@/lib/db";
 import { selectBackgroundProvider } from "@/lib/llm";
+import { buildThreadTitleUserPrompt, THREAD_TITLE_SYSTEM_PROMPT } from "@/lib/prompts";
 
 /**
  * Auto-generate a short descriptive thread title from the first user message + response.
@@ -35,11 +36,11 @@ export async function maybeUpdateThreadTitle(
         [
           {
             role: "user",
-            content: `Generate a very short title (3-6 words, no quotes, no punctuation at the end) that summarizes this conversation topic:\n\nUser: ${msg}\nAssistant: ${assistantResponse.slice(0, 300)}`,
+            content: buildThreadTitleUserPrompt(msg, assistantResponse),
           },
         ],
         undefined,
-        "You generate ultra-concise chat thread titles. Reply with ONLY the title, nothing else. No quotes, no period."
+        THREAD_TITLE_SYSTEM_PROMPT
       );
       title = (titleResponse.content || "").replace(/^["']|["']$/g, "").replace(/\.+$/, "").trim();
     } catch (err) {

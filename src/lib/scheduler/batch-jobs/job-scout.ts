@@ -10,19 +10,7 @@ import {
   type LogFn,
 } from "./base";
 import { OrchestratorAgent, AgentRegistry } from "@/lib/agent/multi-agent";
-
-/* ── Job Scout task description for the orchestrator ───────────── */
-
-const JOB_SCOUT_TASK =
-  "Scout for job opportunities matching the user's profile and career preferences.\n\n" +
-  "Steps to complete:\n" +
-  "1. Research: Find current job listings matching the user's skills, role preferences, and location. " +
-  "Use web_researcher to search multiple job boards (Indeed, LinkedIn, Glassdoor, Google Jobs).\n" +
-  "2. Analyse: Extract details from the best matches — requirements, compensation, culture fit.\n" +
-  "3. Prepare: Draft tailored application materials (resume bullets, cover letter outline) for top matches. " +
-  "Use resume_writer.\n" +
-  "4. Validate: Score and shortlist opportunities by fit and potential.\n" +
-  "5. Notify: Compose and send a digest summary of top matches via email_manager.";
+import { JOB_SCOUT_TASK_PROMPT } from "@/lib/prompts";
 
 export class JobScoutBatchJob extends BatchJob {
   readonly type = "job_scout" as const;
@@ -71,7 +59,7 @@ export class JobScoutBatchJob extends BatchJob {
     const registry = AgentRegistry.getInstance();
     const orchestrator = new OrchestratorAgent(registry);
     const result = await orchestrator.run(
-      additionalContext ? `${JOB_SCOUT_TASK}\n\n## User context\n${additionalContext}` : JOB_SCOUT_TASK,
+      additionalContext ? `${JOB_SCOUT_TASK_PROMPT}\n\n## User context\n${additionalContext}` : JOB_SCOUT_TASK_PROMPT,
       { userId, threadId: runThreadId },
     );
 

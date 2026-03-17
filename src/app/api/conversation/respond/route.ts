@@ -25,6 +25,7 @@ import {
   VOICE_TURN_TIMEOUT_MS,
 } from "@/lib/constants";
 import { createSSEStream, sseResponse, sseEvent } from "@/lib/sse";
+import { CONVERSATION_SYSTEM_PROMPT } from "@/lib/prompts";
 
 /**
  * POST /api/conversation/respond
@@ -58,15 +59,6 @@ import { createSSEStream, sseResponse, sseEvent } from "@/lib/sse";
  */
 
 export const dynamic = "force-dynamic";
-
-const CONVERSATION_SYSTEM_PROMPT = `You are Nexus, a helpful voice assistant having a natural spoken conversation.
-Keep responses concise and conversational — you're speaking, not writing.
-Avoid markdown formatting, code blocks, bullet points, and numbered lists unless the user explicitly asks for them.
-Be warm, direct, and to the point. Respond as if you were talking face-to-face.
-If the user asks a complex question, give a clear summary rather than a wall of text.
-Keep most responses under 3-4 sentences unless the topic requires depth.
-You have access to tools — use them when the user asks you to do something actionable (smart home, web search, network ops, etc.).
-After using a tool, summarize what happened conversationally.`;
 
 /** Yield the event loop so other requests can be processed */
 const yieldLoop = () => new Promise<void>((r) => setImmediate(r));
