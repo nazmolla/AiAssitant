@@ -16,7 +16,7 @@ export const createLlmProviderSchema = z.object({
     errorMap: () => ({ message: "provider_type is invalid." }),
   }),
   purpose: z.enum(["chat", "embedding", "tts", "stt"]).default("chat"),
-  config: z.record(z.unknown()).refine((v) => v !== null, "config must be an object."),
+  config: z.record(z.string(), z.unknown()),
   is_default: z.boolean().optional().default(false),
 });
 
