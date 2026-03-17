@@ -9,6 +9,8 @@
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+# Playwright saved auth sessions — contain live session cookies, never commit
+/tests/e2e/.auth/
 
 # next.js
 /.next/

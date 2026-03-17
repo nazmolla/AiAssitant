@@ -1,17 +1,18 @@
 /**
  * E2E tests for the sign-in page — interaction-level, not just render.
  *
- * These tests verify:
- * - The sign-in form has functional email and password fields
- * - Submitting with empty fields keeps the user on the sign-in page (no silent redirect)
- * - Submitting with obviously wrong credentials shows an error (not a crash)
+ * These tests intentionally clear the stored auth session so they always see
+ * the actual sign-in form, regardless of whether other tests saved a session.
  *
  * Does NOT require valid test credentials — all tests use invalid or empty values
- * intentionally to confirm error-path behaviour.
+ * to confirm error-path behaviour.
  */
 import { test, expect } from "@playwright/test";
 
 test.describe("Sign-in page — form interactions", () => {
+  // Clear any stored session so these tests always hit the real sign-in form.
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test.beforeEach(async ({ page }) => {
     await page.goto("/auth/signin", { waitUntil: "networkidle" });
   });
