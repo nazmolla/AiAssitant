@@ -19,7 +19,7 @@ import { BaseTool, type ToolCategory, type ToolExecutionContext, registerToolCat
 import { proactiveScanTool } from "./proactive-scan-tool";
 import { knowledgeMaintenanceTool } from "./knowledge-maintenance-tool";
 import { dbMaintenanceTool } from "./db-maintenance-tool";
-import { emailReadTool } from "./email-tools";
+import { emailReadTool } from "./workflow-email-read-tool";
 
 /**
  * All system workflow tools, injected as proper BaseTool instances.

@@ -53,7 +53,7 @@ export {
 export { proactiveScanTool, ProactiveScanTool } from "./proactive-scan-tool";
 export { knowledgeMaintenanceTool, KnowledgeMaintenanceTool } from "./knowledge-maintenance-tool";
 export { dbMaintenanceTool, DbMaintenanceTool } from "./db-maintenance-tool";
-export { emailReadTool, EmailReadTool } from "./email-tools";
+export { emailReadTool, EmailReadTool } from "./workflow-email-read-tool";
 export { dispatchAgentTool, DispatchAgentTool } from "./dispatch-agent-tool";
 
 export { buildCappedToolList, MAX_TOOLS_PER_REQUEST } from "./tool-cap";

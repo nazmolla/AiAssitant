@@ -50,9 +50,7 @@ jest.mock("@/lib/tools/web-tools", () => ({ BUILTIN_WEB_TOOLS: [] }));
 jest.mock("@/lib/tools/browser-tools", () => ({ BUILTIN_BROWSER_TOOLS: [] }));
 jest.mock("@/lib/tools/fs-tools", () => ({ BUILTIN_FS_TOOLS: [] }));
 jest.mock("@/lib/tools/network-tools", () => ({ BUILTIN_NETWORK_TOOLS: [] }));
-jest.mock("@/lib/tools/email-tools", () => ({
-  BUILTIN_EMAIL_TOOLS: [],
-  EMAIL_TOOLS_REQUIRING_APPROVAL: [],
+jest.mock("@/lib/tools/workflow-email-read-tool", () => ({
   emailReadTool: {
     tools: [],
     toolsRequiringApproval: [],
