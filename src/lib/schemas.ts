@@ -23,7 +23,7 @@ export type CreateLlmProviderInput = z.infer<typeof createLlmProviderSchema>;
 /* ── Knowledge ────────────────────────────────────────────────── */
 
 export const updateKnowledgeSchema = z.object({
-  id: z.coerce.number({ required_error: "id is required." }),
+  id: z.coerce.number(),
   value: z.string().optional(),
   entity: z.string().optional(),
   attribute: z.string().optional(),
