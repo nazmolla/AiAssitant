@@ -215,78 +215,48 @@ describe("scheduler engine: job scout pipeline", () => {
     });
   });
 
-  test("all three steps execute via the agent loop and share a single pipeline thread", async () => {
+  test("single orchestrated task executes via the agent loop", async () => {
     insertSchedule("sched-e5", "Job Scout Pipeline", "workflow.job_scout");
-    insertTask("task-e5-1", "sched-e5", "search",  "Search Listings",     "workflow.job_scout.search",  0, null);
-    insertTask("task-e5-2", "sched-e5", "extract", "Extract Role Details", "workflow.job_scout.extract", 1, "task-e5-1");
-    insertTask("task-e5-3", "sched-e5", "prepare", "Prepare Resume",       "workflow.job_scout.prepare", 2, "task-e5-2");
+    insertTask("task-e5-1", "sched-e5", "run", "Job Scout", "workflow.job_scout.run", 0, null);
 
     const run = createSchedulerRun("sched-e5", "api");
     createSchedulerTaskRun(run.id, "task-e5-1");
-    createSchedulerTaskRun(run.id, "task-e5-2");
-    createSchedulerTaskRun(run.id, "task-e5-3");
 
     await runUnifiedSchedulerEngineTickForTests();
 
     const taskRuns = getSchedulerTaskRunsForRun(run.id);
-    expect(taskRuns).toHaveLength(3);
-    expect(taskRuns[0].status).toBe("success"); // search
-    expect(taskRuns[1].status).toBe("success"); // extract (depends on search)
-    expect(taskRuns[2].status).toBe("success"); // prepare (depends on extract)
+    expect(taskRuns).toHaveLength(1);
+    expect(taskRuns[0].status).toBe("success");
 
-    // All three steps call the agent loop. The search step may also trigger
-    // a retry via the pipeline orchestrator (when the mocked loop doesn't write
-    // messages to the DB), so we expect at least 3 calls.
-    expect((runAgentLoop as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(3);
+    // OrchestratorAgent calls runAgentLoop at least once.
+    expect((runAgentLoop as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(1);
 
-    const calls = (runAgentLoop as jest.Mock).mock.calls as [string, string, ...unknown[]][];
-    const allThreadIds = calls.map(([tid]) => tid);
-    // All calls (including retries) share the same conversation thread.
-    const uniqueThreadIds = [...new Set(allThreadIds)];
-    expect(uniqueThreadIds).toHaveLength(1);
-
-    // Each step's prompt contains its step keyword.
-    // The orchestrator may insert retry calls, so check that we see
-    // at least one call for each step keyword.
-    const allPrompts = calls.map(([, prompt]) => prompt.toLowerCase());
-    expect(allPrompts.some((p) => p.includes("search"))).toBe(true);
-    expect(allPrompts.some((p) => p.includes("extract") || p.includes("review"))).toBe(true);
-    expect(allPrompts.some((p) => p.includes("prepare") || p.includes("resume"))).toBe(true);
-
-    // Output JSON records the step key, thread id, and tool usage.
-    const output0 = JSON.parse(taskRuns[0].output_json ?? "{}") as { kind: string; stepKey: string; threadId: string; toolsUsed: string[] };
-    expect(output0.kind).toBe("job_scout_pipeline");
-    expect(output0.stepKey).toBe("search");
-    expect(output0.threadId).toBe(uniqueThreadIds[0]);
-    expect(output0.toolsUsed).toEqual(["builtin.web_search", "builtin.browser_navigate"]);
+    // Output JSON records orchestration metadata.
+    const output0 = JSON.parse(taskRuns[0].output_json ?? "{}") as { kind: string; threadId: string };
+    expect(output0.kind).toBe("job_scout_orchestrated");
+    expect(typeof output0.threadId).toBe("string");
   });
 
-  test("job scout step failure cascades: extract skipped when search fails", async () => {
+  test("job scout task failure marks task as failed", async () => {
     (runAgentLoop as jest.Mock).mockRejectedValueOnce(new Error("LLM timeout"));
-    (runAgentLoop as jest.Mock).mockResolvedValue({ content: "ok", toolsUsed: 0, pendingApprovals: [] });
 
     insertSchedule("sched-e6", "Job Scout Failure Test", "workflow.job_scout");
-    insertTask("task-e6-1", "sched-e6", "search",  "Search Listings",     "workflow.job_scout.search",  0, null);
-    insertTask("task-e6-2", "sched-e6", "extract", "Extract Role Details", "workflow.job_scout.extract", 1, "task-e6-1");
+    insertTask("task-e6-1", "sched-e6", "run", "Job Scout", "workflow.job_scout.run", 0, null);
 
     const run = createSchedulerRun("sched-e6", "api");
     createSchedulerTaskRun(run.id, "task-e6-1");
-    createSchedulerTaskRun(run.id, "task-e6-2");
 
     await runUnifiedSchedulerEngineTickForTests();
 
     const taskRuns = getSchedulerTaskRunsForRun(run.id);
-    expect(taskRuns[0].status).toBe("failed");  // search: LLM error
-    expect(taskRuns[1].status).toBe("skipped"); // extract: search failed
-
-    expect(taskRuns[1].error_message).toContain('"failed"');
+    expect(taskRuns[0].status).toBe("failed");
   });
 
-  test("custom prompt in config_json is appended as additional context to the step prompt", async () => {
-    const customPrompt = "Custom search prompt for senior backend roles";
+  test("custom prompt in config_json is passed as additional context to orchestrator", async () => {
+    const customPrompt = "Find senior backend engineer roles paying $150k+";
     insertSchedule("sched-e7", "Custom Prompt Test", "workflow.job_scout");
     insertTask(
-      "task-e7-1", "sched-e7", "search", "Search Listings", "workflow.job_scout.search", 0, null,
+      "task-e7-1", "sched-e7", "run", "Job Scout", "workflow.job_scout.run", 0, null,
       JSON.stringify({ prompt: customPrompt }),
     );
 
@@ -299,9 +269,8 @@ describe("scheduler engine: job scout pipeline", () => {
     expect(taskRuns[0].status).toBe("success");
 
     const calls = (runAgentLoop as jest.Mock).mock.calls as [string, string, ...unknown[]][];
-    // The prompt tool appends custom prompt as additional context to the system prompt
+    // The orchestrator passes the custom prompt as additional context in its task message
     expect(calls[0][1]).toContain(customPrompt);
-    expect(calls[0][1]).toContain("search");
   });
 });
 
@@ -373,9 +342,9 @@ describe("scheduler engine: owner_id validation (regression for #103)", () => {
       .run(
         "task-no-owner-search",
         "sched-no-owner-job-scout",
-        "search",
-        "Search Listings",
-        "workflow.job_scout.search",
+        "run",
+        "Job Scout",
+        "workflow.job_scout.run",
         0,
         JSON.stringify({}),
       );
@@ -387,7 +356,6 @@ describe("scheduler engine: owner_id validation (regression for #103)", () => {
 
     const taskRun = getSchedulerTaskRunsForRun(run.id)[0];
     expect(taskRun.status).toBe("failed");
-    expect(taskRun.error_message).toContain("Missing userId for job scout step");
-    expect(taskRun.error_message).toContain("search");
+    expect(taskRun.error_message).toContain("Missing userId for job scout");
   });
 });

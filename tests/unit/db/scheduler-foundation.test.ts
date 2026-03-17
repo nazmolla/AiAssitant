@@ -54,6 +54,6 @@ describe("unified scheduler foundation schema", () => {
        WHERE schedule_id = (SELECT id FROM scheduler_schedules WHERE schedule_key = 'workflow.job_scout.pipeline')`
     ).get() as { c: number };
 
-    expect(jobScoutTaskCount.c).toBe(5);
+    expect(jobScoutTaskCount.c).toBe(1);
   });
 });

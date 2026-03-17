@@ -176,8 +176,8 @@ describe("scheduler API endpoints", () => {
     const task = db
       .prepare("SELECT handler_name FROM scheduler_tasks WHERE schedule_id = ? ORDER BY sequence_no LIMIT 1")
       .get(body.schedule_id) as { handler_name: string } | undefined;
-    // Email batch now uses a 3-step pipeline; first step is inbox scan
-    expect(task?.handler_name).toBe("workflow.email.inbox_scan");
+    // Email batch now uses orchestrator-driven single handler
+    expect(task?.handler_name).toBe("workflow.email.run");
   });
 
   test("GET schedule detail returns schedule, tasks, recent_runs", async () => {
@@ -440,9 +440,9 @@ describe("scheduler API: trigger with owner binding (regression for #103, #104)"
     ).run(
       "task-unowned-search",
       "sched-unowned-scout",
-      "search",
-      "Search Listings",
-      "workflow.job_scout.search",
+      "run",
+      "Job Scout Run",
+      "workflow.job_scout.run",
       0,
       JSON.stringify({}),
     );
@@ -477,9 +477,9 @@ describe("scheduler API: trigger with owner binding (regression for #103, #104)"
     ).run(
       "task-owned-search",
       "sched-owned-scout",
-      "search",
-      "Search Listings",
-      "workflow.job_scout.search",
+      "run",
+      "Job Scout Run",
+      "workflow.job_scout.run",
       0,
       JSON.stringify({}),
     );
@@ -526,9 +526,9 @@ describe("scheduler API: trigger with owner binding (regression for #103, #104)"
     ).run(
       "task-preowned-search",
       "sched-preowned-scout",
-      "search",
-      "Search Listings",
-      "workflow.job_scout.search",
+      "run",
+      "Job Scout Run",
+      "workflow.job_scout.run",
       0,
       JSON.stringify({}),
     );
@@ -594,7 +594,7 @@ describe("scheduler API: batch job creation (Phase 2 — Job Scout workflow)", (
       expect(schedule.owner_id).toBe(adminId); // Created by admin
     });
 
-    test("Job Scout batch creation includes all five pipeline tasks", async () => {
+    test("Job Scout batch creation includes the single orchestrated task", async () => {
       const req = new NextRequest("http://localhost/api/scheduler/schedules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -621,28 +621,12 @@ describe("scheduler API: batch job creation (Phase 2 — Job Scout workflow)", (
         )
         .all(body.schedule_id) as any[];
 
-      expect(tasks).toHaveLength(5);
+      expect(tasks).toHaveLength(1);
 
-      // Verify task sequence
-      expect(tasks[0].task_key).toBe("search");
-      expect(tasks[0].handler_name).toBe("workflow.job_scout.search");
+      // Verify task properties
+      expect(tasks[0].task_key).toBe("run");
+      expect(tasks[0].handler_name).toBe("workflow.job_scout.run");
       expect(tasks[0].depends_on_task_id).toBeNull();
-
-      expect(tasks[1].task_key).toBe("extract");
-      expect(tasks[1].handler_name).toBe("workflow.job_scout.extract");
-      expect(tasks[1].depends_on_task_id).toBe(tasks[0].id);
-
-      expect(tasks[2].task_key).toBe("prepare");
-      expect(tasks[2].handler_name).toBe("workflow.job_scout.prepare");
-      expect(tasks[2].depends_on_task_id).toBe(tasks[1].id);
-
-      expect(tasks[3].task_key).toBe("validate");
-      expect(tasks[3].handler_name).toBe("workflow.job_scout.validate");
-      expect(tasks[3].depends_on_task_id).toBe(tasks[2].id);
-
-      expect(tasks[4].task_key).toBe("email");
-      expect(tasks[4].handler_name).toBe("workflow.job_scout.email");
-      expect(tasks[4].depends_on_task_id).toBe(tasks[3].id);
     });
 
     test("Full user journey: create Job Scout batch, then transfer to target user via trigger", async () => {
@@ -710,7 +694,7 @@ describe("scheduler API: batch job creation (Phase 2 — Job Scout workflow)", (
       const taskRuns = db
         .prepare("SELECT COUNT(*) as count FROM scheduler_task_runs WHERE run_id = ?")
         .get(triggerBody.run_id) as { count: number };
-      expect(taskRuns.count).toBe(5); // All five Job Scout tasks
+      expect(taskRuns.count).toBe(1); // Single orchestrated Job Scout task
     });
 
     test("Job Scout batch with custom task override", async () => {
@@ -725,23 +709,14 @@ describe("scheduler API: batch job creation (Phase 2 — Job Scout workflow)", (
           trigger_expr: "every:1:day",
           tasks: [
             {
-              task_key: "search",
-              name: "Search for Backend Roles",
-              handler_name: "workflow.job_scout.search",
+              task_key: "run",
+              name: "Job Scout with Custom Context",
+              handler_name: "workflow.job_scout.run",
               execution_mode: "sync",
               sequence_no: 0,
               enabled: 1,
               task_type: "prompt",
               prompt: customPrompt,
-            },
-            {
-              task_key: "extract",
-              name: "Extract Details",
-              handler_name: "workflow.job_scout.extract",
-              execution_mode: "sync",
-              sequence_no: 1,
-              enabled: 1,
-              depends_on_task_key: "search",
             },
           ],
         }),
@@ -751,7 +726,7 @@ describe("scheduler API: batch job creation (Phase 2 — Job Scout workflow)", (
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      // Verify custom tasks were used instead of defaults
+      // Verify custom task was used instead of default
       const db = getDb();
       const tasks = db
         .prepare(
@@ -762,8 +737,8 @@ describe("scheduler API: batch job creation (Phase 2 — Job Scout workflow)", (
         )
         .all(body.schedule_id) as any[];
 
-      expect(tasks).toHaveLength(2); // Only 2 custom tasks, not the default 5
-      expect(tasks[0].task_key).toBe("search");
+      expect(tasks).toHaveLength(1); // Single custom task
+      expect(tasks[0].task_key).toBe("run");
 
       const config = JSON.parse(tasks[0].config_json || "{}");
       expect(config.prompt).toBe(customPrompt);

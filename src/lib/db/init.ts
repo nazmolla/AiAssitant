@@ -847,11 +847,7 @@ function ensureSystemUnifiedSchedules(): void {
     );
 
     const pipelineTasks = [
-      { key: "search", name: "Search listings", handler: "workflow.job_scout.search" },
-      { key: "extract", name: "Extract role details", handler: "workflow.job_scout.extract" },
-      { key: "prepare", name: "Prepare tailored resume", handler: "workflow.job_scout.prepare" },
-      { key: "validate", name: "Validate shortlist", handler: "workflow.job_scout.validate" },
-      { key: "email", name: "Send digest email", handler: "workflow.job_scout.email" },
+      { key: "run", name: "Job Scout", handler: "workflow.job_scout.run" },
     ];
 
     for (let i = 0; i < pipelineTasks.length; i += 1) {

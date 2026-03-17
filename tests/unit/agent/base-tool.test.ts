@@ -130,8 +130,8 @@ describe("registerToolCategory / getRegisteredToolCategories", () => {
 // ---------------------------------------------------------------------------
 
 describe("ALL_TOOL_CATEGORIES (auto-discovered)", () => {
-  test("contains exactly 10 built-in categories", () => {
-    expect(ALL_TOOL_CATEGORIES).toHaveLength(10);
+  test("contains exactly 11 built-in categories", () => {
+    expect(ALL_TOOL_CATEGORIES).toHaveLength(11);
   });
 
   test("all categories are BaseTool instances", () => {
@@ -143,7 +143,7 @@ describe("ALL_TOOL_CATEGORIES (auto-discovered)", () => {
   test("contains expected category names in order", () => {
     const names = ALL_TOOL_CATEGORIES.map((c) => c.name);
     expect(names).toEqual([
-      "web", "browser", "fs", "network", "email", "phone", "file", "alexa", "workflow", "custom",
+      "web", "browser", "fs", "multi_agent_dispatch", "network", "email", "phone", "file", "alexa", "workflow", "custom",
     ]);
   });
 
@@ -181,4 +181,5 @@ describe("ALL_TOOL_CATEGORIES (auto-discovered)", () => {
       expect(customCat!.registrationOrder).toBeGreaterThan(cat.registrationOrder);
     }
   });
+});
 });

@@ -16,7 +16,6 @@
 import type { ToolDefinition } from "@/lib/llm";
 import { BaseTool, type ToolExecutionContext } from "./base-tool";
 import { getMcpManager } from "@/lib/mcp";
-import { runAgentLoop } from "@/lib/agent";
 import { getCustomToolDefinitions } from "@/lib/tools/custom-tools";
 import {
   getToolPolicy,
@@ -252,89 +251,84 @@ async function runProactiveScanInner(): Promise<ProactiveScanResult> {
     }),
   });
 
-  const onStatus = (status: { step: string; detail?: string }) => {
-    addLog({
-      level: "thought",
-      source: "thought",
-      message: `[Proactive] ${status.step}${status.detail ? ` â€” ${status.detail}` : ""}`,
-      metadata: JSON.stringify({ threadId: scanThread.id, step: status.step, detail: status.detail }),
-    });
-  };
 
-  // Errors from runAgentLoop are allowed to propagate â€” the scheduler will mark
+  // Use OrchestratorAgent to coordinate specialized agents for the proactive scan.
+  const { OrchestratorAgent, AgentRegistry } = await import("@/lib/agent/multi-agent");
+  const registry = AgentRegistry.getInstance();
+  const orchestrator = new OrchestratorAgent(registry);
+
+  // Errors from the orchestrator are allowed to propagate — the scheduler will mark
   // the task as failed and surface the error to the user rather than silently
   // completing with empty output.
-  const result = await runAgentLoop(
-    scanThread.id,
-    scanMessage,
-    undefined,
-    undefined,
-    undefined,
-    defaultAdminUserId,
-    undefined,
-    onStatus,
+  const primaryResult = await orchestrator.run(
+    "Perform a proactive smart home and environment scan: discover device states, check for anomalies, take appropriate actions, and report findings.",
+    {
+      userId: defaultAdminUserId,
+      threadId: scanThread.id,
+      additionalContext: scanMessage,
+    },
   );
 
   let followupThreadId: string | undefined;
-  let finalResult = result;
+  let finalToolsUsed = primaryResult.toolsUsed;
 
-  if (shouldRunExplorationFollowup(result.toolsUsed, lastToolsUsed, requireToolmakerAction)) {
+  if (shouldRunExplorationFollowup(primaryResult.toolsUsed, lastToolsUsed, requireToolmakerAction)) {
     addLog({
       level: "info",
       source: "scheduler",
       message: "Proactive follow-up scan triggered due to low novelty/exploration depth.",
-      metadata: JSON.stringify({ firstTools: result.toolsUsed, lastToolsUsed }),
+      metadata: JSON.stringify({ firstTools: primaryResult.toolsUsed, lastToolsUsed }),
     });
 
     const followupThread = createThread("[proactive-scan-followup]", defaultAdminUserId, { threadType: "proactive" });
     followupThreadId = followupThread.id;
-    finalResult = await runAgentLoop(
-      followupThread.id,
-      buildExplorationFollowupMessage(connectedServers, mustTryTools),
-      undefined,
-      undefined,
-      undefined,
-      defaultAdminUserId,
-      undefined,
-      onStatus,
+    const followupOrchestrator = new OrchestratorAgent(registry);
+    const followupResult = await followupOrchestrator.run(
+      "Perform a targeted exploration pass: focus on network/camera/occupancy discovery and toolmaker actions.",
+      {
+        userId: defaultAdminUserId,
+        threadId: followupThread.id,
+        additionalContext: buildExplorationFollowupMessage(connectedServers, mustTryTools),
+      },
     );
+    finalToolsUsed = followupResult.toolsUsed;
 
-    if (shouldRunExplorationFollowup(finalResult.toolsUsed, lastToolsUsed, requireToolmakerAction)) {
+    if (shouldRunExplorationFollowup(finalToolsUsed, lastToolsUsed, requireToolmakerAction)) {
       addLog({
         level: "warn",
         source: "scheduler",
         message: "Proactive follow-up did not fully satisfy exploration constraints.",
         metadata: JSON.stringify({
-          toolsUsed: finalResult.toolsUsed,
+          toolsUsed: finalToolsUsed,
           requireToolmakerAction,
-          hasExplorationCoverage: hasExplorationCategoryCoverage(finalResult.toolsUsed),
-          hasToolmakerCoverage: hasToolmakerCoverage(finalResult.toolsUsed),
+          hasExplorationCoverage: hasExplorationCategoryCoverage(finalToolsUsed),
+          hasToolmakerCoverage: hasToolmakerCoverage(finalToolsUsed),
         }),
       });
     }
   }
 
-  setLastProactiveTools(finalResult.toolsUsed);
+  setLastProactiveTools(finalToolsUsed);
 
   addLog({
     level: "thought",
     source: "thought",
-    message: finalResult.toolsUsed.length > 0
-      ? `[Proactive] Scan complete â€” used ${finalResult.toolsUsed.length} tool(s): ${finalResult.toolsUsed.join(", ")}.`
+    message: finalToolsUsed.length > 0
+      ? `[Proactive] Scan complete — used ${finalToolsUsed.length} tool(s): ${finalToolsUsed.join(", ")}.`
       : "[Proactive] Scan complete â€” no tools were called.",
     metadata: JSON.stringify({
       threadId: scanThread.id,
-      toolsUsed: finalResult.toolsUsed,
-      pendingApprovals: finalResult.pendingApprovals,
+      toolsUsed: finalToolsUsed,
+      
     }),
   });
 
-  if (finalResult.content) {
+  if (primaryResult.response) {
     addLog({
       level: "thought",
       source: "thought",
-      message: `[Proactive] Agent response:\n${finalResult.content.slice(0, 2000)}`,
-      metadata: JSON.stringify({ threadId: scanThread.id, full: finalResult.content.length <= 2000 }),
+      message: `[Proactive] Agent response:\n${primaryResult.response.slice(0, 2000)}`,
+      metadata: JSON.stringify({ threadId: scanThread.id, full: primaryResult.response.length <= 2000 }),
     });
   }
 
@@ -345,16 +339,16 @@ async function runProactiveScanInner(): Promise<ProactiveScanResult> {
     metadata: JSON.stringify({
       primaryThreadId: scanThread.id,
       followupThreadId,
-      toolsUsed: finalResult.toolsUsed,
-      pendingApprovals: finalResult.pendingApprovals,
-      responsePreview: (finalResult.content || "").slice(0, 500),
+      toolsUsed: finalToolsUsed,
+      
+      responsePreview: primaryResult.response.slice(0, 500),
     }),
   });
 
   return {
     primaryThreadId: scanThread.id,
     followupThreadId,
-    toolsUsed: finalResult.toolsUsed,
+    toolsUsed: finalToolsUsed,
   };
 }
 

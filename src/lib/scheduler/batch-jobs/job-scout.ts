@@ -1,8 +1,6 @@
-import {
-  addMessage,
+﻿import {
   createThread,
   getSchedulerScheduleById,
-  getThreadMessages,
 } from "@/lib/db";
 import {
   BatchJob,
@@ -11,86 +9,20 @@ import {
   type StepExecutionResult,
   type LogFn,
 } from "./base";
-import { PromptTool } from "@/lib/tools/prompt-tool";
+import { OrchestratorAgent, AgentRegistry } from "@/lib/agent/multi-agent";
 
-/* ── Prompt tool instances for each Job Scout pipeline step ───── */
+/* ── Job Scout task description for the orchestrator ───────────── */
 
-const JOB_SEARCH_TOOL = new PromptTool({
-  toolName: "builtin.workflow_job_search",
-  displayName: "Job Search",
-  description:
-    "Search for relevant open job listings based on the user's configured job criteria and preferences.",
-  systemPrompt:
-    "You are an AI job search specialist. Based on the user's configured job criteria and preferences, " +
-    "search for relevant open job listings.\n\n" +
-    "IMPORTANT REQUIREMENTS:\n" +
-    "1. FIRST, clearly state the search criteria you are using (job title, location, seniority, skills, etc.) " +
-    "based on the user's profile and knowledge vault entries.\n" +
-    "2. Use SIMPLE, broad search queries first (e.g. 'software engineer jobs Toronto'). Avoid complex site: filters initially.\n" +
-    "3. Try at least 3 different job boards/sources: Indeed, Glassdoor, LinkedIn public listings, Google Jobs.\n" +
-    "4. For each search query, report: the exact query used and whether results were found.\n" +
-    "5. If web_search returns no results, try browser_navigate to visit job board URLs directly.\n" +
-    "6. For each listing found, record: position title, company, location, compensation range (if visible), and the application URL.\n" +
-    "7. If all searches fail, report every query attempted and suggest criteria adjustments.",
-});
-
-const JOB_EXTRACT_TOOL = new PromptTool({
-  toolName: "builtin.workflow_job_extract",
-  displayName: "Job Detail Extractor",
-  description:
-    "Extract comprehensive role details from job listings found by the search step.",
-  systemPrompt:
-    "You are an AI job research specialist. Review all the job listings found by the search step " +
-    "earlier in this conversation thread. The search results are in the messages above.\n\n" +
-    "Extract comprehensive role details for each listing: key requirements, technology stack, culture signals, " +
-    "compensation benchmarks, and seniority signals. Flag any listings that appear to be a strong match.\n\n" +
-    "If no job listings are visible in the conversation above, state clearly that the search step produced no results " +
-    "and recommend the pipeline owner verify their search criteria.",
-});
-
-const JOB_PREPARE_TOOL = new PromptTool({
-  toolName: "builtin.workflow_job_prepare",
-  displayName: "Application Materials Preparer",
-  description:
-    "Prepare tailored resume bullet points and cover-letter outlines for top-matched job opportunities.",
-  systemPrompt:
-    "You are an AI resume and cover-letter specialist. Based on all the listings and extracted details " +
-    "in this pipeline conversation, prepare tailored application materials for the top-matched " +
-    "opportunities. Include specific resume bullet points and a concise cover-letter outline per role.",
-});
-
-const JOB_VALIDATE_TOOL = new PromptTool({
-  toolName: "builtin.workflow_job_validate",
-  displayName: "Job Match Validator",
-  description:
-    "Review and score job opportunities on fit, growth potential, and compensation.",
-  systemPrompt:
-    "You are an AI job-application coach. Review all listings, extracted details, and materials " +
-    "prepared in this pipeline run. Score each opportunity on fit, growth potential, and compensation. " +
-    "Produce a prioritised shortlist with recommended next actions for each.",
-});
-
-const JOB_DIGEST_TOOL = new PromptTool({
-  toolName: "builtin.workflow_job_digest",
-  displayName: "Job Digest Sender",
-  description:
-    "Compose and send a digest summary covering top job matches, key insights, and recommended next steps.",
-  systemPrompt:
-    "You are an AI communications specialist. Based on all work done in this pipeline run, compose a " +
-    "digest summary for the pipeline owner covering: top job matches, key insights, materials prepared, " +
-    "and recommended next steps. Send this summary via the available email or messaging tools.",
-});
-
-/**
- * Map handler names → PromptTool instances for this pipeline.
- */
-const STEP_TOOLS: ReadonlyMap<string, PromptTool> = new Map([
-  ["workflow.job_scout.search", JOB_SEARCH_TOOL],
-  ["workflow.job_scout.extract", JOB_EXTRACT_TOOL],
-  ["workflow.job_scout.prepare", JOB_PREPARE_TOOL],
-  ["workflow.job_scout.validate", JOB_VALIDATE_TOOL],
-  ["workflow.job_scout.email", JOB_DIGEST_TOOL],
-]);
+const JOB_SCOUT_TASK =
+  "Scout for job opportunities matching the user's profile and career preferences.\n\n" +
+  "Steps to complete:\n" +
+  "1. Research: Find current job listings matching the user's skills, role preferences, and location. " +
+  "Use web_researcher to search multiple job boards (Indeed, LinkedIn, Glassdoor, Google Jobs).\n" +
+  "2. Analyse: Extract details from the best matches — requirements, compensation, culture fit.\n" +
+  "3. Prepare: Draft tailored application materials (resume bullets, cover letter outline) for top matches. " +
+  "Use resume_writer.\n" +
+  "4. Validate: Score and shortlist opportunities by fit and potential.\n" +
+  "5. Notify: Compose and send a digest summary of top matches via email_manager.";
 
 export class JobScoutBatchJob extends BatchJob {
   readonly type = "job_scout" as const;
@@ -99,295 +31,79 @@ export class JobScoutBatchJob extends BatchJob {
   readonly defaultTriggerExpr = "every:1:day";
 
   canExecuteHandler(handlerName: string): boolean {
-    return handlerName.startsWith("workflow.job_scout.");
+    return handlerName === "workflow.job_scout.run";
   }
 
   getHandlerNames(): string[] {
-    return [
-      "workflow.job_scout.search",
-      "workflow.job_scout.extract",
-      "workflow.job_scout.prepare",
-      "workflow.job_scout.validate",
-      "workflow.job_scout.email",
-    ];
+    return ["workflow.job_scout.run"];
   }
 
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const { taskRunId, runId, handlerName, configJson, scheduleId } = ctx;
     const logCtx = { scheduleId, runId, taskRunId, handlerName };
-    const stepKey = handlerName.replace("workflow.job_scout.", "");
 
-    // Resolve the prompt tool for this step
-    const promptTool = STEP_TOOLS.get(handlerName);
-    if (!promptTool) {
-      throw new Error(`Unknown job scout step: "${handlerName}"`);
-    }
-    const toolName = promptTool.toolNamePrefix;
-
-    let stepUserId = "";
-    let stepThreadId = ctx.pipelineThreadId ?? "";
+    let userId = "";
     let additionalContext = "";
+    const threadId = ctx.pipelineThreadId ?? "";
 
     try {
       const parsed = JSON.parse(configJson || "{}");
       if (typeof parsed.prompt === "string" && parsed.prompt) additionalContext = parsed.prompt;
-      if (typeof parsed.userId === "string" && parsed.userId) stepUserId = parsed.userId;
+      if (typeof parsed.userId === "string" && parsed.userId) userId = parsed.userId;
     } catch { /* use defaults */ }
 
-    if (!stepUserId) {
+    if (!userId) {
       const schedule = getSchedulerScheduleById(scheduleId);
-      stepUserId = schedule?.owner_id ?? "";
+      userId = schedule?.owner_id ?? "";
     }
-    if (!stepUserId) {
-      throw new Error(`Missing userId for job scout step "${stepKey}". Set schedule owner_id.`);
+    if (!userId) {
+      throw new Error("Missing userId for job scout. Set schedule owner_id.");
     }
 
-    // Create a shared pipeline thread on the first step; reuse for subsequent steps.
-    if (!stepThreadId) {
+    let runThreadId = threadId;
+    if (!runThreadId) {
       const schedule = getSchedulerScheduleById(scheduleId);
-      const title = schedule ? `Job Scout Pipeline: ${schedule.name}` : "Job Scout Pipeline";
-      stepThreadId = createThread(title, stepUserId, { threadType: "scheduled" }).id;
-      log("info", `Created pipeline thread for job scout run.`, logCtx, { stepKey, threadId: stepThreadId });
+      const title = schedule ? `Job Scout: ${schedule.name}` : "Job Scout";
+      runThreadId = createThread(title, userId, { threadType: "scheduled" }).id;
+      log("info", "Created pipeline thread for job scout run.", logCtx, { threadId: runThreadId });
     }
 
-    // Execute the workflow tool
-    const result = await promptTool.execute(toolName, {
-      threadId: stepThreadId,
-      userId: stepUserId,
-      additionalContext,
-    }, { threadId: stepThreadId, userId: stepUserId }) as {
-      response: string;
-      toolsUsed: string[];
-    };
-
-    // Extract tool call details from thread messages for full visibility
-    const toolCallDetails = this.extractToolCallDetails(stepThreadId);
-
-    log("info", `Job scout step "${stepKey}" completed.`, logCtx, {
-      stepKey,
-      threadId: stepThreadId,
-      userId: stepUserId,
-      toolsUsed: result.toolsUsed ?? [],
-      toolCallDetails,
-      response: result.response || "",
-    });
-
-    // ── Pipeline Orchestrator: validate step output before proceeding ──
-    await this.orchestrate(stepKey, stepThreadId, stepUserId, logCtx, log);
-
-    return {
-      pipelineThreadId: stepThreadId,
-      outputJson: {
-        kind: "job_scout_pipeline",
-        stepKey,
-        threadId: stepThreadId,
-        userId: stepUserId,
-        toolsUsed: result.toolsUsed ?? [],
-        toolCallDetails,
-        response: result.response || "",
-      },
-    };
-  }
-
-  /**
-   * Validate step output and take corrective action:
-   * - Search: retry with broader strategy if no results found
-   * - Other steps: inject prior context if the step reports missing input
-   */
-  private async orchestrate(
-    stepKey: string,
-    threadId: string,
-    userId: string,
-    logCtx: { scheduleId?: string; runId?: string; taskRunId?: string; handlerName?: string },
-    log: LogFn,
-  ): Promise<void> {
-    // Read the latest assistant message to check results
-    const threadMsgs = getThreadMessages(threadId);
-    const lastAssistant = [...threadMsgs].reverse().find((m) => m.role === "assistant");
-    const content = lastAssistant?.content || "";
-    const responseText = content.toLowerCase();
-    const isEmptyOutput = !content || content.trim().length < 20;
-    const indicatesNoResults = responseText.includes("zero results") ||
-      responseText.includes("no results") ||
-      responseText.includes("no job listings") ||
-      responseText.includes("could not find") ||
-      responseText.includes("unable to find") ||
-      responseText.includes("no matching") ||
-      responseText.includes("no opportunities");
-    const indicatesMissingInput = responseText.includes("missing") && (
-      responseText.includes("input data") ||
-      responseText.includes("input") ||
-      responseText.includes("information") ||
-      responseText.includes("data needed")
+    const registry = AgentRegistry.getInstance();
+    const orchestrator = new OrchestratorAgent(registry);
+    const result = await orchestrator.run(
+      additionalContext ? `${JOB_SCOUT_TASK}\n\n## User context\n${additionalContext}` : JOB_SCOUT_TASK,
+      { userId, threadId: runThreadId },
     );
 
-    if (stepKey === "search" && (isEmptyOutput || indicatesNoResults)) {
-      await this.retrySearch(threadId, userId, content, logCtx, log);
-    }
-
-    if (stepKey !== "search" && (isEmptyOutput || indicatesMissingInput)) {
-      await this.injectPriorContext(stepKey, threadId, userId, logCtx, log);
-    }
-  }
-
-  private async retrySearch(
-    threadId: string,
-    userId: string,
-    originalContent: string | undefined,
-    logCtx: { scheduleId?: string; runId?: string; taskRunId?: string; handlerName?: string },
-    log: LogFn,
-  ): Promise<void> {
-    log("warning",
-      `Job scout search returned no results. Retrying with broader strategy.`, logCtx, {
-        stepKey: "search", originalResponse: (originalContent || "").slice(0, 500),
-      });
-
-    const retryContext =
-      "The previous job search attempt returned zero results from web_search. " +
-      "Try a different approach:\n" +
-      "1. Use broader, simpler search queries (e.g., just the job title + location, without site: filters).\n" +
-      "2. Try multiple job boards: Indeed, Glassdoor, LinkedIn public listings, Google Jobs.\n" +
-      "3. Search for the job title alone without location restrictions.\n" +
-      "4. Try related/alternative job titles.\n" +
-      "5. If web_search still fails, try using browser_navigate to directly visit job board URLs and search there.\n" +
-      "Report every query you attempt and the result. If all searches genuinely return nothing, " +
-      "state clearly what queries were tried and suggest the user verify their search criteria.";
-
-    const searchTool = STEP_TOOLS.get("workflow.job_scout.search")!;
-    const retryResult = await searchTool.execute(searchTool.toolNamePrefix, {
-      threadId,
-      userId,
-      additionalContext: retryContext,
-    }, { threadId, userId }) as { response: string; toolsUsed: string[] };
-
-    const retryToolCalls = this.extractToolCallDetails(threadId);
-
-    log("info", `Job scout search retry completed.`, logCtx, {
-      stepKey: "search_retry",
-      threadId,
-      toolsUsed: retryResult.toolsUsed ?? [],
-      toolCallDetails: retryToolCalls,
-      response: retryResult.response || "",
+    log("info", "Job scout orchestration completed.", logCtx, {
+      threadId: result.threadId,
+      agentsDispatched: result.agentsDispatched,
+      toolsUsed: result.toolsUsed,
+      response: result.response.slice(0, 500),
     });
-  }
 
-  private async injectPriorContext(
-    stepKey: string,
-    threadId: string,
-    userId: string,
-    logCtx: { scheduleId?: string; runId?: string; taskRunId?: string; handlerName?: string },
-    log: LogFn,
-  ): Promise<void> {
-    log("warning",
-      `Job scout step "${stepKey}" indicates missing input. Injecting prior step context.`, logCtx);
-
-    const threadMsgs = getThreadMessages(threadId);
-    const priorOutputs = threadMsgs
-      .filter((m) => m.role === "assistant" && m.content)
-      .map((m) => m.content!)
-      .join("\n---\n");
-
-    if (priorOutputs.trim().length > 50) {
-      addMessage({
-        thread_id: threadId,
-        role: "user",
-        content:
-          `[Pipeline Orchestrator] Here is the accumulated output from prior pipeline steps. ` +
-          `Use this as your input data:\n\n${priorOutputs}`,
-        tool_calls: null,
-        tool_results: null,
-        attachments: null,
-      });
-
-      // Re-execute the same step's tool with injected context
-      const handlerName = `workflow.job_scout.${stepKey}`;
-      const promptTool = STEP_TOOLS.get(handlerName);
-
-      if (promptTool) {
-        const contextResult = await promptTool.execute(promptTool.toolNamePrefix, {
-          threadId,
-          userId,
-          additionalContext: "Review the pipeline context provided above and use it as your input data.",
-        }, { threadId, userId }) as { response: string; toolsUsed: string[] };
-
-        log("info",
-          `Job scout step "${stepKey}" re-executed with injected context.`, logCtx, {
-            stepKey,
-            response: contextResult.response || "",
-            toolsUsed: contextResult.toolsUsed ?? [],
-          });
-      }
-    }
-  }
-
-  private extractToolCallDetails(threadId: string): Array<{ tool: string; args: Record<string, unknown> }> {
-    const threadMsgs = getThreadMessages(threadId);
-    const details: Array<{ tool: string; args: Record<string, unknown> }> = [];
-    for (const msg of threadMsgs) {
-      if (msg.tool_calls) {
-        try {
-          const calls = JSON.parse(msg.tool_calls);
-          for (const tc of Array.isArray(calls) ? calls : [calls]) {
-            if (tc?.name && tc?.arguments) {
-              details.push({ tool: tc.name, args: tc.arguments });
-            }
-          }
-        } catch { /* skip unparseable */ }
-      }
-    }
-    return details;
+    return {
+      pipelineThreadId: result.threadId,
+      outputJson: {
+        kind: "job_scout_orchestrated",
+        threadId: result.threadId,
+        userId,
+        agentsDispatched: result.agentsDispatched,
+        toolsUsed: result.toolsUsed,
+        response: result.response,
+      },
+    };
   }
 
   protected createDefaultTasks(): BatchJobSubTaskTemplate[] {
     return [
       {
-        task_key: "search",
-        name: "Search Listings",
-        handler_name: "workflow.job_scout.search",
+        task_key: "run",
+        name: "Job Scout",
+        handler_name: "workflow.job_scout.run",
         execution_mode: "sync",
         sequence_no: 0,
         enabled: 1,
-        config_json: { tool: JOB_SEARCH_TOOL.toolNamePrefix },
-      },
-      {
-        task_key: "extract",
-        name: "Extract Role Details",
-        handler_name: "workflow.job_scout.extract",
-        execution_mode: "sync",
-        sequence_no: 1,
-        enabled: 1,
-        depends_on_task_key: "search",
-        config_json: { tool: JOB_EXTRACT_TOOL.toolNamePrefix },
-      },
-      {
-        task_key: "prepare",
-        name: "Prepare Resume",
-        handler_name: "workflow.job_scout.prepare",
-        execution_mode: "sync",
-        sequence_no: 2,
-        enabled: 1,
-        depends_on_task_key: "extract",
-        config_json: { tool: JOB_PREPARE_TOOL.toolNamePrefix },
-      },
-      {
-        task_key: "validate",
-        name: "Validate Matches",
-        handler_name: "workflow.job_scout.validate",
-        execution_mode: "sync",
-        sequence_no: 3,
-        enabled: 1,
-        depends_on_task_key: "prepare",
-        config_json: { tool: JOB_VALIDATE_TOOL.toolNamePrefix },
-      },
-      {
-        task_key: "email",
-        name: "Send Results",
-        handler_name: "workflow.job_scout.email",
-        execution_mode: "sync",
-        sequence_no: 4,
-        enabled: 1,
-        depends_on_task_key: "validate",
-        config_json: { tool: JOB_DIGEST_TOOL.toolNamePrefix },
       },
     ];
   }

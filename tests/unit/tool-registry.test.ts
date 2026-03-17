@@ -144,10 +144,10 @@ describe("getToolRegistry (singleton)", () => {
     expect(a).toBe(b);
   });
 
-  test("registers all 10 built-in categories and custom", () => {
+  test("registers all 11 built-in categories and custom", () => {
     const registry = getToolRegistry();
-    // 10 built-in categories (web, browser, fs, network, email, phone, file, alexa, workflow) + 1 custom + 1 MCP = 11
-    expect(registry.size).toBe(11);
+    // 11 built-in categories (web, browser, fs, multi_agent_dispatch, network, email, phone, file, alexa, workflow, custom) + 1 MCP = 12
+    expect(registry.size).toBe(12);
   });
 
   test("finds category for each builtin tool type", () => {
