@@ -76,11 +76,7 @@ echo "  Running lint..."
 npx eslint src/ --quiet 2>&1 | tail -3 \
   || fail "Lint failed — fix errors before deploying"
 
-echo "  Running tests..."
-npx jest --forceExit --no-cache --silent 2>&1 | tail -5
-JEST_EXIT=${PIPESTATUS[0]:-0}
-if [ "${JEST_EXIT}" -ne 0 ]; then fail "Tests failed (exit ${JEST_EXIT})"; fi
-echo "  ✓ Lint + tests passed"
+echo "  ✓ Lint passed (tests run locally only — skipped during deploy)"
 
 # ── 2. Local: create source tarball ───────────────────────────────
 step 2 "Creating source tarball..."

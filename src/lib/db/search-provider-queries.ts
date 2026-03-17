@@ -1,7 +1,7 @@
 import { decryptField, encryptField } from "./crypto";
 import { getAppConfig, setAppConfig } from "./log-queries";
 
-export type WebSearchProviderType = "duckduckgo-html" | "duckduckgo-instant" | "brave";
+export type WebSearchProviderType = "duckduckgo-lite" | "duckduckgo-html" | "duckduckgo-instant" | "brave";
 
 export interface WebSearchProviderRecord {
   type: WebSearchProviderType;
@@ -14,13 +14,14 @@ export interface WebSearchProviderRecord {
 const APP_CONFIG_KEY = "web_search_providers_v1";
 
 const DEFAULT_PROVIDERS: WebSearchProviderRecord[] = [
-  { type: "duckduckgo-html", label: "DuckDuckGo HTML", enabled: true, priority: 1 },
-  { type: "duckduckgo-instant", label: "DuckDuckGo Instant", enabled: true, priority: 2 },
-  { type: "brave", label: "Brave Search API", enabled: false, priority: 3 },
+  { type: "duckduckgo-lite", label: "DuckDuckGo Lite", enabled: true, priority: 1 },
+  { type: "duckduckgo-html", label: "DuckDuckGo HTML", enabled: true, priority: 2 },
+  { type: "duckduckgo-instant", label: "DuckDuckGo Instant", enabled: true, priority: 3 },
+  { type: "brave", label: "Brave Search API", enabled: false, priority: 4 },
 ];
 
 function isProviderType(value: unknown): value is WebSearchProviderType {
-  return value === "duckduckgo-html" || value === "duckduckgo-instant" || value === "brave";
+  return value === "duckduckgo-lite" || value === "duckduckgo-html" || value === "duckduckgo-instant" || value === "brave";
 }
 
 function normalizeProviders(providers: WebSearchProviderRecord[]): WebSearchProviderRecord[] {

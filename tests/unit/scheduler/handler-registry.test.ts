@@ -49,11 +49,14 @@ describe("scheduler handler registry", () => {
     runUnifiedSchedulerEngineTickForTests();
     const handlers = getRegisteredHandlers();
 
-    // All 10 expected handler names from batch jobs + agent.prompt
+    // All 12 expected handler names from batch jobs + agent.prompt
     const expected = [
       "agent.prompt",
       "system.proactive.scan",
-      "system.email.read_incoming",
+      // Email batch now uses 3-step pipeline
+      "workflow.email.inbox_scan",
+      "workflow.email.classify",
+      "workflow.email.respond",
       "system.db_maintenance.run_due",
       "system.knowledge_maintenance.run_due",
       "workflow.job_scout.search",
@@ -110,10 +113,10 @@ describe("batch job getHandlerNames", () => {
     }
   });
 
-  test("getAllHandlerNames returns exactly 9 batch job handlers", () => {
+  test("getAllHandlerNames returns exactly 11 batch job handlers", () => {
     const { getAllHandlerNames } = require("@/lib/scheduler/batch-jobs");
     const names = getAllHandlerNames();
-    // 9 handlers across 5 batch jobs (proactive: 1, email: 1, cleanup: 1, knowledge: 1, job_scout: 5)
-    expect(names).toHaveLength(9);
+    // 11 handlers across 5 batch jobs (proactive: 1, email: 3-step pipeline, cleanup: 1, knowledge: 1, job_scout: 5)
+    expect(names).toHaveLength(11);
   });
 });

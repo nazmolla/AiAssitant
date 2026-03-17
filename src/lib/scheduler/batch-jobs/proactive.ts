@@ -37,14 +37,35 @@ export class ProactiveBatchJob extends BatchJob {
 
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
-    await runProactiveScan({
+    const scanResult = await runProactiveScan({
       scheduleId: ctx.scheduleId,
       runId: ctx.runId,
       taskRunId: ctx.taskRunId,
       handlerName: ctx.handlerName,
     });
-    log("info", "Proactive scan task completed successfully.", logCtx);
-    return { outputJson: { kind: "proactive_scan" } };
+
+    if (!scanResult) {
+      log("info", "Proactive scan skipped — previous scan still running.", logCtx);
+      return { outputJson: { kind: "proactive_scan", skipped: true } };
+    }
+
+    log("info", "Proactive scan task completed.", logCtx, {
+      primaryThreadId: scanResult.primaryThreadId,
+      ...(scanResult.followupThreadId ? { followupThreadId: scanResult.followupThreadId } : {}),
+      toolsUsed: scanResult.toolsUsed,
+    });
+
+    return {
+      pipelineThreadId: scanResult.primaryThreadId,
+      outputJson: {
+        kind: "proactive_scan",
+        // "threadId" kept for backward-compat with the existing View Output UI
+        threadId: scanResult.primaryThreadId,
+        primaryThreadId: scanResult.primaryThreadId,
+        ...(scanResult.followupThreadId ? { followupThreadId: scanResult.followupThreadId } : {}),
+        toolsUsed: scanResult.toolsUsed,
+      },
+    };
   }
 
   protected createDefaultTasks(): BatchJobSubTaskTemplate[] {

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Proactive Scan Tool
  *
  * Owns all proactive scan logic:
@@ -8,7 +8,7 @@
  *
  * Called by:
  * - Agent loop via ProactiveScanTool.execute()
- * - Unified scheduler engine via ProactiveBatchJob.executeStep() → runProactiveScan()
+ * - Unified scheduler engine via ProactiveBatchJob.executeStep() â†’ runProactiveScan()
  *
  * @see https://github.com/nazmolla/AiAssitant/issues/147
  */
@@ -34,7 +34,7 @@ import {
   mergeBatchContext,
 } from "@/lib/scheduler/shared";
 
-/* ── Proactive Scan Prompt ────────────────────────────────────────── */
+/* â”€â”€ Proactive Scan Prompt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 function buildProactiveScanMessage(
   connectedServers: string[],
@@ -46,11 +46,11 @@ function buildProactiveScanMessage(
   const now = new Date();
   const quiet = isQuietHours();
   const quietNote = quiet
-    ? `\n\n**QUIET HOURS ACTIVE (${QUIET_HOURS_START}:00–${QUIET_HOURS_END}:00)** — Do NOT use any audio-producing tools (announcements, TTS, playing media, increasing volume). Read-only queries and muting/lowering volume are fine.`
+    ? `\n\n**QUIET HOURS ACTIVE (${QUIET_HOURS_START}:00â€“${QUIET_HOURS_END}:00)** â€” Do NOT use any audio-producing tools (announcements, TTS, playing media, increasing volume). Read-only queries and muting/lowering volume are fine.`
     : "";
 
   const serverSection = connectedServers.length > 0
-    ? `\n\n## Connected MCP servers (USE THESE — they are your primary data sources)\n${connectedServers.map((s) => `- **${s}** (call tools prefixed with \`${s}.\`)`).join("\n")}\nTotal MCP tools available: ${mcpToolCount}`
+    ? `\n\n## Connected MCP servers (USE THESE â€” they are your primary data sources)\n${connectedServers.map((s) => `- **${s}** (call tools prefixed with \`${s}.\`)`).join("\n")}\nTotal MCP tools available: ${mcpToolCount}`
     : "\n\n## No MCP servers connected\nYou have no external service integrations right now. Focus on built-in tools (web search, network scan, file system, email).";
 
   const customSection = customToolNames.length > 0
@@ -65,17 +65,17 @@ function buildProactiveScanMessage(
     ? `\n\n## Mandatory exploration candidates (policy-safe first)\nChoose at least ONE of these tools in this scan: ${mustTryTools.join(", ")}.\nIf one fails, immediately try the next candidate.`
     : "";
 
-  return `[Proactive Scan — ${now.toISOString()}]
+  return `[Proactive Scan â€” ${now.toISOString()}]
 
-You are running as the Nexus proactive observer. This is an autonomous background scan — no human is in this conversation. Your job is to actively discover, monitor, and improve the owner's smart home and environment.${serverSection}${customSection}${noveltySection}${mustTrySection}
+You are running as the Nexus proactive observer. This is an autonomous background scan â€” no human is in this conversation. Your job is to actively discover, monitor, and improve the owner's smart home and environment.${serverSection}${customSection}${noveltySection}${mustTrySection}
 
-## Your approach — Multi-round discovery
+## Your approach â€” Multi-round discovery
 You MUST call tools to do real work. A scan that does not call any tools is a FAILED scan. Follow these steps:
 
 1. **Discover**: Call tools to list devices, get states, check sensors, query services. Start with broad discovery tools (e.g. list all devices, get entity states, check what's available in each connected service).
 2. **Gather**: Based on discovery results, call more specific tools to get detailed status, readings, or metrics that look interesting or need attention.
 3. **Analyze**: Compare what you found against the owner's known preferences, time of day, patterns, and common sense.
-4. **Act**: If something needs action — do it (or create an approval request for destructive actions). Examples: adjust thermostat, turn off forgotten lights, announce a reminder, send a notification.
+4. **Act**: If something needs action â€” do it (or create an approval request for destructive actions). Examples: adjust thermostat, turn off forgotten lights, announce a reminder, send a notification.
 5. **Learn**: If you discover a recurring pattern that could benefit from a custom tool, create one using nexus_create_tool. If an existing custom tool has issues, update it with nexus_update_tool.
 
 ## What to look for
@@ -90,14 +90,14 @@ You MUST call tools to do real work. A scan that does not call any tools is a FA
 - Occupancy inference opportunities using available infrastructure (motion, wifi presence, media activity, room signals)
 
 ## Rules
-- **You MUST call at least one tool** — start by calling a listing/discovery tool from the connected MCP servers above
+- **You MUST call at least one tool** â€” start by calling a listing/discovery tool from the connected MCP servers above
 - **You MUST perform at least one exploratory step that was NOT in the previous scan** unless every alternative tool fails
-- **NEVER ask questions.** No human is reading this. Do not end your thoughts with questions like "Should I…?", "Would the owner prefer…?", or "Is this worth investigating?". Instead, decide and act. You are the proactive agent — make the call yourself based on context, owner preferences, time of day, and common sense.
-- If a tool fails or a service is disconnected, note it and move on — don't treat transient failures as disasters
+- **NEVER ask questions.** No human is reading this. Do not end your thoughts with questions like "Should Iâ€¦?", "Would the owner preferâ€¦?", or "Is this worth investigating?". Instead, decide and act. You are the proactive agent â€” make the call yourself based on context, owner preferences, time of day, and common sense.
+- If a tool fails or a service is disconnected, note it and move on â€” don't treat transient failures as disasters
 - Smart home / IoT events are NEVER "disaster" severity
 - Do NOT send notifications about tool failures or service hiccups
 - Combine data from multiple sources for cross-service intelligence (e.g. weather + thermostat + time of day)
-- After gathering data, ALWAYS provide a summary of what you found and any actions taken — state facts and decisions, never questions${quietNote}
+- After gathering data, ALWAYS provide a summary of what you found and any actions taken â€” state facts and decisions, never questions${quietNote}
 
 ## Policy behavior
 - Respect tool policy settings strictly. If a tool is configured with approval OFF, execute it directly.
@@ -106,7 +106,7 @@ You MUST call tools to do real work. A scan that does not call any tools is a FA
 Begin your proactive scan now. Start by calling discovery tools on each connected MCP server.`;
 }
 
-/* ── Exploration Strategy Helpers ─────────────────────────────────── */
+/* â”€â”€ Exploration Strategy Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 function getToolCategory(toolName: string): "network" | "camera" | "occupancy" | "toolmaker" | "other" {
   if (/net_scan_network|net_scan_ports|net_http_request|nmap|network/i.test(toolName)) return "network";
@@ -176,30 +176,36 @@ You must run a focused exploration pass now.
 Do not repeat the previous summary pattern. Produce concrete discoveries, actions taken, and next automation opportunities.`;
 }
 
-/* ── Proactive Scan Execution ─────────────────────────────────────── */
+/* â”€â”€ Proactive Scan Execution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 let _scanRunning = false;
 
-export async function runProactiveScan(context?: SchedulerBatchExecutionContext): Promise<void> {
+export interface ProactiveScanResult {
+  primaryThreadId: string;
+  followupThreadId?: string;
+  toolsUsed: string[];
+}
+
+export async function runProactiveScan(context?: SchedulerBatchExecutionContext): Promise<ProactiveScanResult | null> {
   if (_scanRunning) {
     addLog({
       level: "info",
       source: "scheduler",
-      message: "Skipping proactive scan — previous scan still running.",
+      message: "Skipping proactive scan â€” previous scan still running.",
       metadata: JSON.stringify(mergeBatchContext({}, context)),
     });
-    return;
+    return null;
   }
   _scanRunning = true;
 
   try {
-    await runProactiveScanInner();
+    return await runProactiveScanInner();
   } finally {
     _scanRunning = false;
   }
 }
 
-async function runProactiveScanInner(): Promise<void> {
+async function runProactiveScanInner(): Promise<ProactiveScanResult> {
   const defaultAdminUserId = getDefaultAdminUserId();
 
   addLog({
@@ -211,54 +217,80 @@ async function runProactiveScanInner(): Promise<void> {
 
   const mcpManager = getMcpManager();
 
-  try {
-    const connectedServers = mcpManager.getConnectedServerIds();
-    const mcpTools = mcpManager.getAllTools();
-    const customTools = getCustomToolDefinitions();
-    const customToolNames = customTools.map((t) => t.name);
-    const lastToolsUsed = getLastProactiveTools();
-    const allVisibleTools = [
-      ...mcpTools.map((t) => t.name),
-      ...customToolNames,
-    ];
-    const requireToolmakerAction =
-      allVisibleTools.some((name) => /nexus_create_tool|nexus_update_tool/i.test(name)) ||
-      !!getToolPolicy("nexus_create_tool") ||
-      !!getToolPolicy("nexus_update_tool");
-    const noApprovalCandidates = mcpTools
-      .map((t) => t.name)
-      .filter((name) => {
-        const policy = getToolPolicy(name);
-        return policy ? policy.requires_approval === 0 : false;
-      });
-    const mustTryTools = buildMustTryTools(noApprovalCandidates, lastToolsUsed);
+  const connectedServers = mcpManager.getConnectedServerIds();
+  const mcpTools = mcpManager.getAllTools();
+  const customTools = getCustomToolDefinitions();
+  const customToolNames = customTools.map((t) => t.name);
+  const lastToolsUsed = getLastProactiveTools();
+  const allVisibleTools = [
+    ...mcpTools.map((t) => t.name),
+    ...customToolNames,
+  ];
+  const requireToolmakerAction =
+    allVisibleTools.some((name) => /nexus_create_tool|nexus_update_tool/i.test(name)) ||
+    !!getToolPolicy("nexus_create_tool") ||
+    !!getToolPolicy("nexus_update_tool");
+  const noApprovalCandidates = mcpTools
+    .map((t) => t.name)
+    .filter((name) => {
+      const policy = getToolPolicy(name);
+      return policy ? policy.requires_approval === 0 : false;
+    });
+  const mustTryTools = buildMustTryTools(noApprovalCandidates, lastToolsUsed);
 
-    const scanThread = createThread("[proactive-scan]", defaultAdminUserId, { threadType: "proactive" });
-    const scanMessage = buildProactiveScanMessage(connectedServers, mcpTools.length, customToolNames, lastToolsUsed, mustTryTools);
+  const scanThread = createThread("[proactive-scan]", defaultAdminUserId, { threadType: "proactive" });
+  const scanMessage = buildProactiveScanMessage(connectedServers, mcpTools.length, customToolNames, lastToolsUsed, mustTryTools);
 
+  addLog({
+    level: "thought",
+    source: "thought",
+    message: `[Proactive] Starting scan â€” ${connectedServers.length} MCP server(s) connected, ${mcpTools.length} tools available.`,
+    metadata: JSON.stringify({
+      connectedServers,
+      mcpToolCount: mcpTools.length,
+      customToolCount: customToolNames.length,
+    }),
+  });
+
+  const onStatus = (status: { step: string; detail?: string }) => {
     addLog({
       level: "thought",
       source: "thought",
-      message: `[Proactive] Starting scan — ${connectedServers.length} MCP server(s) connected, ${mcpTools.length} tools available.`,
-      metadata: JSON.stringify({
-        connectedServers,
-        mcpToolCount: mcpTools.length,
-        customToolCount: customToolNames.length,
-      }),
+      message: `[Proactive] ${status.step}${status.detail ? ` â€” ${status.detail}` : ""}`,
+      metadata: JSON.stringify({ threadId: scanThread.id, step: status.step, detail: status.detail }),
+    });
+  };
+
+  // Errors from runAgentLoop are allowed to propagate â€” the scheduler will mark
+  // the task as failed and surface the error to the user rather than silently
+  // completing with empty output.
+  const result = await runAgentLoop(
+    scanThread.id,
+    scanMessage,
+    undefined,
+    undefined,
+    undefined,
+    defaultAdminUserId,
+    undefined,
+    onStatus,
+  );
+
+  let followupThreadId: string | undefined;
+  let finalResult = result;
+
+  if (shouldRunExplorationFollowup(result.toolsUsed, lastToolsUsed, requireToolmakerAction)) {
+    addLog({
+      level: "info",
+      source: "scheduler",
+      message: "Proactive follow-up scan triggered due to low novelty/exploration depth.",
+      metadata: JSON.stringify({ firstTools: result.toolsUsed, lastToolsUsed }),
     });
 
-    const onStatus = (status: { step: string; detail?: string }) => {
-      addLog({
-        level: "thought",
-        source: "thought",
-        message: `[Proactive] ${status.step}${status.detail ? ` — ${status.detail}` : ""}`,
-        metadata: JSON.stringify({ threadId: scanThread.id, step: status.step, detail: status.detail }),
-      });
-    };
-
-    const result = await runAgentLoop(
-      scanThread.id,
-      scanMessage,
+    const followupThread = createThread("[proactive-scan-followup]", defaultAdminUserId, { threadType: "proactive" });
+    followupThreadId = followupThread.id;
+    finalResult = await runAgentLoop(
+      followupThread.id,
+      buildExplorationFollowupMessage(connectedServers, mustTryTools),
       undefined,
       undefined,
       undefined,
@@ -267,88 +299,42 @@ async function runProactiveScanInner(): Promise<void> {
       onStatus,
     );
 
-    let finalResult = result;
-    if (shouldRunExplorationFollowup(result.toolsUsed, lastToolsUsed, requireToolmakerAction)) {
+    if (shouldRunExplorationFollowup(finalResult.toolsUsed, lastToolsUsed, requireToolmakerAction)) {
       addLog({
-        level: "info",
+        level: "warn",
         source: "scheduler",
-        message: "Proactive follow-up scan triggered due to low novelty/exploration depth.",
-        metadata: JSON.stringify({ firstTools: result.toolsUsed, lastToolsUsed }),
+        message: "Proactive follow-up did not fully satisfy exploration constraints.",
+        metadata: JSON.stringify({
+          toolsUsed: finalResult.toolsUsed,
+          requireToolmakerAction,
+          hasExplorationCoverage: hasExplorationCategoryCoverage(finalResult.toolsUsed),
+          hasToolmakerCoverage: hasToolmakerCoverage(finalResult.toolsUsed),
+        }),
       });
-
-      const followupThread = createThread("[proactive-scan-followup]", defaultAdminUserId, { threadType: "proactive" });
-      finalResult = await runAgentLoop(
-        followupThread.id,
-        buildExplorationFollowupMessage(connectedServers, mustTryTools),
-        undefined,
-        undefined,
-        undefined,
-        defaultAdminUserId,
-        undefined,
-        onStatus,
-      );
-
-      if (shouldRunExplorationFollowup(finalResult.toolsUsed, lastToolsUsed, requireToolmakerAction)) {
-        addLog({
-          level: "warn",
-          source: "scheduler",
-          message: "Proactive follow-up did not fully satisfy exploration constraints.",
-          metadata: JSON.stringify({
-            toolsUsed: finalResult.toolsUsed,
-            requireToolmakerAction,
-            hasExplorationCoverage: hasExplorationCategoryCoverage(finalResult.toolsUsed),
-            hasToolmakerCoverage: hasToolmakerCoverage(finalResult.toolsUsed),
-          }),
-        });
-      }
     }
+  }
 
-    setLastProactiveTools(finalResult.toolsUsed);
+  setLastProactiveTools(finalResult.toolsUsed);
 
+  addLog({
+    level: "thought",
+    source: "thought",
+    message: finalResult.toolsUsed.length > 0
+      ? `[Proactive] Scan complete â€” used ${finalResult.toolsUsed.length} tool(s): ${finalResult.toolsUsed.join(", ")}.`
+      : "[Proactive] Scan complete â€” no tools were called.",
+    metadata: JSON.stringify({
+      threadId: scanThread.id,
+      toolsUsed: finalResult.toolsUsed,
+      pendingApprovals: finalResult.pendingApprovals,
+    }),
+  });
+
+  if (finalResult.content) {
     addLog({
       level: "thought",
       source: "thought",
-      message: finalResult.toolsUsed.length > 0
-        ? `[Proactive] Scan complete — used ${finalResult.toolsUsed.length} tool(s): ${finalResult.toolsUsed.join(", ")}.`
-        : "[Proactive] Scan complete — no tools were called.",
-      metadata: JSON.stringify({
-        threadId: scanThread.id,
-        toolsUsed: finalResult.toolsUsed,
-        pendingApprovals: finalResult.pendingApprovals,
-      }),
-    });
-
-    if (finalResult.content) {
-      addLog({
-        level: "thought",
-        source: "thought",
-        message: `[Proactive] Agent response:\n${finalResult.content.slice(0, 2000)}`,
-        metadata: JSON.stringify({ threadId: scanThread.id, full: finalResult.content.length <= 2000 }),
-      });
-    }
-
-    addLog({
-      level: "info",
-      source: "scheduler",
-      message: "Proactive agent scan completed.",
-      metadata: JSON.stringify({
-        threadId: scanThread.id,
-        toolsUsed: finalResult.toolsUsed,
-        pendingApprovals: finalResult.pendingApprovals,
-        responsePreview: (finalResult.content || "").slice(0, 500),
-      }),
-    });
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    addLog({
-      level: "error",
-      source: "scheduler",
-      message: `Proactive agent scan LLM invocation failed: ${errorMsg}`,
-      metadata: JSON.stringify({
-        error: errorMsg,
-        phase: "agent_loop_invocation",
-        scanStartTime: new Date().toISOString(),
-      }),
+      message: `[Proactive] Agent response:\n${finalResult.content.slice(0, 2000)}`,
+      metadata: JSON.stringify({ threadId: scanThread.id, full: finalResult.content.length <= 2000 }),
     });
   }
 
@@ -356,11 +342,23 @@ async function runProactiveScanInner(): Promise<void> {
     level: "info",
     source: "scheduler",
     message: "Proactive scan completed.",
-    metadata: JSON.stringify({}),
+    metadata: JSON.stringify({
+      primaryThreadId: scanThread.id,
+      followupThreadId,
+      toolsUsed: finalResult.toolsUsed,
+      pendingApprovals: finalResult.pendingApprovals,
+      responsePreview: (finalResult.content || "").slice(0, 500),
+    }),
   });
+
+  return {
+    primaryThreadId: scanThread.id,
+    followupThreadId,
+    toolsUsed: finalResult.toolsUsed,
+  };
 }
 
-/* ── Tool Class ───────────────────────────────────────────────────── */
+/* â”€â”€ Tool Class â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 export class ProactiveScanTool extends BaseTool {
   readonly name = "proactive_scan";

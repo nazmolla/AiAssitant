@@ -53,13 +53,16 @@ function getConfiguredMinLogLevel(): UnifiedLogLevel {
 }
 
 export function addLog(log: AgentLogInput): void {
+  const rawLevel = String(log.level || "").toLowerCase().trim();
   const normalizedLevel = normalizeLogLevel(log.level);
   const minLevel = getConfiguredMinLogLevel();
-  if (!shouldKeepLog(normalizedLevel, minLevel)) {
+  // Thought-level logs always bypass the server min-log-level filter.
+  // They are important diagnostic observations (not verbose noise) and must
+  // always be persisted so the dashboard Thoughts view is never silently empty.
+  if (rawLevel !== "thought" && !shouldKeepLog(normalizedLevel, minLevel)) {
     return;
   }
 
-  const rawLevel = String(log.level || "").toLowerCase().trim();
   const normalizedSource =
     rawLevel === "thought" && !log.source
       ? "thought"

@@ -176,7 +176,8 @@ describe("scheduler API endpoints", () => {
     const task = db
       .prepare("SELECT handler_name FROM scheduler_tasks WHERE schedule_id = ? ORDER BY sequence_no LIMIT 1")
       .get(body.schedule_id) as { handler_name: string } | undefined;
-    expect(task?.handler_name).toBe("system.email.read_incoming");
+    // Email batch now uses a 3-step pipeline; first step is inbox scan
+    expect(task?.handler_name).toBe("workflow.email.inbox_scan");
   });
 
   test("GET schedule detail returns schedule, tasks, recent_runs", async () => {

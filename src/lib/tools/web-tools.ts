@@ -287,6 +287,76 @@ export class WebTools extends BaseTool {
     return results;
   }
 
+  private static async searchDuckDuckGoLite(query: string, maxResults: number): Promise<SearchResult[]> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), WEB_SEARCH_TIMEOUT_MS);
+    try {
+      const response = await fetch("https://lite.duckduckgo.com/lite/", {
+        method: "POST",
+        headers: {
+          ...BROWSER_HEADERS,
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Origin": "https://lite.duckduckgo.com",
+          "Referer": "https://lite.duckduckgo.com/",
+        },
+        body: new URLSearchParams({ q: query }).toString(),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`Search request failed: ${response.status} ${response.statusText}`);
+      }
+      return WebTools.parseDuckDuckGoLiteResults(await response.text(), maxResults);
+    } catch (error) {
+      if (WebTools.isAbortLikeError(error)) {
+        throw new Error(`Search request timed out after ${WEB_SEARCH_TIMEOUT_MS}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private static parseDuckDuckGoLiteResults(html: string, maxResults: number): SearchResult[] {
+    const results: SearchResult[] = [];
+    const seen = new Set<string>();
+
+    // DDG Lite returns table-based results; extract all anchors with http URLs that are not DDG-internal
+    const anchorRe = /<a\b[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let m: RegExpExecArray | null;
+
+    while ((m = anchorRe.exec(html)) !== null && results.length < maxResults) {
+      let url = m[1].trim();
+      const rawTitle = m[2];
+      const title = WebTools.decodeBasicEntities(rawTitle.replace(/<[^>]+>/g, "")).trim();
+
+      // Resolve DDG redirect URLs (uddg=...)
+      const uddg = url.match(/uddg=([^&]+)/);
+      if (uddg) url = decodeURIComponent(uddg[1]);
+
+      if (!url.startsWith("http") || !title || title.length < 3) continue;
+      if (/\blite\.duckduckgo\.com\b/.test(url) || /\bduckduckgo\.com\//.test(url)) continue;
+
+      if (!seen.has(url)) {
+        seen.add(url);
+        results.push({ title, url, snippet: "" });
+      }
+    }
+
+    // Try to enrich snippets from td elements near results
+    if (results.length > 0) {
+      const snippetRe = /<td[^>]*class=["'][^"']*snippet[^"']*["'][^>]*>([\s\S]*?)<\/td>/gi;
+      let i = 0;
+      let sm: RegExpExecArray | null;
+      while ((sm = snippetRe.exec(html)) !== null && i < results.length) {
+        results[i].snippet = WebTools.decodeBasicEntities(sm[1].replace(/<[^>]+>/g, "")).trim();
+        i++;
+      }
+    }
+
+    return results;
+  }
+
   private static async searchDuckDuckGoHtml(query: string, maxResults: number): Promise<SearchResult[]> {
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const response = await WebTools.fetchWithTimeout(searchUrl, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", undefined, true);
@@ -391,6 +461,9 @@ export class WebTools extends BaseTool {
 
     const configuredProviders = WebTools.getRuntimeSearchProviders().filter((provider) => provider.enabled);
     const providers: Array<{ name: string; search: (searchQuery: string, limit: number) => Promise<SearchResult[]> }> = configuredProviders.map((provider) => {
+      if (provider.type === "duckduckgo-lite") {
+        return { name: provider.type, search: WebTools.searchDuckDuckGoLite };
+      }
       if (provider.type === "duckduckgo-html") {
         return { name: provider.type, search: WebTools.searchDuckDuckGoHtml };
       }

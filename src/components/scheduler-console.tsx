@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { processMessages, type Message } from "@/components/chat-panel-types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
@@ -166,6 +167,9 @@ export function SchedulerConsole() {
   const [runDetail, setRunDetail] = useState<SchedulerRunDetailResponse | null>(null);
   const [loadingRunDetail, setLoadingRunDetail] = useState(false);
   const [expandedTaskRunIds, setExpandedTaskRunIds] = useState<Set<string>>(new Set());
+  const [expandedThreadViewIds, setExpandedThreadViewIds] = useState<Set<string>>(new Set());
+  const [threadMessagesCache, setThreadMessagesCache] = useState<Map<string, Message[]>>(new Map());
+  const [loadingThreadIds, setLoadingThreadIds] = useState<Set<string>>(new Set());
   const [selectedScheduleDetail, setSelectedScheduleDetail] = useState<SchedulerScheduleDetailResponse | null>(null);
   const [loadingScheduleDetail, setLoadingScheduleDetail] = useState(false);
   const [savingDetail, setSavingDetail] = useState(false);
@@ -186,6 +190,30 @@ export function SchedulerConsole() {
   }>>([]);
   const focusedRunsVisibleRows = 5;
   const focusedRunsRowHeightPx = 38;
+
+  const loadThreadMessages = useCallback(async (threadId: string) => {
+    if (threadMessagesCache.has(threadId) || loadingThreadIds.has(threadId)) return;
+    setLoadingThreadIds((prev) => new Set([...prev, threadId]));
+    try {
+      const res = await fetch(`/api/threads/${encodeURIComponent(threadId)}`);
+      if (res.ok) {
+        const data = await res.json() as { messages: Message[] };
+        setThreadMessagesCache((prev) => new Map([...prev, [threadId, data.messages ?? []]]));
+      }
+    } catch {
+      // silently ignore — thread may be from a different user or no longer exist
+    } finally {
+      setLoadingThreadIds((prev) => { const next = new Set(prev); next.delete(threadId); return next; });
+    }
+  }, [threadMessagesCache, loadingThreadIds]);
+
+  const toggleThreadView = useCallback((threadId: string) => {
+    setExpandedThreadViewIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(threadId)) { next.delete(threadId); } else { next.add(threadId); loadThreadMessages(threadId); }
+      return next;
+    });
+  }, [loadThreadMessages]);
 
   const toggleScheduleSelection = (id: string) => {
     setSelectedScheduleIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -1143,21 +1171,75 @@ export function SchedulerConsole() {
                                     <tr>
                                       <td colSpan={5} className="p-0">
                                         <Collapse in={isExpanded}>
-                                          <div className="px-3 py-2 bg-muted/20 border-t border-white/[0.04] text-xs space-y-1">
-                                            {output.threadId && (
-                                              <p><span className="text-muted-foreground">Thread:</span> <span className="font-mono">{output.threadId.slice(0, 12)}…</span></p>
-                                            )}
+                                          <div className="px-3 py-2 bg-muted/20 border-t border-white/[0.04] text-xs space-y-2">
+                                            {/* Thread links */}
+                                            {(() => {
+                                              const threadIds: { label: string; id: string }[] = [];
+                                              if (output.primaryThreadId) {
+                                                threadIds.push({ label: "Primary", id: output.primaryThreadId });
+                                              } else if (output.threadId) {
+                                                threadIds.push({ label: "Thread", id: output.threadId });
+                                              }
+                                              if (output.followupThreadId) {
+                                                threadIds.push({ label: "Follow-up", id: output.followupThreadId });
+                                              }
+                                              // email / job-scout per-step threads
+                                              if (output.stepKey && output.threadId && !output.primaryThreadId) {
+                                                const existing = threadIds.find((t) => t.id === output.threadId);
+                                                if (!existing) threadIds.push({ label: output.stepKey, id: output.threadId });
+                                              }
+                                              return threadIds.map(({ label, id }) => (
+                                                <div key={id}>
+                                                  <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-muted-foreground">{label} Thread:</span>
+                                                    <span className="font-mono">{id.slice(0, 12)}…</span>
+                                                    <button
+                                                      className="text-primary underline ml-1"
+                                                      onClick={() => toggleThreadView(id)}
+                                                    >
+                                                      {expandedThreadViewIds.has(id) ? "Hide Messages" : "View Messages"}
+                                                    </button>
+                                                    {loadingThreadIds.has(id) && <span className="text-muted-foreground ml-1">Loading…</span>}
+                                                  </div>
+                                                  {expandedThreadViewIds.has(id) && (() => {
+                                                    const msgs = threadMessagesCache.get(id) ?? [];
+                                                    const processed = processMessages(msgs, false, []);
+                                                    if (!processed.length) return (
+                                                      <p className="text-muted-foreground pl-2 py-1">No messages found.</p>
+                                                    );
+                                                    return (
+                                                      <div className="space-y-1 pl-2 max-h-96 overflow-y-auto border border-white/[0.06] rounded p-2 bg-muted/10">
+                                                        {processed.map((pm) => (
+                                                          <div key={pm.msg.id} className={`rounded p-1.5 text-[11px] ${pm.msg.role === "user" ? "bg-blue-500/10 border border-blue-500/20" : pm.msg.role === "assistant" ? "bg-green-500/10 border border-green-500/20" : "bg-muted/20 border border-white/[0.04]"}`}>
+                                                            <span className={`font-semibold mr-1 uppercase text-[10px] ${pm.msg.role === "user" ? "text-blue-400" : pm.msg.role === "assistant" ? "text-green-400" : "text-muted-foreground"}`}>{pm.msg.role}</span>
+                                                            {pm.thoughts.length > 0 && (
+                                                              <span className="text-muted-foreground ml-1">[{pm.thoughts.reduce((acc, t) => acc + t.toolCalls.length, 0)} tool call(s)]</span>
+                                                            )}
+                                                            {pm.displayContent && (
+                                                              <span className="whitespace-pre-wrap break-words">{pm.displayContent.slice(0, 500)}{pm.displayContent.length > 500 ? "…" : ""}</span>
+                                                            )}
+                                                          </div>
+                                                        ))}
+                                                      </div>
+                                                    );
+                                                  })()}
+                                                </div>
+                                              ));
+                                            })()}
+                                            {/* Tools used */}
                                             {output.toolsUsed && output.toolsUsed.length > 0 && (
-                                              <p><span className="text-muted-foreground">Tools used:</span> {output.toolsUsed.join(", ")}</p>
+                                              <p><span className="text-muted-foreground">Tools used:</span> {(output.toolsUsed as string[]).join(", ")}</p>
                                             )}
-                                            {output.response && (
+                                            {/* Response preview (for non-thread outputs) */}
+                                            {output.response && !output.threadId && !output.primaryThreadId && (
                                               <div className="mt-1">
                                                 <p className="text-muted-foreground mb-1">Response:</p>
-                                                <pre className="whitespace-pre-wrap break-words rounded border border-white/[0.08] bg-muted/30 p-2 max-h-60 overflow-y-auto">{output.response}</pre>
+                                                <pre className="whitespace-pre-wrap break-words rounded border border-white/[0.08] bg-muted/30 p-2 max-h-60 overflow-y-auto">{String(output.response)}</pre>
                                               </div>
                                             )}
+                                            {/* Error */}
                                             {output.error && (
-                                              <p className="text-red-400"><span className="text-muted-foreground">Error:</span> {output.error}</p>
+                                              <p className="text-red-400"><span className="text-muted-foreground">Error:</span> {String(output.error)}</p>
                                             )}
                                           </div>
                                         </Collapse>
