@@ -40,7 +40,7 @@ export class MaintenanceBatchJob extends BatchJob {
     if (ctx.handlerName === "system.knowledge_maintenance.run_due") {
       const { runKnowledgeMaintenanceIfDue } = await import("@/lib/knowledge-maintenance");
       const result = runKnowledgeMaintenanceIfDue();
-      log("info", "Knowledge maintenance completed.", logCtx, result as Record<string, unknown>);
+      log("info", "Knowledge maintenance completed.", logCtx, { ...result } as Record<string, unknown>);
       return { outputJson: { kind: "knowledge_maintenance", result } };
     }
 
