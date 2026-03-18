@@ -422,9 +422,9 @@ describe("SchedulerConfig", () => {
     render(<SchedulerConfig />);
     await waitFor(() => {
       expect(screen.getByText("New Proactive Scheduler")).toBeInTheDocument();
-      expect(screen.getByText("New Knowledge Maintenance")).toBeInTheDocument();
-      expect(screen.getByText("New Log Cleanup / Maintenance")).toBeInTheDocument();
+      expect(screen.getByText("New System Maintenance")).toBeInTheDocument();
       expect(screen.getByText("New Email Reading Batch")).toBeInTheDocument();
+      expect(screen.getByText("New Job Scout Pipeline")).toBeInTheDocument();
     }, { timeout: 3000 });
   });
 });

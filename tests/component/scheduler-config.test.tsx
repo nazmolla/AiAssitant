@@ -51,9 +51,9 @@ describe("SchedulerConfig — interactions", () => {
     await act(async () => { render(<SchedulerConfig />); });
 
     expect(screen.getByText("New Proactive Scheduler")).toBeInTheDocument();
-    expect(screen.getByText("New Knowledge Maintenance")).toBeInTheDocument();
-    expect(screen.getByText("New Log Cleanup / Maintenance")).toBeInTheDocument();
+    expect(screen.getByText("New System Maintenance")).toBeInTheDocument();
     expect(screen.getByText("New Email Reading Batch")).toBeInTheDocument();
+    expect(screen.getByText("New Job Scout Pipeline")).toBeInTheDocument();
   });
 
   test("clicking a batch type button opens the modal with OK and Cancel buttons", async () => {
@@ -87,31 +87,31 @@ describe("SchedulerConfig — interactions", () => {
     });
   });
 
-  test("knowledge batch shows Poll Interval dropdown", async () => {
+  test("maintenance batch shows no parameter fields (it has none)", async () => {
     setupFetch();
     const { SchedulerConfig } = await import("@/components/scheduler-config");
     await act(async () => { render(<SchedulerConfig />); });
 
     await act(async () => {
-      fireEvent.click(screen.getByText("New Knowledge Maintenance"));
+      fireEvent.click(screen.getByText("New System Maintenance"));
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Poll Interval")).toBeInTheDocument();
+      expect(screen.getByText(/no parameters required/i)).toBeInTheDocument();
     });
   });
 
-  test("cleanup batch shows Log Level dropdown", async () => {
+  test("job_scout batch shows no parameter fields (it has none)", async () => {
     setupFetch();
     const { SchedulerConfig } = await import("@/components/scheduler-config");
     await act(async () => { render(<SchedulerConfig />); });
 
     await act(async () => {
-      fireEvent.click(screen.getByText("New Log Cleanup / Maintenance"));
+      fireEvent.click(screen.getByText("New Job Scout Pipeline"));
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Minimum Log Level to Clean")).toBeInTheDocument();
+      expect(screen.getByText(/no parameters required/i)).toBeInTheDocument();
     });
   });
 
@@ -164,13 +164,13 @@ describe("SchedulerConfig — interactions", () => {
     });
   });
 
-  test("cleanup POST payload includes logLevel parameter", async () => {
+  test("maintenance POST payload includes empty parameters object", async () => {
     setupFetch();
     const { SchedulerConfig } = await import("@/components/scheduler-config");
     await act(async () => { render(<SchedulerConfig />); });
 
     await act(async () => {
-      fireEvent.click(screen.getByText("New Log Cleanup / Maintenance"));
+      fireEvent.click(screen.getByText("New System Maintenance"));
     });
 
     await waitFor(() => {
@@ -187,8 +187,8 @@ describe("SchedulerConfig — interactions", () => {
       );
       expect(postCalls.length).toBe(1);
       const body = JSON.parse(postCalls[0][1].body as string);
-      expect(body.batch_type).toBe("cleanup");
-      expect(body.parameters).toHaveProperty("logLevel");
+      expect(body.batch_type).toBe("maintenance");
+      expect(body.parameters).toEqual({});
     });
   });
 
@@ -247,7 +247,7 @@ describe("SchedulerConfig — interactions", () => {
     await act(async () => { render(<SchedulerConfig />); });
 
     await act(async () => {
-      fireEvent.click(screen.getByText("New Knowledge Maintenance"));
+      fireEvent.click(screen.getByText("New System Maintenance"));
     });
 
     await waitFor(() => {

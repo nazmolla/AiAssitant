@@ -8,7 +8,7 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import Collapse from "@mui/material/Collapse";
 
-type BatchJobType = "proactive" | "knowledge" | "cleanup" | "email";
+type BatchJobType = "proactive" | "maintenance" | "email" | "job_scout";
 
 interface BatchJobParam {
   key: string;
@@ -19,40 +19,13 @@ interface BatchJobParam {
 
 /**
  * Parameter definitions that mirror the BatchJobParameterDefinition in each batch job class.
- * Proactive has no parameters.
- * Knowledge: pollSeconds
- * Cleanup: logLevel
+ * Proactive, Maintenance, and Job Scout have no parameters.
  * Email: maxMessages
  */
 const batchParameterDefs: Record<BatchJobType, BatchJobParam[]> = {
   proactive: [],
-  knowledge: [
-    {
-      key: "pollSeconds",
-      label: "Poll Interval",
-      options: [
-        { value: "30", label: "30 seconds" },
-        { value: "60", label: "1 minute" },
-        { value: "120", label: "2 minutes" },
-        { value: "300", label: "5 minutes" },
-        { value: "600", label: "10 minutes" },
-      ],
-      defaultValue: "60",
-    },
-  ],
-  cleanup: [
-    {
-      key: "logLevel",
-      label: "Minimum Log Level to Clean",
-      options: [
-        { value: "verbose", label: "Verbose (all logs)" },
-        { value: "info", label: "Info and below" },
-        { value: "warning", label: "Warning and below" },
-        { value: "error", label: "Error only" },
-      ],
-      defaultValue: "warning",
-    },
-  ],
+  maintenance: [],
+  job_scout: [],
   email: [
     {
       key: "maxMessages",
@@ -234,7 +207,7 @@ export function SchedulerConfig() {
         <CardHeader>
           <CardTitle className="text-base font-display">Batch Scheduling</CardTitle>
           <CardDescription className="text-muted-foreground/60">
-            Configure recurrence model configuration for proactive observer, knowledge maintenance, cleanup, and email reading flows.
+            Configure recurrence for proactive exploration, system maintenance, email processing, and job discovery workflows.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -242,9 +215,9 @@ export function SchedulerConfig() {
             <p className="text-muted-foreground/70">Use links below to open the recurrence modal and define frequency/recurrence/subtasks.</p>
             <div className="flex flex-wrap gap-3">
               <button className="text-primary underline" onClick={() => openBatchCreateModal("proactive")}>New Proactive Scheduler</button>
-              <button className="text-primary underline" onClick={() => openBatchCreateModal("knowledge")}>New Knowledge Maintenance</button>
-              <button className="text-primary underline" onClick={() => openBatchCreateModal("cleanup")}>New Log Cleanup / Maintenance</button>
+              <button className="text-primary underline" onClick={() => openBatchCreateModal("maintenance")}>New System Maintenance</button>
               <button className="text-primary underline" onClick={() => openBatchCreateModal("email")}>New Email Reading Batch</button>
+              <button className="text-primary underline" onClick={() => openBatchCreateModal("job_scout")}>New Job Scout Pipeline</button>
             </div>
           </div>
 
