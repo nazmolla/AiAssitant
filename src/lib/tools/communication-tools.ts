@@ -13,6 +13,7 @@ import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./bas
 
 export const COMMUNICATION_TOOL_NAMES = {
   SEND: "builtin.channel_send",
+  NOTIFY: "builtin.channel_notify",
   RECEIVE: "builtin.channel_receive",
 } as const;
 
@@ -56,6 +57,45 @@ export const BUILTIN_COMMUNICATION_TOOLS: ToolDefinition[] = [
         },
       },
       required: ["subject", "message"],
+    },
+  },
+  {
+    name: COMMUNICATION_TOOL_NAMES.NOTIFY,
+    description:
+      "Send a notification through an enabled communication channel (email, phone, discord, whatsapp, slack, teams). Alias of channel_send with optional subject.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        channelType: {
+          type: "string",
+          description: "Optional channel type: email | phone | discord | whatsapp | slack | teams | telegram.",
+        },
+        channelLabel: {
+          type: "string",
+          description: "Optional exact channel label when multiple channels of the same type exist.",
+        },
+        externalRecipientId: {
+          type: "string",
+          description: "External recipient identifier for non-email channels (e.g., phone number or platform user id).",
+        },
+        emailRecipient: {
+          type: "string",
+          description: "Email recipient address when sending through an email channel.",
+        },
+        to: {
+          type: "string",
+          description: "Compatibility alias for recipient (email address or external recipient id).",
+        },
+        subject: {
+          type: "string",
+          description: "Optional notification subject. Defaults to 'Nexus Notification'.",
+        },
+        message: {
+          type: "string",
+          description: "Notification body/content.",
+        },
+      },
+      required: ["message"],
     },
   },
   {
@@ -153,7 +193,11 @@ export class CommunicationTools extends BaseTool {
   }
 
   static isCommunicationTool(name: string): boolean {
-    return name === COMMUNICATION_TOOL_NAMES.SEND || name === COMMUNICATION_TOOL_NAMES.RECEIVE;
+    return (
+      name === COMMUNICATION_TOOL_NAMES.SEND ||
+      name === COMMUNICATION_TOOL_NAMES.NOTIFY ||
+      name === COMMUNICATION_TOOL_NAMES.RECEIVE
+    );
   }
 
   async execute(
@@ -163,6 +207,14 @@ export class CommunicationTools extends BaseTool {
   ): Promise<unknown> {
     if (toolName === COMMUNICATION_TOOL_NAMES.SEND) {
       return this.executeSend(args, context.userId);
+    }
+    if (toolName === COMMUNICATION_TOOL_NAMES.NOTIFY) {
+      const subject = getStringArg(args, "subject") || "Nexus Notification";
+      const message = getStringArg(args, "message");
+      if (!message) {
+        throw new Error("Missing required args: message.");
+      }
+      return this.executeSend({ ...args, subject, message }, context.userId);
     }
     if (toolName === COMMUNICATION_TOOL_NAMES.RECEIVE) {
       return this.executeReceive(args, context.userId);

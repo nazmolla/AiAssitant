@@ -157,6 +157,7 @@ describe("getToolRegistry (singleton)", () => {
     expect(registry.findCategory("builtin.fs_read_file")?.name).toBe("fs");
     expect(registry.findCategory("builtin.net_ping")?.name).toBe("network");
     expect(registry.findCategory("builtin.channel_send")?.name).toBe("communication");
+    expect(registry.findCategory("builtin.channel_notify")?.name).toBe("communication");
     expect(registry.findCategory("builtin.file_generate")?.name).toBe("file");
     expect(registry.findCategory("builtin.alexa_announce")?.name).toBe("alexa");
   });

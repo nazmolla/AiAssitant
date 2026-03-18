@@ -146,6 +146,7 @@ describe("Tool policy seeding", () => {
 
     // Communication tools should have policies
     expect(policyNames).toContain("builtin.channel_send");
+    expect(policyNames).toContain("builtin.channel_notify");
     expect(policyNames).toContain("builtin.channel_receive");
 
     // Custom toolmaker tools should have policies
@@ -171,6 +172,9 @@ describe("Tool policy seeding", () => {
     const channelSend = getToolPolicy("builtin.channel_send");
     expect(channelSend?.requires_approval).toBe(0);
 
+    const channelNotify = getToolPolicy("builtin.channel_notify");
+    expect(channelNotify?.requires_approval).toBe(0);
+
     // Safe: no approval required
     const webSearch = getToolPolicy("builtin.web_search");
     expect(webSearch?.requires_approval).toBe(0);
@@ -184,6 +188,7 @@ describe("Tool policy seeding", () => {
 
   test("Communication tools are not in approval-required defaults", () => {
     expect(COMMUNICATION_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.channel_send");
+    expect(COMMUNICATION_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.channel_notify");
     expect(COMMUNICATION_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.channel_receive");
   });
 

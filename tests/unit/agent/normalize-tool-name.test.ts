@@ -31,6 +31,7 @@ describe("normalizeToolName", () => {
     expect(normalizeToolName("fs_read_file")).toBe("builtin.fs_read_file");
     expect(normalizeToolName("net_ping")).toBe("builtin.net_ping");
     expect(normalizeToolName("channel_send")).toBe("builtin.channel_send");
+    expect(normalizeToolName("channel_notify")).toBe("builtin.channel_notify");
     expect(normalizeToolName("file_generate")).toBe("builtin.file_generate");
   });
 

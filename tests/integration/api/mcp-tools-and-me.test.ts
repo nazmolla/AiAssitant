@@ -65,6 +65,7 @@ describe("GET /api/mcp/tools", () => {
     expect(builtinTools.length).toBeGreaterThan(0);
     const builtinNames = builtinTools.map((t: any) => t.name);
     expect(builtinNames).toContain("builtin.channel_send");
+    expect(builtinNames).toContain("builtin.channel_notify");
     expect(builtinNames).toContain("builtin.channel_receive");
     expect(builtinNames).toContain("builtin.file_generate");
 
