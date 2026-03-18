@@ -729,9 +729,31 @@ function cronToIntervalExpr(cron: string): string {
   return "every:15:minute";
 }
 
+const SUPPRESSED_SCHEDULE_KEYS_CONFIG_KEY = "scheduler.suppressed_schedule_keys";
+
+function getSuppressedScheduleKeys(): Set<string> {
+  const db = getDb();
+  const row = db.prepare("SELECT value FROM app_config WHERE key = ?").get(SUPPRESSED_SCHEDULE_KEYS_CONFIG_KEY) as { value?: string } | undefined;
+  if (!row?.value) return new Set();
+
+  try {
+    const parsed = JSON.parse(row.value) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(
+      parsed
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 function ensureSystemUnifiedSchedules(): void {
   const db = getDb();
   if (!tableExists("scheduler_schedules") || !tableExists("scheduler_tasks")) return;
+  const suppressedScheduleKeys = getSuppressedScheduleKeys();
 
   const proactiveCron = db.prepare("SELECT value FROM app_config WHERE key = 'proactive_cron_schedule'").get() as { value?: string } | undefined;
   const kmEnabledRow = db.prepare("SELECT value FROM app_config WHERE key = 'knowledge_maintenance_enabled'").get() as { value?: string } | undefined;
@@ -777,92 +799,100 @@ function ensureSystemUnifiedSchedules(): void {
   };
 
   const tx = db.transaction(() => {
-    const proactiveId = ensureByKey("system.proactive.scan");
-    upsertSchedule.run(
-      proactiveId,
-      "system.proactive.scan",
-      "System Proactive Scan",
-      "system.proactive",
-      proactiveExpr,
-      "active",
-      JSON.stringify({ strategy: "none", maxAttempts: 1 })
-    );
-    upsertTask.run(
-      `sched_task_${proactiveId}_primary`,
-      proactiveId,
-      "primary",
-      "Run proactive scan",
-      "system.proactive.scan",
-      0,
-      JSON.stringify({ source: "unified" })
-    );
-
-    const dbMaintId = ensureByKey("system.db_maintenance.run_due");
-    upsertSchedule.run(
-      dbMaintId,
-      "system.db_maintenance.run_due",
-      "System DB Maintenance",
-      "system.db_maintenance",
-      "every:1:hour",
-      "active",
-      JSON.stringify({ strategy: "none", maxAttempts: 1 })
-    );
-    upsertTask.run(
-      `sched_task_${dbMaintId}_primary`,
-      dbMaintId,
-      "primary",
-      "Run DB maintenance if due",
-      "system.db_maintenance.run_due",
-      0,
-      JSON.stringify({ source: "unified" })
-    );
-
-    const kmId = ensureByKey("system.knowledge_maintenance.run_due");
-    upsertSchedule.run(
-      kmId,
-      "system.knowledge_maintenance.run_due",
-      "System Knowledge Maintenance",
-      "system.knowledge_maintenance",
-      `every:${kmPollSeconds}:second`,
-      kmEnabled ? "active" : "paused",
-      JSON.stringify({ strategy: "none", maxAttempts: 1 })
-    );
-    upsertTask.run(
-      `sched_task_${kmId}_primary`,
-      kmId,
-      "primary",
-      "Run knowledge maintenance if due",
-      "system.knowledge_maintenance.run_due",
-      0,
-      JSON.stringify({ source: "unified" })
-    );
-
-    const jobScoutId = ensureByKey("workflow.job_scout.pipeline");
-    upsertSchedule.run(
-      jobScoutId,
-      "workflow.job_scout.pipeline",
-      "Job Scout Pipeline",
-      "workflow.job_scout",
-      "every:1:day",
-      "paused",
-      JSON.stringify({ strategy: "none", maxAttempts: 1 })
-    );
-
-    const pipelineTasks = [
-      { key: "run", name: "Job Scout", handler: "workflow.job_scout.run" },
-    ];
-
-    for (let i = 0; i < pipelineTasks.length; i += 1) {
-      const task = pipelineTasks[i];
+    if (!suppressedScheduleKeys.has("system.proactive.scan")) {
+      const proactiveId = ensureByKey("system.proactive.scan");
+      upsertSchedule.run(
+        proactiveId,
+        "system.proactive.scan",
+        "System Proactive Scan",
+        "system.proactive",
+        proactiveExpr,
+        "active",
+        JSON.stringify({ strategy: "none", maxAttempts: 1 })
+      );
       upsertTask.run(
-        `sched_task_${jobScoutId}_${task.key}`,
-        jobScoutId,
-        task.key,
-        task.name,
-        task.handler,
-        i,
+        `sched_task_${proactiveId}_primary`,
+        proactiveId,
+        "primary",
+        "Run proactive scan",
+        "system.proactive.scan",
+        0,
         JSON.stringify({ source: "unified" })
       );
+    }
+
+    if (!suppressedScheduleKeys.has("system.db_maintenance.run_due")) {
+      const dbMaintId = ensureByKey("system.db_maintenance.run_due");
+      upsertSchedule.run(
+        dbMaintId,
+        "system.db_maintenance.run_due",
+        "System DB Maintenance",
+        "system.db_maintenance",
+        "every:1:hour",
+        "active",
+        JSON.stringify({ strategy: "none", maxAttempts: 1 })
+      );
+      upsertTask.run(
+        `sched_task_${dbMaintId}_primary`,
+        dbMaintId,
+        "primary",
+        "Run DB maintenance if due",
+        "system.db_maintenance.run_due",
+        0,
+        JSON.stringify({ source: "unified" })
+      );
+    }
+
+    if (!suppressedScheduleKeys.has("system.knowledge_maintenance.run_due")) {
+      const kmId = ensureByKey("system.knowledge_maintenance.run_due");
+      upsertSchedule.run(
+        kmId,
+        "system.knowledge_maintenance.run_due",
+        "System Knowledge Maintenance",
+        "system.knowledge_maintenance",
+        `every:${kmPollSeconds}:second`,
+        kmEnabled ? "active" : "paused",
+        JSON.stringify({ strategy: "none", maxAttempts: 1 })
+      );
+      upsertTask.run(
+        `sched_task_${kmId}_primary`,
+        kmId,
+        "primary",
+        "Run knowledge maintenance if due",
+        "system.knowledge_maintenance.run_due",
+        0,
+        JSON.stringify({ source: "unified" })
+      );
+    }
+
+    if (!suppressedScheduleKeys.has("workflow.job_scout.pipeline")) {
+      const jobScoutId = ensureByKey("workflow.job_scout.pipeline");
+      upsertSchedule.run(
+        jobScoutId,
+        "workflow.job_scout.pipeline",
+        "Job Scout Pipeline",
+        "workflow.job_scout",
+        "every:1:day",
+        "paused",
+        JSON.stringify({ strategy: "none", maxAttempts: 1 })
+      );
+
+      const pipelineTasks = [
+        { key: "run", name: "Job Scout", handler: "workflow.job_scout.run" },
+      ];
+
+      for (let i = 0; i < pipelineTasks.length; i += 1) {
+        const task = pipelineTasks[i];
+        upsertTask.run(
+          `sched_task_${jobScoutId}_${task.key}`,
+          jobScoutId,
+          task.key,
+          task.name,
+          task.handler,
+          i,
+          JSON.stringify({ source: "unified" })
+        );
+      }
     }
   });
 

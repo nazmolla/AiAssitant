@@ -437,7 +437,44 @@ export function updateSchedulerScheduleById(scheduleId: string, args: {
 }
 
 export function deleteSchedulerScheduleById(scheduleId: string): number {
-  const result = getDb().prepare("DELETE FROM scheduler_schedules WHERE id = ?").run(scheduleId);
+  const db = getDb();
+  const existing = db.prepare("SELECT schedule_key FROM scheduler_schedules WHERE id = ?").get(scheduleId) as { schedule_key?: string } | undefined;
+
+  const result = db.prepare("DELETE FROM scheduler_schedules WHERE id = ?").run(scheduleId);
+
+  const scheduleKey = typeof existing?.schedule_key === "string" ? existing.schedule_key.trim() : "";
+  if (result.changes > 0 && scheduleKey) {
+    const configKey = "scheduler.suppressed_schedule_keys";
+    const row = db.prepare("SELECT value FROM app_config WHERE key = ?").get(configKey) as { value?: string } | undefined;
+    let suppressed = new Set<string>();
+
+    if (row?.value) {
+      try {
+        const parsed = JSON.parse(row.value) as unknown;
+        if (Array.isArray(parsed)) {
+          suppressed = new Set(
+            parsed
+              .filter((item): item is string => typeof item === "string")
+              .map((item) => item.trim())
+              .filter(Boolean),
+          );
+        }
+      } catch {
+        suppressed = new Set<string>();
+      }
+    }
+
+    suppressed.add(scheduleKey);
+    const value = JSON.stringify(Array.from(suppressed).slice(-256));
+    db.prepare(
+      `INSERT INTO app_config (key, value, updated_at)
+       VALUES (?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(key) DO UPDATE SET
+         value = excluded.value,
+         updated_at = CURRENT_TIMESTAMP`
+    ).run(configKey, value);
+  }
+
   return result.changes;
 }
 

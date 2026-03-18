@@ -56,4 +56,33 @@ describe("unified scheduler foundation schema", () => {
 
     expect(jobScoutTaskCount.c).toBe(1);
   });
+
+  test("does not reseed schedules that were explicitly suppressed", () => {
+    const { getDb } = require("@/lib/db/connection");
+    const db = getDb();
+    const { initializeDatabase } = require("@/lib/db/init");
+
+    db.prepare(
+      `INSERT INTO app_config (key, value, updated_at)
+       VALUES ('scheduler.suppressed_schedule_keys', ?, CURRENT_TIMESTAMP)`
+    ).run(JSON.stringify(["workflow.job_scout.pipeline", "system.proactive.scan"]));
+
+    initializeDatabase();
+
+    const presentKeys = (db.prepare(
+      `SELECT schedule_key FROM scheduler_schedules
+       WHERE schedule_key IN (
+         'system.proactive.scan',
+         'system.db_maintenance.run_due',
+         'system.knowledge_maintenance.run_due',
+         'workflow.job_scout.pipeline'
+       )
+       ORDER BY schedule_key`
+    ).all() as Array<{ schedule_key: string }>).map((row) => row.schedule_key);
+
+    expect(presentKeys).toEqual([
+      "system.db_maintenance.run_due",
+      "system.knowledge_maintenance.run_due",
+    ]);
+  });
 });
