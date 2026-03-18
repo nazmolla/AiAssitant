@@ -7,12 +7,12 @@
 #    1. Local:  lint + tests + version bump
 #    2. Local:  create source tarball (no DB, no .next, no node_modules)
 #    3. Remote: WAL checkpoint + backup DB + integrity check
-#    4. Remote: stop service
-#    5. Remote: upload + extract source (DB protected as read-only)
-#    6. Remote: npm install
-#    7. Remote: build (DB moved aside to prevent corruption)
-#    8. Remote: restore DB + integrity recheck
-#    9. Remote: start service + health check
+#    4. Remote: create staging release directory
+#    5. Remote: upload + extract source into staging
+#    6. Remote: npm install in staging
+#    7. Remote: build in staging (DB isolated)
+#    8. Remote: start staging preview + heartbeat check
+#    9. Remote: cut over (stop old service, sync staged build, start service)
 #   10. Remote: functional smoke tests (API key + endpoints)
 #   11. Remote: post-deploy DB validation (row counts vs snapshot)
 #   11. Local:  cleanup
@@ -33,6 +33,9 @@ REMOTE="${USER}@${HOST}"
 REMOTE_DIR="~/AiAssistant"
 TAR_NAME="deploy.tar.gz"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+STAGING_DIR="/tmp/nexus-release-${TIMESTAMP}"
+PREVIEW_PORT=3001
+PREVIEW_PID_FILE="/tmp/nexus-preview-${TIMESTAMP}.pid"
 MAX_BACKUPS=5          # keep last N DB backups on server
 HEALTH_WAIT=10         # seconds to wait after start before health check
 STEPS=11
@@ -55,7 +58,12 @@ cleanup_db() {
       "cd ${REMOTE_DIR} && rm -f nexus.db nexus.db-shm nexus.db-wal 2>/dev/null; test -f nexus.db.build_safe && mv nexus.db.build_safe nexus.db && mv nexus.db-shm.build_safe nexus.db-shm 2>/dev/null; mv nexus.db-wal.build_safe nexus.db-wal 2>/dev/null; echo '  ✓ DB restored from .build_safe'" 2>/dev/null || echo "  ✗ FAILED to restore DB — manually run: mv nexus.db.build_safe nexus.db"
   fi
 }
-trap cleanup_db EXIT
+
+cleanup_preview() {
+  ssh -o LogLevel=ERROR -o ConnectTimeout=10 "${REMOTE}" \
+    "test -f ${PREVIEW_PID_FILE} && kill \$(cat ${PREVIEW_PID_FILE}) 2>/dev/null || true; rm -f ${PREVIEW_PID_FILE}" 2>/dev/null || true
+}
+trap 'cleanup_preview; cleanup_db' EXIT
 
 echo "═══════════════════════════════════════════"
 echo "  Nexus Agent — Deploy"
@@ -168,30 +176,20 @@ else
   fi
 fi
 
-# ── 4. Remote: stop service ───────────────────────────────────────
-step 4 "Stopping remote service..."
-rcmd "sudo systemctl stop nexus-agent 2>/dev/null || true"
-sleep 2
-rcmd "fuser -k 3000/tcp 2>/dev/null || true"
-echo "  ✓ Service stopped"
+# ── 4. Remote: create staging release directory ───────────────────
+step 4 "Preparing staging release directory..."
+rcmd "rm -rf ${STAGING_DIR} && mkdir -p ${STAGING_DIR}" \
+  || fail "Failed to prepare staging release directory"
+echo "  ✓ Staging dir ready: ${STAGING_DIR}"
 
-# ── 5. Remote: upload + extract ───────────────────────────────────
-step 5 "Uploading and extracting source..."
+# ── 5. Remote: upload + extract into staging ──────────────────────
+step 5 "Uploading and extracting source into staging..."
 scp -o LogLevel=ERROR "${TAR_NAME}" "${REMOTE}:/tmp/${TAR_NAME}" 2>/dev/null \
   || fail "scp upload failed"
 
-# Clean stale build + source (keep DB, data, .env, node_modules)
-rcmd "cd ${REMOTE_DIR} && rm -rf .next src/ public/ scripts/ docs/"
-
-# Protect DB as read-only before extraction
-rcmd "cd ${REMOTE_DIR} && test -f nexus.db && chmod 444 nexus.db || true"
-
-# Extract — tar excludes *.db by flag, and chmod 444 also blocks overwrite
-rcmd "cd ${REMOTE_DIR} && tar xzf /tmp/${TAR_NAME} --exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm' && rm -f /tmp/${TAR_NAME}" \
+# Extract into staging only (live service remains untouched)
+rcmd "cd ${STAGING_DIR} && tar xzf /tmp/${TAR_NAME} --exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm' && rm -f /tmp/${TAR_NAME}" \
   || fail "tar extraction failed"
-
-# Restore DB permissions
-rcmd "cd ${REMOTE_DIR} && test -f nexus.db && chmod 664 nexus.db || true"
 
 # Verify DB was not touched
 if [ "${PRE_DB_SIZE}" -gt 0 ]; then
@@ -204,33 +202,32 @@ if [ "${PRE_DB_SIZE}" -gt 0 ]; then
 fi
 echo "  ✓ Source extracted, DB intact"
 
-# ── 6. Remote: install dependencies (all — dev deps needed for build) ──
-step 6 "Installing dependencies..."
-rcmd "cd ${REMOTE_DIR} && npm ci --loglevel=error 2>&1 | tail -5" \
+# ── 6. Remote: install dependencies in staging ────────────────────
+step 6 "Installing dependencies in staging..."
+rcmd "cd ${STAGING_DIR} && npm ci --loglevel=error 2>&1 | tail -5" \
   || fail "npm ci failed"
-rcmd "cd ${REMOTE_DIR} && test -x node_modules/.bin/next" \
+rcmd "cd ${STAGING_DIR} && test -x node_modules/.bin/next" \
   || fail "next binary missing after install"
 echo "  ✓ Dependencies installed"
 
-# ── 7. Remote: build (DB isolated) ───────────────────────────────
-step 7 "Building on server (DB isolated)..."
-# Move DB aside so next build cannot corrupt it during page data collection
-rcmd "cd ${REMOTE_DIR} && test -f nexus.db && mv nexus.db nexus.db.build_safe || true"
-rcmd "cd ${REMOTE_DIR} && test -f nexus.db-shm && mv nexus.db-shm nexus.db-shm.build_safe || true"
-rcmd "cd ${REMOTE_DIR} && test -f nexus.db-wal && mv nexus.db-wal nexus.db-wal.build_safe || true"
+# ── 7. Remote: build staging release (DB isolated) ────────────────
+step 7 "Building staging release (DB isolated)..."
+# Protect against accidental DB creation in staging during build
+rcmd "cd ${STAGING_DIR} && test -f nexus.db && mv nexus.db nexus.db.build_safe || true"
+rcmd "cd ${STAGING_DIR} && test -f nexus.db-shm && mv nexus.db-shm nexus.db-shm.build_safe || true"
+rcmd "cd ${STAGING_DIR} && test -f nexus.db-wal && mv nexus.db-wal nexus.db-wal.build_safe || true"
 DB_IN_BUILD_SAFE=true
 
 # Use long-lived SSH with keepalive — build can take minutes
-BUILD_OUTPUT=$(rcmd_long "cd ${REMOTE_DIR} && npx next build --webpack 2>&1" || true)
+BUILD_OUTPUT=$(rcmd_long "cd ${STAGING_DIR} && npx next build --webpack 2>&1" || true)
 echo "${BUILD_OUTPUT}" | tail -10
 BUILD_FAILED=$(echo "${BUILD_OUTPUT}" | grep -c 'Build failed\|Build error' || true)
 
-# Restore DB: remove any fresh DB created during build, then restore original
-rcmd "cd ${REMOTE_DIR} && rm -f nexus.db nexus.db-shm nexus.db-wal 2>/dev/null; true"
-rcmd "cd ${REMOTE_DIR} && test -f nexus.db.build_safe && mv nexus.db.build_safe nexus.db" \
-  || fail "Failed to restore DB from .build_safe after build"
-rcmd "cd ${REMOTE_DIR} && test -f nexus.db-shm.build_safe && mv nexus.db-shm.build_safe nexus.db-shm 2>/dev/null; true"
-rcmd "cd ${REMOTE_DIR} && test -f nexus.db-wal.build_safe && mv nexus.db-wal.build_safe nexus.db-wal 2>/dev/null; true"
+# Remove any staging DB artifacts created during build and restore staged placeholders
+rcmd "cd ${STAGING_DIR} && rm -f nexus.db nexus.db-shm nexus.db-wal 2>/dev/null; true"
+rcmd "cd ${STAGING_DIR} && test -f nexus.db.build_safe && mv nexus.db.build_safe nexus.db 2>/dev/null || true"
+rcmd "cd ${STAGING_DIR} && test -f nexus.db-shm.build_safe && mv nexus.db-shm.build_safe nexus.db-shm 2>/dev/null || true"
+rcmd "cd ${STAGING_DIR} && test -f nexus.db-wal.build_safe && mv nexus.db-wal.build_safe nexus.db-wal 2>/dev/null || true"
 DB_IN_BUILD_SAFE=false
 
 # Verify DB restore actually worked (size must match pre-deploy)
@@ -255,16 +252,35 @@ if [ "${BUILD_FAILED}" -gt 0 ]; then
   fail "next build failed on server"
 fi
 
-# Verify .next build output exists
-rcmd "cd ${REMOTE_DIR} && test -d .next/server" \
+# Verify .next build output exists in staging
+rcmd "cd ${STAGING_DIR} && test -d .next/server" \
   || fail ".next/server directory missing after build"
 
 # Prune dev dependencies to reduce disk footprint
-rcmd "cd ${REMOTE_DIR} && npm prune --omit=dev --loglevel=error 2>&1 | tail -3" || true
+rcmd "cd ${STAGING_DIR} && npm prune --omit=dev --loglevel=error 2>&1 | tail -3" || true
 echo "  ✓ Build complete, dev deps pruned"
 
-# ── 8. Remote: DB integrity recheck ──────────────────────────────
-step 8 "Verifying database integrity post-build..."
+# ── 8. Remote: staging heartbeat check ───────────────────────────
+step 8 "Starting staging preview and heartbeat check..."
+rcmd "test -f ${PREVIEW_PID_FILE} && kill \$(cat ${PREVIEW_PID_FILE}) 2>/dev/null || true; rm -f ${PREVIEW_PID_FILE}"
+rcmd "cd ${STAGING_DIR} && nohup env PORT=${PREVIEW_PORT} npm run start >/tmp/nexus-preview-${TIMESTAMP}.log 2>&1 & echo \$! > ${PREVIEW_PID_FILE}" \
+  || fail "Failed to start staging preview instance"
+
+echo "  Waiting ${HEALTH_WAIT}s for staging preview startup..."
+sleep "${HEALTH_WAIT}"
+
+PREVIEW_HTTP=$(rcmd "curl -sk -o /dev/null -w '%{http_code}' --max-time 10 http://localhost:${PREVIEW_PORT}" || echo "000")
+if [ "${PREVIEW_HTTP}" != "200" ]; then
+  echo "  ✗ Staging heartbeat failed on :${PREVIEW_PORT} (code ${PREVIEW_HTTP})"
+  rcmd "tail -n 30 /tmp/nexus-preview-${TIMESTAMP}.log" || true
+  fail "Staging preview failed heartbeat; keeping old instance untouched"
+fi
+echo "  ✓ Staging preview heartbeat: ${PREVIEW_HTTP}"
+
+# Stop preview process prior to cutover
+rcmd "test -f ${PREVIEW_PID_FILE} && kill \$(cat ${PREVIEW_PID_FILE}) 2>/dev/null || true; rm -f ${PREVIEW_PID_FILE}"
+
+# Keep existing DB integrity check before cutover
 if [ "${PRE_DB_SIZE}" -gt 0 ]; then
   POST_BUILD_SIZE=$(rcmd "stat -c%s ${REMOTE_DIR}/nexus.db" || echo "0")
   POST_BUILD_INTEGRITY=$(rcmd "cd ${REMOTE_DIR} && sqlite3 nexus.db 'PRAGMA integrity_check;'" || echo "ERROR")
@@ -285,8 +301,27 @@ else
   echo "  (fresh install — no DB to verify)"
 fi
 
-# ── 9. Remote: start + health check ──────────────────────────────
-step 9 "Starting service and running health checks..."
+# ── 9. Remote: cut over + health check ───────────────────────────
+step 9 "Cutover to staged release and run health checks..."
+
+# Stop current service only at cutover point
+rcmd "sudo systemctl stop nexus-agent 2>/dev/null || true"
+sleep 2
+rcmd "fuser -k 3000/tcp 2>/dev/null || true"
+
+# Sync staged release into live dir while preserving DB/data/.env
+if rcmd "command -v rsync >/dev/null 2>&1"; then
+  rcmd "rsync -a --delete --exclude='.env' --exclude='nexus.db' --exclude='nexus.db-*' --exclude='data' --exclude='production-backup' ${STAGING_DIR}/ ${REMOTE_DIR}/" \
+    || fail "Failed to sync staged release into live directory"
+else
+  rcmd "cd ${REMOTE_DIR} && rm -rf .next src public scripts docs tests || true"
+  rcmd "cd ${STAGING_DIR} && tar cf - --exclude='.env' --exclude='nexus.db' --exclude='nexus.db-*' --exclude='data' --exclude='production-backup' . | (cd ${REMOTE_DIR} && tar xf -)" \
+    || fail "Failed to copy staged release into live directory"
+fi
+
+# Cleanup staging dir after successful sync
+rcmd "rm -rf ${STAGING_DIR}" || true
+
 rcmd "sudo systemctl start nexus-agent"
 echo "  Waiting ${HEALTH_WAIT}s for startup..."
 sleep "${HEALTH_WAIT}"
