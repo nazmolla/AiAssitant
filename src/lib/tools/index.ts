@@ -46,14 +46,6 @@ export {
 export { alexaTools, AlexaTools, BUILTIN_ALEXA_TOOLS, isAlexaTool, executeAlexaTool, ALEXA_TOOLS_REQUIRING_APPROVAL } from "./alexa-tools";
 export { getAlexaConfig, saveAlexaConfig } from "./alexa-tools";
 export { PromptTool, type PromptToolConfig } from "./prompt-tool";
-export {
-  workflowTools, WorkflowTools, BUILTIN_WORKFLOW_TOOLS, isWorkflowTool,
-  WORKFLOW_TOOLS_REQUIRING_APPROVAL,
-} from "./workflow-tools";
-export { proactiveScanTool, ProactiveScanTool } from "./proactive-scan-tool";
-export { knowledgeMaintenanceTool, KnowledgeMaintenanceTool } from "./knowledge-maintenance-tool";
-export { dbMaintenanceTool, DbMaintenanceTool } from "./db-maintenance-tool";
-export { emailReadTool, EmailReadTool } from "./workflow-email-read-tool";
 export { dispatchAgentTool, DispatchAgentTool } from "./dispatch-agent-tool";
 
 export { buildCappedToolList, MAX_TOOLS_PER_REQUEST } from "./tool-cap";

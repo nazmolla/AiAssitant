@@ -114,7 +114,7 @@ describe("scheduler API endpoints", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        batch_type: "cleanup",
+        batch_type: "maintenance",
         name: "Cleanup Batch One",
         trigger_type: "interval",
         trigger_expr: "every:1:day",
@@ -124,7 +124,7 @@ describe("scheduler API endpoints", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        batch_type: "cleanup",
+        batch_type: "maintenance",
         name: "Cleanup Batch Two",
         trigger_type: "interval",
         trigger_expr: "every:1:day",

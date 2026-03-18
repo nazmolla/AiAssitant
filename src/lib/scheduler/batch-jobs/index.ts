@@ -12,15 +12,13 @@ export {
 
 import type { BatchJob, BatchJobType, BatchJobParameterDefinition } from "./base";
 import { ProactiveBatchJob } from "./proactive";
-import { KnowledgeBatchJob } from "./knowledge";
-import { CleanupBatchJob } from "./cleanup";
+import { MaintenanceBatchJob } from "./maintenance";
 import { EmailBatchJob } from "./email";
 import { JobScoutBatchJob } from "./job-scout";
 
 const REGISTRY: Record<BatchJobType, BatchJob> = {
   proactive: new ProactiveBatchJob(),
-  knowledge: new KnowledgeBatchJob(),
-  cleanup: new CleanupBatchJob(),
+  maintenance: new MaintenanceBatchJob(),
   email: new EmailBatchJob(),
   job_scout: new JobScoutBatchJob(),
 };

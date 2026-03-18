@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 
-export type BatchJobType = "proactive" | "knowledge" | "cleanup" | "email" | "job_scout";
+export type BatchJobType = "proactive" | "maintenance" | "email" | "job_scout";
 
 export interface BatchJobParameterDefinition {
   key: string;

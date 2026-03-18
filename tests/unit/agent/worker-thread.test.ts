@@ -187,14 +187,6 @@ jest.mock("@/lib/tools/network-tools", () => ({
   executeBuiltinNetworkTool: jest.fn(),
   NETWORK_TOOLS_REQUIRING_APPROVAL: [],
 }));
-jest.mock("@/lib/tools/workflow-email-read-tool", () => ({
-  emailReadTool: {
-    tools: [],
-    toolsRequiringApproval: [],
-    matches: () => false,
-    execute: jest.fn(),
-  },
-}));
 jest.mock("@/lib/tools/file-tools", () => ({
   BUILTIN_FILE_TOOLS: [],
   isFileTool: () => false,
