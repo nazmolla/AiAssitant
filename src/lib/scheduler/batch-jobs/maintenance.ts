@@ -49,7 +49,7 @@ export class MaintenanceBatchJob extends BatchJob {
       const result = runDbMaintenanceIfDue();
       log("info", "DB maintenance task completed.", logCtx, {
         maintenanceSkipped: result === null,
-        ...(result as Record<string, unknown> || {}),
+        ...(result || {}),
       });
       return { outputJson: { kind: "db_maintenance", result } };
     }
