@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import crypto from "crypto";
 import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ContentPart, ChatRequestOptions } from "./types";
 import { LLM_CLIENT_TIMEOUT_MS, LLM_MAX_RETRIES, AZURE_OPENAI_DEFAULT_API_VERSION } from "@/lib/constants";
 
@@ -165,6 +166,12 @@ export class OpenAIChatProvider implements ChatProvider {
           for (const tc of delta.tool_calls) {
             const existing = toolCallsMap.get(tc.index);
             if (existing) {
+              if (!existing.id && tc.id) {
+                existing.id = tc.id;
+              }
+              if (!existing.name && tc.function?.name) {
+                existing.name = tc.function.name;
+              }
               if (tc.function?.arguments) {
                 existing.arguments += tc.function.arguments;
               }
@@ -184,7 +191,7 @@ export class OpenAIChatProvider implements ChatProvider {
       }
 
       const toolCalls = Array.from(toolCallsMap.values()).map((tc) => ({
-        id: tc.id,
+        id: tc.id || `tool_call_${crypto.randomUUID()}`,
         name: nameMap.get(tc.name) || tc.name,
         arguments: JSON.parse(tc.arguments || "{}"),
       }));
