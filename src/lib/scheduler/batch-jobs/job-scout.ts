@@ -4,6 +4,7 @@
 } from "@/lib/db";
 import {
   BatchJob,
+  type BatchJobParameterDefinition,
   type BatchJobSubTaskTemplate,
   type StepExecutionContext,
   type StepExecutionResult,
@@ -26,18 +27,32 @@ export class JobScoutBatchJob extends BatchJob {
     return ["workflow.job_scout.run"];
   }
 
+  override getParameterDefinitions(): BatchJobParameterDefinition[] {
+    return [
+      {
+        key: "maxIterations",
+        label: "Max Iterations",
+        type: "select",
+        options: ["5", "10", "15", "25", "40"],
+        defaultValue: "25",
+      },
+    ];
+  }
+
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const { taskRunId, runId, handlerName, configJson, scheduleId } = ctx;
     const logCtx = { scheduleId, runId, taskRunId, handlerName };
 
     let userId = "";
     let additionalContext = "";
+    let maxIterations: number | undefined;
     const threadId = ctx.pipelineThreadId ?? "";
 
     try {
       const parsed = JSON.parse(configJson || "{}");
       if (typeof parsed.prompt === "string" && parsed.prompt) additionalContext = parsed.prompt;
       if (typeof parsed.userId === "string" && parsed.userId) userId = parsed.userId;
+      if (typeof parsed.maxIterations === "number" && parsed.maxIterations > 0) maxIterations = parsed.maxIterations;
     } catch { /* use defaults */ }
 
     if (!userId) {
@@ -60,7 +75,7 @@ export class JobScoutBatchJob extends BatchJob {
     const orchestrator = new OrchestratorAgent(registry);
     const result = await orchestrator.run(
       additionalContext ? `${JOB_SCOUT_TASK_PROMPT}\n\n## User context\n${additionalContext}` : JOB_SCOUT_TASK_PROMPT,
-      { userId, threadId: runThreadId },
+      { userId, threadId: runThreadId, maxIterations },
     );
 
     log("info", "Job scout orchestration completed.", logCtx, {
@@ -83,7 +98,8 @@ export class JobScoutBatchJob extends BatchJob {
     };
   }
 
-  protected createDefaultTasks(): BatchJobSubTaskTemplate[] {
+  protected createDefaultTasks(parameters: Record<string, string> = {}): BatchJobSubTaskTemplate[] {
+    const maxIterations = parameters.maxIterations ? Number(parameters.maxIterations) : 25;
     return [
       {
         task_key: "run",
@@ -92,6 +108,7 @@ export class JobScoutBatchJob extends BatchJob {
         execution_mode: "sync",
         sequence_no: 0,
         enabled: 1,
+        config_json: { maxIterations },
       },
     ];
   }

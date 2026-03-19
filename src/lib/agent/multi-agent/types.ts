@@ -32,6 +32,12 @@ export interface AgentRunContext {
   threadId?: string;
   /** Optional free-text appended to the role prompt before the task. */
   additionalContext?: string;
+  /**
+   * Optional cap on agent loop iterations. Overrides the global MAX_TOOL_ITERATIONS
+   * constant when set. Useful for scheduled tasks where the operator wants to limit
+   * how deeply the agent explores before returning.
+   */
+  maxIterations?: number;
 }
 
 /** Structured result returned from every agent `run()` call. */

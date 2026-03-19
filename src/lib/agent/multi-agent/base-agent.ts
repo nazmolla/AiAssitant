@@ -27,6 +27,11 @@ export type AgentLoopRunner = (
   attachments?: undefined,
   continuation?: boolean,
   userId?: string,
+  onMessage?: undefined,
+  onStatus?: undefined,
+  onToken?: undefined,
+  deps?: undefined,
+  maxIterations?: number,
 ) => Promise<AgentResponse>;
 
 export abstract class BaseAgent {
@@ -85,7 +90,7 @@ export abstract class BaseAgent {
       createThread(`[${this.role}]`, context.userId, { threadType: "scheduled" }).id;
 
     const message = this.buildTaskMessage(task, context.additionalContext);
-    const result = await runner(threadId, message, undefined, undefined, false, context.userId);
+    const result = await runner(threadId, message, undefined, undefined, false, context.userId, undefined, undefined, undefined, undefined, context.maxIterations);
 
     return {
       response: result.content ?? "",

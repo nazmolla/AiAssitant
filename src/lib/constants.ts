@@ -112,8 +112,8 @@ export const BROWSER_WAIT_TIMEOUT_MS = 10_000;
 /** Default max response tokens for LLM completions */
 export const LLM_MAX_RESPONSE_TOKENS = 4_096;
 
-/** OpenAI client HTTP timeout (ms) */
-export const LLM_CLIENT_TIMEOUT_MS = 15_000;
+/** OpenAI client HTTP timeout (ms) — 120 s to accommodate multi-agent orchestrator runs */
+export const LLM_CLIENT_TIMEOUT_MS = 120_000;
 
 /** Max retry attempts for LLM API calls */
 export const LLM_MAX_RETRIES = 1;

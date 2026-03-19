@@ -116,7 +116,8 @@ export async function runAgentLoop(
   onMessage?: (msg: Message) => void,
   onStatus?: (status: { step: string; detail?: string }) => void,
   onToken?: (token: string) => void | Promise<void>,
-  deps: AgentLoopDependencies = defaultAgentLoopDependencies
+  deps: AgentLoopDependencies = defaultAgentLoopDependencies,
+  maxIterations?: number,
 ): Promise<AgentResponse> {
   // Use the orchestrator to pick the best model for this task
   onStatus?.({ step: "Selecting model", detail: "Classifying task complexity…" });
@@ -218,7 +219,8 @@ export async function runAgentLoop(
     }),
   });
 
-  while (iterations < MAX_TOOL_ITERATIONS) {
+  const iterationLimit = maxIterations ?? MAX_TOOL_ITERATIONS;
+  while (iterations < iterationLimit) {
     iterations++;
     await yieldLoop(); // yield event loop between iterations so other requests can be served
 

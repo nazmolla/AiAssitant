@@ -179,8 +179,8 @@ describe("constants", () => {
       expect(LLM_MAX_RESPONSE_TOKENS).toBe(4_096);
     });
 
-    test("LLM_CLIENT_TIMEOUT_MS is 15 seconds", () => {
-      expect(LLM_CLIENT_TIMEOUT_MS).toBe(15_000);
+    test("LLM_CLIENT_TIMEOUT_MS is 120 seconds", () => {
+      expect(LLM_CLIENT_TIMEOUT_MS).toBe(120_000);
     });
 
     test("LLM_MAX_RETRIES is 1", () => {

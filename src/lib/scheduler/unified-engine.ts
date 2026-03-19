@@ -251,7 +251,13 @@ async function executeTaskRun(
     throw new Error(`Unsupported scheduler handler: ${handlerName}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logSchedulerExecution("error", "Scheduler task-run failed.", context, { error: message });
+    const stack = err instanceof Error ? err.stack : undefined;
+    logSchedulerExecution("error", "Scheduler task-run failed.", context, {
+      error: message,
+      stack,
+      handlerName,
+      configJson: configJson ?? undefined,
+    });
     setSchedulerTaskRunStatus(taskRunId, "failed", null, message);
     throw err;
   }
@@ -343,8 +349,10 @@ async function executeRunnableRun(): Promise<void> {
         // Update in-memory map so dependent tasks are correctly skipped.
         taskRunStatusById.set(taskRun.schedule_task_id, "failed");
         const errMsg = err instanceof Error ? err.message : String(err);
+        const errStack = err instanceof Error ? err.stack : undefined;
         logSchedulerExecution("error",
-          `Task "${task.name}" (${task.task_key}) failed: ${errMsg}`, taskCtx);
+          `Task "${task.name}" (${task.task_key}) failed: ${errMsg}`, taskCtx,
+          { stack: errStack, configJson: task.config_json ?? undefined });
         addSchedulerEvent(claimed.id, "task_failed",
           `Failed "${task.name}" (${task.task_key}): ${errMsg}`, taskRun.id);
         // Continue processing remaining independent tasks for partial-success visibility.
@@ -361,8 +369,9 @@ async function executeRunnableRun(): Promise<void> {
     addSchedulerEvent(claimed.id, "run_finished", `Run completed with status ${finalStatus}`, null, JSON.stringify({ failures, taskCount: taskRuns.length }));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
     setSchedulerRunStatus(claimed.id, "failed", message);
-    logSchedulerExecution("error", "Scheduler run failed.", { scheduleId: claimed.schedule_id, runId: claimed.id }, { error: message });
+    logSchedulerExecution("error", "Scheduler run failed.", { scheduleId: claimed.schedule_id, runId: claimed.id }, { error: message, stack });
     addSchedulerEvent(claimed.id, "run_failed", message);
   } finally {
     releaseSchedulerClaim(claimed.id);
