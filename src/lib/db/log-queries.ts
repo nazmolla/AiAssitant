@@ -4,7 +4,7 @@ import { appCache, CACHE_KEYS } from "@/lib/cache";
 import type { ILogger } from "@/lib/container";
 import { container } from "@/lib/container";
 import { createNotification, type NotificationType } from "./notification-queries";
-import { listUsers } from "./user-queries";
+import { listUsersWithPermissions } from "./user-queries";
 
 /** Thin wrapper that passes the (patchable) `getDb` import to the cache */
 function stmt(sql: string) { return _cachedStmt(sql, getDb); }
@@ -43,7 +43,7 @@ let _cachedAdminId: string | undefined;
 function getAdminUserId(): string {
   if (_cachedAdminId) return _cachedAdminId;
   try {
-    const admin = listUsers().find((u) => u.role === "admin" && u.enabled === 1);
+    const admin = listUsersWithPermissions().find((u) => u.role === "admin" && u.enabled === 1);
     if (admin) { _cachedAdminId = admin.id; return admin.id; }
   } catch { /* DB not ready yet */ }
   return "";
