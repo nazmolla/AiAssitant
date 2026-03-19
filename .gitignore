@@ -74,6 +74,13 @@ scripts/verify-*.sh
 # temp diagnostic files
 check-versions.cjs
 test-remote.mjs
-check-users.js
+
+# runtime / temp
+/tmp/
+
+# prevent root-level script clutter (scripts belong in scripts/db, scripts/ops, scripts/debug)
+/*.py
+/*.sh
+!deploy.sh
 
 deployment.deploy

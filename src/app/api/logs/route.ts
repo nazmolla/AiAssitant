@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, requireUser } from "@/lib/auth";
-import { getRecentLogs, deleteAllLogs, deleteLogsByLevel, deleteLogsOlderThanDays, addLog } from "@/lib/db";
+import { getRecentLogs, deleteAllLogs, deleteLogsByLevel, deleteLogsOlderThanDays, addLog } from "@/lib/db/log-queries";
 import { isUnifiedLogLevel } from "@/lib/logging/levels";
 
 async function requireLogsReadAccess() {

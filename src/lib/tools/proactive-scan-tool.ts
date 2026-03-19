@@ -17,13 +17,9 @@ import type { ToolDefinition } from "@/lib/llm";
 import { BaseTool, type ToolExecutionContext } from "./base-tool";
 import { getMcpManager } from "@/lib/mcp";
 import { getCustomToolDefinitions } from "@/lib/tools/custom-tools";
-import {
-  getToolPolicy,
-  addLog,
-  createThread,
-  getAppConfig,
-  setAppConfig,
-} from "@/lib/db";
+import { getToolPolicy } from "@/lib/db/tool-policy-queries";
+import { addLog, getAppConfig, setAppConfig } from "@/lib/db/log-queries";
+import { createThread } from "@/lib/db/thread-queries";
 import {
   type SchedulerBatchExecutionContext,
   getDefaultAdminUserId,

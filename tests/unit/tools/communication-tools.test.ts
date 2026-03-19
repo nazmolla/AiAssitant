@@ -4,7 +4,7 @@
 
 import { CommunicationTools, BUILTIN_COMMUNICATION_TOOLS, COMMUNICATION_TOOL_NAMES } from "@/lib/tools/communication-tools";
 
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/db/channel-queries", () => ({
   listChannels: jest.fn(() => [
     {
       id: "channel-1",
@@ -15,10 +15,16 @@ jest.mock("@/lib/db", () => ({
     },
   ]),
   listChannelUserMappings: jest.fn(() => []),
+}));
+
+jest.mock("@/lib/db/thread-queries", () => ({
+  getThreadMessages: jest.fn(() => []),
+}));
+
+jest.mock("@/lib/db/connection", () => ({
   getDb: jest.fn(() => ({
     prepare: jest.fn(() => ({ all: jest.fn(() => []) })),
   })),
-  getThreadMessages: jest.fn(() => []),
 }));
 
 describe("CommunicationTools channel_notify", () => {

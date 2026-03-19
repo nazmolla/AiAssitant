@@ -5,7 +5,7 @@ import {
   deleteApiKey,
   getApiKeyById,
 } from "@/lib/db/queries";
-import { addLog } from "@/lib/db";
+import { addLog } from "@/lib/db/log-queries";
 
 /**
  * GET /api/admin/api-keys  — list all API keys (admin only)

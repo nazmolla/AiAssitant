@@ -12,7 +12,7 @@
 import type { ToolDefinition } from "@/lib/llm";
 import { URL } from "url";
 import { assertExternalUrlWithResolve } from "@/lib/agent/ssrf";
-import { getWebSearchProviderConfig, type WebSearchProviderType } from "@/lib/db";
+import { getWebSearchProviderConfig, type WebSearchProviderType } from "@/lib/db/search-provider-queries";
 import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 
 // ── Tool Definitions ──────────────────────────────────────────

@@ -7,7 +7,7 @@ import {
   updateUserPermissions,
   deleteUser,
   getUserPermissions,
-} from "@/lib/db";
+} from "@/lib/db/user-queries";
 
 /**
  * GET /api/admin/users — List all users with permissions (admin only)

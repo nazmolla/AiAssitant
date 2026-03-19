@@ -1,11 +1,7 @@
 import type { ToolDefinition } from "@/lib/llm";
-import {
-  listChannels,
-  listChannelUserMappings,
-  getDb,
-  getThreadMessages,
-  type Thread,
-} from "@/lib/db";
+import { listChannels, listChannelUserMappings } from "@/lib/db/channel-queries";
+import { getThreadMessages, type Thread } from "@/lib/db/thread-queries";
+import { getDb } from "@/lib/db/connection";
 import {
   type CommunicationChannelFactory,
 } from "@/lib/channels/communication-channel-factory";

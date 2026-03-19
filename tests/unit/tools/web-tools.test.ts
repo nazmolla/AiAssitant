@@ -2,7 +2,7 @@ import { executeBuiltinWebTool } from "@/lib/tools/web-tools";
 
 const mockGetWebSearchProviderConfig = jest.fn();
 
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/db/search-provider-queries", () => ({
   getWebSearchProviderConfig: () => mockGetWebSearchProviderConfig(),
 }));
 
