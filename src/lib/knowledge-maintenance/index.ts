@@ -19,10 +19,14 @@ function localDateKey(now: Date): string {
 
 function readRuntimeConfig() {
   const enabledRaw = String(getAppConfig("knowledge_maintenance_enabled") || "1").trim().toLowerCase();
+  const fuzzyEnabledRaw = String(getAppConfig("knowledge_maintenance_fuzzy_enabled") || "1").trim().toLowerCase();
+  const fuzzyThresholdRaw = getAppConfig("knowledge_maintenance_fuzzy_threshold");
   return {
     enabled: enabledRaw !== "0" && enabledRaw !== "false" && enabledRaw !== "no",
     hour: clampInt(getAppConfig("knowledge_maintenance_hour"), DEFAULT_HOUR, 0, 23),
     minute: clampInt(getAppConfig("knowledge_maintenance_minute"), DEFAULT_MINUTE, 0, 59),
+    fuzzyEnabled: fuzzyEnabledRaw !== "0" && fuzzyEnabledRaw !== "false" && fuzzyEnabledRaw !== "no",
+    fuzzyThreshold: Math.max(0, Math.min(1, parseFloat(String(fuzzyThresholdRaw ?? "0.85")) || 0.85)),
   };
 }
 
@@ -31,9 +35,107 @@ export interface KnowledgeMaintenanceResult {
   reason?: "disabled" | "window_not_reached" | "already_ran_today" | "overlap";
   deletedEmpty?: number;
   deduplicated?: number;
+  fuzzyDeduplicated?: number;
   trimmedSourceContext?: number;
   durationMs?: number;
 }
+
+// ── Fuzzy deduplication helpers ─────────────────────────────────────
+
+/**
+ * Sørensen–Dice bigram similarity coefficient.
+ * Returns a value in [0, 1] where 1 means identical strings.
+ */
+export function diceSimilarity(a: string, b: string): number {
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return 0;
+
+  const bigrams = new Map<string, number>();
+  for (let i = 0; i < a.length - 1; i++) {
+    const bg = a.slice(i, i + 2);
+    bigrams.set(bg, (bigrams.get(bg) ?? 0) + 1);
+  }
+
+  let intersection = 0;
+  for (let i = 0; i < b.length - 1; i++) {
+    const bg = b.slice(i, i + 2);
+    const count = bigrams.get(bg) ?? 0;
+    if (count > 0) {
+      intersection++;
+      bigrams.set(bg, count - 1);
+    }
+  }
+
+  return (2 * intersection) / (a.length + b.length - 2);
+}
+
+interface RawKnowledgeRow {
+  id: number;
+  user_id: string | null;
+  entity: string;
+  attribute: string;
+  value: string;
+  last_updated: string;
+}
+
+/**
+ * Fuzzy deduplication pass — runs after exact dedup.
+ * Groups entries by (user_id, entity, attribute) then compares values pairwise.
+ * Deletes the older entry whenever similarity >= threshold.
+ * Returns the count of entries deleted.
+ */
+function runFuzzyDedup(threshold: number): number {
+  const db = getDb();
+
+  const rows = db
+    .prepare(
+      `SELECT id, user_id, entity, attribute, value, last_updated
+       FROM user_knowledge
+       ORDER BY coalesce(user_id, ''), lower(trim(entity)), lower(trim(attribute)),
+                last_updated DESC, id DESC`
+    )
+    .all() as RawKnowledgeRow[];
+
+  // Group by (user_id, normalised entity, normalised attribute)
+  const groups = new Map<string, RawKnowledgeRow[]>();
+  for (const row of rows) {
+    const key = `${row.user_id ?? ""}\0${row.entity.toLowerCase().trim()}\0${row.attribute.toLowerCase().trim()}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(row);
+  }
+
+  const toDelete = new Set<number>();
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    // Rows are ordered newest-first; keep the first non-deleted entry in each pair
+    for (let i = 0; i < group.length - 1; i++) {
+      if (toDelete.has(group[i].id)) continue;
+      const normI = group[i].value.toLowerCase().trim();
+      for (let j = i + 1; j < group.length; j++) {
+        if (toDelete.has(group[j].id)) continue;
+        const normJ = group[j].value.toLowerCase().trim();
+        if (diceSimilarity(normI, normJ) >= threshold) {
+          toDelete.add(group[j].id); // keep group[i] (newer), delete group[j]
+        }
+      }
+    }
+  }
+
+  if (toDelete.size === 0) return 0;
+
+  // Use batched deletes to avoid "too many SQL variables" for large sets
+  const ids = [...toDelete];
+  const BATCH = 500;
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const batch = ids.slice(i, i + BATCH);
+    db.prepare(`DELETE FROM user_knowledge WHERE id IN (${batch.map(() => "?").join(",")})`).run(batch);
+  }
+
+  return toDelete.size;
+}
+
+// ── Main maintenance function ────────────────────────────────────────
 
 function runKnowledgeMaintenanceNow(): KnowledgeMaintenanceResult {
   if (_running) return { skipped: true, reason: "overlap" };
@@ -41,6 +143,7 @@ function runKnowledgeMaintenanceNow(): KnowledgeMaintenanceResult {
   const startedAt = Date.now();
 
   try {
+    const { fuzzyEnabled, fuzzyThreshold } = readRuntimeConfig();
     const db = getDb();
     db.exec(
       `CREATE INDEX IF NOT EXISTS idx_user_knowledge_norm_lookup
@@ -71,6 +174,8 @@ function runKnowledgeMaintenanceNow(): KnowledgeMaintenanceResult {
        )`
     ).run();
 
+    const fuzzyDeduplicated = fuzzyEnabled ? runFuzzyDedup(fuzzyThreshold) : 0;
+
     const trimContext = db.prepare(
       `UPDATE user_knowledge
        SET source_context = substr(source_context, 1, 220)
@@ -85,6 +190,7 @@ function runKnowledgeMaintenanceNow(): KnowledgeMaintenanceResult {
       skipped: false,
       deletedEmpty: Number(deleteEmpty.changes || 0),
       deduplicated: Number(dedupe.changes || 0),
+      fuzzyDeduplicated,
       trimmedSourceContext: Number(trimContext.changes || 0),
       durationMs: Date.now() - startedAt,
     };
