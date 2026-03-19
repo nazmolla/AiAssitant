@@ -124,7 +124,8 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
     if (!activeThread) return;
     // Skip loading messages for a freshly-created thread that is about to
     // receive a send — the optimistic UI from sendMessage owns the state.
-    if (pendingSendRef.current) return;
+    // Reset the flag here so subsequent thread switches fetch normally.
+    if (pendingSendRef.current) { pendingSendRef.current = false; return; }
     fetch(`/api/threads/${activeThread}`)
       .then((r) => r.json())
       .then((data) => chatStream.setMessages(data.messages || []))
@@ -199,9 +200,9 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
       // fetch (which would wipe the optimistic message added by sendMessage).
       pendingSendRef.current = true;
       const newThreadId = await createThread();
-      pendingSendRef.current = false;
-      // Pass the new thread ID directly — avoids relying on React re-rendering
-      // the hook closure before the send fires (React 18 concurrent mode timing).
+      // Do NOT clear pendingSendRef here — the activeThread useEffect will clear
+      // it when it fires for the new thread, preventing it from fetching and
+      // wiping the optimistic message that sendMessage is about to add.
       chatStream.sendMessage(newThreadId);
     } else {
       chatStream.sendMessage();
