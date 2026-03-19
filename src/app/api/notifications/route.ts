@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
   switch (action) {
     case "markRead":
       if (!notificationId) return NextResponse.json({ error: "Missing notificationId" }, { status: 400 });
-      markNotificationRead(notificationId, userId);
+      markNotificationRead(String(notificationId), userId);
       return NextResponse.json({ ok: true });
 
     case "markAllRead":
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
 
     case "dismiss":
       if (!notificationId) return NextResponse.json({ error: "Missing notificationId" }, { status: 400 });
-      deleteNotification(notificationId, userId);
+      deleteNotification(String(notificationId), userId);
       return NextResponse.json({ ok: true });
 
     default:

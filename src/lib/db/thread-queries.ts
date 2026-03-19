@@ -34,7 +34,7 @@ export function createThread(title?: string, userId?: string, options?: CreateTh
     )
     .get(
       id,
-      userId ?? null,
+      userId || null,
       title || "New Thread",
       threadType,
       isInteractive,

@@ -16,15 +16,17 @@ export async function GET() {
 
   const userId = auth.user.id;
 
-  // Start cursor at the latest notification id so we only stream NEW ones
-  let cursor: string = (() => {
+  // Start cursor at the latest notification row id so we only stream NEW ones
+  let cursor: number = (() => {
     try {
       const row = getDb()
-        .prepare("SELECT id FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1")
-        .get(userId) as { id: string } | undefined;
-      return row?.id ?? "";
+        .prepare(
+          "SELECT id FROM agent_logs WHERE notify = 1 AND notify_user_id = ? ORDER BY created_at DESC LIMIT 1"
+        )
+        .get(userId) as { id: number } | undefined;
+      return row?.id ?? 0;
     } catch {
-      return "";
+      return 0;
     }
   })();
 
@@ -43,19 +45,15 @@ export async function GET() {
     if (closed) return;
     try {
       const db = getDb();
-      let rows: NotificationRecord[];
-      if (cursor) {
-        rows = db
-          .prepare(
-            `SELECT * FROM notifications
-             WHERE user_id = ?
-               AND created_at > (SELECT created_at FROM notifications WHERE id = ?)
-             ORDER BY created_at ASC LIMIT 50`
-          )
-          .all(userId, cursor) as NotificationRecord[];
-      } else {
-        rows = [];
-      }
+      const rows = db
+        .prepare(
+          `SELECT id, notify_user_id as user_id, notify_type as type, message as title,
+                  notify_body as body, metadata, notify_read as read, created_at
+           FROM agent_logs
+           WHERE notify = 1 AND notify_user_id = ? AND id > ?
+           ORDER BY id ASC LIMIT 50`
+        )
+        .all(userId, cursor) as NotificationRecord[];
       for (const row of rows) {
         send(sseEvent("notification", row));
         cursor = row.id;

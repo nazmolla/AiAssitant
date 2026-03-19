@@ -101,7 +101,7 @@ export async function ingestKnowledgeFromText(payload: KnowledgeIngestionPayload
       level: "warn",
       source: "knowledge",
       message: `Knowledge ingestion failed for ${payload.source}: ${err}`,
-      metadata: JSON.stringify({ source: payload.source, error: err instanceof Error ? err.message : String(err), textPreview: text.substring(0, 160) }),
+      metadata: JSON.stringify({ source: payload.source, error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined, textPreview: text.substring(0, 160) }),
     });
     return 0;
   }
@@ -188,7 +188,7 @@ async function indexEmbedding(knowledgeId: number, content: string) {
       level: "warn",
       source: "knowledge",
       message: `Failed to embed knowledge ${knowledgeId}: ${err}`,
-      metadata: JSON.stringify({ knowledgeId, contentPreview: content.substring(0, 160), error: err instanceof Error ? err.message : String(err) }),
+      metadata: JSON.stringify({ knowledgeId, contentPreview: content.substring(0, 160), error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }),
     });
   }
 }

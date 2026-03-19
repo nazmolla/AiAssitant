@@ -68,7 +68,7 @@ export function upsertKnowledge(
   userId?: string
 ): number {
   const normalizeFactText = (input: string) => input.replace(/\s+/g, " ").trim();
-  const uid = entry.user_id ?? userId ?? null;
+  const uid = entry.user_id || userId || null;
   const sourceType = entry.source_type ?? "manual";
 
   const entity = normalizeFactText(entry.entity);

@@ -3,7 +3,7 @@ import { normalizeLogLevel, shouldKeepLog, type UnifiedLogLevel, isUnifiedLogLev
 import { appCache, CACHE_KEYS } from "@/lib/cache";
 import type { ILogger } from "@/lib/container";
 import { container } from "@/lib/container";
-import { createNotification, type NotificationType } from "./notification-queries";
+import type { NotificationType } from "./notification-queries";
 import { listUsersWithPermissions } from "./user-queries";
 
 /** Thin wrapper that passes the (patchable) `getDb` import to the cache */
@@ -92,28 +92,26 @@ export function addLog(log: AgentLogInput): void {
       ? "thought"
       : log.source;
 
-  stmt(
-    `INSERT INTO agent_logs (level, source, message, metadata) VALUES (?, ?, ?, ?)`
-  ).run(normalizedLevel, normalizedSource, log.message, log.metadata);
-
-  // Hardwire notification-worthy log levels to the in-app notification bell.
-  // Excludes noisy internal levels (verbose, debug, trace, thought).
+  // Notification-worthy levels get notify=1 stored inline on the log row.
+  // The notification bell reads agent_logs WHERE notify=1 — no separate table needed.
+  let notify = 0;
+  let notifyType: NotificationType | null = null;
+  let notifyUserId: string | null = null;
+  let notifyBody: string | null = null;
   if (NOTIFICATION_RAW_LEVELS.has(rawLevel)) {
-    try {
-      const notifUserId = log.userId || getAdminUserId();
-      if (notifUserId) {
-        const title = log.message.length > 100 ? log.message.slice(0, 97) + "…" : log.message;
-        const body = log.message.length > 100 ? log.message : null;
-        createNotification({
-          userId: notifUserId,
-          type: rawLevelToNotificationType(rawLevel),
-          title,
-          body,
-          metadata: log.metadata,
-        });
-      }
-    } catch { /* never let notification failure break logging */ }
+    const uid = log.userId || getAdminUserId();
+    if (uid) {
+      notify = 1;
+      notifyType = rawLevelToNotificationType(rawLevel);
+      notifyUserId = uid;
+      notifyBody = log.message.length > 100 ? log.message : null;
+    }
   }
+
+  stmt(
+    `INSERT INTO agent_logs (level, source, message, metadata, notify, notify_read, notify_type, notify_user_id, notify_body)
+     VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
+  ).run(normalizedLevel, normalizedSource, log.message, log.metadata, notify, notifyType, notifyUserId, notifyBody);
 }
 
 export function getRecentLogs(limit = 100, level?: UnifiedLogLevel | "all", source?: string | "all", metadataContains?: string[]): AgentLog[] {

@@ -319,12 +319,13 @@ describe("addLog → notification bell wiring", () => {
     expect(listNotifications(adminId).length).toBe(before);
   });
 
-  test("long messages are truncated in the notification title", () => {
+  test("long messages store full text as title; notify_body set when message >100 chars", () => {
     const longMsg = "A".repeat(120);
     addLog({ level: "warning", source: "system", message: longMsg, metadata: null, userId: adminId });
     const notif = listNotifications(adminId).find((n) => n.title.startsWith("AAA"));
     expect(notif).toBeDefined();
-    expect(notif!.title.length).toBeLessThanOrEqual(100);
-    expect(notif!.body).toBeDefined();
+    // Title is the full message (no DB-level truncation); body is also set for >100 char messages
+    expect(notif!.title).toBe(longMsg);
+    expect(notif!.body).toBe(longMsg);
   });
 });

@@ -197,7 +197,15 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
   }
 
   private static async runProactiveScanInner(maxIterations?: number, scanIterations: number = 3): Promise<ProactiveScanResult> {
-    const defaultAdminUserId = getDefaultAdminUserId() ?? "";
+    const defaultAdminUserId = getDefaultAdminUserId();
+    if (!defaultAdminUserId) {
+      addLog({
+        level: "warning",
+        source: "scheduler",
+        message: "Proactive scan aborted — no enabled admin user found.",
+      });
+      throw new Error("Proactive scan: no enabled admin user found.");
+    }
 
     addLog({
       level: "info",
@@ -259,7 +267,9 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
 
       const orchestrator = new OrchestratorAgent(registry);
       const result = await orchestrator.run(taskPrompt, {
-        userId: defaultAdminUserId,
+        // Pass undefined so knowledge discovered here is stored as global (user_id=null).
+        // Tool access defaults to admin-level when userId is undefined.
+        userId: undefined,
         threadId: thread.id,
         additionalContext,
         maxIterations,

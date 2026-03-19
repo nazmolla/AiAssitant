@@ -1,8 +1,14 @@
 import { getDb } from "./connection";
 import { stmt } from "./query-helpers";
-import { v4 as uuid } from "uuid";
 
-// ─── Notifications ──────────────────────────────────────────────
+// ─── Notifications (stored as agent_logs rows with notify=1) ────────────────
+//
+// Notifications are NOT a separate table. They are agent_logs entries with
+// notify=1. The dashboard shows all agent_logs; the notification bell filters
+// agent_logs WHERE notify=1.
+//
+// The `notifications` table remains in the schema for backward compatibility
+// but is no longer written to.
 
 export type NotificationType =
   | "approval_required"
@@ -14,9 +20,10 @@ export type NotificationType =
   | "info";
 
 export interface NotificationRecord {
-  id: string;
-  user_id: string;
-  type: NotificationType;
+  /** Integer ID from agent_logs */
+  id: number;
+  user_id: string | null;
+  type: NotificationType | null;
   title: string;
   body: string | null;
   metadata: string | null;
@@ -24,6 +31,16 @@ export interface NotificationRecord {
   created_at: string;
 }
 
+function notifyTypeToLogLevel(type: NotificationType): string {
+  if (type === "system_error" || type === "tool_error" || type === "channel_error") return "error";
+  if (type === "warning") return "warning";
+  return "info";
+}
+
+/**
+ * Create an in-app notification by inserting an agent_logs row with notify=1.
+ * Used by notify() in notifications.ts and the channel_notify tool.
+ */
 export function createNotification(n: {
   userId: string;
   type: NotificationType;
@@ -31,50 +48,65 @@ export function createNotification(n: {
   body?: string | null;
   metadata?: string | null;
 }): NotificationRecord {
-  const id = uuid();
-  return getDb()
+  if (!n.userId) {
+    throw new Error("createNotification: userId is required");
+  }
+  const level = notifyTypeToLogLevel(n.type);
+  const row = getDb()
     .prepare(
-      `INSERT INTO notifications (id, user_id, type, title, body, metadata)
-       VALUES (?, ?, ?, ?, ?, ?)
-       RETURNING *`
+      `INSERT INTO agent_logs (level, source, message, metadata, notify, notify_read, notify_type, notify_user_id, notify_body)
+       VALUES (?, 'notification', ?, ?, 1, 0, ?, ?, ?)
+       RETURNING id, notify_user_id as user_id, notify_type as type, message as title, notify_body as body, metadata, notify_read as read, created_at`
     )
-    .get(id, n.userId, n.type, n.title, n.body ?? null, n.metadata ?? null) as NotificationRecord;
+    .get(level, n.title, n.metadata ?? null, n.type, n.userId, n.body ?? null) as NotificationRecord;
+  return row;
 }
 
 export function listNotifications(userId: string, limit = 50): NotificationRecord[] {
   return stmt(
-    "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?"
+    `SELECT id, notify_user_id as user_id, notify_type as type, message as title, notify_body as body,
+            metadata, notify_read as read, created_at
+     FROM agent_logs
+     WHERE notify = 1 AND notify_user_id = ?
+     ORDER BY created_at DESC LIMIT ?`
   ).all(userId, limit) as NotificationRecord[];
 }
 
 export function countUnreadNotifications(userId: string): number {
   const row = stmt(
-    "SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND read = 0"
+    "SELECT COUNT(*) as count FROM agent_logs WHERE notify = 1 AND notify_user_id = ? AND notify_read = 0"
   ).get(userId) as { count: number };
   return row.count;
 }
 
-export function markNotificationRead(id: string, userId: string): void {
+export function markNotificationRead(id: string | number, userId: string): void {
+  const numId = typeof id === "string" ? parseInt(id, 10) : id;
   getDb().prepare(
-    "UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?"
-  ).run(id, userId);
+    "UPDATE agent_logs SET notify_read = 1 WHERE id = ? AND notify_user_id = ? AND notify = 1"
+  ).run(numId, userId);
 }
 
 export function markAllNotificationsRead(userId: string): void {
   getDb().prepare(
-    "UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0"
+    "UPDATE agent_logs SET notify_read = 1 WHERE notify = 1 AND notify_user_id = ? AND notify_read = 0"
   ).run(userId);
 }
 
-export function deleteNotification(id: string, userId: string): void {
+/**
+ * Dismiss a notification — sets notify=0 so it no longer appears in the bell.
+ * The log row remains visible in the dashboard.
+ */
+export function deleteNotification(id: string | number, userId: string): void {
+  const numId = typeof id === "string" ? parseInt(id, 10) : id;
   getDb().prepare(
-    "DELETE FROM notifications WHERE id = ? AND user_id = ?"
-  ).run(id, userId);
+    "UPDATE agent_logs SET notify = 0 WHERE id = ? AND notify_user_id = ?"
+  ).run(numId, userId);
 }
 
-export function deleteOldNotifications(daysOld = 30): number {
-  const result = getDb()
-    .prepare("DELETE FROM notifications WHERE created_at < datetime('now', ?)")
-    .run(`-${daysOld} days`);
-  return result.changes;
+/**
+ * No-op: old notifications are just old logs — log cleanup handles them.
+ * Kept for interface compatibility.
+ */
+export function deleteOldNotifications(_daysOld = 30): number {
+  return 0;
 }

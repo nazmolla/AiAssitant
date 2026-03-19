@@ -578,6 +578,18 @@ function ensureProfilePreferencesColumns(): void {
   }
 }
 
+function ensureAgentLogsNotifyColumns(): void {
+  if (!tableExists("agent_logs")) return;
+  addColumnIfMissing("agent_logs", "notify", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("agent_logs", "notify_read", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("agent_logs", "notify_type", "TEXT");
+  addColumnIfMissing("agent_logs", "notify_user_id", "TEXT");
+  addColumnIfMissing("agent_logs", "notify_body", "TEXT");
+  try {
+    getDb().exec("CREATE INDEX IF NOT EXISTS idx_agent_logs_notify ON agent_logs(notify, notify_user_id, notify_read, created_at DESC)");
+  } catch { /* index may already exist */ }
+}
+
 function normalizeAgentLogLevels(): void {
   const db = getDb();
   if (!tableExists("agent_logs")) return;
@@ -928,6 +940,7 @@ export function initializeDatabase(): void {
   ensureSystemUnifiedSchedules();
   ensureUserAccessManagement();
   ensureProfilePreferencesColumns();
+  ensureAgentLogsNotifyColumns();
   normalizeAgentLogLevels();
   ensureServerLoggingDefaults();
   seedAllBuiltinToolPolicies();

@@ -137,3 +137,47 @@ describe("Knowledge Embeddings", () => {
     expect(getKnowledgeEntriesByIds([])).toEqual([]);
   });
 });
+
+// ── FOREIGN KEY constraint protection ────────────────────────────────────────
+
+describe("upsertKnowledge — userId normalization (FK constraint protection)", () => {
+  test("empty string userId is stored as null (global knowledge, no FK violation)", () => {
+    // Previously `"" ?? null` evaluated to `""`, causing FK failure
+    // because "" does not exist in the users table.
+    const id = upsertKnowledge(
+      { user_id: null, entity: "System", attribute: "status", value: "ok", source_context: null },
+      "" // empty string fallback from proactive scan
+    );
+    expect(id).toBeGreaterThan(0);
+    const entry = getKnowledgeEntry(id);
+    expect(entry!.user_id).toBeNull(); // must be null, not ""
+  });
+
+  test("undefined userId is stored as null (global knowledge)", () => {
+    const id = upsertKnowledge(
+      { user_id: undefined as unknown as null, entity: "System", attribute: "version", value: "1.0", source_context: null },
+      undefined
+    );
+    expect(id).toBeGreaterThan(0);
+    const entry = getKnowledgeEntry(id);
+    expect(entry!.user_id).toBeNull();
+  });
+
+  test("valid userId is preserved correctly", () => {
+    const id = upsertKnowledge(
+      { user_id: userA, entity: "User", attribute: "plan", value: "pro", source_context: null },
+      userA
+    );
+    expect(id).toBeGreaterThan(0);
+    const entry = getKnowledgeEntry(id);
+    expect(entry!.user_id).toBe(userA);
+  });
+
+  test("upsertKnowledgeEmbedding with valid knowledgeId does not throw (FK on knowledge_embeddings.knowledge_id)", () => {
+    const knowledgeId = upsertKnowledge(
+      { user_id: userA, entity: "Embed", attribute: "test", value: "fk-safe", source_context: null },
+      userA
+    );
+    expect(() => upsertKnowledgeEmbedding(knowledgeId, [0.1, 0.2])).not.toThrow();
+  });
+});
