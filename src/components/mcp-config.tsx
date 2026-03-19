@@ -18,11 +18,19 @@ interface McpServer {
   access_token: string | null;
   client_id: string | null;
   client_secret: string | null;
+  scope: string;
   connected: boolean;
+}
+
+interface AdminUser {
+  id: string;
+  email: string;
+  display_name: string | null;
 }
 
 export function McpConfig() {
   const [servers, setServers] = useState<McpServer[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
 
   // Add server form
   const [newName, setNewName] = useState("");
@@ -34,6 +42,8 @@ export function McpConfig() {
   const [newAccessToken, setNewAccessToken] = useState("");
   const [newClientId, setNewClientId] = useState("");
   const [newClientSecret, setNewClientSecret] = useState("");
+  const [newScope, setNewScope] = useState<"global" | "restricted">("global");
+  const [newAssignedUsers, setNewAssignedUsers] = useState<string[]>([]);
 
   // Status UI
   const [addingStatus, setAddingStatus] = useState<"idle" | "saving" | "connecting" | "done" | "error">("idle");
@@ -46,6 +56,13 @@ export function McpConfig() {
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  useEffect(() => {
+    fetch("/api/admin/users")
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setAdminUsers(d as AdminUser[]); })
+      .catch(() => { /* non-admin users won't have access */ });
+  }, []);
 
   // Check for OAuth callback token in URL on mount
   useEffect(() => {
@@ -87,6 +104,7 @@ export function McpConfig() {
     setNewName(""); setNewCommand(""); setNewArgs("");
     setNewUrl(""); setNewAuthType("none"); setNewAccessToken("");
     setNewClientId(""); setNewClientSecret("");
+    setNewScope("global"); setNewAssignedUsers([]);
     setEditingServerId(null);
     setNewConnectionType("remote");
   }
@@ -117,6 +135,18 @@ export function McpConfig() {
     setNewAccessToken(server.access_token || "");
     setNewClientId(server.client_id || "");
     setNewClientSecret(server.client_secret || "");
+
+    const scope = (server.scope === "restricted" ? "restricted" : "global") as "global" | "restricted";
+    setNewScope(scope);
+    setNewAssignedUsers([]);
+
+    // Load currently assigned users for restricted servers
+    if (scope === "restricted") {
+      fetch(`/api/config/mcp/${server.id}/users`)
+        .then((r) => r.json())
+        .then((d) => { if (Array.isArray(d.userIds)) setNewAssignedUsers(d.userIds as string[]); })
+        .catch(() => {});
+    }
 
     setAddingStatus("idle");
     setStatusMessage("");
@@ -151,6 +181,7 @@ export function McpConfig() {
         args: isLocal && newArgs ? newArgs.split(" ") : [],
         url: !isLocal ? newUrl : undefined,
         auth_type: !isLocal ? newAuthType : "none",
+        scope: newScope,
       };
 
       // Only send secrets if user provided new values (not masked placeholders)
@@ -172,6 +203,15 @@ export function McpConfig() {
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to save server");
+      }
+
+      // Save assigned users for restricted servers
+      if (newScope === "restricted") {
+        await fetch(`/api/config/mcp/${serverId}/users`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userIds: newAssignedUsers }),
+        }).catch(() => {});
       }
 
       // For OAuth without existing token: redirect to OAuth flow
@@ -396,6 +436,58 @@ export function McpConfig() {
               </>
             )}
           </div>
+
+          {/* Scope section — admin only (adminUsers list will be empty for non-admins) */}
+          {adminUsers.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <label className="text-[11px] text-muted-foreground/60 block uppercase tracking-wider font-medium">Access Scope</label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={newScope === "global" ? "default" : "outline"}
+                  onClick={() => setNewScope("global")}
+                >
+                  Global
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={newScope === "restricted" ? "default" : "outline"}
+                  onClick={() => setNewScope("restricted")}
+                >
+                  Restricted
+                </Button>
+              </div>
+
+              {newScope === "restricted" && (
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground/60 block uppercase tracking-wider font-medium">Assign Users</label>
+                  <div className="flex flex-col gap-1 max-h-40 overflow-y-auto rounded-lg border border-white/[0.06] p-2">
+                    {adminUsers.map((u) => (
+                      <label key={u.id} className="flex items-center gap-2 cursor-pointer text-sm py-0.5">
+                        <input
+                          type="checkbox"
+                          className="rounded"
+                          checked={newAssignedUsers.includes(u.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setNewAssignedUsers((prev) => [...prev, u.id]);
+                            } else {
+                              setNewAssignedUsers((prev) => prev.filter((id) => id !== u.id));
+                            }
+                          }}
+                        />
+                        <span>{u.display_name || u.email}</span>
+                        <span className="text-muted-foreground/40 text-[11px]">{u.email}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mt-3 flex gap-3">
             {editingServerId && (
               <Button type="button" variant="ghost" onClick={resetMcpForm}>
@@ -435,6 +527,9 @@ export function McpConfig() {
                       <Badge variant={server.connected ? "success" : "secondary"} className="text-xs">
                         {server.connected ? "Connected" : "Disconnected"}
                       </Badge>
+                      {server.scope === "restricted" && (
+                        <Badge variant="secondary" className="text-xs">Restricted</Badge>
+                      )}
                       {server.transport_type && (
                         <span className="text-[11px] text-muted-foreground/50">
                           {server.transport_type}
@@ -479,6 +574,9 @@ export function McpConfig() {
                       <Badge variant={server.connected ? "success" : "secondary"} className="text-xs">
                         {server.connected ? "Connected" : "Disconnected"}
                       </Badge>
+                      {server.scope === "restricted" && (
+                        <Badge variant="secondary" className="text-xs">Restricted</Badge>
+                      )}
                       {server.transport_type && (
                         <span className="text-[11px] text-muted-foreground/50">
                           {server.transport_type}

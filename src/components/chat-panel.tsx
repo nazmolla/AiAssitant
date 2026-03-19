@@ -24,7 +24,9 @@ export interface ChatPanelProps {
 
 export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavigate }: ChatPanelProps = {}) {
   const { data: session } = useSession();
-  const userName = (session?.user as { name?: string } | undefined)?.name ?? undefined;
+  const [userName, setUserName] = useState<string | undefined>(
+    (session?.user as { name?: string } | undefined)?.name ?? undefined
+  );
 
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadsTotal, setThreadsTotal] = useState(0);
@@ -37,6 +39,16 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
   // Tracks when a send is pending after auto-creating a thread so the
   // thread-load useEffect doesn't overwrite the optimistic message state.
   const pendingSendRef = useRef(false);
+
+  useEffect(() => {
+    fetch("/api/config/profile")
+      .then((r) => r.json())
+      .then((data) => {
+        const name = data.display_name || data.email?.split("@")[0];
+        if (name) setUserName(name);
+      })
+      .catch(() => {/* keep session fallback */});
+  }, []);
 
   // Wire up the external ref so the app-level burger can open this drawer
   useEffect(() => {

@@ -106,7 +106,15 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
     client_id TEXT,
     client_secret TEXT,
     user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-    scope TEXT DEFAULT 'global'         -- 'global' | 'user'
+    scope TEXT DEFAULT 'global'         -- 'global' | 'restricted'
+);
+
+-- ═══ MCP Server User Assignments (junction table for restricted servers) ═══
+
+CREATE TABLE IF NOT EXISTS mcp_server_users (
+    mcp_server_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    PRIMARY KEY (mcp_server_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS llm_providers (

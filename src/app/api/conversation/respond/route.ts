@@ -28,6 +28,7 @@ import {
 } from "@/lib/constants";
 import { createSSEStream, sseResponse, sseEvent } from "@/lib/sse";
 import { CONVERSATION_SYSTEM_PROMPT } from "@/lib/prompts";
+import { buildKnowledgeContext, buildProfileContext, buildMcpContext } from "@/lib/agent/context-builder";
 
 /**
  * POST /api/conversation/respond
@@ -151,6 +152,13 @@ export async function POST(req: NextRequest) {
     return true;
   });
 
+  const [knowledgeContext, profileContext, mcpContext] = await Promise.all([
+    buildKnowledgeContext(message, auth.user.id),
+    Promise.resolve(buildProfileContext(auth.user.id)),
+    Promise.resolve(buildMcpContext()),
+  ]);
+  const enrichedSystemPrompt = CONVERSATION_SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext;
+
   addLog({
     level: "info",
     source: "conversation",
@@ -178,14 +186,16 @@ export async function POST(req: NextRequest) {
             chatMessages,
             tools,
             sse.send,
-            auth.user.id
+            auth.user.id,
+            enrichedSystemPrompt
           )
         : runConversationLoop(
             orchestration.provider,
             chatMessages,
             tools,
             sse.send,
-            auth.user.id
+            auth.user.id,
+            enrichedSystemPrompt
           );
 
       await Promise.race([conversationPromise, timeoutPromise]);
@@ -216,7 +226,8 @@ async function runConversationLoop(
   chatMessages: ChatMessage[],
   tools: ToolDefinition[],
   sseSend: (text: string) => void,
-  userId: string
+  userId: string,
+  systemPrompt: string
 ) {
   let iterations = 0;
 
@@ -227,7 +238,7 @@ async function runConversationLoop(
     const response = await provider.chat(
       chatMessages,
       tools.length > 0 ? tools : undefined,
-      CONVERSATION_SYSTEM_PROMPT,
+      systemPrompt,
       async (token: string) => {
         sseSend(sseEvent("token", token));
       },
@@ -375,7 +386,8 @@ async function runConversationLoopViaWorker(
   chatMessages: ChatMessage[],
   tools: ToolDefinition[],
   sseSend: (text: string) => void,
-  userId: string
+  userId: string,
+  systemPrompt: string
 ) {
   const orchestration = selectProviderForWorker(message, false);
 
@@ -391,7 +403,7 @@ async function runConversationLoopViaWorker(
         baseURL: orchestration.providerConfig.baseURL as string | undefined,
         disableThinking: true,
       },
-      systemPrompt: CONVERSATION_SYSTEM_PROMPT,
+      systemPrompt,
       messages: chatMessages,
       tools,
       maxIterations: VOICE_MAX_TOOL_ITERATIONS,

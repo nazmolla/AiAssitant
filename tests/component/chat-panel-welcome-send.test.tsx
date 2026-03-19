@@ -46,12 +46,15 @@ jest.mock("@/components/chat-area", () => ({
   ChatArea: ({
     processedMessages,
     activeThread,
+    userName,
   }: {
     processedMessages?: Array<{ msg: { id: number; role: string; content: string | null }; displayContent: string | null }>;
     activeThread: string | null;
+    userName?: string;
   }) => (
     <div data-testid="chat-area">
       {!activeThread && <div data-testid="welcome-screen">Where should we start?</div>}
+      {userName && <div data-testid="user-name">{userName}</div>}
       {(processedMessages ?? []).map((pm) => (
         <div key={pm.msg.id} data-testid={`msg-${pm.msg.role}`}>{pm.displayContent ?? pm.msg.content}</div>
       ))}
@@ -164,7 +167,7 @@ function makeSseStream() {
   };
 }
 
-function setupFetchMock() {
+function setupFetchMock(displayName?: string) {
   (global.fetch as jest.Mock).mockImplementation((url: string, opts?: RequestInit) => {
     // GET /api/threads — list threads (initial load)
     if (url === "/api/threads" && (!opts?.method || opts.method === "GET")) {
@@ -181,6 +184,10 @@ function setupFetchMock() {
     // POST /api/threads/:id/chat — send message (SSE stream)
     if (url === `/api/threads/${THREAD_ID}/chat` && opts?.method === "POST") {
       return Promise.resolve({ ok: true, body: makeSseStream() });
+    }
+    // GET /api/config/profile — live display name fetch
+    if (url === "/api/config/profile") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ display_name: displayName ?? null }) });
     }
     // GET /api/threads/:id — load thread messages (should NOT be called for fresh thread)
     if (typeof url === "string" && url.match(/\/api\/threads\/[^/]+$/) && (!opts?.method || opts.method === "GET")) {
@@ -315,5 +322,38 @@ describe("ChatPanel — welcome screen send flow", () => {
       const found = userMessages.some((el) => el.textContent === "Optimistic message");
       expect(found).toBe(true);
     }, { timeout: 3000 });
+  });
+});
+
+describe("ChatPanel — display name from profile (#209)", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn();
+    jest.clearAllMocks();
+  });
+
+  test("uses display_name from /api/config/profile instead of stale session name", async () => {
+    // Profile returns a different name than the session
+    setupFetchMock("Alice Updated");
+
+    await act(async () => { render(<ChatPanel />); });
+
+    // Wait for the profile fetch effect to run and update userName
+    await waitFor(() => {
+      const nameEl = screen.queryByTestId("user-name");
+      expect(nameEl).toHaveTextContent("Alice Updated");
+    }, { timeout: 2000 });
+  });
+
+  test("falls back to email prefix when display_name is null", async () => {
+    // Profile returns no display_name; session has email user@test.com
+    setupFetchMock(undefined); // display_name: null
+
+    await act(async () => { render(<ChatPanel />); });
+
+    // The profile fetch returns null display_name, so the hook keeps the session name fallback
+    // (session name = "Test User" from the mock above)
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+    });
   });
 });

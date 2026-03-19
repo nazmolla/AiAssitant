@@ -31,14 +31,22 @@ function decryptMcpServer(srv: McpServerRecord | undefined): McpServerRecord | u
   };
 }
 
-/** List servers visible to a user: their own + global ones */
+/** List servers visible to a user: global ones + servers they own + restricted ones they are assigned to */
 export function listMcpServers(userId?: string): McpServerRecord[] {
   const cacheKey = `${CACHE_KEYS.MCP_SERVERS_PREFIX}${userId ?? "_all"}`;
   return appCache.get(cacheKey, () => {
     const rows = userId
       ? getDb()
-          .prepare("SELECT * FROM mcp_servers WHERE user_id IS NULL OR scope = 'global' OR user_id = ?")
-          .all(userId) as McpServerRecord[]
+          .prepare(`
+            SELECT s.* FROM mcp_servers s
+            WHERE s.scope = 'global'
+               OR s.user_id = ?
+               OR EXISTS (
+                 SELECT 1 FROM mcp_server_users u
+                 WHERE u.mcp_server_id = s.id AND u.user_id = ?
+               )
+          `)
+          .all(userId, userId) as McpServerRecord[]
       : getDb().prepare("SELECT * FROM mcp_servers").all() as McpServerRecord[];
     return rows.map((r) => decryptMcpServer(r)!);
   });
@@ -81,6 +89,22 @@ export function deleteMcpServer(id: string): void {
   const db = getDb();
   // Remove tool policies that reference this server to avoid FK constraint errors
   db.prepare("DELETE FROM tool_policies WHERE mcp_id = ?").run(id);
+  db.prepare("DELETE FROM mcp_server_users WHERE mcp_server_id = ?").run(id);
   db.prepare("DELETE FROM mcp_servers WHERE id = ?").run(id);
+  appCache.invalidatePrefix(CACHE_KEYS.MCP_SERVERS_PREFIX);
+}
+
+export function listMcpServerUsers(mcpServerId: string): string[] {
+  const rows = getDb().prepare("SELECT user_id FROM mcp_server_users WHERE mcp_server_id = ?").all(mcpServerId) as { user_id: string }[];
+  return rows.map((r) => r.user_id);
+}
+
+export function setMcpServerUsers(mcpServerId: string, userIds: string[]): void {
+  const db = getDb();
+  db.prepare("DELETE FROM mcp_server_users WHERE mcp_server_id = ?").run(mcpServerId);
+  const insert = db.prepare("INSERT OR IGNORE INTO mcp_server_users (mcp_server_id, user_id) VALUES (?, ?)");
+  for (const uid of userIds) {
+    insert.run(mcpServerId, uid);
+  }
   appCache.invalidatePrefix(CACHE_KEYS.MCP_SERVERS_PREFIX);
 }

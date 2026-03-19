@@ -349,3 +349,140 @@ describe("McpConfig — connect/disconnect existing", () => {
     );
   });
 });
+
+// ── MCP per-user access control (#211) ───────────────────────────────────
+
+// jsdom does not implement scrollIntoView — provide a no-op stub
+window.HTMLElement.prototype.scrollIntoView = jest.fn();
+
+/** Set up a fetch mock that also handles scope/user-assignment endpoints */
+function setupScopeFetchMock(opts: {
+  adminUsers?: Array<{ id: string; email: string; role: string }>;
+  assignedUsers?: string[];
+} = {}) {
+  const adminUsers = opts.adminUsers ?? [
+    { id: "u1", email: "alice@example.com", role: "admin" },
+    { id: "u2", email: "bob@example.com", role: "user" },
+  ];
+  const assignedUsers = opts.assignedUsers ?? [];
+
+  (global.fetch as jest.Mock) = jest.fn().mockImplementation((url: string, opts2?: RequestInit) => {
+    const method = opts2?.method ?? "GET";
+
+    if (url.includes("/api/mcp") && !url.includes("/connect") && !url.includes("/users") && method === "GET") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(MOCK_SERVERS.map((s) => ({ ...s, scope: "global" }))) });
+    }
+    if (url.includes("/api/mcp") && !url.includes("/connect") && !url.includes("/users") && method === "POST") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: MOCK_UUID }) });
+    }
+    if (url.includes("/api/admin/users") && method === "GET") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(adminUsers) });
+    }
+    if (url.includes("/users") && method === "GET") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ userIds: assignedUsers }) });
+    }
+    if (url.includes("/users") && method === "PUT") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    }
+    if (url.includes("/connect") && method === "POST") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ tools: [] }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+}
+
+describe("McpConfig — per-user access control (#211)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test("scope toggle buttons (Global / Restricted) appear in edit form when admin users are available", async () => {
+    setupScopeFetchMock();
+
+    await act(async () => { render(<McpConfig />); });
+
+    // Wait for servers to load and click edit on first server
+    await waitFor(() => {
+      expect(screen.getAllByText("Home Assistant").length).toBeGreaterThanOrEqual(1);
+    });
+
+    const editButtons = screen.getAllByRole("button", { name: /edit/i });
+    await act(async () => { fireEvent.click(editButtons[0]); });
+
+    // Global and Restricted scope buttons should appear
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^global$/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^restricted$/i })).toBeInTheDocument();
+    });
+  });
+
+  test("clicking Restricted reveals user checkboxes", async () => {
+    setupScopeFetchMock();
+
+    await act(async () => { render(<McpConfig />); });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Home Assistant").length).toBeGreaterThanOrEqual(1);
+    });
+
+    const editButtons = screen.getAllByRole("button", { name: /edit/i });
+    await act(async () => { fireEvent.click(editButtons[0]); });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^restricted$/i })).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^restricted$/i }));
+    });
+
+    // User checkboxes should appear (one per admin user)
+    await waitFor(() => {
+      const checkboxes = screen.getAllByRole("checkbox");
+      expect(checkboxes.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  test("save with Restricted scope calls PUT /api/config/mcp/:id/users with selected user IDs", async () => {
+    setupScopeFetchMock();
+
+    await act(async () => { render(<McpConfig />); });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Home Assistant").length).toBeGreaterThanOrEqual(1);
+    });
+
+    const editButtons = screen.getAllByRole("button", { name: /edit/i });
+    await act(async () => { fireEvent.click(editButtons[0]); });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^restricted$/i })).toBeInTheDocument();
+    });
+
+    // Switch to Restricted
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^restricted$/i }));
+    });
+
+    // Check first user checkbox
+    await waitFor(() => {
+      const checkboxes = screen.getAllByRole("checkbox");
+      expect(checkboxes.length).toBeGreaterThanOrEqual(1);
+    });
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    await act(async () => { fireEvent.click(checkboxes[0]); });
+
+    // Save the form (button text is "Update & Reconnect")
+    const saveBtns = screen.getAllByRole("button", { name: /connect/i });
+    await act(async () => { fireEvent.click(saveBtns[0]); });
+
+    // Verify PUT to /users endpoint was called
+    await waitFor(() => {
+      const usersPut = (global.fetch as jest.Mock).mock.calls.find(
+        ([url, o]) => url.includes("/users") && (o?.method ?? "GET") === "PUT"
+      );
+      expect(usersPut).toBeDefined();
+    });
+  });
+});

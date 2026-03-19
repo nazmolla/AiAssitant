@@ -731,6 +731,17 @@ function ensureApprovalPreferencesTable(): void {
   `);
 }
 
+function ensureMcpServerUsersTable(): void {
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mcp_server_users (
+      mcp_server_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      PRIMARY KEY (mcp_server_id, user_id)
+    );
+  `);
+}
+
 function cronToIntervalExpr(cron: string): string {
   const trimmed = String(cron || "").trim();
   const everyMinute = /^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/i.exec(trimmed);
@@ -937,6 +948,7 @@ export function initializeDatabase(): void {
   ensureChannelImapUidColumns();
   ensureApprovalQueueNlRequestColumn();
   ensureApprovalPreferencesTable();
+  ensureMcpServerUsersTable();
   ensureSystemUnifiedSchedules();
   ensureUserAccessManagement();
   ensureProfilePreferencesColumns();
