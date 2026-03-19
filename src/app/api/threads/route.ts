@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
     const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
 
     const result = deps.listThreadsPaginated(auth.user.id, limit, offset);
-    log.exit("GET /api/threads", { count: result.threads?.length }, Date.now() - t0);
+    log.exit("GET /api/threads", { count: result.data?.length }, Date.now() - t0);
     return NextResponse.json(result);
   } catch (err) {
     log.error("GET /api/threads failed", {}, err instanceof Error ? err : new Error(String(err)));
