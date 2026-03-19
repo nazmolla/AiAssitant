@@ -11,12 +11,17 @@ import { getMcpManager } from "@/lib/mcp";
 import { ALL_TOOL_CATEGORIES, buildCappedToolList } from "@/lib/tools";
 import { getUserById } from "@/lib/db/user-queries";
 import { listToolPolicies } from "@/lib/db/tool-policy-queries";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.tool-setup");
 
 /**
  * Build the full tool list (builtin + custom + MCP) and filter by user scope.
  * Non-admin users only see tools whose policy scope is not "user"-restricted.
  */
 export async function buildFilteredToolList(userId?: string): Promise<ToolDefinition[]> {
+  const t0 = Date.now();
+  log.enter("buildFilteredToolList", { userId });
   const mcpManager = getMcpManager();
   const mcpTools = mcpManager.getAllTools();
 
@@ -30,11 +35,16 @@ export async function buildFilteredToolList(userId?: string): Promise<ToolDefini
 
   // Filter tools by scope: non-admin users only see non-restricted tools
   const isAdmin = userId ? getUserById(userId)?.role === "admin" : true;
-  if (isAdmin) return allTools;
+  if (isAdmin) {
+    log.exit("buildFilteredToolList", { total: allTools.length, admin: true }, Date.now() - t0);
+    return allTools;
+  }
 
   const policyMap = new Map(listToolPolicies().map((p) => [p.tool_name, p]));
-  return allTools.filter((t) => {
+  const filtered = allTools.filter((t) => {
     const policy = policyMap.get(t.name);
     return !policy || policy.scope !== "user";
   });
+  log.exit("buildFilteredToolList", { total: allTools.length, filtered: filtered.length }, Date.now() - t0);
+  return filtered;
 }

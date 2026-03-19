@@ -171,12 +171,14 @@ export function buildAuthConfig(): NextAuthConfig {
           }
         }
 
-        // Fetch role from DB on every token refresh
+        // Fetch role and display_name from DB on every token refresh
         if (token.userId) {
           const { getUserById, isUserEnabled: isEnabled } = await import("@/lib/db/user-queries");
           const dbUser = getUserById(token.userId as string);
           if (dbUser) {
             token.role = dbUser.role ?? "user";
+            // Keep display_name in sync so the welcome greeting always shows the current name
+            if (dbUser.display_name) token.name = dbUser.display_name;
             // Block disabled users
             if (!isEnabled(token.userId as string)) {
               delete token.userId;

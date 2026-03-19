@@ -37,9 +37,10 @@ import {
   type AttachmentMeta,
 } from "@/lib/db/thread-queries";
 import { addLog } from "@/lib/db/log-queries";
+import { newTrace } from "@/lib/logging/logger";
 import crypto from "crypto";
 import { SYSTEM_PROMPT, MAX_TOOL_ITERATIONS, isUntrustedToolOutput } from "./system-prompt";
-import { buildKnowledgeContext, buildProfileContext } from "./context-builder";
+import { buildKnowledgeContext, buildProfileContext, buildMcpContext } from "./context-builder";
 import { dbMessagesToChat } from "./message-converter";
 import { executeToolWithPolicy } from "./tool-executor";
 import { maybeUpdateThreadTitle } from "./title-generator";
@@ -119,6 +120,11 @@ export async function runAgentLoop(
   deps: AgentLoopDependencies = defaultAgentLoopDependencies,
   maxIterations?: number,
 ): Promise<AgentResponse> {
+  // Each agent run gets a fresh trace ID. threadId acts as the correlation ID.
+  const log = newTrace("agent").withCorrelation(threadId);
+  const t0 = Date.now();
+  log.enter("runAgentLoop", { threadId, continuation, userId, messagePreview: (userMessage || "").slice(0, 80) });
+
   // Use the orchestrator to pick the best model for this task
   onStatus?.({ step: "Selecting model", detail: "Classifying task complexity…" });
   const hasImages = contentParts?.some((p) => p.type === "image_url") ?? false;
@@ -197,6 +203,7 @@ export async function runAgentLoop(
   const knowledgeContext = await buildKnowledgeContext(queryText, userId, onStatus);
   onStatus?.({ step: "Building context", detail: "Loading user profile and chat history" });
   const profileContext = buildProfileContext(userId);
+  const mcpContext = buildMcpContext();
   const dbMessages = deps.getThreadMessages(threadId);
   const chatMessages = dbMessagesToChat(dbMessages, continuation ? undefined : contentParts);
 
@@ -230,7 +237,7 @@ export async function runAgentLoop(
       response = await provider.chat(
         chatMessages,
         tools.length > 0 ? tools : undefined,
-        SYSTEM_PROMPT + profileContext + knowledgeContext,
+        SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext,
         onToken
       );
     } catch (primaryErr) {
@@ -244,7 +251,7 @@ export async function runAgentLoop(
         response = await provider.chat(
           chatMessages,
           tools.length > 0 ? tools : undefined,
-          SYSTEM_PROMPT + profileContext + knowledgeContext,
+          SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext,
           onToken
         );
       } else {

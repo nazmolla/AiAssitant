@@ -5,6 +5,9 @@
 
 import type { Message } from "@/lib/db";
 import { INLINE_APPROVAL_MARKER, APPROVAL_REASON_MAX_CHARS } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.approval-handler");
 
 // Re-export so existing imports continue to work
 export { INLINE_APPROVAL_MARKER };
@@ -29,6 +32,7 @@ export function isNegativeApproval(text: string): boolean {
 }
 
 export function extractLatestInlineApproval(messages: Message[]): InlineApprovalPayload | null {
+  log.enter("extractLatestInlineApproval", { messageCount: messages.length });
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
     if (message.role !== "system" || !message.content) continue;
@@ -47,12 +51,14 @@ export function extractLatestInlineApproval(messages: Message[]): InlineApproval
         typeof parsed.requester === "string" &&
         typeof parsed.source === "string"
       ) {
+        log.exit("extractLatestInlineApproval", { toolName: parsed.tool_name });
         return parsed;
       }
     } catch {
       continue;
     }
   }
+  log.exit("extractLatestInlineApproval", { found: false });
   return null;
 }
 

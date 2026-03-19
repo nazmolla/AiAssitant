@@ -7,6 +7,9 @@ import {
   type KnowledgeEntry,
 } from "@/lib/db";
 import { env } from "@/lib/env";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("knowledge.retriever");
 
 interface SemanticMatch {
   id: number;
@@ -93,17 +96,24 @@ export function needsKnowledgeRetrieval(message: string): boolean {
 }
 
 export async function retrieveKnowledge(query: string, limit = 6, userId?: string): Promise<KnowledgeEntry[]> {
-  if (!userId) return [];
+  const t0 = Date.now();
+  log.enter("retrieveKnowledge", { limit, hasUserId: !!userId });
+  if (!userId) {
+    log.exit("retrieveKnowledge", { skipped: "no userId" }, Date.now() - t0);
+    return [];
+  }
 
   const semantic = await semanticSearch(query, limit, userId);
   const missing = limit - semantic.length;
 
   if (missing <= 0) {
+    log.exit("retrieveKnowledge", { count: semantic.length, source: "semantic" }, Date.now() - t0);
     return semantic;
   }
 
   const fallback = keywordFallback(query, limit, userId);
   const merged = mergeEntries(semantic, fallback).slice(0, limit);
+  log.exit("retrieveKnowledge", { count: merged.length, source: "merged" }, Date.now() - t0);
   return merged;
 }
 

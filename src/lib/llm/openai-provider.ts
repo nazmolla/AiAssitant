@@ -2,6 +2,9 @@ import OpenAI from "openai";
 import crypto from "crypto";
 import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ContentPart, ChatRequestOptions } from "./types";
 import { LLM_CLIENT_TIMEOUT_MS, LLM_MAX_RETRIES, AZURE_OPENAI_DEFAULT_API_VERSION } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("llm.openai-provider");
 
 export type OpenAIProviderOptions =
   | {
@@ -67,6 +70,8 @@ export class OpenAIChatProvider implements ChatProvider {
     onToken?: (token: string) => void | Promise<void>,
     requestOptions?: ChatRequestOptions
   ): Promise<ChatResponse> {
+    const t0 = Date.now();
+    log.enter("OpenAIChatProvider.chat", { messageCount: messages.length, toolCount: tools?.length ?? 0, streaming: !!onToken });
     const oaiMessages: OpenAI.ChatCompletionMessageParam[] = [];
 
     if (systemPrompt) {
@@ -196,6 +201,7 @@ export class OpenAIChatProvider implements ChatProvider {
         arguments: JSON.parse(tc.arguments || "{}"),
       }));
 
+      log.exit("OpenAIChatProvider.chat", { toolCallCount: toolCalls.length, streaming: true }, Date.now() - t0);
       return {
         content: content || null,
         toolCalls,
@@ -235,6 +241,7 @@ export class OpenAIChatProvider implements ChatProvider {
           arguments: JSON.parse(tc.function.arguments || "{}"),
         })) || [];
 
+    log.exit("OpenAIChatProvider.chat", { toolCallCount: toolCalls.length, streaming: false }, Date.now() - t0);
     return {
       content: choice.message.content,
       toolCalls,

@@ -22,6 +22,9 @@ import {
 } from "./base";
 import { OrchestratorAgent, AgentRegistry } from "@/lib/agent/multi-agent";
 import { EMAIL_BATCH_TASK_PROMPT } from "@/lib/prompts";
+import { createLogger } from "@/lib/logging/logger";
+
+const slog = createLogger("scheduler.batch-jobs.email");
 
 export class EmailBatchJob extends BatchJob {
   readonly type = "email" as const;
@@ -38,6 +41,8 @@ export class EmailBatchJob extends BatchJob {
   }
 
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
+    const t0 = Date.now();
+    slog.enter("EmailBatchJob.executeStep", { handlerName: ctx.handlerName });
     const { taskRunId, runId, handlerName, configJson, scheduleId } = ctx;
     const logCtx = { scheduleId, runId, taskRunId, handlerName };
 
@@ -80,6 +85,8 @@ export class EmailBatchJob extends BatchJob {
       toolsUsed: result.toolsUsed,
       response: result.response.slice(0, 500),
     });
+    slog.info("Email batch orchestration completed", { threadId: result.threadId, toolsUsed: result.toolsUsed.length });
+    slog.exit("EmailBatchJob.executeStep", { handlerName: ctx.handlerName }, Date.now() - t0);
 
     return {
       pipelineThreadId: result.threadId,

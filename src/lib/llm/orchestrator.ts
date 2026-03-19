@@ -19,6 +19,9 @@ import { AnthropicChatProvider } from "./anthropic-provider";
 import { createHash } from "crypto";
 import { ConfigurationError } from "@/lib/errors";
 import { LLM_PROVIDER_CACHE_TTL_MS } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("llm.orchestrator");
 
 // ── Provider Instance Cache ───────────────────────────────────────
 // Avoids re-creating OpenAI/Anthropic SDK clients on every request.
@@ -323,10 +326,12 @@ export function selectProvider(
   hasImages?: boolean,
   preferredTier?: RoutingTier
 ): OrchestratorResult {
+  log.enter("selectProvider", { hasImages, preferredTier });
   const taskType = classifyTask(message, hasImages);
   const allProviders = listLlmProviders().filter((p) => p.purpose === "chat");
 
   if (allProviders.length === 0) {
+    log.error("No LLM provider configured");
     throw new ConfigurationError("No LLM provider configured. Add one in Settings → LLM Providers.");
   }
 
@@ -354,6 +359,7 @@ export function selectProvider(
 
   const provider = buildProvider(best.record, best.config);
   const reason = buildReason(best, taskType, scored.length);
+  log.exit("selectProvider", { providerLabel: best.record.label, taskType, tier: best.tier });
 
   return {
     provider,
@@ -379,10 +385,12 @@ export function selectProviderForWorker(
   hasImages?: boolean,
   preferredTier?: RoutingTier
 ): WorkerProviderInfo {
+  log.enter("selectProviderForWorker", { hasImages, preferredTier });
   const taskType = classifyTask(message, hasImages);
   const allProviders = listLlmProviders().filter((p) => p.purpose === "chat");
 
   if (allProviders.length === 0) {
+    log.error("No LLM provider configured for worker");
     throw new ConfigurationError("No LLM provider configured. Add one in Settings → LLM Providers.");
   }
 
@@ -399,6 +407,7 @@ export function selectProviderForWorker(
 
   const provider = buildProvider(best.record, best.config);
   const reason = buildReason(best, taskType, scored.length);
+  log.exit("selectProviderForWorker", { providerLabel: best.record.label, taskType, tier: best.tier });
 
   return {
     provider,

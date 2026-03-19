@@ -349,6 +349,18 @@ class McpManager {
   }
 
   /**
+   * Get connected servers with display name and tool count.
+   * Used to inject context into the agent system prompt.
+   */
+  getConnectedServers(): Array<{ id: string; name: string; toolCount: number }> {
+    return Array.from(this.connections.entries()).map(([id, conn]) => ({
+      id,
+      name: conn.record.name,
+      toolCount: conn.tools.length,
+    }));
+  }
+
+  /**
    * Check if a server is connected.
    */
   isConnected(serverId: string): boolean {

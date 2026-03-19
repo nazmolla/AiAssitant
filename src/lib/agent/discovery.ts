@@ -1,6 +1,9 @@
 import type { ToolDefinition, ToolCall } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
 import { ALL_TOOL_CATEGORIES } from "@/lib/tools";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.discovery");
 
 export interface DiscoveredTool extends ToolDefinition {
   source: "builtin" | "custom" | "mcp";
@@ -53,6 +56,8 @@ export function getAllBuiltinTools(): ToolDefinition[] {
 }
 
 export function discoverAllTools(): DiscoveredTool[] {
+  const t0 = Date.now();
+  log.enter("discoverAllTools");
   const registered = getRegisteredTools().map((tool) => ({
     ...tool,
     source: tool.name.startsWith("custom.") ? ("custom" as const) : ("builtin" as const),
@@ -69,7 +74,9 @@ export function discoverAllTools(): DiscoveredTool[] {
   for (const tool of [...registered, ...mcp]) {
     deduped.set(tool.name, tool);
   }
-  return Array.from(deduped.values());
+  const tools = Array.from(deduped.values());
+  log.exit("discoverAllTools", { count: tools.length }, Date.now() - t0);
+  return tools;
 }
 
 export function defaultRequiresApproval(toolName: string, source: DiscoveredTool["source"]): number {
@@ -125,6 +132,7 @@ export function normalizeToolName(name: string): string {
  *   { tool_uses: [{ recipient_name: "functions.toolName", parameters: {...} }] }
  */
 export function expandMultiToolUse(toolCalls: ToolCall[]): ToolCall[] {
+  log.enter("expandMultiToolUse", { count: toolCalls.length });
   const expanded: ToolCall[] = [];
   for (const tc of toolCalls) {
     if (tc.name === "multi_tool_use.parallel" || tc.name === "multi_tool_use") {
@@ -149,5 +157,6 @@ export function expandMultiToolUse(toolCalls: ToolCall[]): ToolCall[] {
       expanded.push(tc);
     }
   }
+  log.exit("expandMultiToolUse", { expanded: expanded.length });
   return expanded;
 }

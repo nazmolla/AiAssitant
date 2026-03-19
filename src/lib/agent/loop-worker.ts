@@ -47,7 +47,9 @@ import {
   persistKnowledgeFromTurn,
   type AgentResponse,
 } from "./loop";
+import { buildMcpContext } from "./context-builder";
 import { executeWithGatekeeper } from "./gatekeeper";
+import { newTrace } from "@/lib/logging/logger";
 import { processExecutedToolResult, processFailedToolResult } from "./tool-result-processor";
 
 /* ── Re-export for convenience ──────────────────────────────────── */
@@ -248,7 +250,8 @@ async function _runViaWorker(
   const chatMessages = dbMessagesToChat(dbMessages, contentParts);
 
   /* ── 6. Build system prompt ─────────────────────────────────── */
-  const systemPrompt = SYSTEM_PROMPT + profileContext + knowledgeContext;
+  const mcpContext = buildMcpContext();
+  const systemPrompt = SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext;
 
   /* ── 7. Tracking state ──────────────────────────────────────── */
   const knowledgeSnippets: string[] = [`[User]\n${userMessage}`];

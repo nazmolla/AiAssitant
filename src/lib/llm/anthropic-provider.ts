@@ -2,6 +2,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ChatProvider, ChatMessage, ChatResponse, ToolDefinition, ContentPart, ChatRequestOptions } from "./types";
 import { ConfigurationError } from "@/lib/errors";
 import { LLM_MAX_RESPONSE_TOKENS } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("llm.anthropic-provider");
 
 export interface AnthropicProviderOptions {
   apiKey?: string;
@@ -32,6 +35,8 @@ export class AnthropicChatProvider implements ChatProvider {
     onToken?: (token: string) => void | Promise<void>,
     _requestOptions?: ChatRequestOptions
   ): Promise<ChatResponse> {
+    const t0 = Date.now();
+    log.enter("AnthropicChatProvider.chat", { messageCount: messages.length, toolCount: tools?.length ?? 0, streaming: !!onToken });
     const anthropicMessages: Anthropic.MessageParam[] = [];
 
     for (const msg of messages) {
@@ -121,6 +126,7 @@ export class AnthropicChatProvider implements ChatProvider {
         }
       }
 
+      log.exit("AnthropicChatProvider.chat", { toolCallCount: toolCalls.length, streaming: true }, Date.now() - t0);
       return {
         content,
         toolCalls,
@@ -152,6 +158,7 @@ export class AnthropicChatProvider implements ChatProvider {
       }
     }
 
+    log.exit("AnthropicChatProvider.chat", { toolCallCount: toolCalls.length, streaming: false }, Date.now() - t0);
     return {
       content,
       toolCalls,

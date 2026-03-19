@@ -6,6 +6,9 @@ import {
   type StepExecutionResult,
   type LogFn,
 } from "./base";
+import { createLogger } from "@/lib/logging/logger";
+
+const slog = createLogger("scheduler.batch-jobs.maintenance");
 
 /**
  * Unified maintenance batch job for all system maintenance:
@@ -35,12 +38,16 @@ export class MaintenanceBatchJob extends BatchJob {
   }
 
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
+    const t0 = Date.now();
+    slog.enter("MaintenanceBatchJob.executeStep", { handlerName: ctx.handlerName });
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
 
     if (ctx.handlerName === "system.knowledge_maintenance.run_due") {
       const { runKnowledgeMaintenanceIfDue } = await import("@/lib/knowledge-maintenance");
       const result = runKnowledgeMaintenanceIfDue();
       log("info", "Knowledge maintenance completed.", logCtx, { ...result } as Record<string, unknown>);
+      slog.info("Knowledge maintenance completed", { ...result } as Record<string, unknown>);
+      slog.exit("MaintenanceBatchJob.executeStep", { handlerName: ctx.handlerName }, Date.now() - t0);
       return { outputJson: { kind: "knowledge_maintenance", result } };
     }
 
@@ -51,6 +58,8 @@ export class MaintenanceBatchJob extends BatchJob {
         maintenanceSkipped: result === null,
         ...(result || {}),
       });
+      slog.info("DB maintenance task completed", { maintenanceSkipped: result === null });
+      slog.exit("MaintenanceBatchJob.executeStep", { handlerName: ctx.handlerName }, Date.now() - t0);
       return { outputJson: { kind: "db_maintenance", result } };
     }
 

@@ -34,6 +34,9 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
   const [actingApproval, setActingApproval] = useState<string | null>(null);
   const [resolvedApprovals, setResolvedApprovals] = useState<Record<string, string>>({});
   const [showSidebar, setShowSidebar] = useState(false);
+  // Tracks when a send is pending after auto-creating a thread so the
+  // thread-load useEffect doesn't overwrite the optimistic message state.
+  const pendingSendRef = useRef(false);
 
   // Wire up the external ref so the app-level burger can open this drawer
   useEffect(() => {
@@ -119,6 +122,9 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
     chatStream.setLoading(false);
     chatStream.setThinkingSteps([]);
     if (!activeThread) return;
+    // Skip loading messages for a freshly-created thread that is about to
+    // receive a send — the optimistic UI from sendMessage owns the state.
+    if (pendingSendRef.current) return;
     fetch(`/api/threads/${activeThread}`)
       .then((r) => r.json())
       .then((data) => chatStream.setMessages(data.messages || []))
@@ -189,10 +195,14 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
   const handleSendMessage = useCallback(async () => {
     if (!activeThread) {
       if (!inputRef.current.trim() && pendingFilesRef.current.length === 0) return;
+      // Set flag BEFORE createThread so the activeThread useEffect skips its
+      // fetch (which would wipe the optimistic message added by sendMessage).
+      pendingSendRef.current = true;
       await createThread();
       // After state settles, fire the send — requestAnimationFrame lets React
       // flush the new activeThread into the chatStream hook's closure
       requestAnimationFrame(() => {
+        pendingSendRef.current = false;
         sendMessageRef.current?.();
       });
     } else {

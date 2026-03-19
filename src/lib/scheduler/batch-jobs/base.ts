@@ -1,4 +1,7 @@
 import { v4 as uuid } from "uuid";
+import { createLogger } from "@/lib/logging/logger";
+
+const slog = createLogger("scheduler.batch-jobs.base");
 
 export type BatchJobType = "proactive" | "maintenance" | "email" | "job_scout";
 
@@ -96,10 +99,11 @@ export abstract class BatchJob {
   }
 
   build(input: BatchJobBuildInput): BatchJobBuildResult {
+    slog.enter("BatchJob.build", { type: this.type, triggerType: input.trigger_type });
     const parameters = input.parameters || {};
     const tasks = input.tasks && input.tasks.length > 0 ? input.tasks : this.createDefaultTasks(parameters);
 
-    return {
+    const result: BatchJobBuildResult = {
       schedule_key: `batch.${this.type}.${uuid()}`,
       name: input.name?.trim() || `${this.defaultName} ${new Date().toLocaleString()}`,
       handler_type: `batch.${this.type}`,
@@ -108,5 +112,7 @@ export abstract class BatchJob {
       status: "active",
       tasks,
     };
+    slog.exit("BatchJob.build", { type: this.type, taskCount: tasks.length });
+    return result;
   }
 }

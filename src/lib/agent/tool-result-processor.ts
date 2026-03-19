@@ -12,6 +12,9 @@ import type { ToolCall, ChatMessage } from "@/lib/llm";
 import { addMessage, addAttachment, addLog, type Message, type AttachmentMeta } from "@/lib/db";
 import { isUntrustedToolOutput } from "./system-prompt";
 import { TOOL_RESULT_TRUNCATION_LIMIT } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.tool-result-processor");
 
 export interface ProcessedToolResult {
   /** Attachments collected from this tool call (screenshots, generated files). */
@@ -84,6 +87,7 @@ function collectScreenshotAttachments(
       message: "browser_screenshot result missing relative path; screenshot will not render inline.",
       metadata: JSON.stringify({ threadId, rawResult: resultObj }),
     });
+    log.warning("browser_screenshot result missing relative path; screenshot will not render inline.", { threadId });
   }
 
   const llmOverride = JSON.stringify({
@@ -128,6 +132,8 @@ export function processExecutedToolResult(
   threadId: string,
   onMessage?: (msg: Message) => void
 ): ProcessedToolResult {
+  const t0 = Date.now();
+  log.enter("processExecutedToolResult", { threadId, toolName: toolCall.name });
   const toolResultRaw = JSON.stringify(result);
   const toolResult =
     toolResultRaw.length > TOOL_RESULT_TRUNCATION_LIMIT
@@ -177,6 +183,7 @@ export function processExecutedToolResult(
     ? `<untrusted_external_content source="${toolCall.name}">\n${llmToolResult}\n</untrusted_external_content>`
     : llmToolResult;
 
+  log.exit("processExecutedToolResult", { toolName: toolCall.name, attachmentCount: allAttachments.length }, Date.now() - t0);
   return { attachments: allAttachments, llmContent };
 }
 
@@ -189,6 +196,7 @@ export function processFailedToolResult(
   threadId: string,
   onMessage?: (msg: Message) => void
 ): string {
+  log.enter("processFailedToolResult", { threadId, toolName: toolCall.name });
   const sanitizedError = (error || "Unknown error")
     .split("\n")[0]
     .replace(/[A-Z]:[\\\/][^\s]+/g, "[path]")
@@ -206,5 +214,6 @@ export function processFailedToolResult(
   });
   onMessage?.(savedError);
 
+  log.error("Tool execution failed", { threadId, toolName: toolCall.name, sanitizedError });
   return errorContent;
 }

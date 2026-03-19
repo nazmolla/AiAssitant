@@ -3,6 +3,9 @@ import { createHash } from "crypto";
 import { getDefaultLlmProvider } from "@/lib/db";
 import { ConfigurationError } from "@/lib/errors";
 import { EMBEDDING_CACHE_MAX_SIZE, EMBEDDING_CACHE_TTL_MS, AZURE_OPENAI_DEFAULT_API_VERSION } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("llm.embeddings");
 
 /* ── Embedding result cache (PERF-02) ────────────────────────────── */
 
@@ -40,8 +43,13 @@ export function getEmbeddingCacheSize(): number {
  * falling back to env vars when no DB provider is set.
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
+  const t0 = Date.now();
+  log.enter("generateEmbedding", { textLength: text.trim().length });
   const trimmed = text.trim();
-  if (!trimmed) return [];
+  if (!trimmed) {
+    log.exit("generateEmbedding", { skipped: true }, Date.now() - t0);
+    return [];
+  }
 
   // Check cache
   const key = embeddingCacheKey(trimmed);
@@ -50,21 +58,29 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     // Move to end for LRU ordering
     embeddingCache.delete(key);
     embeddingCache.set(key, cached);
+    log.exit("generateEmbedding", { cacheHit: true }, Date.now() - t0);
     return cached.embedding;
   }
 
   const dbProvider = getDefaultLlmProvider("embedding");
   if (!dbProvider) {
+    log.error("No embedding provider configured");
     throw new ConfigurationError("No embedding provider configured. Add one in Settings → LLM Providers.");
   }
 
-  const result = await generateFromRecord(dbProvider, trimmed);
+  try {
+    const result = await generateFromRecord(dbProvider, trimmed);
 
-  // Store in cache
-  embeddingCache.set(key, { embedding: result, cachedAt: Date.now() });
-  evictIfNeeded();
+    // Store in cache
+    embeddingCache.set(key, { embedding: result, cachedAt: Date.now() });
+    evictIfNeeded();
 
-  return result;
+    log.exit("generateEmbedding", { dimensions: result.length }, Date.now() - t0);
+    return result;
+  } catch (err) {
+    log.error("generateEmbedding failed", { providerLabel: dbProvider.label }, err);
+    throw err;
+  }
 }
 
 function generateFromRecord(

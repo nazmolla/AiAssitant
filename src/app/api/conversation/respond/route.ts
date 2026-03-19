@@ -132,15 +132,16 @@ export async function POST(req: NextRequest) {
   const builtinTools: ToolDefinition[] = ALL_TOOL_CATEGORIES.flatMap((category) => category.tools);
   const allTools: ToolDefinition[] = buildCappedToolList(builtinTools, customTools, mcpTools, MAX_TOOLS_PER_REQUEST);
 
-  // Filter tools by user role and approval policy.
-  // Unknown tools (no policy) are excluded (default-deny).
-  // Tools that require approval stay available, but are handled inline in the conversation.
+  // Filter tools by user role and policy scope.
+  // Tools with no policy entry are included by default (same as thread chat).
+  // Tools marked scope="user" are only shown to admin users.
   const isAdmin = auth.user.id ? (getUserById(auth.user.id)?.role === "admin") : true;
   const policyMap = new Map(listToolPolicies().map((p) => [p.tool_name, p]));
   const tools: ToolDefinition[] = allTools.filter((t) => {
     const policy = policyMap.get(t.name);
-    if (!policy) return false;
-    // Non-admin users only see global-scope tools
+    // No policy = default-allow (covers dynamically registered MCP tools)
+    if (!policy) return true;
+    // Non-admin users cannot see user-scoped tools
     if (!isAdmin && policy.scope === "user") return false;
     return true;
   });

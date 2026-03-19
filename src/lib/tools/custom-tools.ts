@@ -23,6 +23,9 @@ import { findDuplicateToolMatch } from "./tool-duplicate-gate";
 import * as vm from "vm";
 import { ValidationError, NotFoundError, IntegrationError } from "@/lib/errors";
 import { SANDBOX_TIMEOUT_MS, SANDBOX_VALIDATION_TIMEOUT_MS } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("tools.custom-tools");
 
 // ── Tool Names ────────────────────────────────────────────────
 
@@ -221,6 +224,8 @@ class CustomToolRuntime {
     name: string,
     args: Record<string, unknown>
   ): Promise<unknown> {
+    const t0 = Date.now();
+    log.enter("executeCustomTool", { name });
     if (name === TOOL_CREATOR_NAME) {
       return CustomToolRuntime.createCustomTool(args);
     }
@@ -236,10 +241,18 @@ class CustomToolRuntime {
 
     const tool = customToolsCache.find((t) => t.name === name && t.enabled);
     if (!tool) {
+      log.error(`Custom tool "${name}" not found or is disabled`, { name });
       throw new NotFoundError(`Custom tool "${name}" not found or is disabled.`);
     }
 
-    return CustomToolRuntime.runSandboxed(tool.implementation, args);
+    try {
+      const result = await CustomToolRuntime.runSandboxed(tool.implementation, args);
+      log.exit("executeCustomTool", { name }, Date.now() - t0);
+      return result;
+    } catch (err) {
+      log.error(`Custom tool "${name}" failed`, { name }, err);
+      throw err;
+    }
   }
 
   static async createCustomTool(args: Record<string, unknown>): Promise<unknown> {
@@ -318,6 +331,7 @@ class CustomToolRuntime {
       createdAt: new Date().toISOString(),
     });
 
+    log.info(`Custom tool "${fullName}" created successfully`, { fullName });
     return {
       status: "created",
       toolName: fullName,

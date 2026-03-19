@@ -8,6 +8,9 @@ import type { ToolCall } from "@/lib/llm";
 import { getToolRegistry } from "./tool-registry";
 import { extractApprovalReason } from "./approval-handler";
 import { defaultToolExecutorDeps, type ToolExecutorDeps } from "./tool-executor-deps";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.tool-executor");
 
 /**
  * All tools (built-in + custom + MCP) now have policy entries in the DB,
@@ -19,6 +22,8 @@ export async function executeToolWithPolicy(
   reasoning?: string,
   deps: ToolExecutorDeps = defaultToolExecutorDeps,
 ): Promise<import("./gatekeeper").GatekeeperResult> {
+  const t0 = Date.now();
+  log.enter("executeToolWithPolicy", { tool: toolCall.name, threadId });
   const { normalizeToolName } = await import("./discovery");
 
   // Normalize tool name — the LLM sometimes strips the "builtin." prefix
@@ -204,6 +209,7 @@ export async function executeToolWithPolicy(
       message: `Tool "${toolCall.name}" executed successfully.`,
       metadata: JSON.stringify({ threadId }),
     });
+    log.exit("executeToolWithPolicy", { status: "executed", tool: toolCall.name }, Date.now() - t0);
     return { status: "executed", result };
   } catch (err: any) {
     deps.addLog({
@@ -212,6 +218,7 @@ export async function executeToolWithPolicy(
       message: `Tool "${toolCall.name}" failed: ${err.message}`,
       metadata: JSON.stringify({ threadId }),
     });
+    log.error("executeToolWithPolicy dispatch failed", { tool: toolCall.name, threadId }, err);
     return { status: "error", error: err.message };
   }
 }

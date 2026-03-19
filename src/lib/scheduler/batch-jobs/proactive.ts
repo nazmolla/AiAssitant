@@ -38,6 +38,9 @@ import {
   type StepExecutionResult,
   type LogFn,
 } from "./base";
+import { createLogger } from "@/lib/logging/logger";
+
+const slog = createLogger("scheduler.batch-jobs.proactive");
 
 // ── Proactive Scan Types & State ──────────────────────────────────
 
@@ -197,6 +200,8 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
   }
 
   private static async runProactiveScanInner(maxIterations?: number, scanIterations: number = 3): Promise<ProactiveScanResult> {
+    const t0 = Date.now();
+    slog.enter("runProactiveScanInner", { maxIterations, scanIterations });
     const defaultAdminUserId = getDefaultAdminUserId();
     if (!defaultAdminUserId) {
       addLog({
@@ -204,6 +209,7 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
         source: "scheduler",
         message: "Proactive scan aborted — no enabled admin user found.",
       });
+      slog.warning("Proactive scan aborted — no enabled admin user found");
       throw new Error("Proactive scan: no enabled admin user found.");
     }
 
@@ -213,6 +219,7 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
       message: "Proactive scan started.",
       metadata: JSON.stringify({ adminUserId: defaultAdminUserId, scanIterations }),
     });
+    slog.info("Proactive scan started", { scanIterations });
 
     const mcpManager = getMcpManager();
 
@@ -248,6 +255,7 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
         scanIterations,
       }),
     });
+    slog.thought(`[Proactive] Starting iterative scan`, { connectedServerCount: connectedServers.length, mcpToolCount: mcpTools.length, scanIterations });
 
     const { OrchestratorAgent, AgentRegistry } = await import("@/lib/agent/multi-agent");
     const registry = AgentRegistry.getInstance();
@@ -334,6 +342,8 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
         toolsUsed: finalToolsUsed,
       }),
     });
+    slog.info("Proactive scan completed", { primaryThreadId, iterationCount: iterationSummaries.length, toolsUsed: finalToolsUsed.length });
+    slog.exit("runProactiveScanInner", { iterationCount: iterationSummaries.length }, Date.now() - t0);
 
     return {
       primaryThreadId,

@@ -7,6 +7,9 @@ import {
   type CommunicationChannelFactory,
 } from "@/lib/channels/communication-channel-factory";
 import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("tools.communication-tools");
 
 export const COMMUNICATION_TOOL_NAMES = {
   SEND: "builtin.channel_send",

@@ -1,4 +1,7 @@
 import { addLog, getAppConfig, getDb, setAppConfig } from "@/lib/db";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("knowledge.maintenance");
 
 const DEFAULT_HOUR = 20;
 const DEFAULT_MINUTE = 0;
@@ -200,14 +203,23 @@ function runKnowledgeMaintenanceNow(): KnowledgeMaintenanceResult {
 }
 
 export function runKnowledgeMaintenanceIfDue(now = new Date()): KnowledgeMaintenanceResult {
+  const t0 = Date.now();
+  log.enter("runKnowledgeMaintenanceIfDue");
   const config = readRuntimeConfig();
-  if (!config.enabled) return { skipped: true, reason: "disabled" };
+  if (!config.enabled) {
+    log.exit("runKnowledgeMaintenanceIfDue", { skipped: true, reason: "disabled" }, Date.now() - t0);
+    return { skipped: true, reason: "disabled" };
+  }
 
   const windowReached = now.getHours() > config.hour || (now.getHours() === config.hour && now.getMinutes() >= config.minute);
-  if (!windowReached) return { skipped: true, reason: "window_not_reached" };
+  if (!windowReached) {
+    log.exit("runKnowledgeMaintenanceIfDue", { skipped: true, reason: "window_not_reached" }, Date.now() - t0);
+    return { skipped: true, reason: "window_not_reached" };
+  }
 
   const dateKey = localDateKey(now);
   if (getAppConfig("knowledge_maintenance_last_run_date") === dateKey) {
+    log.exit("runKnowledgeMaintenanceIfDue", { skipped: true, reason: "already_ran_today" }, Date.now() - t0);
     return { skipped: true, reason: "already_ran_today" };
   }
 
@@ -218,5 +230,9 @@ export function runKnowledgeMaintenanceIfDue(now = new Date()): KnowledgeMainten
     message: result.skipped ? "Knowledge maintenance skipped." : "Knowledge maintenance run completed.",
     metadata: JSON.stringify(result),
   });
+  if (!result.skipped) {
+    log.warning("Knowledge maintenance run completed", { deletedEmpty: result.deletedEmpty, deduplicated: result.deduplicated, durationMs: result.durationMs });
+  }
+  log.exit("runKnowledgeMaintenanceIfDue", { skipped: result.skipped }, Date.now() - t0);
   return result;
 }

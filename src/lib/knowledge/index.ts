@@ -4,6 +4,9 @@ import { upsertKnowledge, upsertKnowledgeEmbedding, addLog } from "@/lib/db";
 import { invalidateEmbeddingCache } from "./retriever";
 import { KNOWLEDGE_PROMPT_MAX_CHARS } from "@/lib/constants";
 import { KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT } from "@/lib/prompts";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("knowledge.ingestor");
 
 export interface KnowledgeIngestionPayload {
   text: string;
@@ -28,8 +31,11 @@ function getSourceType(source: string): "manual" | "chat" | "proactive" {
  * Runs an LLM-powered extraction pass over raw text and stores discovered facts in the Knowledge Vault.
  */
 export async function ingestKnowledgeFromText(payload: KnowledgeIngestionPayload): Promise<number> {
+  const t0 = Date.now();
+  log.enter("ingestKnowledgeFromText", { source: payload.source });
   const text = payload.text?.trim();
   if (!text) {
+    log.exit("ingestKnowledgeFromText", { saved: 0, reason: "empty text" }, Date.now() - t0);
     return 0;
   }
 
@@ -67,6 +73,7 @@ export async function ingestKnowledgeFromText(payload: KnowledgeIngestionPayload
           message: `Blocked suspicious knowledge entry (potential injection): ${fact.entity} / ${fact.attribute}`,
           metadata: JSON.stringify({ value: fact.value.substring(0, 100) }),
         });
+        log.warning(`Blocked suspicious knowledge entry (potential injection)`, { entity: fact.entity, attribute: fact.attribute });
         continue;
       }
       const knowledgeId = upsertKnowledge(
@@ -93,8 +100,10 @@ export async function ingestKnowledgeFromText(payload: KnowledgeIngestionPayload
         message: `Captured ${saved} knowledge fact(s) from ${payload.source}`,
         metadata: JSON.stringify({ preview: text.substring(0, 160) }),
       });
+      log.info(`Captured ${saved} knowledge fact(s)`, { source: payload.source, saved });
     }
 
+    log.exit("ingestKnowledgeFromText", { saved }, Date.now() - t0);
     return saved;
   } catch (err) {
     addLog({
@@ -103,6 +112,8 @@ export async function ingestKnowledgeFromText(payload: KnowledgeIngestionPayload
       message: `Knowledge ingestion failed for ${payload.source}: ${err}`,
       metadata: JSON.stringify({ source: payload.source, error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined, textPreview: text.substring(0, 160) }),
     });
+    log.warning(`Knowledge ingestion failed`, { source: payload.source });
+    log.error("ingestKnowledgeFromText failed", { source: payload.source }, err);
     return 0;
   }
 }
@@ -144,6 +155,8 @@ function parseFacts(raw: string): ExtractedFact[] {
       message: `Failed to parse knowledge JSON: ${err}`,
       metadata: JSON.stringify({ raw: raw.substring(0, 160) }),
     });
+    log.warning("Failed to parse knowledge JSON", {});
+    log.error("parseFacts JSON parse error", {}, err);
   }
   return [];
 }
@@ -190,5 +203,7 @@ async function indexEmbedding(knowledgeId: number, content: string) {
       message: `Failed to embed knowledge ${knowledgeId}: ${err}`,
       metadata: JSON.stringify({ knowledgeId, contentPreview: content.substring(0, 160), error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }),
     });
+    log.warning(`Failed to embed knowledge entry`, { knowledgeId });
+    log.error("indexEmbedding failed", { knowledgeId }, err);
   }
 }

@@ -18,6 +18,9 @@
 
 import type { AgentTypeDefinition, AgentRunContext, AgentRunResult } from "./types";
 import type { AgentResponse } from "@/lib/agent/loop";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.multi-agent.base-agent");
 
 /** Minimal signature of runAgentLoop needed by BaseAgent. */
 export type AgentLoopRunner = (
@@ -81,6 +84,8 @@ export abstract class BaseAgent {
    * Otherwise a new dedicated thread is created.
    */
   async run(task: string, context: AgentRunContext): Promise<AgentRunResult> {
+    const t0 = Date.now();
+    log.enter("BaseAgent.run", { role: this.role, threadId: context.threadId });
     // Resolve loop runner lazily to avoid circular module imports at load time.
     const runner = this.loopRunner ?? (await this.resolveLoopRunner());
 
@@ -92,6 +97,7 @@ export abstract class BaseAgent {
     const message = this.buildTaskMessage(task, context.additionalContext);
     const result = await runner(threadId, message, undefined, undefined, false, context.userId, undefined, undefined, undefined, undefined, context.maxIterations);
 
+    log.exit("BaseAgent.run", { role: this.role, toolsUsed: result.toolsUsed.length }, Date.now() - t0);
     return {
       response: result.content ?? "",
       toolsUsed: result.toolsUsed,

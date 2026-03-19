@@ -15,6 +15,9 @@ import path from "path";
 import type { ChatMessage, ToolDefinition, ToolCall } from "@/lib/llm";
 import { addLog } from "@/lib/db";
 import { env } from "@/lib/env";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.worker-manager");
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -133,6 +136,7 @@ function ensurePool(): void {
         message: `Failed to create pool worker ${i}: ${msg}`,
         metadata: null,
       });
+      log.error(`Failed to create pool worker ${i}`, { workerIndex: i }, err);
     }
   }
   if (pool.length > 0) {
@@ -142,6 +146,7 @@ function ensurePool(): void {
       message: `Worker pool initialized with ${pool.length} thread(s)`,
       metadata: null,
     });
+    log.info(`Worker pool initialized with ${pool.length} thread(s)`, { poolSize: pool.length });
   }
 }
 
@@ -281,6 +286,7 @@ function replaceWorker(pw: PooledWorker) {
       message: "Worker crashed and was replaced",
       metadata: null,
     });
+    log.warning("Worker crashed and was replaced", { poolIdx: idx });
   } catch (err) {
     pool.splice(idx, 1);
     const msg = err instanceof Error ? err.message : String(err);
@@ -290,6 +296,7 @@ function replaceWorker(pw: PooledWorker) {
       message: `Failed to replace worker: ${msg}`,
       metadata: null,
     });
+    log.error("Failed to replace worker", { poolIdx: idx }, err);
   }
   drainQueue();
 }
@@ -378,6 +385,7 @@ export function runLlmInWorker(
   onStatus?: OnStatusFn,
   onToolRequest?: OnToolRequestFn
 ): { promise: Promise<WorkerDoneResult>; abort: () => void } {
+  log.enter("runLlmInWorker", { maxIterations: config.maxIterations, toolCount: config.tools.length });
   ensurePool();
 
   const handle: TaskHandle = { state: "queued", pw: null };

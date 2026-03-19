@@ -1,4 +1,7 @@
 import { addLog } from "@/lib/db/log-queries";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("scheduler.engine");
 import { createThread } from "@/lib/db/thread-queries";
 import {
   addSchedulerEvent,
@@ -183,6 +186,8 @@ async function executeTaskRun(
   scheduleId: string,
   pipelineThreadId?: string | null,
 ): Promise<{ pipelineThreadId?: string }> {
+  const t0 = Date.now();
+  log.enter("executeTaskRun", { taskRunId, runId, handlerName, scheduleId });
   const context: SchedulerLogContext = { scheduleId, runId, taskRunId, handlerName };
   setSchedulerTaskRunLogRef(taskRunId, serializeLogRef(context));
   logSchedulerExecution("info", "Starting scheduler task-run execution.", context);
@@ -227,11 +232,13 @@ async function executeTaskRun(
         toolsUsed: result.toolsUsed ?? [],
         responsePreview: (result.content || "").slice(0, SCHEDULER_RESPONSE_PREVIEW_CHARS),
       });
+      log.info("Scheduler prompt task completed", { handlerName, threadId });
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({
         kind: "agent_prompt", threadId, userId,
         toolsUsed: result.toolsUsed ?? [],
         response: result.content || "",
       }));
+      log.exit("executeTaskRun", { handlerName, status: "success" }, Date.now() - t0);
       return {};
     }
 
@@ -245,6 +252,7 @@ async function executeTaskRun(
       setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify(
         stepResult.outputJson ?? { kind: batchJob.type, handlerName },
       ));
+      log.exit("executeTaskRun", { handlerName, status: "success" }, Date.now() - t0);
       return { pipelineThreadId: stepResult.pipelineThreadId };
     }
 
@@ -258,6 +266,7 @@ async function executeTaskRun(
       handlerName,
       configJson: configJson ?? undefined,
     });
+    log.error("Scheduler task-run failed", { handlerName, taskRunId, runId }, err);
     setSchedulerTaskRunStatus(taskRunId, "failed", null, message);
     throw err;
   }

@@ -25,6 +25,9 @@ import { BaseAgent, type AgentLoopRunner } from "./base-agent";
 import type { AgentRegistry } from "./agent-registry";
 import type { AgentRunContext, AgentRunResult, OrchestratorRunResult } from "./types";
 import { buildOrchestratorSystemPrompt } from "@/lib/prompts";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.multi-agent.orchestrator");
 
 /* ── Orchestrator system prompt ─────────────────────────────────── */
 
@@ -69,6 +72,8 @@ export class OrchestratorAgent extends BaseAgent {
    * Returns enriched result with agents-dispatched metadata.
    */
   async run(task: string, context: AgentRunContext): Promise<OrchestratorRunResult> {
+    const t0 = Date.now();
+    log.enter("OrchestratorAgent.run", { threadId: context.threadId, taskLength: task.length });
     const result: AgentRunResult = await super.run(task, context);
 
     // Derive which agent types were dispatched by inspecting the toolsUsed list.
@@ -78,6 +83,7 @@ export class OrchestratorAgent extends BaseAgent {
       ? ["builtin.dispatch_agent"]
       : [];
 
+    log.exit("OrchestratorAgent.run", { toolsUsed: result.toolsUsed.length, agentsDispatched: agentsDispatched.length }, Date.now() - t0);
     return { ...result, agentsDispatched };
   }
 }

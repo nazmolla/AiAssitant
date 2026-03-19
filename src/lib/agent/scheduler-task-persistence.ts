@@ -14,6 +14,9 @@ import {
   getDb,
 } from "@/lib/db";
 import { parseScheduledTasksFromUserMessage } from "@/lib/scheduler/task-parser";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.scheduler-task-persistence");
 
 /**
  * Parse the user message for scheduled task requests and persist them.
@@ -25,10 +28,18 @@ export function persistScheduledTasksFromMessage(
   userMessage: string,
   userId: string | undefined
 ): void {
-  if (!userId) return;
+  const t0 = Date.now();
+  log.enter("persistScheduledTasksFromMessage", { threadId, userId });
+  if (!userId) {
+    log.exit("persistScheduledTasksFromMessage", { skipped: "no userId" }, Date.now() - t0);
+    return;
+  }
 
   const currentThread = getThread(threadId);
-  if (currentThread?.thread_type !== "interactive") return;
+  if (currentThread?.thread_type !== "interactive") {
+    log.exit("persistScheduledTasksFromMessage", { skipped: "non-interactive thread" }, Date.now() - t0);
+    return;
+  }
 
   const parsedTasks = parseScheduledTasksFromUserMessage(userMessage);
   for (const task of parsedTasks) {
@@ -94,6 +105,7 @@ export function persistScheduledTasksFromMessage(
         message: "Created unified user schedule from interactive chat message.",
         metadata: JSON.stringify({ userId, threadId, taskName: baseTaskName, scheduleKey }),
       });
+      log.info("Created unified user schedule from interactive chat message", { userId, threadId, taskName: baseTaskName, scheduleKey });
     } catch (err) {
       addLog({
         level: "warning",
@@ -101,6 +113,9 @@ export function persistScheduledTasksFromMessage(
         message: `Failed to persist user scheduled task: ${err}`,
         metadata: JSON.stringify({ threadId, userId, taskName: task.taskName }),
       });
+      log.warning("Failed to persist user scheduled task", { threadId, userId, taskName: task.taskName });
+      log.error("persistScheduledTasksFromMessage task error", { threadId, userId }, err);
     }
   }
+  log.exit("persistScheduledTasksFromMessage", { taskCount: parsedTasks.length }, Date.now() - t0);
 }

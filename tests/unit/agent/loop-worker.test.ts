@@ -43,7 +43,7 @@ jest.mock("@/lib/llm", () => ({
 }));
 
 jest.mock("@/lib/mcp", () => ({
-  getMcpManager: () => ({ getAllTools: () => [] }),
+  getMcpManager: () => ({ getAllTools: () => [], getConnectedServers: () => [] }),
 }));
 
 jest.mock("@/lib/tools/web-tools", () => ({ BUILTIN_WEB_TOOLS: [] }));

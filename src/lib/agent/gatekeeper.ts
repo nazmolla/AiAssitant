@@ -19,6 +19,9 @@ import {
 import { notifyAdmin } from "@/lib/notifications";
 import type { ToolCall } from "@/lib/llm";
 import { APPROVAL_REASON_MAX_CHARS, GATEKEEPER_RESULT_PREVIEW_CHARS } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.gatekeeper");
 
 export interface GatekeeperResult {
   status: "executed" | "pending_approval" | "error";
@@ -69,6 +72,8 @@ export async function executeWithGatekeeper(
   threadId: string,
   reasoning?: string
 ): Promise<GatekeeperResult> {
+  const t0 = Date.now();
+  log.enter("executeWithGatekeeper", { toolName: toolCall.name, threadId });
   // Normalize tool name — the LLM sometimes strips the "builtin." prefix
   // Use lazy import to avoid circular dependency (gatekeeper → discovery → index → gatekeeper)
   const { normalizeToolName } = await import("./discovery");
@@ -85,6 +90,7 @@ export async function executeWithGatekeeper(
       message: `Approval bypassed by policy for tool \"${toolCall.name}\" (requires_approval=0).`,
       metadata: JSON.stringify({ threadId }),
     });
+    log.info(`Approval bypassed by policy for tool "${toolCall.name}"`, { threadId });
   }
 
   // Default-deny for unknown tools: if no policy exists, require approval.
@@ -120,6 +126,7 @@ export async function executeWithGatekeeper(
         message: `Auto-approved by saved preference for tool "${toolCall.name}".`,
         metadata: JSON.stringify({ threadId }),
       });
+      log.info(`Auto-approved by saved preference for tool "${toolCall.name}"`, { threadId });
     }
 
     if (preferenceDecision === "rejected") {
@@ -129,6 +136,7 @@ export async function executeWithGatekeeper(
         message: `Auto-rejected by saved preference for tool "${toolCall.name}".`,
         metadata: JSON.stringify({ threadId }),
       });
+      log.info(`Auto-rejected by saved preference for tool "${toolCall.name}"`, { threadId });
       return { status: "error", error: `Auto-rejected by preference for ${toolCall.name}.` };
     }
 
@@ -139,6 +147,7 @@ export async function executeWithGatekeeper(
         message: `Auto-ignored by saved preference for tool "${toolCall.name}".`,
         metadata: JSON.stringify({ threadId }),
       });
+      log.info(`Auto-ignored by saved preference for tool "${toolCall.name}"`, { threadId });
       return { status: "executed", result: { status: "ignored", reason: "auto_ignored_by_preference" } };
     }
 
@@ -150,6 +159,7 @@ export async function executeWithGatekeeper(
         message: `Skipped approval for tool "${toolCall.name}" because no reason was provided.`,
         metadata: JSON.stringify({ threadId, requester }),
       });
+      log.warning(`Skipped approval for tool "${toolCall.name}" because no reason was provided`, { threadId });
       return {
         status: "error",
         error: `Approval for ${toolCall.name} requires a clear reason. Ask again with a specific reason before requesting approval.`,
@@ -194,6 +204,7 @@ export async function executeWithGatekeeper(
       message: `Tool "${toolCall.name}" requires approval. Creating approval request (${source}).`,
       metadata: JSON.stringify({ threadId, args: redactArgs(toolCall.arguments), requester, source }),
     });
+    log.info(`Tool "${toolCall.name}" requires approval`, { threadId, source });
 
     // Create an approval request
     const approval = createApprovalRequest({
@@ -264,6 +275,8 @@ export async function executeWithGatekeeper(
       message: `Tool "${toolCall.name}" executed successfully.`,
       metadata: JSON.stringify({ threadId, result: truncateResult(result) }),
     });
+    log.info(`Tool "${toolCall.name}" executed successfully`, { threadId });
+    log.exit("executeWithGatekeeper", { toolName: toolCall.name, status: "executed" }, Date.now() - t0);
 
     return { status: "executed", result };
   } catch (err) {
@@ -275,6 +288,7 @@ export async function executeWithGatekeeper(
       message: `Tool "${toolCall.name}" failed: ${errorMsg}`,
       metadata: JSON.stringify({ threadId }),
     });
+    log.error(`Tool "${toolCall.name}" failed`, { threadId }, err);
 
     return { status: "error", error: errorMsg };
   }
@@ -288,6 +302,8 @@ export async function executeApprovedTool(
   args: Record<string, unknown>,
   threadId: string
 ): Promise<GatekeeperResult> {
+  const t0 = Date.now();
+  log.enter("executeApprovedTool", { toolName, threadId });
   try {
     const result = await getToolRegistry().dispatch(
       toolName,
@@ -304,6 +320,8 @@ export async function executeApprovedTool(
       message: `Approved tool "${toolName}" executed successfully.`,
       metadata: JSON.stringify({ threadId, result: truncateResult(result) }),
     });
+    log.info(`Approved tool "${toolName}" executed successfully`, { threadId });
+    log.exit("executeApprovedTool", { toolName, status: "executed" }, Date.now() - t0);
 
     return { status: "executed", result };
   } catch (err) {
@@ -318,6 +336,7 @@ export async function executeApprovedTool(
       message: `Approved tool "${toolName}" failed: ${errorMsg}`,
       metadata: JSON.stringify({ threadId }),
     });
+    log.error(`Approved tool "${toolName}" failed`, { threadId }, err);
 
     return { status: "error", error: errorMsg };
   }

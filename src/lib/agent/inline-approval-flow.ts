@@ -21,6 +21,9 @@ import {
 } from "./approval-handler";
 import type { AgentResponse } from "./loop";
 import { TOOL_RESULT_TRUNCATION_LIMIT } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.inline-approval-flow");
 
 export type InlineApprovalResult =
   | { handled: false }
@@ -39,14 +42,18 @@ export async function processInlineApproval(
   onMessage?: (msg: Message) => void,
   onStatus?: (status: { step: string; detail?: string }) => void
 ): Promise<InlineApprovalResult> {
+  const t0 = Date.now();
+  log.enter("processInlineApproval", { threadId });
   const thread = getThread(threadId);
   if (thread?.status !== "awaiting_user_confirmation") {
+    log.exit("processInlineApproval", { handled: false }, Date.now() - t0);
     return { handled: false };
   }
 
   const inlinePayload = extractLatestInlineApproval(getThreadMessages(threadId));
   if (!inlinePayload) {
     updateThreadStatus(threadId, "active");
+    log.exit("processInlineApproval", { handled: false, reason: "no payload" }, Date.now() - t0);
     return { handled: false };
   }
 
@@ -70,6 +77,7 @@ export async function processInlineApproval(
 
   // User rejected
   if (isNegativeApproval(userMessage)) {
+    log.info("Inline approval rejected by user", { threadId, toolName: inlinePayload.tool_name });
     updateThreadStatus(threadId, "active");
     const cancelled = `Understood. I cancelled ${inlinePayload.tool_name}.`;
     const cancelledMsg = addMessage({
@@ -81,6 +89,7 @@ export async function processInlineApproval(
       attachments: null,
     });
     onMessage?.(cancelledMsg);
+    log.exit("processInlineApproval", { handled: true, outcome: "rejected" }, Date.now() - t0);
     return {
       handled: true,
       response: { content: cancelled, toolsUsed: [], pendingApprovals: [], attachments: [] },
@@ -88,6 +97,7 @@ export async function processInlineApproval(
   }
 
   // User approved — execute the tool
+  log.info("Inline approval granted by user", { threadId, toolName: inlinePayload.tool_name });
   onStatus?.({ step: "Executing approved tool", detail: inlinePayload.tool_name });
   const { executeApprovedTool } = await import("./gatekeeper");
   const approvedResult = await executeApprovedTool(
@@ -97,6 +107,7 @@ export async function processInlineApproval(
   );
 
   if (approvedResult.status !== "executed") {
+    log.error("Approved tool execution failed", { threadId, toolName: inlinePayload.tool_name, error: approvedResult.error });
     const failed = `Approval confirmed, but ${inlinePayload.tool_name} failed: ${approvedResult.error || "Unknown error"}`;
     const failedMsg = addMessage({
       thread_id: threadId,
@@ -107,6 +118,7 @@ export async function processInlineApproval(
       attachments: null,
     });
     onMessage?.(failedMsg);
+    log.exit("processInlineApproval", { handled: true, outcome: "failed" }, Date.now() - t0);
     return {
       handled: true,
       response: { content: failed, toolsUsed: [], pendingApprovals: [], attachments: [] },
@@ -134,5 +146,6 @@ export async function processInlineApproval(
   });
   onMessage?.(toolMsg);
 
+  log.exit("processInlineApproval", { handled: true, outcome: "resumed" }, Date.now() - t0);
   return { handled: true, resumeContinuation: true };
 }

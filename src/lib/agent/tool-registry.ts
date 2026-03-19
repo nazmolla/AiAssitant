@@ -16,6 +16,9 @@ import type { ToolDefinition } from "@/lib/llm";
 import { NotFoundError } from "@/lib/errors";
 import { ALL_TOOL_CATEGORIES, type ToolCategory, type ToolExecutionContext } from "@/lib/tools";
 import { getMcpManager } from "@/lib/mcp";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("agent.tool-registry");
 
 // Re-export types so existing consumers don't break
 export type { ToolCategory, ToolExecutionContext };
@@ -51,11 +54,21 @@ export class ToolRegistry {
     args: Record<string, unknown>,
     context: ToolExecutionContext
   ): Promise<unknown> {
+    const t0 = Date.now();
+    log.enter("dispatch", { toolName, threadId: context.threadId });
     const category = this.findCategory(toolName);
     if (!category) {
+      log.error("No registered tool category handles tool", { toolName });
       throw new NotFoundError(`No registered tool category handles "${toolName}"`, { toolName });
     }
-    return category.execute(toolName, args, context);
+    try {
+      const result = await category.execute(toolName, args, context);
+      log.exit("dispatch", { toolName }, Date.now() - t0);
+      return result;
+    } catch (err) {
+      log.error("Tool dispatch failed", { toolName }, err);
+      throw err;
+    }
   }
 
   /** Aggregate tool definitions from all categories */
