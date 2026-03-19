@@ -320,606 +320,6 @@ export const BUILTIN_FS_TOOLS: ToolDefinition[] = [
  */
 const FS_ALLOWED_ROOT = env.FS_ALLOWED_ROOT;
 
-class FsExecution {
-/**
- * Resolve a path, making relative paths relative to cwd,
- * then enforce that the result is within FS_ALLOWED_ROOT.
- */
-static resolvePath(p: string): string {
-  const resolved = path.resolve(p);
-  // Resolve symlinks to prevent symlink-based path traversal
-  let realResolved: string;
-  try {
-    realResolved = fs.realpathSync(resolved);
-  } catch {
-    // File may not exist yet (e.g., create operation) — check parent
-    const parentDir = path.dirname(resolved);
-    try {
-      const realParent = fs.realpathSync(parentDir);
-      if (
-        !realParent.startsWith(FS_ALLOWED_ROOT + path.sep) &&
-        realParent !== FS_ALLOWED_ROOT
-      ) {
-        throw new Error(
-          `Access denied: path "${p}" resolves outside the allowed root directory.`
-        );
-      }
-    } catch (parentErr: any) {
-      if (parentErr.message?.startsWith("Access denied")) throw parentErr;
-      // Parent doesn't exist either — fall through to normal check
-    }
-    realResolved = resolved;
-  }
-  // Normalise both to use consistent separators
-  const normalised = path.normalize(realResolved);
-  if (
-    !normalised.startsWith(FS_ALLOWED_ROOT + path.sep) &&
-    normalised !== FS_ALLOWED_ROOT
-  ) {
-    throw new Error(
-      `Access denied: path "${p}" is outside the allowed root directory.`
-    );
-  }
-  return resolved;
-}
-
-/** Simple glob-like pattern matching (supports * and ?). */
-static matchPattern(name: string, pattern: string): boolean {
-  const regex = new RegExp(
-    "^" +
-      pattern
-        .replace(/([.+^${}()|[\]\\])/g, "\\$1")
-        .replace(/\*/g, ".*")
-        .replace(/\?/g, ".") +
-      "$",
-    "i"
-  );
-  return regex.test(name);
-}
-
-/** Recursively walk a directory, collecting entries (async, bounded). */
-static async walkDirAsync(
-  dir: string,
-  pattern: string | undefined,
-  maxEntries: number,
-  results: Array<{ path: string; type: "file" | "directory"; size: number }>,
-  level = 0
-): Promise<void> {
-  if (results.length >= maxEntries || level > 20) return;
-
-  let entries: fs.Dirent[];
-  try {
-    entries = await fsp.readdir(dir, { withFileTypes: true });
-  } catch {
-    return;
-  }
-
-  for (const entry of entries) {
-    if (results.length >= maxEntries) return;
-
-    const fullPath = path.join(dir, entry.name);
-
-    // Skip heavy/system dirs
-    if (entry.isDirectory() && (entry.name === "node_modules" || entry.name === ".git")) continue;
-
-    const matches = !pattern || FsExecution.matchPattern(entry.name, pattern);
-    if (matches) {
-      let size = 0;
-      try {
-        size = entry.isFile() ? (await fsp.stat(fullPath)).size : 0;
-      } catch {}
-      results.push({
-        path: fullPath,
-        type: entry.isDirectory() ? "directory" : "file",
-        size,
-      });
-    }
-
-    if (entry.isDirectory()) {
-      await FsExecution.walkDirAsync(fullPath, pattern, maxEntries, results, level + 1);
-    }
-  }
-}
-
-// ── Tool Implementations ──────────────────────────────────────
-
-static async fsReadFile(args: Record<string, unknown>): Promise<unknown> {
-  const filePath = FsExecution.resolvePath(args.filePath as string);
-  const encoding = (args.encoding as BufferEncoding) || "utf-8";
-
-  let stat: fs.Stats;
-  try {
-    stat = await fsp.stat(filePath);
-  } catch {
-    throw new Error(`File not found: ${filePath}`);
-  }
-  if (!stat.isFile()) {
-    throw new Error(`Path is not a file: ${filePath}`);
-  }
-
-  const startLine = (args.startLine as number) || undefined;
-  const endLine = (args.endLine as number) || undefined;
-  const byteOffset = typeof args.offset === "number" ? args.offset : undefined;
-  const byteLength = typeof args.length === "number" ? args.length : undefined;
-  const isPartialRead = !!(startLine || endLine || byteOffset !== undefined);
-
-  // Byte-level chunked reading — works on any file size
-  if (byteOffset !== undefined) {
-    const maxChunk = 1024 * 1024; // 1 MB max per chunk
-    const readLen = Math.min(byteLength || FS_DEFAULT_CHUNK_BYTES, maxChunk);
-    const start = Math.max(0, byteOffset);
-    const end = Math.min(stat.size - 1, start + readLen - 1);
-    if (start >= stat.size) {
-      return { filePath, size: stat.size, offset: start, content: "", note: "Offset beyond end of file." };
-    }
-    const buf = Buffer.alloc(end - start + 1);
-    const fh = await fsp.open(filePath, "r");
-    try {
-      await fh.read(buf, 0, buf.length, start);
-    } finally {
-      await fh.close();
-    }
-    const content = encoding === "base64" ? buf.toString("base64") : buf.toString(encoding);
-    return {
-      filePath,
-      size: stat.size,
-      offset: start,
-      bytesRead: buf.length,
-      hasMore: end < stat.size - 1,
-      content,
-    };
-  }
-
-  // Full-file read — enforce size limit unless line-range params are provided
-  if (stat.size > FS_MAX_READ_BYTES && encoding !== "base64" && !isPartialRead) {
-    throw new Error(
-      `File is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB). Max for full reads is ${FS_MAX_READ_BYTES / 1024 / 1024} MB. Use startLine/endLine for line-based chunking or offset/length for byte-based chunking.`
-    );
-  }
-
-  let content: string;
-  if (encoding === "base64") {
-    content = (await fsp.readFile(filePath)).toString("base64");
-  } else {
-    content = await fsp.readFile(filePath, encoding);
-  }
-
-  // Line range slicing
-  if (startLine || endLine) {
-    const lines = content.split("\n");
-    const s = Math.max(0, (startLine || 1) - 1);
-    const e = Math.min(lines.length, endLine || lines.length);
-    content = lines.slice(s, e).join("\n");
-  }
-
-  return {
-    filePath,
-    size: stat.size,
-    lineCount: content.split("\n").length,
-    content,
-  };
-}
-
-static decodeHtmlEntities(input: string): string {
-  return input
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&#x27;/gi, "'")
-    .replace(/&#x2F;/gi, "/");
-}
-
-static extractReadableText(raw: string): string {
-  return FsExecution.decodeHtmlEntities(
-    raw
-      .replace(/<!--[\s\S]*?-->/g, " ")
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-      .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-  );
-}
-
-static async fsExtractText(args: Record<string, unknown>): Promise<unknown> {
-  const filePath = FsExecution.resolvePath(args.filePath as string);
-  const encoding = (args.encoding as BufferEncoding) || "utf-8";
-  const byteOffset = typeof args.offset === "number" ? Math.max(0, args.offset) : 0;
-  const requestedLen = typeof args.length === "number" ? args.length : FS_EXTRACT_DEFAULT_BYTES;
-  const readLen = Math.min(Math.max(1, requestedLen), 1024 * 1024);
-  const maxChars = Math.min(Math.max(1, (args.maxChars as number) || FS_EXTRACT_DEFAULT_MAX_CHARS), FS_EXTRACT_MAX_CHARS_LIMIT);
-
-  let stat: fs.Stats;
-  try {
-    stat = await fsp.stat(filePath);
-  } catch {
-    throw new Error(`File not found: ${filePath}`);
-  }
-  if (!stat.isFile()) {
-    throw new Error(`Path is not a file: ${filePath}`);
-  }
-
-  // Require chunking for very large files to avoid huge memory spikes.
-  if (stat.size > FS_MAX_READ_BYTES && args.offset === undefined && args.length === undefined) {
-    throw new Error(
-      `File is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB) for default extraction. Provide offset/length to process it in chunks.`
-    );
-  }
-
-  if (byteOffset >= stat.size) {
-    return {
-      filePath,
-      size: stat.size,
-      offset: byteOffset,
-      bytesRead: 0,
-      hasMore: false,
-      extractedChars: 0,
-      text: "",
-    };
-  }
-
-  const end = Math.min(stat.size - 1, byteOffset + readLen - 1);
-  const buf = Buffer.alloc(end - byteOffset + 1);
-  const fh = await fsp.open(filePath, "r");
-  try {
-    await fh.read(buf, 0, buf.length, byteOffset);
-  } finally {
-    await fh.close();
-  }
-
-  const raw = buf.toString(encoding);
-  const extracted = FsExecution.extractReadableText(raw);
-  const text = extracted.length > maxChars ? extracted.slice(0, maxChars) : extracted;
-
-  return {
-    filePath,
-    size: stat.size,
-    offset: byteOffset,
-    bytesRead: buf.length,
-    hasMore: end < stat.size - 1,
-    extractedChars: extracted.length,
-    text,
-  };
-}
-
-static async fsReadDirectory(args: Record<string, unknown>): Promise<unknown> {
-  const dirPath = FsExecution.resolvePath(args.dirPath as string);
-  const recursive = (args.recursive as boolean) || false;
-  const pattern = args.pattern as string | undefined;
-
-  let dirStat: fs.Stats;
-  try {
-    dirStat = await fsp.stat(dirPath);
-  } catch {
-    throw new Error(`Directory not found: ${dirPath}`);
-  }
-  if (!dirStat.isDirectory()) {
-    throw new Error(`Path is not a directory: ${dirPath}`);
-  }
-
-  if (recursive) {
-    const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
-    await FsExecution.walkDirAsync(dirPath, pattern, FS_WALK_DIR_LIMIT, results);
-    return { dirPath, entryCount: results.length, entries: results };
-  }
-
-  const entries = await fsp.readdir(dirPath, { withFileTypes: true });
-  const items = await Promise.all(
-    entries
-      .filter((e) => !pattern || FsExecution.matchPattern(e.name, pattern))
-      .map(async (e) => {
-        const fp = path.join(dirPath, e.name);
-        let size = 0;
-        try {
-          size = e.isFile() ? (await fsp.stat(fp)).size : 0;
-        } catch {}
-        return {
-          name: e.name,
-          type: e.isDirectory() ? "directory" : "file",
-          size,
-        };
-      })
-  );
-
-  return { dirPath, entryCount: items.length, entries: items };
-}
-
-static async fsFileInfo(args: Record<string, unknown>): Promise<unknown> {
-  const targetPath = FsExecution.resolvePath(args.targetPath as string);
-
-  let stat: fs.Stats;
-  try {
-    stat = await fsp.stat(targetPath);
-  } catch {
-    throw new Error(`Path not found: ${targetPath}`);
-  }
-  return {
-    path: targetPath,
-    type: stat.isDirectory() ? "directory" : stat.isFile() ? "file" : "other",
-    size: stat.size,
-    createdAt: stat.birthtime.toISOString(),
-    modifiedAt: stat.mtime.toISOString(),
-    accessedAt: stat.atime.toISOString(),
-    permissions: `0${(stat.mode & 0o777).toString(8)}`,
-    isSymbolicLink: stat.isSymbolicLink(),
-  };
-}
-
-static async fsSearchFiles(args: Record<string, unknown>): Promise<unknown> {
-  const dirPath = FsExecution.resolvePath(args.dirPath as string);
-  const pattern = args.pattern as string;
-  const maxResults = Math.min((args.maxResults as number) || 50, 200);
-
-  try {
-    await fsp.access(dirPath);
-  } catch {
-    throw new Error(`Directory not found: ${dirPath}`);
-  }
-
-  const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
-  await FsExecution.walkDirAsync(dirPath, pattern, maxResults, results);
-
-  return {
-    dirPath,
-    pattern,
-    matchCount: results.length,
-    matches: results,
-  };
-}
-
-static async fsCreateFile(args: Record<string, unknown>): Promise<unknown> {
-  const filePath = FsExecution.resolvePath(args.filePath as string);
-  const content = args.content as string;
-  const encoding = (args.encoding as BufferEncoding) || "utf-8";
-
-  try {
-    await fsp.access(filePath);
-    throw new Error(
-      `File already exists: ${filePath}. Use fs_update_file to modify an existing file.`
-    );
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-  }
-
-  // Ensure parent directories exist
-  const dir = path.dirname(filePath);
-  await fsp.mkdir(dir, { recursive: true });
-
-  if (encoding === "base64") {
-    await fsp.writeFile(filePath, Buffer.from(content, "base64"));
-  } else {
-    await fsp.writeFile(filePath, content, encoding);
-  }
-
-  const stat = await fsp.stat(filePath);
-  return {
-    filePath,
-    size: stat.size,
-    created: true,
-  };
-}
-
-static async fsUpdateFile(args: Record<string, unknown>): Promise<unknown> {
-  const filePath = FsExecution.resolvePath(args.filePath as string);
-
-  let fileStat: fs.Stats;
-  try {
-    fileStat = await fsp.stat(filePath);
-  } catch {
-    throw new Error(`File not found: ${filePath}`);
-  }
-  if (!fileStat.isFile()) {
-    throw new Error(`Path is not a file: ${filePath}`);
-  }
-
-  // Mode 1: Search & Replace
-  if (args.search !== undefined) {
-    const search = args.search as string;
-    const replace = args.replace as string ?? "";
-    const existing = await fsp.readFile(filePath, "utf-8");
-
-    if (!existing.includes(search)) {
-      throw new Error(`Search string not found in file: ${filePath}`);
-    }
-
-    const updated = existing.replace(search, replace);
-    await fsp.writeFile(filePath, updated, "utf-8");
-
-    return {
-      filePath,
-      mode: "search-replace",
-      replacements: 1,
-      newSize: Buffer.byteLength(updated, "utf-8"),
-    };
-  }
-
-  // Mode 2: Append
-  if (args.appendContent !== undefined) {
-    const appendContent = args.appendContent as string;
-    await fsp.appendFile(filePath, appendContent, "utf-8");
-    const stat = await fsp.stat(filePath);
-    return {
-      filePath,
-      mode: "append",
-      newSize: stat.size,
-    };
-  }
-
-  // Mode 3: Full overwrite
-  if (args.content !== undefined) {
-    const content = args.content as string;
-    await fsp.writeFile(filePath, content, "utf-8");
-    return {
-      filePath,
-      mode: "overwrite",
-      newSize: Buffer.byteLength(content, "utf-8"),
-    };
-  }
-
-  throw new Error("Provide one of: content (full overwrite), search+replace, or appendContent.");
-}
-
-static async fsDeleteFile(args: Record<string, unknown>): Promise<unknown> {
-  const filePath = FsExecution.resolvePath(args.filePath as string);
-
-  let fileStat: fs.Stats;
-  try {
-    fileStat = await fsp.stat(filePath);
-  } catch {
-    throw new Error(`File not found: ${filePath}`);
-  }
-  if (!fileStat.isFile()) {
-    throw new Error(`Path is not a file: ${filePath}`);
-  }
-
-  const size = fileStat.size;
-  await fsp.unlink(filePath);
-
-  return {
-    filePath,
-    deleted: true,
-    previousSize: size,
-  };
-}
-
-static async fsDeleteDirectory(args: Record<string, unknown>): Promise<unknown> {
-  const dirPath = FsExecution.resolvePath(args.dirPath as string);
-
-  let dirStat: fs.Stats;
-  try {
-    dirStat = await fsp.stat(dirPath);
-  } catch {
-    throw new Error(`Directory not found: ${dirPath}`);
-  }
-  if (!dirStat.isDirectory()) {
-    throw new Error(`Path is not a directory: ${dirPath}`);
-  }
-
-  // Count contents before deletion (walkDir is bounded / sync — acceptable for pre-delete audit)
-  const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
-  await FsExecution.walkDirAsync(dirPath, undefined, 1000, results);
-
-  await fsp.rm(dirPath, { recursive: true, force: true });
-
-  return {
-    dirPath,
-    deleted: true,
-    entriesRemoved: results.length,
-  };
-}
-
-static async fsExecuteScript(args: Record<string, unknown>): Promise<unknown> {
-  const command = args.command as string;
-  const cwd = args.cwd ? FsExecution.resolvePath(args.cwd as string) : process.cwd();
-  const timeout = Math.min((args.timeout as number) || FS_SCRIPT_TIMEOUT_MS, 120_000);
-
-  if (!command || typeof command !== "string" || command.trim().length === 0) {
-    throw new Error("Command must be a non-empty string.");
-  }
-
-  // Block known dangerous patterns (despite HITL approval, defence-in-depth)
-  const BLOCKED_PATTERNS = [
-    /\brm\s+(-rf?\s+)?\//i,          // rm -rf /
-    /\bdd\b.*\bof=\/dev\//i,          // dd to devices
-    /\b(mkfs|fdisk|wipefs)\b/i,       // disk formatting
-    /\bcurl\b.*\|.*\b(sh|bash)\b/i,  // curl | sh
-    /\bwget\b.*\|.*\b(sh|bash)\b/i,  // wget | sh
-  ];
-  for (const pat of BLOCKED_PATTERNS) {
-    if (pat.test(command)) {
-      throw new Error(`Blocked: command matches a dangerous pattern and cannot be executed.`);
-    }
-  }
-
-  if (cwd) {
-    try {
-      await fsp.access(cwd);
-    } catch {
-      throw new Error(`Working directory not found: ${cwd}`);
-    }
-  }
-
-  // Explicit shell — this is an intentional HITL-approved script runner.
-  // The shell binary is hardcoded to prevent PATH-based injection.
-  const shellBin = process.platform === "win32" ? "cmd.exe" : "/bin/bash";
-  try {
-    const { stdout, stderr } = await execAsync(command, {
-      cwd,
-      timeout,
-      maxBuffer: FS_MAX_SCRIPT_OUTPUT,
-      shell: shellBin,
-    });
-
-    return {
-      command,
-      cwd,
-      exitCode: 0,
-      stdout: stdout.slice(0, FS_MAX_SCRIPT_OUTPUT),
-      stderr: stderr.slice(0, FS_MAX_SCRIPT_OUTPUT),
-    };
-  } catch (err: any) {
-    return {
-      command,
-      cwd,
-      exitCode: err.code ?? 1,
-      stdout: (err.stdout || "").slice(0, FS_MAX_SCRIPT_OUTPUT),
-      stderr: (err.stderr || err.message || "").slice(0, FS_MAX_SCRIPT_OUTPUT),
-      error: err.killed ? "Process timed out" : undefined,
-    };
-  }
-}
-
-static isTool(name: string): boolean {
-  return Object.values(FS_TOOL_NAMES).includes(name as any);
-}
-
-static async executeBuiltin(
-  name: string,
-  args: Record<string, unknown>
-): Promise<unknown> {
-  switch (name) {
-    case FS_TOOL_NAMES.READ_FILE:
-      return FsExecution.fsReadFile(args);
-    case FS_TOOL_NAMES.EXTRACT_TEXT:
-      return FsExecution.fsExtractText(args);
-    case FS_TOOL_NAMES.READ_DIR:
-      return FsExecution.fsReadDirectory(args);
-    case FS_TOOL_NAMES.FILE_INFO:
-      return FsExecution.fsFileInfo(args);
-    case FS_TOOL_NAMES.SEARCH_FILES:
-      return FsExecution.fsSearchFiles(args);
-    case FS_TOOL_NAMES.CREATE_FILE:
-      return FsExecution.fsCreateFile(args);
-    case FS_TOOL_NAMES.UPDATE_FILE:
-      return FsExecution.fsUpdateFile(args);
-    case FS_TOOL_NAMES.DELETE_FILE:
-      return FsExecution.fsDeleteFile(args);
-    case FS_TOOL_NAMES.DELETE_DIR:
-      return FsExecution.fsDeleteDirectory(args);
-    case FS_TOOL_NAMES.EXECUTE_SCRIPT:
-      return FsExecution.fsExecuteScript(args);
-    default:
-      throw new Error(`Unknown built-in fs tool: "${name}"`);
-  }
-}
-}
-
-// ── Public API ────────────────────────────────────────────────
-
-/**
- * Check whether a tool name is a built-in filesystem tool.
- */
-export const isFsTool = FsExecution.isTool.bind(FsExecution);
-
-/**
- * Execute a built-in filesystem tool and return the result.
- */
-export const executeBuiltinFsTool = FsExecution.executeBuiltin.bind(FsExecution);
-
 // ── BaseTool class wrapper ────────────────────────────────────
 
 export class FsTools extends BaseTool {
@@ -948,11 +348,34 @@ export class FsTools extends BaseTool {
   }
 
   static isTool(name: string): boolean {
-    return FsExecution.isTool(name);
+    return Object.values(FS_TOOL_NAMES).includes(name as any);
   }
 
   static async executeBuiltin(name: string, args: Record<string, unknown>): Promise<unknown> {
-    return FsExecution.executeBuiltin(name, args);
+    switch (name) {
+      case FS_TOOL_NAMES.READ_FILE:
+        return FsTools.fsReadFile(args);
+      case FS_TOOL_NAMES.EXTRACT_TEXT:
+        return FsTools.fsExtractText(args);
+      case FS_TOOL_NAMES.READ_DIR:
+        return FsTools.fsReadDirectory(args);
+      case FS_TOOL_NAMES.FILE_INFO:
+        return FsTools.fsFileInfo(args);
+      case FS_TOOL_NAMES.SEARCH_FILES:
+        return FsTools.fsSearchFiles(args);
+      case FS_TOOL_NAMES.CREATE_FILE:
+        return FsTools.fsCreateFile(args);
+      case FS_TOOL_NAMES.UPDATE_FILE:
+        return FsTools.fsUpdateFile(args);
+      case FS_TOOL_NAMES.DELETE_FILE:
+        return FsTools.fsDeleteFile(args);
+      case FS_TOOL_NAMES.DELETE_DIR:
+        return FsTools.fsDeleteDirectory(args);
+      case FS_TOOL_NAMES.EXECUTE_SCRIPT:
+        return FsTools.fsExecuteScript(args);
+      default:
+        throw new Error(`Unknown built-in fs tool: "${name}"`);
+    }
   }
 
   async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
@@ -961,17 +384,583 @@ export class FsTools extends BaseTool {
     return handler(args);
   }
 
-  private readFile(args: Record<string, unknown>): Promise<unknown>      { return FsExecution.fsReadFile(args); }
-  private extractText(args: Record<string, unknown>): Promise<unknown>   { return FsExecution.fsExtractText(args); }
-  private readDirectory(args: Record<string, unknown>): Promise<unknown> { return FsExecution.fsReadDirectory(args); }
-  private fileInfo(args: Record<string, unknown>): Promise<unknown>      { return FsExecution.fsFileInfo(args); }
-  private searchFiles(args: Record<string, unknown>): Promise<unknown>   { return FsExecution.fsSearchFiles(args); }
-  private createFile(args: Record<string, unknown>): Promise<unknown>    { return FsExecution.fsCreateFile(args); }
-  private updateFile(args: Record<string, unknown>): Promise<unknown>    { return FsExecution.fsUpdateFile(args); }
-  private deleteFile(args: Record<string, unknown>): Promise<unknown>    { return FsExecution.fsDeleteFile(args); }
-  private deleteDirectory(args: Record<string, unknown>): Promise<unknown> { return FsExecution.fsDeleteDirectory(args); }
-  private executeScript(args: Record<string, unknown>): Promise<unknown> { return FsExecution.fsExecuteScript(args); }
+  private readFile(args: Record<string, unknown>): Promise<unknown>        { return FsTools.fsReadFile(args); }
+  private extractText(args: Record<string, unknown>): Promise<unknown>     { return FsTools.fsExtractText(args); }
+  private readDirectory(args: Record<string, unknown>): Promise<unknown>   { return FsTools.fsReadDirectory(args); }
+  private fileInfo(args: Record<string, unknown>): Promise<unknown>        { return FsTools.fsFileInfo(args); }
+  private searchFiles(args: Record<string, unknown>): Promise<unknown>     { return FsTools.fsSearchFiles(args); }
+  private createFile(args: Record<string, unknown>): Promise<unknown>      { return FsTools.fsCreateFile(args); }
+  private updateFile(args: Record<string, unknown>): Promise<unknown>      { return FsTools.fsUpdateFile(args); }
+  private deleteFile(args: Record<string, unknown>): Promise<unknown>      { return FsTools.fsDeleteFile(args); }
+  private deleteDirectory(args: Record<string, unknown>): Promise<unknown> { return FsTools.fsDeleteDirectory(args); }
+  private executeScript(args: Record<string, unknown>): Promise<unknown>   { return FsTools.fsExecuteScript(args); }
+
+  // ── Path / Pattern Helpers ────────────────────────────────────
+
+  /**
+   * Resolve a path, making relative paths relative to cwd,
+   * then enforce that the result is within FS_ALLOWED_ROOT.
+   */
+  private static resolvePath(p: string): string {
+    const resolved = path.resolve(p);
+    // Resolve symlinks to prevent symlink-based path traversal
+    let realResolved: string;
+    try {
+      realResolved = fs.realpathSync(resolved);
+    } catch {
+      // File may not exist yet (e.g., create operation) — check parent
+      const parentDir = path.dirname(resolved);
+      try {
+        const realParent = fs.realpathSync(parentDir);
+        if (
+          !realParent.startsWith(FS_ALLOWED_ROOT + path.sep) &&
+          realParent !== FS_ALLOWED_ROOT
+        ) {
+          throw new Error(
+            `Access denied: path "${p}" resolves outside the allowed root directory.`
+          );
+        }
+      } catch (parentErr: any) {
+        if (parentErr.message?.startsWith("Access denied")) throw parentErr;
+        // Parent doesn't exist either — fall through to normal check
+      }
+      realResolved = resolved;
+    }
+    // Normalise both to use consistent separators
+    const normalised = path.normalize(realResolved);
+    if (
+      !normalised.startsWith(FS_ALLOWED_ROOT + path.sep) &&
+      normalised !== FS_ALLOWED_ROOT
+    ) {
+      throw new Error(
+        `Access denied: path "${p}" is outside the allowed root directory.`
+      );
+    }
+    return resolved;
+  }
+
+  /** Simple glob-like pattern matching (supports * and ?). */
+  private static matchPattern(name: string, pattern: string): boolean {
+    const regex = new RegExp(
+      "^" +
+        pattern
+          .replace(/([.+^${}()|[\]\\])/g, "\\$1")
+          .replace(/\*/g, ".*")
+          .replace(/\?/g, ".") +
+        "$",
+      "i"
+    );
+    return regex.test(name);
+  }
+
+  /** Recursively walk a directory, collecting entries (async, bounded). */
+  private static async walkDirAsync(
+    dir: string,
+    pattern: string | undefined,
+    maxEntries: number,
+    results: Array<{ path: string; type: "file" | "directory"; size: number }>,
+    level = 0
+  ): Promise<void> {
+    if (results.length >= maxEntries || level > 20) return;
+
+    let entries: fs.Dirent[];
+    try {
+      entries = await fsp.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (results.length >= maxEntries) return;
+
+      const fullPath = path.join(dir, entry.name);
+
+      // Skip heavy/system dirs
+      if (entry.isDirectory() && (entry.name === "node_modules" || entry.name === ".git")) continue;
+
+      const matches = !pattern || FsTools.matchPattern(entry.name, pattern);
+      if (matches) {
+        let size = 0;
+        try {
+          size = entry.isFile() ? (await fsp.stat(fullPath)).size : 0;
+        } catch {}
+        results.push({
+          path: fullPath,
+          type: entry.isDirectory() ? "directory" : "file",
+          size,
+        });
+      }
+
+      if (entry.isDirectory()) {
+        await FsTools.walkDirAsync(fullPath, pattern, maxEntries, results, level + 1);
+      }
+    }
+  }
+
+  // ── Tool Implementations ──────────────────────────────────────
+
+  private static async fsReadFile(args: Record<string, unknown>): Promise<unknown> {
+    const filePath = FsTools.resolvePath(args.filePath as string);
+    const encoding = (args.encoding as BufferEncoding) || "utf-8";
+
+    let stat: fs.Stats;
+    try {
+      stat = await fsp.stat(filePath);
+    } catch {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    if (!stat.isFile()) {
+      throw new Error(`Path is not a file: ${filePath}`);
+    }
+
+    const startLine = (args.startLine as number) || undefined;
+    const endLine = (args.endLine as number) || undefined;
+    const byteOffset = typeof args.offset === "number" ? args.offset : undefined;
+    const byteLength = typeof args.length === "number" ? args.length : undefined;
+    const isPartialRead = !!(startLine || endLine || byteOffset !== undefined);
+
+    // Byte-level chunked reading — works on any file size
+    if (byteOffset !== undefined) {
+      const maxChunk = 1024 * 1024; // 1 MB max per chunk
+      const readLen = Math.min(byteLength || FS_DEFAULT_CHUNK_BYTES, maxChunk);
+      const start = Math.max(0, byteOffset);
+      const end = Math.min(stat.size - 1, start + readLen - 1);
+      if (start >= stat.size) {
+        return { filePath, size: stat.size, offset: start, content: "", note: "Offset beyond end of file." };
+      }
+      const buf = Buffer.alloc(end - start + 1);
+      const fh = await fsp.open(filePath, "r");
+      try {
+        await fh.read(buf, 0, buf.length, start);
+      } finally {
+        await fh.close();
+      }
+      const content = encoding === "base64" ? buf.toString("base64") : buf.toString(encoding);
+      return {
+        filePath,
+        size: stat.size,
+        offset: start,
+        bytesRead: buf.length,
+        hasMore: end < stat.size - 1,
+        content,
+      };
+    }
+
+    // Full-file read — enforce size limit unless line-range params are provided
+    if (stat.size > FS_MAX_READ_BYTES && encoding !== "base64" && !isPartialRead) {
+      throw new Error(
+        `File is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB). Max for full reads is ${FS_MAX_READ_BYTES / 1024 / 1024} MB. Use startLine/endLine for line-based chunking or offset/length for byte-based chunking.`
+      );
+    }
+
+    let content: string;
+    if (encoding === "base64") {
+      content = (await fsp.readFile(filePath)).toString("base64");
+    } else {
+      content = await fsp.readFile(filePath, encoding);
+    }
+
+    // Line range slicing
+    if (startLine || endLine) {
+      const lines = content.split("\n");
+      const s = Math.max(0, (startLine || 1) - 1);
+      const e = Math.min(lines.length, endLine || lines.length);
+      content = lines.slice(s, e).join("\n");
+    }
+
+    return {
+      filePath,
+      size: stat.size,
+      lineCount: content.split("\n").length,
+      content,
+    };
+  }
+
+  private static decodeHtmlEntities(input: string): string {
+    return input
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/&#x27;/gi, "'")
+      .replace(/&#x2F;/gi, "/");
+  }
+
+  private static extractReadableText(raw: string): string {
+    return FsTools.decodeHtmlEntities(
+      raw
+        .replace(/<!--[\s\S]*?-->/g, " ")
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+        .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    );
+  }
+
+  private static async fsExtractText(args: Record<string, unknown>): Promise<unknown> {
+    const filePath = FsTools.resolvePath(args.filePath as string);
+    const encoding = (args.encoding as BufferEncoding) || "utf-8";
+    const byteOffset = typeof args.offset === "number" ? Math.max(0, args.offset) : 0;
+    const requestedLen = typeof args.length === "number" ? args.length : FS_EXTRACT_DEFAULT_BYTES;
+    const readLen = Math.min(Math.max(1, requestedLen), 1024 * 1024);
+    const maxChars = Math.min(Math.max(1, (args.maxChars as number) || FS_EXTRACT_DEFAULT_MAX_CHARS), FS_EXTRACT_MAX_CHARS_LIMIT);
+
+    let stat: fs.Stats;
+    try {
+      stat = await fsp.stat(filePath);
+    } catch {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    if (!stat.isFile()) {
+      throw new Error(`Path is not a file: ${filePath}`);
+    }
+
+    // Require chunking for very large files to avoid huge memory spikes.
+    if (stat.size > FS_MAX_READ_BYTES && args.offset === undefined && args.length === undefined) {
+      throw new Error(
+        `File is too large (${(stat.size / 1024 / 1024).toFixed(1)} MB) for default extraction. Provide offset/length to process it in chunks.`
+      );
+    }
+
+    if (byteOffset >= stat.size) {
+      return {
+        filePath,
+        size: stat.size,
+        offset: byteOffset,
+        bytesRead: 0,
+        hasMore: false,
+        extractedChars: 0,
+        text: "",
+      };
+    }
+
+    const end = Math.min(stat.size - 1, byteOffset + readLen - 1);
+    const buf = Buffer.alloc(end - byteOffset + 1);
+    const fh = await fsp.open(filePath, "r");
+    try {
+      await fh.read(buf, 0, buf.length, byteOffset);
+    } finally {
+      await fh.close();
+    }
+
+    const raw = buf.toString(encoding);
+    const extracted = FsTools.extractReadableText(raw);
+    const text = extracted.length > maxChars ? extracted.slice(0, maxChars) : extracted;
+
+    return {
+      filePath,
+      size: stat.size,
+      offset: byteOffset,
+      bytesRead: buf.length,
+      hasMore: end < stat.size - 1,
+      extractedChars: extracted.length,
+      text,
+    };
+  }
+
+  private static async fsReadDirectory(args: Record<string, unknown>): Promise<unknown> {
+    const dirPath = FsTools.resolvePath(args.dirPath as string);
+    const recursive = (args.recursive as boolean) || false;
+    const pattern = args.pattern as string | undefined;
+
+    let dirStat: fs.Stats;
+    try {
+      dirStat = await fsp.stat(dirPath);
+    } catch {
+      throw new Error(`Directory not found: ${dirPath}`);
+    }
+    if (!dirStat.isDirectory()) {
+      throw new Error(`Path is not a directory: ${dirPath}`);
+    }
+
+    if (recursive) {
+      const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
+      await FsTools.walkDirAsync(dirPath, pattern, FS_WALK_DIR_LIMIT, results);
+      return { dirPath, entryCount: results.length, entries: results };
+    }
+
+    const entries = await fsp.readdir(dirPath, { withFileTypes: true });
+    const items = await Promise.all(
+      entries
+        .filter((e) => !pattern || FsTools.matchPattern(e.name, pattern))
+        .map(async (e) => {
+          const fp = path.join(dirPath, e.name);
+          let size = 0;
+          try {
+            size = e.isFile() ? (await fsp.stat(fp)).size : 0;
+          } catch {}
+          return {
+            name: e.name,
+            type: e.isDirectory() ? "directory" : "file",
+            size,
+          };
+        })
+    );
+
+    return { dirPath, entryCount: items.length, entries: items };
+  }
+
+  private static async fsFileInfo(args: Record<string, unknown>): Promise<unknown> {
+    const targetPath = FsTools.resolvePath(args.targetPath as string);
+
+    let stat: fs.Stats;
+    try {
+      stat = await fsp.stat(targetPath);
+    } catch {
+      throw new Error(`Path not found: ${targetPath}`);
+    }
+    return {
+      path: targetPath,
+      type: stat.isDirectory() ? "directory" : stat.isFile() ? "file" : "other",
+      size: stat.size,
+      createdAt: stat.birthtime.toISOString(),
+      modifiedAt: stat.mtime.toISOString(),
+      accessedAt: stat.atime.toISOString(),
+      permissions: `0${(stat.mode & 0o777).toString(8)}`,
+      isSymbolicLink: stat.isSymbolicLink(),
+    };
+  }
+
+  private static async fsSearchFiles(args: Record<string, unknown>): Promise<unknown> {
+    const dirPath = FsTools.resolvePath(args.dirPath as string);
+    const pattern = args.pattern as string;
+    const maxResults = Math.min((args.maxResults as number) || 50, 200);
+
+    try {
+      await fsp.access(dirPath);
+    } catch {
+      throw new Error(`Directory not found: ${dirPath}`);
+    }
+
+    const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
+    await FsTools.walkDirAsync(dirPath, pattern, maxResults, results);
+
+    return {
+      dirPath,
+      pattern,
+      matchCount: results.length,
+      matches: results,
+    };
+  }
+
+  private static async fsCreateFile(args: Record<string, unknown>): Promise<unknown> {
+    const filePath = FsTools.resolvePath(args.filePath as string);
+    const content = args.content as string;
+    const encoding = (args.encoding as BufferEncoding) || "utf-8";
+
+    try {
+      await fsp.access(filePath);
+      throw new Error(
+        `File already exists: ${filePath}. Use fs_update_file to modify an existing file.`
+      );
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+
+    // Ensure parent directories exist
+    const dir = path.dirname(filePath);
+    await fsp.mkdir(dir, { recursive: true });
+
+    if (encoding === "base64") {
+      await fsp.writeFile(filePath, Buffer.from(content, "base64"));
+    } else {
+      await fsp.writeFile(filePath, content, encoding);
+    }
+
+    const stat = await fsp.stat(filePath);
+    return {
+      filePath,
+      size: stat.size,
+      created: true,
+    };
+  }
+
+  private static async fsUpdateFile(args: Record<string, unknown>): Promise<unknown> {
+    const filePath = FsTools.resolvePath(args.filePath as string);
+
+    let fileStat: fs.Stats;
+    try {
+      fileStat = await fsp.stat(filePath);
+    } catch {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    if (!fileStat.isFile()) {
+      throw new Error(`Path is not a file: ${filePath}`);
+    }
+
+    // Mode 1: Search & Replace
+    if (args.search !== undefined) {
+      const search = args.search as string;
+      const replace = args.replace as string ?? "";
+      const existing = await fsp.readFile(filePath, "utf-8");
+
+      if (!existing.includes(search)) {
+        throw new Error(`Search string not found in file: ${filePath}`);
+      }
+
+      const updated = existing.replace(search, replace);
+      await fsp.writeFile(filePath, updated, "utf-8");
+
+      return {
+        filePath,
+        mode: "search-replace",
+        replacements: 1,
+        newSize: Buffer.byteLength(updated, "utf-8"),
+      };
+    }
+
+    // Mode 2: Append
+    if (args.appendContent !== undefined) {
+      const appendContent = args.appendContent as string;
+      await fsp.appendFile(filePath, appendContent, "utf-8");
+      const stat = await fsp.stat(filePath);
+      return {
+        filePath,
+        mode: "append",
+        newSize: stat.size,
+      };
+    }
+
+    // Mode 3: Full overwrite
+    if (args.content !== undefined) {
+      const content = args.content as string;
+      await fsp.writeFile(filePath, content, "utf-8");
+      return {
+        filePath,
+        mode: "overwrite",
+        newSize: Buffer.byteLength(content, "utf-8"),
+      };
+    }
+
+    throw new Error("Provide one of: content (full overwrite), search+replace, or appendContent.");
+  }
+
+  private static async fsDeleteFile(args: Record<string, unknown>): Promise<unknown> {
+    const filePath = FsTools.resolvePath(args.filePath as string);
+
+    let fileStat: fs.Stats;
+    try {
+      fileStat = await fsp.stat(filePath);
+    } catch {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    if (!fileStat.isFile()) {
+      throw new Error(`Path is not a file: ${filePath}`);
+    }
+
+    const size = fileStat.size;
+    await fsp.unlink(filePath);
+
+    return {
+      filePath,
+      deleted: true,
+      previousSize: size,
+    };
+  }
+
+  private static async fsDeleteDirectory(args: Record<string, unknown>): Promise<unknown> {
+    const dirPath = FsTools.resolvePath(args.dirPath as string);
+
+    let dirStat: fs.Stats;
+    try {
+      dirStat = await fsp.stat(dirPath);
+    } catch {
+      throw new Error(`Directory not found: ${dirPath}`);
+    }
+    if (!dirStat.isDirectory()) {
+      throw new Error(`Path is not a directory: ${dirPath}`);
+    }
+
+    // Count contents before deletion (walkDir is bounded / sync — acceptable for pre-delete audit)
+    const results: Array<{ path: string; type: "file" | "directory"; size: number }> = [];
+    await FsTools.walkDirAsync(dirPath, undefined, 1000, results);
+
+    await fsp.rm(dirPath, { recursive: true, force: true });
+
+    return {
+      dirPath,
+      deleted: true,
+      entriesRemoved: results.length,
+    };
+  }
+
+  private static async fsExecuteScript(args: Record<string, unknown>): Promise<unknown> {
+    const command = args.command as string;
+    const cwd = args.cwd ? FsTools.resolvePath(args.cwd as string) : process.cwd();
+    const timeout = Math.min((args.timeout as number) || FS_SCRIPT_TIMEOUT_MS, 120_000);
+
+    if (!command || typeof command !== "string" || command.trim().length === 0) {
+      throw new Error("Command must be a non-empty string.");
+    }
+
+    // Block known dangerous patterns (despite HITL approval, defence-in-depth)
+    const BLOCKED_PATTERNS = [
+      /\brm\s+(-rf?\s+)?\//i,          // rm -rf /
+      /\bdd\b.*\bof=\/dev\//i,          // dd to devices
+      /\b(mkfs|fdisk|wipefs)\b/i,       // disk formatting
+      /\bcurl\b.*\|.*\b(sh|bash)\b/i,  // curl | sh
+      /\bwget\b.*\|.*\b(sh|bash)\b/i,  // wget | sh
+    ];
+    for (const pat of BLOCKED_PATTERNS) {
+      if (pat.test(command)) {
+        throw new Error(`Blocked: command matches a dangerous pattern and cannot be executed.`);
+      }
+    }
+
+    if (cwd) {
+      try {
+        await fsp.access(cwd);
+      } catch {
+        throw new Error(`Working directory not found: ${cwd}`);
+      }
+    }
+
+    // Explicit shell — this is an intentional HITL-approved script runner.
+    // The shell binary is hardcoded to prevent PATH-based injection.
+    const shellBin = process.platform === "win32" ? "cmd.exe" : "/bin/bash";
+    try {
+      const { stdout, stderr } = await execAsync(command, {
+        cwd,
+        timeout,
+        maxBuffer: FS_MAX_SCRIPT_OUTPUT,
+        shell: shellBin,
+      });
+
+      return {
+        command,
+        cwd,
+        exitCode: 0,
+        stdout: stdout.slice(0, FS_MAX_SCRIPT_OUTPUT),
+        stderr: stderr.slice(0, FS_MAX_SCRIPT_OUTPUT),
+      };
+    } catch (err: any) {
+      return {
+        command,
+        cwd,
+        exitCode: err.code ?? 1,
+        stdout: (err.stdout || "").slice(0, FS_MAX_SCRIPT_OUTPUT),
+        stderr: (err.stderr || err.message || "").slice(0, FS_MAX_SCRIPT_OUTPUT),
+        error: err.killed ? "Process timed out" : undefined,
+      };
+    }
+  }
 }
 
 export const fsTools = new FsTools();
 registerToolCategory(fsTools);
+
+// ── Public API ────────────────────────────────────────────────
+
+/**
+ * Check whether a tool name is a built-in filesystem tool.
+ */
+export const isFsTool = FsTools.isTool.bind(FsTools);
+
+/**
+ * Execute a built-in filesystem tool and return the result.
+ */
+export const executeBuiltinFsTool = FsTools.executeBuiltin.bind(FsTools);

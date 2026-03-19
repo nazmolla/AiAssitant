@@ -196,7 +196,60 @@ export const ALEXA_TOOLS_REQUIRING_APPROVAL: string[] = [
   "builtin.alexa_set_dnd_status",
 ];
 
-class AlexaPublicApi {
+// ── BaseTool class wrapper ────────────────────────────────────
+
+export class AlexaTools extends BaseTool {
+  readonly name = "alexa";
+  readonly toolNamePrefix = "builtin.alexa_";
+  readonly registrationOrder = 60;
+  readonly tools = BUILTIN_ALEXA_TOOLS;
+  readonly toolsRequiringApproval = [...ALEXA_TOOLS_REQUIRING_APPROVAL];
+
+  private readonly cmdMap: ReadonlyMap<string, (a: Record<string, unknown>) => Promise<unknown>>;
+
+  constructor() {
+    super();
+    this.cmdMap = new Map<string, (a: Record<string, unknown>) => Promise<unknown>>([
+      ["builtin.alexa_announce",               (a) => this.announce(a)],
+      ["builtin.alexa_get_bedroom_state",       (a) => this.getBedroomState(a)],
+      ["builtin.alexa_list_lights",             (a) => this.listLights(a)],
+      ["builtin.alexa_set_light_power",         (a) => this.setLightPower(a)],
+      ["builtin.alexa_set_light_brightness",    (a) => this.setLightBrightness(a)],
+      ["builtin.alexa_set_light_color",         (a) => this.setLightColor(a)],
+      ["builtin.alexa_get_music_status",        (a) => this.getMusicStatus(a)],
+      ["builtin.alexa_get_device_volumes",      (a) => this.getDeviceVolumes(a)],
+      ["builtin.alexa_set_device_volume",       (a) => this.setDeviceVolume(a)],
+      ["builtin.alexa_adjust_device_volume",    (a) => this.adjustDeviceVolume(a)],
+      ["builtin.alexa_get_all_sensor_data",     (a) => this.getAllSensorData(a)],
+      ["builtin.alexa_list_smarthome_devices",  (a) => this.listSmarthomeDevices(a)],
+      ["builtin.alexa_get_dnd_status",          (a) => this.getDndStatus(a)],
+      ["builtin.alexa_set_dnd_status",          (a) => this.setDndStatus(a)],
+    ]);
+  }
+
+  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
+    const handler = this.cmdMap.get(toolName);
+    if (!handler) throw new Error(`Unknown Alexa tool: "${toolName}"`);
+    return handler(args);
+  }
+
+  private announce(args: Record<string, unknown>): Promise<unknown>              { return AlexaTools.handleAnnounce(AlexaTools.requireCreds(), args); }
+  private getBedroomState(_args: Record<string, unknown>): Promise<unknown>      { return AlexaTools.handleGetBedroomState(AlexaTools.requireCreds()); }
+  private listLights(_args: Record<string, unknown>): Promise<unknown>           { return AlexaTools.handleListLights(AlexaTools.requireCreds()); }
+  private setLightPower(args: Record<string, unknown>): Promise<unknown>         { return AlexaTools.handleSetLightPower(AlexaTools.requireCreds(), args); }
+  private setLightBrightness(args: Record<string, unknown>): Promise<unknown>    { return AlexaTools.handleSetLightBrightness(AlexaTools.requireCreds(), args); }
+  private setLightColor(args: Record<string, unknown>): Promise<unknown>         { return AlexaTools.handleSetLightColor(AlexaTools.requireCreds(), args); }
+  private getMusicStatus(_args: Record<string, unknown>): Promise<unknown>       { return AlexaTools.handleGetMusicStatus(AlexaTools.requireCreds()); }
+  private getDeviceVolumes(_args: Record<string, unknown>): Promise<unknown>     { return AlexaTools.handleGetDeviceVolumes(AlexaTools.requireCreds()); }
+  private setDeviceVolume(args: Record<string, unknown>): Promise<unknown>       { return AlexaTools.handleSetDeviceVolume(AlexaTools.requireCreds(), args); }
+  private adjustDeviceVolume(args: Record<string, unknown>): Promise<unknown>    { return AlexaTools.handleAdjustDeviceVolume(AlexaTools.requireCreds(), args); }
+  private getAllSensorData(_args: Record<string, unknown>): Promise<unknown>      { return AlexaTools.handleGetAllSensorData(AlexaTools.requireCreds()); }
+  private listSmarthomeDevices(_args: Record<string, unknown>): Promise<unknown> { return AlexaTools.handleListSmarthomeDevices(AlexaTools.requireCreds()); }
+  private getDndStatus(_args: Record<string, unknown>): Promise<unknown>         { return AlexaTools.handleGetDndStatus(AlexaTools.requireCreds()); }
+  private setDndStatus(args: Record<string, unknown>): Promise<unknown>          { return AlexaTools.handleSetDndStatus(AlexaTools.requireCreds(), args); }
+
+  // ── Public static API (formerly AlexaPublicApi) ───────────────
+
   static getAlexaConfig(): AlexaCreds | null {
     const raw1 = getAppConfig("alexa.ubid_main");
     const raw2 = getAppConfig("alexa.at_main");
@@ -458,169 +511,169 @@ class AlexaPublicApi {
   }
 
   private static async handleAnnounce(creds: AlexaCreds, args: Record<string, unknown>) {
-  const name = ((args.name as string) ?? "").trim();
-  const message = ((args.message as string) ?? "").trim();
-  if (!name || !message) throw new Error('Both "name" and "message" are required.');
-  if (name.length > 40) throw new Error("Name must be 40 characters or fewer.");
-  if (message.length > 145) throw new Error("Message must be 145 characters or fewer.");
+    const name = ((args.name as string) ?? "").trim();
+    const message = ((args.message as string) ?? "").trim();
+    if (!name || !message) throw new Error('Both "name" and "message" are required.');
+    if (name.length > 40) throw new Error("Name must be 40 characters or fewer.");
+    if (message.length > 145) throw new Error("Message must be 145 characters or fewer.");
 
-  const accountInfo = await this.getAccountInfo(creds);
-  const url = `https://alexa-comms-mobile-service.amazon.com/users/${accountInfo.customerId}/announcements`;
+    const accountInfo = await this.getAccountInfo(creds);
+    const url = `https://alexa-comms-mobile-service.amazon.com/users/${accountInfo.customerId}/announcements`;
 
-  const data = await this.alexaFetch(url, creds, {
-    method: "POST",
-    body: JSON.stringify({
-      type: "announcement/text",
-      messageText: message,
-      senderFirstName: name,
-      senderLastName: "",
-      announcementPrefix: "",
-    }),
-    extra: { "Content-Type": "application/json; charset=utf-8" },
-  }) as { statuses?: Array<{ playbackStatus?: string; deliveredTime?: string }> };
+    const data = await this.alexaFetch(url, creds, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "announcement/text",
+        messageText: message,
+        senderFirstName: name,
+        senderLastName: "",
+        announcementPrefix: "",
+      }),
+      extra: { "Content-Type": "application/json; charset=utf-8" },
+    }) as { statuses?: Array<{ playbackStatus?: string; deliveredTime?: string }> };
 
-  const first = data.statuses?.[0] ?? {};
-  return { playbackStatus: first.playbackStatus ?? null, deliveredTime: first.deliveredTime ?? null };
-}
+    const first = data.statuses?.[0] ?? {};
+    return { playbackStatus: first.playbackStatus ?? null, deliveredTime: first.deliveredTime ?? null };
+  }
 
-// ── Bedroom State ────────────────────────────────────────────────
+  // ── Bedroom State ────────────────────────────────────────────────
 
   private static async handleGetBedroomState(creds: AlexaCreds) {
-  const stateRequests: Array<{ entityId: string; entityType: string }> = [];
-  const added = new Set<string>();
+    const stateRequests: Array<{ entityId: string; entityType: string }> = [];
+    const added = new Set<string>();
 
-  // Strategy 1: Echo device entity ID
-  try {
-    const echoId = await this.getEchoDeviceEntityId(creds);
-    if (echoId && !added.has(echoId)) { stateRequests.push({ entityId: echoId, entityType: "ENTITY" }); added.add(echoId); }
-  } catch { /* skip */ }
+    // Strategy 1: Echo device entity ID
+    try {
+      const echoId = await this.getEchoDeviceEntityId(creds);
+      if (echoId && !added.has(echoId)) { stateRequests.push({ entityId: echoId, entityType: "ENTITY" }); added.add(echoId); }
+    } catch { /* skip */ }
 
-  // Strategy 2: Light appliance ID
-  try {
-    const lightId = await this.getLightApplianceId(creds);
-    if (lightId && !added.has(lightId)) { stateRequests.push({ entityId: lightId, entityType: "APPLIANCE" }); added.add(lightId); }
-  } catch { /* skip */ }
+    // Strategy 2: Light appliance ID
+    try {
+      const lightId = await this.getLightApplianceId(creds);
+      if (lightId && !added.has(lightId)) { stateRequests.push({ entityId: lightId, entityType: "APPLIANCE" }); added.add(lightId); }
+    } catch { /* skip */ }
 
-  // Strategy 3: All smart home endpoints
-  try {
-    const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
-    for (const ep of endpoints) {
-      const leg = ep.legacyIdentifiers as Record<string, unknown> | undefined;
-      const entityId = (leg?.chrsIdentifier as { entityId?: string })?.entityId || (ep.entityId as string);
-      if (entityId && !added.has(entityId)) { stateRequests.push({ entityId, entityType: "ENTITY" }); added.add(entityId); }
-      const la = ep.legacyAppliance as { applianceId?: string; mergedApplianceIds?: string[] } | undefined;
-      if (la?.applianceId && !added.has(la.applianceId)) { stateRequests.push({ entityId: la.applianceId, entityType: "APPLIANCE" }); added.add(la.applianceId); }
-      for (const mid of la?.mergedApplianceIds ?? []) {
-        if (mid && !added.has(mid)) { stateRequests.push({ entityId: mid, entityType: "APPLIANCE" }); added.add(mid); }
+    // Strategy 3: All smart home endpoints
+    try {
+      const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
+      for (const ep of endpoints) {
+        const leg = ep.legacyIdentifiers as Record<string, unknown> | undefined;
+        const entityId = (leg?.chrsIdentifier as { entityId?: string })?.entityId || (ep.entityId as string);
+        if (entityId && !added.has(entityId)) { stateRequests.push({ entityId, entityType: "ENTITY" }); added.add(entityId); }
+        const la = ep.legacyAppliance as { applianceId?: string; mergedApplianceIds?: string[] } | undefined;
+        if (la?.applianceId && !added.has(la.applianceId)) { stateRequests.push({ entityId: la.applianceId, entityType: "APPLIANCE" }); added.add(la.applianceId); }
+        for (const mid of la?.mergedApplianceIds ?? []) {
+          if (mid && !added.has(mid)) { stateRequests.push({ entityId: mid, entityType: "APPLIANCE" }); added.add(mid); }
+        }
+      }
+    } catch { /* skip */ }
+
+    // Strategy 4: AlexaBridge entities from devices API
+    try {
+      const devices = await this.getAlexaDevices(creds) as Array<Record<string, unknown>>;
+      for (const d of devices) {
+        const sn = d.serialNumber as string; const dt = d.deviceType as string;
+        if (sn && dt) {
+          const bid = `AlexaBridge_${sn}@${dt}_${sn}`;
+          if (!added.has(bid)) { stateRequests.push({ entityId: bid, entityType: "APPLIANCE" }); added.add(bid); }
+        }
+      }
+    } catch { /* skip */ }
+
+    if (stateRequests.length === 0) return { error: "No devices found" };
+
+    const rawData = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
+      method: "POST",
+      body: JSON.stringify({ stateRequests }),
+      extra: { "Content-Type": "application/json; charset=utf-8" },
+    }) as Record<string, unknown>;
+
+    // Parse stringified capability states
+    const deviceStates = (rawData.deviceStates ?? []) as Array<{ entity: { entityId: string; entityType: string }; capabilityStates: unknown[] }>;
+    for (const ds of deviceStates) {
+      ds.capabilityStates = ds.capabilityStates.map((cap) => {
+        if (typeof cap === "string") try { return JSON.parse(cap); } catch { return cap; }
+        return cap;
+      });
+    }
+
+    let temp: Record<string, unknown> | null = null;
+    let lightPower: Record<string, unknown> | null = null;
+    let illuminance: Record<string, unknown> | null = null;
+    let motionDetection: Record<string, unknown> | null = null;
+
+    for (const ds of deviceStates) {
+      for (const cap of ds.capabilityStates as Array<Record<string, unknown>>) {
+        if (!cap || typeof cap !== "object") continue;
+        if (cap.namespace === "Alexa.TemperatureSensor" && cap.name === "temperature") temp = cap;
+        if (cap.namespace === "Alexa.LightSensor" && cap.name === "illuminance") illuminance = cap;
+        if (cap.namespace === "Alexa.PowerController" && cap.name === "powerState") lightPower = cap;
+        if (cap.namespace === "Alexa.MotionSensor" && cap.name === "detectionState") motionDetection = cap;
       }
     }
-  } catch { /* skip */ }
 
-  // Strategy 4: AlexaBridge entities from devices API
-  try {
-    const devices = await this.getAlexaDevices(creds) as Array<Record<string, unknown>>;
-    for (const d of devices) {
-      const sn = d.serialNumber as string; const dt = d.deviceType as string;
-      if (sn && dt) {
-        const bid = `AlexaBridge_${sn}@${dt}_${sn}`;
-        if (!added.has(bid)) { stateRequests.push({ entityId: bid, entityType: "APPLIANCE" }); added.add(bid); }
-      }
+    let temperatureCelsius: number | undefined;
+    let temperatureFahrenheit: number | undefined;
+    if (temp?.value && typeof temp.value === "object") {
+      const tv = temp.value as { value: number; scale: string };
+      if (tv.scale === "CELSIUS") { temperatureCelsius = tv.value; temperatureFahrenheit = (tv.value * 9) / 5 + 32; }
+      else if (tv.scale === "FAHRENHEIT") { temperatureFahrenheit = tv.value; temperatureCelsius = ((tv.value - 32) * 5) / 9; }
     }
-  } catch { /* skip */ }
 
-  if (stateRequests.length === 0) return { error: "No devices found" };
-
-  const rawData = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
-    method: "POST",
-    body: JSON.stringify({ stateRequests }),
-    extra: { "Content-Type": "application/json; charset=utf-8" },
-  }) as Record<string, unknown>;
-
-  // Parse stringified capability states
-  const deviceStates = (rawData.deviceStates ?? []) as Array<{ entity: { entityId: string; entityType: string }; capabilityStates: unknown[] }>;
-  for (const ds of deviceStates) {
-    ds.capabilityStates = ds.capabilityStates.map((cap) => {
-      if (typeof cap === "string") try { return JSON.parse(cap); } catch { return cap; }
-      return cap;
-    });
+    return {
+      temperature: { celsius: temperatureCelsius ?? null, fahrenheit: temperatureFahrenheit ?? null },
+      illuminance: (illuminance?.value as number) ?? null,
+      motion: { detected: motionDetection ? motionDetection.value === "DETECTED" : false, timestamp: (motionDetection?.timeOfSample as string) ?? null },
+      light: { on: lightPower ? lightPower.value === "ON" : false },
+      lastUpdate: new Date().toISOString(),
+      summary: `Temperature: ${temperatureFahrenheit ? `${Math.round(temperatureFahrenheit)}°F` : "N/A"}, Illuminance: ${(illuminance?.value as number) ?? "N/A"} lux, Motion: ${motionDetection ? (motionDetection.value === "DETECTED" ? "Detected" : "Not detected") : "N/A"}, Light: ${lightPower ? (lightPower.value === "ON" ? "On" : "Off") : "Off"}`,
+    };
   }
 
-  let temp: Record<string, unknown> | null = null;
-  let lightPower: Record<string, unknown> | null = null;
-  let illuminance: Record<string, unknown> | null = null;
-  let motionDetection: Record<string, unknown> | null = null;
-
-  for (const ds of deviceStates) {
-    for (const cap of ds.capabilityStates as Array<Record<string, unknown>>) {
-      if (!cap || typeof cap !== "object") continue;
-      if (cap.namespace === "Alexa.TemperatureSensor" && cap.name === "temperature") temp = cap;
-      if (cap.namespace === "Alexa.LightSensor" && cap.name === "illuminance") illuminance = cap;
-      if (cap.namespace === "Alexa.PowerController" && cap.name === "powerState") lightPower = cap;
-      if (cap.namespace === "Alexa.MotionSensor" && cap.name === "detectionState") motionDetection = cap;
-    }
-  }
-
-  let temperatureCelsius: number | undefined;
-  let temperatureFahrenheit: number | undefined;
-  if (temp?.value && typeof temp.value === "object") {
-    const tv = temp.value as { value: number; scale: string };
-    if (tv.scale === "CELSIUS") { temperatureCelsius = tv.value; temperatureFahrenheit = (tv.value * 9) / 5 + 32; }
-    else if (tv.scale === "FAHRENHEIT") { temperatureFahrenheit = tv.value; temperatureCelsius = ((tv.value - 32) * 5) / 9; }
-  }
-
-  return {
-    temperature: { celsius: temperatureCelsius ?? null, fahrenheit: temperatureFahrenheit ?? null },
-    illuminance: (illuminance?.value as number) ?? null,
-    motion: { detected: motionDetection ? motionDetection.value === "DETECTED" : false, timestamp: (motionDetection?.timeOfSample as string) ?? null },
-    light: { on: lightPower ? lightPower.value === "ON" : false },
-    lastUpdate: new Date().toISOString(),
-    summary: `Temperature: ${temperatureFahrenheit ? `${Math.round(temperatureFahrenheit)}°F` : "N/A"}, Illuminance: ${(illuminance?.value as number) ?? "N/A"} lux, Motion: ${motionDetection ? (motionDetection.value === "DETECTED" ? "Detected" : "Not detected") : "N/A"}, Light: ${lightPower ? (lightPower.value === "ON" ? "On" : "Off") : "Off"}`,
-  };
-}
-
-// ── List Lights ──────────────────────────────────────────────────
+  // ── List Lights ──────────────────────────────────────────────────
 
   private static async handleListLights(creds: AlexaCreds) {
-  const entities = await this.getSmartHomeEntities(creds) as Array<Record<string, unknown>>;
-  const lights = entities.filter((d) => {
-    const di = d.displayInfo as { displayCategories?: { primary?: { value?: string } } } | undefined;
-    return di?.displayCategories?.primary?.value === "LIGHT";
-  });
-  return {
-    lights: lights.map((d) => ({
-      id: this.extractEntityId(d),
-      name: (d.favoriteFriendlyName as string) || "Smart Light",
-      capabilities: ["power", "brightness", "color", "colorTemperature"],
-    })),
-  };
-}
+    const entities = await this.getSmartHomeEntities(creds) as Array<Record<string, unknown>>;
+    const lights = entities.filter((d) => {
+      const di = d.displayInfo as { displayCategories?: { primary?: { value?: string } } } | undefined;
+      return di?.displayCategories?.primary?.value === "LIGHT";
+    });
+    return {
+      lights: lights.map((d) => ({
+        id: this.extractEntityId(d),
+        name: (d.favoriteFriendlyName as string) || "Smart Light",
+        capabilities: ["power", "brightness", "color", "colorTemperature"],
+      })),
+    };
+  }
 
-// ── Set Light Power ──────────────────────────────────────────────
+  // ── Set Light Power ──────────────────────────────────────────────
 
   private static async handleSetLightPower(creds: AlexaCreds, args: Record<string, unknown>) {
-  const on = args.on as boolean;
-  if (typeof on !== "boolean") throw new Error("'on' must be a boolean.");
+    const on = args.on as boolean;
+    if (typeof on !== "boolean") throw new Error("'on' must be a boolean.");
 
-  const pl = await this.getPrimaryLight(creds);
-  const entityId = this.extractEntityId(pl);
-  const endpointId = this.buildEndpointId(entityId);
-  const operation = on ? "turnOn" : "turnOff";
+    const pl = await this.getPrimaryLight(creds);
+    const entityId = this.extractEntityId(pl);
+    const endpointId = this.buildEndpointId(entityId);
+    const operation = on ? "turnOn" : "turnOff";
 
-  // Use device info for GraphQL headers
-  let deviceTypeId = "A2TF17PFR55MTB";
-  try {
-    const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
-    const echo = endpoints.find((ep) => {
-      const dc = ep.displayCategories as { primary?: { value?: string } } | undefined;
-      return dc?.primary?.value === "ALEXA_VOICE_ENABLED";
-    });
-    if (echo) {
-      const leg = echo.legacyIdentifiers as { dmsIdentifier?: { deviceType?: { value?: { text?: string } } } } | undefined;
-      deviceTypeId = leg?.dmsIdentifier?.deviceType?.value?.text || deviceTypeId;
-    }
-  } catch { /* use default */ }
+    // Use device info for GraphQL headers
+    let deviceTypeId = "A2TF17PFR55MTB";
+    try {
+      const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
+      const echo = endpoints.find((ep) => {
+        const dc = ep.displayCategories as { primary?: { value?: string } } | undefined;
+        return dc?.primary?.value === "ALEXA_VOICE_ENABLED";
+      });
+      if (echo) {
+        const leg = echo.legacyIdentifiers as { dmsIdentifier?: { deviceType?: { value?: { text?: string } } } } | undefined;
+        deviceTypeId = leg?.dmsIdentifier?.deviceType?.value?.text || deviceTypeId;
+      }
+    } catch { /* use default */ }
 
-  const gqlQuery = `
+    const gqlQuery = `
     mutation togglePowerFeatureForEndpoint($endpointId: String, $featureOperationName: FeatureOperationName!) {
       setEndpointFeatures(
         setEndpointFeaturesInput: {featureControlRequests: [{endpointId: $endpointId, featureName: power, featureOperationName: $featureOperationName}]}
@@ -631,371 +684,317 @@ class AlexaPublicApi {
       }
     }`;
 
-  const result = await this.alexaFetch(GRAPHQL_ENDPOINT, creds, {
-    method: "POST",
-    body: JSON.stringify({ operationName: "togglePowerFeatureForEndpoint", variables: { endpointId, featureOperationName: operation }, query: gqlQuery }),
-    extra: {
-      "Content-Type": "application/json",
-      "X-Amzn-Marketplace-Id": "ATVPDKIKX0DER",
-      "X-Amzn-Client": "AlexaApp",
-      "X-Amzn-Os-Name": "android",
-      "X-Amzn-Devicetype-Id": deviceTypeId,
-      "X-Amzn-Build-Version": "953937113",
-      "X-Amzn-Os-Version": "12",
-      "X-Amzn-Devicetype": "phone",
-    },
-  });
+    const result = await this.alexaFetch(GRAPHQL_ENDPOINT, creds, {
+      method: "POST",
+      body: JSON.stringify({ operationName: "togglePowerFeatureForEndpoint", variables: { endpointId, featureOperationName: operation }, query: gqlQuery }),
+      extra: {
+        "Content-Type": "application/json",
+        "X-Amzn-Marketplace-Id": "ATVPDKIKX0DER",
+        "X-Amzn-Client": "AlexaApp",
+        "X-Amzn-Os-Name": "android",
+        "X-Amzn-Devicetype-Id": deviceTypeId,
+        "X-Amzn-Build-Version": "953937113",
+        "X-Amzn-Os-Version": "12",
+        "X-Amzn-Devicetype": "phone",
+      },
+    });
 
-  return { success: true, on, result };
-}
+    return { success: true, on, result };
+  }
 
-// ── Set Light Brightness ─────────────────────────────────────────
+  // ── Set Light Brightness ─────────────────────────────────────────
 
   private static async handleSetLightBrightness(creds: AlexaCreds, args: Record<string, unknown>) {
-  const level = args.level as number;
-  if (typeof level !== "number" || level < 0 || level > 100) throw new Error("Brightness must be 0–100.");
+    const level = args.level as number;
+    if (typeof level !== "number" || level < 0 || level > 100) throw new Error("Brightness must be 0–100.");
 
-  let entityId = args.id as string | undefined;
-  if (!entityId) entityId = await this.getLightApplianceId(creds);
+    let entityId = args.id as string | undefined;
+    if (!entityId) entityId = await this.getLightApplianceId(creds);
 
-  const brightness = (level / 100).toString();
-  const result = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
-    method: "PUT",
-    body: JSON.stringify({ controlRequests: [{ entityId, entityType: "APPLIANCE", parameters: { action: "setBrightness", brightness } }] }),
-    extra: { "Content-Type": "application/json; charset=utf-8" },
-  });
+    const brightness = (level / 100).toString();
+    const result = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
+      method: "PUT",
+      body: JSON.stringify({ controlRequests: [{ entityId, entityType: "APPLIANCE", parameters: { action: "setBrightness", brightness } }] }),
+      extra: { "Content-Type": "application/json; charset=utf-8" },
+    });
 
-  return { success: true, brightness: level, result };
-}
+    return { success: true, brightness: level, result };
+  }
 
-// ── Set Light Color ──────────────────────────────────────────────
+  // ── Set Light Color ──────────────────────────────────────────────
 
   private static async handleSetLightColor(creds: AlexaCreds, args: Record<string, unknown>) {
-  const mode = args.mode as string;
-  const value = args.value as string | number;
-  if (!mode || value === undefined) throw new Error("mode and value are required.");
+    const mode = args.mode as string;
+    const value = args.value as string | number;
+    if (!mode || value === undefined) throw new Error("mode and value are required.");
 
-  let entityId = args.id as string | undefined;
-  if (!entityId) entityId = await this.getLightApplianceId(creds);
+    let entityId = args.id as string | undefined;
+    if (!entityId) entityId = await this.getLightApplianceId(creds);
 
-  let actionParams: Record<string, unknown>;
+    let actionParams: Record<string, unknown>;
 
-  if (mode === "name" && typeof value === "string" && SUPPORTED_COLORS.includes(value)) {
-    if (WHITE_COLORS.includes(value)) {
-      actionParams = { action: "setColorTemperature", colorTemperatureName: value };
+    if (mode === "name" && typeof value === "string" && SUPPORTED_COLORS.includes(value)) {
+      if (WHITE_COLORS.includes(value)) {
+        actionParams = { action: "setColorTemperature", colorTemperatureName: value };
+      } else {
+        actionParams = { action: "setColor", colorName: value };
+      }
+    } else if (mode === "tempK" && typeof value === "number") {
+      if (value < 2200 || value > 6500) throw new Error("Kelvin must be 2200–6500.");
+      actionParams = { action: "setColorTemperature", colorTemperatureInKelvin: value };
     } else {
-      actionParams = { action: "setColor", colorName: value };
+      throw new Error(`Unsupported color. Supported names: ${SUPPORTED_COLORS.join(", ")}. Or use mode 'tempK' with 2200–6500.`);
     }
-  } else if (mode === "tempK" && typeof value === "number") {
-    if (value < 2200 || value > 6500) throw new Error("Kelvin must be 2200–6500.");
-    actionParams = { action: "setColorTemperature", colorTemperatureInKelvin: value };
-  } else {
-    throw new Error(`Unsupported color. Supported names: ${SUPPORTED_COLORS.join(", ")}. Or use mode 'tempK' with 2200–6500.`);
+
+    const result = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
+      method: "PUT",
+      body: JSON.stringify({ controlRequests: [{ entityId, entityType: "APPLIANCE", parameters: actionParams }] }),
+      extra: { "Content-Type": "application/json; charset=utf-8" },
+    });
+
+    return { success: true, color: { mode, value }, result };
   }
 
-  const result = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
-    method: "PUT",
-    body: JSON.stringify({ controlRequests: [{ entityId, entityType: "APPLIANCE", parameters: actionParams }] }),
-    extra: { "Content-Type": "application/json; charset=utf-8" },
-  });
-
-  return { success: true, color: { mode, value }, result };
-}
-
-// ── Music Status ─────────────────────────────────────────────────
+  // ── Music Status ─────────────────────────────────────────────────
 
   private static async handleGetMusicStatus(creds: AlexaCreds) {
-  // Find primary Echo device serial + type
-  const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
-  const echo = endpoints.find((ep) => {
-    const dc = ep.displayCategories as { primary?: { value?: string } } | undefined;
-    return dc?.primary?.value === "ALEXA_VOICE_ENABLED";
-  });
+    // Find primary Echo device serial + type
+    const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
+    const echo = endpoints.find((ep) => {
+      const dc = ep.displayCategories as { primary?: { value?: string } } | undefined;
+      return dc?.primary?.value === "ALEXA_VOICE_ENABLED";
+    });
 
-  if (!echo) return { isPlaying: false, error: "No Echo device found" };
+    if (!echo) return { isPlaying: false, error: "No Echo device found" };
 
-  const leg = echo.legacyIdentifiers as { dmsIdentifier?: { deviceSerialNumber?: { value?: { text?: string } }; deviceType?: { value?: { text?: string } } } } | undefined;
-  const deviceSerial = leg?.dmsIdentifier?.deviceSerialNumber?.value?.text;
-  const deviceType = leg?.dmsIdentifier?.deviceType?.value?.text;
-  if (!deviceSerial || !deviceType) return { isPlaying: false, error: "Missing device serial/type" };
+    const leg = echo.legacyIdentifiers as { dmsIdentifier?: { deviceSerialNumber?: { value?: { text?: string } }; deviceType?: { value?: { text?: string } } } } | undefined;
+    const deviceSerial = leg?.dmsIdentifier?.deviceSerialNumber?.value?.text;
+    const deviceType = leg?.dmsIdentifier?.deviceType?.value?.text;
+    if (!deviceSerial || !deviceType) return { isPlaying: false, error: "Missing device serial/type" };
 
-  const npUrl = `https://alexa.amazon.com/api/np/list-media-sessions?deviceSerialNumber=${deviceSerial}&deviceType=${deviceType}`;
-  const data = await this.alexaFetch(npUrl, creds) as {
-    mediaSessionList?: Array<{
-      playerState?: string;
-      nowPlayingData?: {
+    const npUrl = `https://alexa.amazon.com/api/np/list-media-sessions?deviceSerialNumber=${deviceSerial}&deviceType=${deviceType}`;
+    const data = await this.alexaFetch(npUrl, creds) as {
+      mediaSessionList?: Array<{
         playerState?: string;
-        infoText?: { title?: string; subText1?: string; subText2?: string };
-        mainArt?: { mediumUrl?: string; largeUrl?: string; smallUrl?: string };
-        provider?: { providerName?: string };
-        progress?: { mediaLength?: number; mediaProgress?: number };
-      };
-    }>;
-  };
+        nowPlayingData?: {
+          playerState?: string;
+          infoText?: { title?: string; subText1?: string; subText2?: string };
+          mainArt?: { mediumUrl?: string; largeUrl?: string; smallUrl?: string };
+          provider?: { providerName?: string };
+          progress?: { mediaLength?: number; mediaProgress?: number };
+        };
+      }>;
+    };
 
-  const session = data.mediaSessionList?.[0];
-  if (!session?.nowPlayingData) return { isPlaying: false, trackName: null, artist: null };
+    const session = data.mediaSessionList?.[0];
+    if (!session?.nowPlayingData) return { isPlaying: false, trackName: null, artist: null };
 
-  const { infoText, mainArt, provider, progress } = session.nowPlayingData;
-  const state = session.playerState ?? session.nowPlayingData.playerState;
+    const { infoText, mainArt, provider, progress } = session.nowPlayingData;
+    const state = session.playerState ?? session.nowPlayingData.playerState;
 
-  return {
-    isPlaying: state === "PLAYING",
-    trackName: infoText?.title ?? null,
-    artist: infoText?.subText1 ?? null,
-    album: infoText?.subText2 ?? null,
-    coverUrl: mainArt?.mediumUrl || mainArt?.largeUrl || mainArt?.smallUrl || null,
-    provider: provider?.providerName ?? null,
-    mediaLength: progress?.mediaLength ?? null,
-    mediaProgress: progress?.mediaProgress ?? null,
-    timeOfSample: new Date().toISOString(),
-  };
-}
+    return {
+      isPlaying: state === "PLAYING",
+      trackName: infoText?.title ?? null,
+      artist: infoText?.subText1 ?? null,
+      album: infoText?.subText2 ?? null,
+      coverUrl: mainArt?.mediumUrl || mainArt?.largeUrl || mainArt?.smallUrl || null,
+      provider: provider?.providerName ?? null,
+      mediaLength: progress?.mediaLength ?? null,
+      mediaProgress: progress?.mediaProgress ?? null,
+      timeOfSample: new Date().toISOString(),
+    };
+  }
 
-// ── Device Volumes ───────────────────────────────────────────────
+  // ── Device Volumes ───────────────────────────────────────────────
 
   private static async handleGetDeviceVolumes(creds: AlexaCreds) {
-  return this.alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } });
-}
+    return this.alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } });
+  }
 
-// ── Set Device Volume ────────────────────────────────────────────
+  // ── Set Device Volume ────────────────────────────────────────────
 
   private static async handleSetDeviceVolume(creds: AlexaCreds, args: Record<string, unknown>) {
-  const volume = args.volume as number;
-  if (typeof volume !== "number" || volume < 0 || volume > 100) throw new Error("Volume must be 0–100.");
+    const volume = args.volume as number;
+    if (typeof volume !== "number" || volume < 0 || volume > 100) throw new Error("Volume must be 0–100.");
 
-  const volumesData = await this.alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } }) as {
-    volumes?: Array<{ deviceType: string; dsn: string; speakerVolume: number }>;
-  };
-  if (!volumesData.volumes?.length) throw new Error("No devices found.");
+    const volumesData = await this.alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } }) as {
+      volumes?: Array<{ deviceType: string; dsn: string; speakerVolume: number }>;
+    };
+    if (!volumesData.volumes?.length) throw new Error("No devices found.");
 
-  let target: { deviceType: string; dsn: string; speakerVolume: number };
-  if (args.deviceType && args.dsn) {
-    const found = volumesData.volumes.find((v) => v.deviceType === args.deviceType && v.dsn === args.dsn);
-    if (!found) throw new Error("Specified device not found.");
-    target = found;
-  } else {
-    target = volumesData.volumes[0];
+    let target: { deviceType: string; dsn: string; speakerVolume: number };
+    if (args.deviceType && args.dsn) {
+      const found = volumesData.volumes.find((v) => v.deviceType === args.deviceType && v.dsn === args.dsn);
+      if (!found) throw new Error("Specified device not found.");
+      target = found;
+    } else {
+      target = volumesData.volumes[0];
+    }
+
+    const amount = volume - target.speakerVolume;
+    const url = `https://alexa.amazon.com/api/devices/${target.deviceType}/${target.dsn}/audio/v2/speakerVolume`;
+    const result = await this.alexaFetch(url, creds, {
+      method: "PUT",
+      body: JSON.stringify({ dsn: target.dsn, deviceType: target.deviceType, amount, volume: target.speakerVolume, muted: false, synchronous: true }),
+      extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
+    });
+
+    return { success: true, volume, result };
   }
 
-  const amount = volume - target.speakerVolume;
-  const url = `https://alexa.amazon.com/api/devices/${target.deviceType}/${target.dsn}/audio/v2/speakerVolume`;
-  const result = await this.alexaFetch(url, creds, {
-    method: "PUT",
-    body: JSON.stringify({ dsn: target.dsn, deviceType: target.deviceType, amount, volume: target.speakerVolume, muted: false, synchronous: true }),
-    extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
-  });
-
-  return { success: true, volume, result };
-}
-
-// ── Adjust Device Volume ─────────────────────────────────────────
+  // ── Adjust Device Volume ─────────────────────────────────────────
 
   private static async handleAdjustDeviceVolume(creds: AlexaCreds, args: Record<string, unknown>) {
-  const amount = args.amount as number;
-  if (typeof amount !== "number" || amount < -100 || amount > 100) throw new Error("Amount must be -100 to +100.");
+    const amount = args.amount as number;
+    if (typeof amount !== "number" || amount < -100 || amount > 100) throw new Error("Amount must be -100 to +100.");
 
-  const volumesData = await this.alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } }) as {
-    volumes?: Array<{ deviceType: string; dsn: string; speakerVolume: number }>;
-  };
-  if (!volumesData.volumes?.length) throw new Error("No devices found.");
+    const volumesData = await this.alexaFetch(VOLUMES_ENDPOINT, creds, { extra: { "Cache-Control": "no-cache" } }) as {
+      volumes?: Array<{ deviceType: string; dsn: string; speakerVolume: number }>;
+    };
+    if (!volumesData.volumes?.length) throw new Error("No devices found.");
 
-  let target: { deviceType: string; dsn: string; speakerVolume: number };
-  if (args.deviceType && args.dsn) {
-    const found = volumesData.volumes.find((v) => v.deviceType === args.deviceType && v.dsn === args.dsn);
-    if (!found) throw new Error("Specified device not found.");
-    target = found;
-  } else {
-    target = volumesData.volumes[0];
+    let target: { deviceType: string; dsn: string; speakerVolume: number };
+    if (args.deviceType && args.dsn) {
+      const found = volumesData.volumes.find((v) => v.deviceType === args.deviceType && v.dsn === args.dsn);
+      if (!found) throw new Error("Specified device not found.");
+      target = found;
+    } else {
+      target = volumesData.volumes[0];
+    }
+
+    const url = `https://alexa.amazon.com/api/devices/${target.deviceType}/${target.dsn}/audio/v2/speakerVolume`;
+    const result = await this.alexaFetch(url, creds, {
+      method: "PUT",
+      body: JSON.stringify({ dsn: target.dsn, deviceType: target.deviceType, amount, volume: target.speakerVolume, muted: false, synchronous: true }),
+      extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
+    });
+
+    return { success: true, adjustedBy: amount, result };
   }
 
-  const url = `https://alexa.amazon.com/api/devices/${target.deviceType}/${target.dsn}/audio/v2/speakerVolume`;
-  const result = await this.alexaFetch(url, creds, {
-    method: "PUT",
-    body: JSON.stringify({ dsn: target.dsn, deviceType: target.deviceType, amount, volume: target.speakerVolume, muted: false, synchronous: true }),
-    extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
-  });
-
-  return { success: true, adjustedBy: amount, result };
-}
-
-// ── All Sensor Data ──────────────────────────────────────────────
+  // ── All Sensor Data ──────────────────────────────────────────────
 
   private static async handleGetAllSensorData(creds: AlexaCreds) {
-  const devices = await this.getAlexaDevices(creds) as Array<Record<string, unknown>>;
-  const stateRequests: Array<{ entityId: string; entityType: string }> = [];
+    const devices = await this.getAlexaDevices(creds) as Array<Record<string, unknown>>;
+    const stateRequests: Array<{ entityId: string; entityType: string }> = [];
 
-  for (const device of devices) {
-    if (device.online === false) continue;
-    const caps = device.capabilities as string[] | undefined;
-    if (!Array.isArray(caps)) continue;
-    const hasSensors = caps.some((cap) =>
-      typeof cap === "string" && (cap.includes("TemperatureSensor") || cap.includes("LightSensor") || cap.includes("MotionSensor") || cap.includes("AcousticEventSensor")),
-    );
-    if (hasSensors) {
-      const sn = device.serialNumber as string;
-      const dt = device.deviceType as string;
-      stateRequests.push({ entityId: `AlexaBridge_${sn}@${dt}_${sn}`, entityType: "APPLIANCE" });
-    }
-  }
-
-  if (stateRequests.length === 0) return { sensors: [], message: "No sensors found" };
-
-  const data = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
-    method: "POST",
-    body: JSON.stringify({ stateRequests }),
-    extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
-  }) as { deviceStates?: Array<{ entity: { entityId: string; entityType: string }; capabilityStates: unknown[] }> };
-
-  const sensors: Array<Record<string, unknown>> = [];
-  for (const ds of data.deviceStates ?? []) {
-    const sensorData: Record<string, unknown> = {
-      entityId: ds.entity.entityId,
-      entityType: ds.entity.entityType,
-      capabilities: {} as Record<string, unknown>,
-      lastUpdate: new Date().toISOString(),
-    };
-    const capMap = sensorData.capabilities as Record<string, unknown>;
-
-    for (const capRaw of ds.capabilityStates) {
-      const cap = typeof capRaw === "string" ? (() => { try { return JSON.parse(capRaw); } catch { return null; } })() : capRaw;
-      if (!cap || typeof cap !== "object") continue;
-      const c = cap as Record<string, unknown>;
-      if (c.namespace === "Alexa.TemperatureSensor" && c.name === "temperature") {
-        const v = c.value as { value?: number; scale?: string } | undefined;
-        capMap.temperature = { value: v?.value, scale: v?.scale, timestamp: c.timeOfSample };
-      } else if (c.namespace === "Alexa.LightSensor" && c.name === "illuminance") {
-        capMap.illuminance = { value: c.value, timestamp: c.timeOfSample };
-      } else if (c.namespace === "Alexa.MotionSensor" && c.name === "detectionState") {
-        capMap.motion = { detected: c.value === "DETECTED", timestamp: c.timeOfSample };
+    for (const device of devices) {
+      if (device.online === false) continue;
+      const caps = device.capabilities as string[] | undefined;
+      if (!Array.isArray(caps)) continue;
+      const hasSensors = caps.some((cap) =>
+        typeof cap === "string" && (cap.includes("TemperatureSensor") || cap.includes("LightSensor") || cap.includes("MotionSensor") || cap.includes("AcousticEventSensor")),
+      );
+      if (hasSensors) {
+        const sn = device.serialNumber as string;
+        const dt = device.deviceType as string;
+        stateRequests.push({ entityId: `AlexaBridge_${sn}@${dt}_${sn}`, entityType: "APPLIANCE" });
       }
     }
 
-    if (Object.keys(capMap).length > 0) sensors.push(sensorData);
+    if (stateRequests.length === 0) return { sensors: [], message: "No sensors found" };
+
+    const data = await this.alexaFetch(PHOENIX_ENDPOINT, creds, {
+      method: "POST",
+      body: JSON.stringify({ stateRequests }),
+      extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
+    }) as { deviceStates?: Array<{ entity: { entityId: string; entityType: string }; capabilityStates: unknown[] }> };
+
+    const sensors: Array<Record<string, unknown>> = [];
+    for (const ds of data.deviceStates ?? []) {
+      const sensorData: Record<string, unknown> = {
+        entityId: ds.entity.entityId,
+        entityType: ds.entity.entityType,
+        capabilities: {} as Record<string, unknown>,
+        lastUpdate: new Date().toISOString(),
+      };
+      const capMap = sensorData.capabilities as Record<string, unknown>;
+
+      for (const capRaw of ds.capabilityStates) {
+        const cap = typeof capRaw === "string" ? (() => { try { return JSON.parse(capRaw); } catch { return null; } })() : capRaw;
+        if (!cap || typeof cap !== "object") continue;
+        const c = cap as Record<string, unknown>;
+        if (c.namespace === "Alexa.TemperatureSensor" && c.name === "temperature") {
+          const v = c.value as { value?: number; scale?: string } | undefined;
+          capMap.temperature = { value: v?.value, scale: v?.scale, timestamp: c.timeOfSample };
+        } else if (c.namespace === "Alexa.LightSensor" && c.name === "illuminance") {
+          capMap.illuminance = { value: c.value, timestamp: c.timeOfSample };
+        } else if (c.namespace === "Alexa.MotionSensor" && c.name === "detectionState") {
+          capMap.motion = { detected: c.value === "DETECTED", timestamp: c.timeOfSample };
+        }
+      }
+
+      if (Object.keys(capMap).length > 0) sensors.push(sensorData);
+    }
+
+    return { sensors, totalCount: sensors.length, lastUpdate: new Date().toISOString() };
   }
 
-  return { sensors, totalCount: sensors.length, lastUpdate: new Date().toISOString() };
-}
-
-// ── List Smart Home Devices ──────────────────────────────────────
+  // ── List Smart Home Devices ──────────────────────────────────────
 
   private static async handleListSmarthomeDevices(creds: AlexaCreds) {
-  const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
-  return {
-    devices: endpoints.map((ep) => ({
-      endpointId: ep.endpointId,
-      id: ep.id,
-      friendlyName: ep.friendlyName,
-      categories: ep.displayCategories,
-      legacyAppliance: ep.legacyAppliance,
-    })),
-    totalCount: endpoints.length,
-  };
-}
+    const endpoints = await this.getCustomerSmartHomeEndpoints(creds) as Array<Record<string, unknown>>;
+    return {
+      devices: endpoints.map((ep) => ({
+        endpointId: ep.endpointId,
+        id: ep.id,
+        friendlyName: ep.friendlyName,
+        categories: ep.displayCategories,
+        legacyAppliance: ep.legacyAppliance,
+      })),
+      totalCount: endpoints.length,
+    };
+  }
 
-// ── DND Status ───────────────────────────────────────────────────
+  // ── DND Status ───────────────────────────────────────────────────
 
   private static async handleGetDndStatus(creds: AlexaCreds) {
-  const data = await this.alexaFetch(DND_LIST_ENDPOINT, creds, {
-    extra: { "Cache-Control": "no-cache" },
-  }) as { doNotDisturbDeviceStatusList: Array<{ deviceSerialNumber: string; deviceType: string; enabled: boolean }> };
+    const data = await this.alexaFetch(DND_LIST_ENDPOINT, creds, {
+      extra: { "Cache-Control": "no-cache" },
+    }) as { doNotDisturbDeviceStatusList: Array<{ deviceSerialNumber: string; deviceType: string; enabled: boolean }> };
 
-  return {
-    devices: data.doNotDisturbDeviceStatusList.map((d) => ({
-      deviceSerialNumber: d.deviceSerialNumber,
-      deviceType: d.deviceType,
-      dndEnabled: d.enabled,
-    })),
-    totalDevices: data.doNotDisturbDeviceStatusList.length,
-    enabledCount: data.doNotDisturbDeviceStatusList.filter((d) => d.enabled).length,
-    lastUpdate: new Date().toISOString(),
-  };
-}
+    return {
+      devices: data.doNotDisturbDeviceStatusList.map((d) => ({
+        deviceSerialNumber: d.deviceSerialNumber,
+        deviceType: d.deviceType,
+        dndEnabled: d.enabled,
+      })),
+      totalDevices: data.doNotDisturbDeviceStatusList.length,
+      enabledCount: data.doNotDisturbDeviceStatusList.filter((d) => d.enabled).length,
+      lastUpdate: new Date().toISOString(),
+    };
+  }
 
-// ── Set DND Status ───────────────────────────────────────────────
+  // ── Set DND Status ───────────────────────────────────────────────
 
   private static async handleSetDndStatus(creds: AlexaCreds, args: Record<string, unknown>) {
-  const dsn = args.deviceSerialNumber as string;
-  const deviceType = args.deviceType as string;
-  const enabled = args.enabled as boolean;
-  if (!dsn || !deviceType) throw new Error("deviceSerialNumber and deviceType are required.");
-  if (typeof enabled !== "boolean") throw new Error("enabled must be a boolean.");
+    const dsn = args.deviceSerialNumber as string;
+    const deviceType = args.deviceType as string;
+    const enabled = args.enabled as boolean;
+    if (!dsn || !deviceType) throw new Error("deviceSerialNumber and deviceType are required.");
+    if (typeof enabled !== "boolean") throw new Error("enabled must be a boolean.");
 
-  const result = await this.alexaFetch(DND_STATUS_ENDPOINT, creds, {
-    method: "PUT",
-    body: JSON.stringify({ deviceSerialNumber: dsn, deviceType, enabled }),
-    extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
-  }) as { deviceSerialNumber: string; deviceType: string; enabled: boolean };
+    const result = await this.alexaFetch(DND_STATUS_ENDPOINT, creds, {
+      method: "PUT",
+      body: JSON.stringify({ deviceSerialNumber: dsn, deviceType, enabled }),
+      extra: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" },
+    }) as { deviceSerialNumber: string; deviceType: string; enabled: boolean };
 
-  return {
-    deviceSerialNumber: result.deviceSerialNumber,
-    deviceType: result.deviceType,
-    dndEnabled: result.enabled,
-    success: true,
-    message: `DND ${result.enabled ? "enabled" : "disabled"} successfully`,
-    lastUpdate: new Date().toISOString(),
-  };
-}
-
-}
-
-export const getAlexaConfig = AlexaPublicApi.getAlexaConfig.bind(AlexaPublicApi);
-export const saveAlexaConfig = AlexaPublicApi.saveAlexaConfig.bind(AlexaPublicApi);
-export const isAlexaTool = AlexaPublicApi.isAlexaTool.bind(AlexaPublicApi);
-export const executeAlexaTool = AlexaPublicApi.executeAlexaTool.bind(AlexaPublicApi);
-
-// ── BaseTool class wrapper ────────────────────────────────────
-
-export class AlexaTools extends BaseTool {
-  readonly name = "alexa";
-  readonly toolNamePrefix = "builtin.alexa_";
-  readonly registrationOrder = 60;
-  readonly tools = BUILTIN_ALEXA_TOOLS;
-  readonly toolsRequiringApproval = [...ALEXA_TOOLS_REQUIRING_APPROVAL];
-
-  private readonly cmdMap: ReadonlyMap<string, (a: Record<string, unknown>) => Promise<unknown>>;
-
-  constructor() {
-    super();
-    this.cmdMap = new Map<string, (a: Record<string, unknown>) => Promise<unknown>>([
-      ["builtin.alexa_announce",               (a) => this.announce(a)],
-      ["builtin.alexa_get_bedroom_state",       (a) => this.getBedroomState(a)],
-      ["builtin.alexa_list_lights",             (a) => this.listLights(a)],
-      ["builtin.alexa_set_light_power",         (a) => this.setLightPower(a)],
-      ["builtin.alexa_set_light_brightness",    (a) => this.setLightBrightness(a)],
-      ["builtin.alexa_set_light_color",         (a) => this.setLightColor(a)],
-      ["builtin.alexa_get_music_status",        (a) => this.getMusicStatus(a)],
-      ["builtin.alexa_get_device_volumes",      (a) => this.getDeviceVolumes(a)],
-      ["builtin.alexa_set_device_volume",       (a) => this.setDeviceVolume(a)],
-      ["builtin.alexa_adjust_device_volume",    (a) => this.adjustDeviceVolume(a)],
-      ["builtin.alexa_get_all_sensor_data",     (a) => this.getAllSensorData(a)],
-      ["builtin.alexa_list_smarthome_devices",  (a) => this.listSmarthomeDevices(a)],
-      ["builtin.alexa_get_dnd_status",          (a) => this.getDndStatus(a)],
-      ["builtin.alexa_set_dnd_status",          (a) => this.setDndStatus(a)],
-    ]);
+    return {
+      deviceSerialNumber: result.deviceSerialNumber,
+      deviceType: result.deviceType,
+      dndEnabled: result.enabled,
+      success: true,
+      message: `DND ${result.enabled ? "enabled" : "disabled"} successfully`,
+      lastUpdate: new Date().toISOString(),
+    };
   }
-
-  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
-    const handler = this.cmdMap.get(toolName);
-    if (!handler) throw new Error(`Unknown Alexa tool: "${toolName}"`);
-    return handler(args);
-  }
-
-  private announce(args: Record<string, unknown>): Promise<unknown>              { return executeAlexaTool("builtin.alexa_announce", args); }
-  private getBedroomState(args: Record<string, unknown>): Promise<unknown>       { return executeAlexaTool("builtin.alexa_get_bedroom_state", args); }
-  private listLights(args: Record<string, unknown>): Promise<unknown>            { return executeAlexaTool("builtin.alexa_list_lights", args); }
-  private setLightPower(args: Record<string, unknown>): Promise<unknown>         { return executeAlexaTool("builtin.alexa_set_light_power", args); }
-  private setLightBrightness(args: Record<string, unknown>): Promise<unknown>    { return executeAlexaTool("builtin.alexa_set_light_brightness", args); }
-  private setLightColor(args: Record<string, unknown>): Promise<unknown>         { return executeAlexaTool("builtin.alexa_set_light_color", args); }
-  private getMusicStatus(args: Record<string, unknown>): Promise<unknown>        { return executeAlexaTool("builtin.alexa_get_music_status", args); }
-  private getDeviceVolumes(args: Record<string, unknown>): Promise<unknown>      { return executeAlexaTool("builtin.alexa_get_device_volumes", args); }
-  private setDeviceVolume(args: Record<string, unknown>): Promise<unknown>       { return executeAlexaTool("builtin.alexa_set_device_volume", args); }
-  private adjustDeviceVolume(args: Record<string, unknown>): Promise<unknown>    { return executeAlexaTool("builtin.alexa_adjust_device_volume", args); }
-  private getAllSensorData(args: Record<string, unknown>): Promise<unknown>      { return executeAlexaTool("builtin.alexa_get_all_sensor_data", args); }
-  private listSmarthomeDevices(args: Record<string, unknown>): Promise<unknown>  { return executeAlexaTool("builtin.alexa_list_smarthome_devices", args); }
-  private getDndStatus(args: Record<string, unknown>): Promise<unknown>          { return executeAlexaTool("builtin.alexa_get_dnd_status", args); }
-  private setDndStatus(args: Record<string, unknown>): Promise<unknown>          { return executeAlexaTool("builtin.alexa_set_dnd_status", args); }
 }
+
+export const getAlexaConfig = AlexaTools.getAlexaConfig.bind(AlexaTools);
+export const saveAlexaConfig = AlexaTools.saveAlexaConfig.bind(AlexaTools);
+export const isAlexaTool = AlexaTools.isAlexaTool.bind(AlexaTools);
+export const executeAlexaTool = AlexaTools.executeAlexaTool.bind(AlexaTools);
 
 export const alexaTools = new AlexaTools();
 registerToolCategory(alexaTools);
