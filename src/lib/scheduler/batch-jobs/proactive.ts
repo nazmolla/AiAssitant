@@ -32,6 +32,7 @@ import {
 } from "@/lib/prompts";
 import {
   BatchJob,
+  type BatchJobParameterDefinition,
   type BatchJobSubTaskTemplate,
   type StepExecutionContext,
   type StepExecutionResult,
@@ -40,10 +41,24 @@ import {
 
 // ── Proactive Scan Types & State ──────────────────────────────────
 
+export interface ProactiveScanIterationSummary {
+  iteration: number;
+  threadId: string;
+  toolsUsed: string[];
+  newToolsCount: number;
+  /** Why this iteration was the last one. */
+  stopReason?: "coverage_met" | "stagnation" | "max_iterations";
+}
+
 export interface ProactiveScanResult {
   primaryThreadId: string;
+  /** Last follow-up thread ID (backward-compat alias for iterations[last].threadId). */
   followupThreadId?: string;
   toolsUsed: string[];
+  /** How many iterations actually ran. */
+  iterationCount: number;
+  /** Per-iteration breakdown (tools used, new tools, stop reason). */
+  iterations: ProactiveScanIterationSummary[];
 }
 
 /* ── Batch Job Class ──────────────────────────────────────────────── */
@@ -129,9 +144,38 @@ export class ProactiveBatchJob extends BatchJob {
     return buildExplorationFollowupMessagePrompt(connectedServers, mustTryTools);
   }
 
+  private static buildIterationFeedbackContext(
+    currentIteration: number,
+    maxScanIterations: number,
+    priorIterations: ProactiveScanIterationSummary[],
+    connectedServers: string[],
+    mustTryTools: string[],
+  ): string {
+    const allToolsSoFar = [...new Set(priorIterations.flatMap((it) => it.toolsUsed))];
+    const serverList = connectedServers.length > 0 ? connectedServers.join(", ") : "none";
+    const prevSummary = priorIterations
+      .map((it) => `- Iteration ${it.iteration}: ${it.toolsUsed.length} tool(s) called (${it.newToolsCount} new)`)
+      .join("\n");
+    const remaining = maxScanIterations - currentIteration;
+    const untriedCandidates = mustTryTools.filter((t) => !allToolsSoFar.includes(t));
+
+    return `[Proactive Scan — Iteration ${currentIteration}/${maxScanIterations}]
+
+## Prior iterations
+${prevSummary}
+
+## Accumulated tool usage (${allToolsSoFar.length} distinct): ${allToolsSoFar.join(", ")}
+
+## Remaining iteration budget: ${remaining} after this one
+Connected servers: ${serverList}
+Untried candidate tools: ${untriedCandidates.length > 0 ? untriedCandidates.join(", ") : "none — explore new areas"}
+
+Focus on coverage gaps not addressed in prior iterations: network/camera/occupancy discovery and toolmaker actions. Do NOT repeat tools already used unless essential for new insight. Target unexplored paths.`;
+  }
+
   // ── Main Execution ────────────────────────────────────
 
-  private static async runProactiveScan(context?: SchedulerBatchExecutionContext): Promise<ProactiveScanResult | null> {
+  private static async runProactiveScan(context?: SchedulerBatchExecutionContext, maxIterations?: number, scanIterations?: number): Promise<ProactiveScanResult | null> {
     if (this._scanRunning) {
       addLog({
         level: "info",
@@ -144,20 +188,20 @@ export class ProactiveBatchJob extends BatchJob {
     this._scanRunning = true;
 
     try {
-      return await this.runProactiveScanInner();
+      return await this.runProactiveScanInner(maxIterations, scanIterations);
     } finally {
       this._scanRunning = false;
     }
   }
 
-  private static async runProactiveScanInner(): Promise<ProactiveScanResult> {
+  private static async runProactiveScanInner(maxIterations?: number, scanIterations: number = 3): Promise<ProactiveScanResult> {
     const defaultAdminUserId = getDefaultAdminUserId() ?? "";
 
     addLog({
       level: "info",
       source: "scheduler",
       message: "Proactive scan started.",
-      metadata: JSON.stringify({ adminUserId: defaultAdminUserId }),
+      metadata: JSON.stringify({ adminUserId: defaultAdminUserId, scanIterations }),
     });
 
     const mcpManager = getMcpManager();
@@ -183,111 +227,107 @@ export class ProactiveBatchJob extends BatchJob {
       });
     const mustTryTools = this.buildMustTryTools(noApprovalCandidates, lastToolsUsed);
 
-    const scanThread = createThread("[proactive-scan]", defaultAdminUserId, { threadType: "proactive" });
-    const scanMessage = this.buildProactiveScanMessage(connectedServers, mcpTools.length, customToolNames, lastToolsUsed, mustTryTools);
-
     addLog({
       level: "thought",
       source: "thought",
-      message: `[Proactive] Starting scan — ${connectedServers.length} MCP server(s) connected, ${mcpTools.length} tools available.`,
+      message: `[Proactive] Starting iterative scan — ${connectedServers.length} MCP server(s) connected, ${mcpTools.length} tools available, up to ${scanIterations} iteration(s).`,
       metadata: JSON.stringify({
         connectedServers,
         mcpToolCount: mcpTools.length,
         customToolCount: customToolNames.length,
+        scanIterations,
       }),
     });
 
     const { OrchestratorAgent, AgentRegistry } = await import("@/lib/agent/multi-agent");
     const registry = AgentRegistry.getInstance();
-    const orchestrator = new OrchestratorAgent(registry);
 
-    const primaryResult = await orchestrator.run(
-      PROACTIVE_PRIMARY_TASK_PROMPT,
-      {
+    const accumulatedTools = new Set<string>();
+    const iterationSummaries: ProactiveScanIterationSummary[] = [];
+
+    for (let i = 1; i <= scanIterations; i++) {
+      const isFirst = i === 1;
+      const threadLabel = isFirst ? "[proactive-scan]" : `[proactive-scan-iter-${i}]`;
+      const thread = createThread(threadLabel, defaultAdminUserId, { threadType: "proactive" });
+
+      const additionalContext = isFirst
+        ? this.buildProactiveScanMessage(connectedServers, mcpTools.length, customToolNames, lastToolsUsed, mustTryTools)
+        : this.buildIterationFeedbackContext(i, scanIterations, iterationSummaries, connectedServers, mustTryTools);
+      const taskPrompt = isFirst ? PROACTIVE_PRIMARY_TASK_PROMPT : PROACTIVE_FOLLOWUP_TASK_PROMPT;
+
+      const orchestrator = new OrchestratorAgent(registry);
+      const result = await orchestrator.run(taskPrompt, {
         userId: defaultAdminUserId,
-        threadId: scanThread.id,
-        additionalContext: scanMessage,
-      },
-    );
+        threadId: thread.id,
+        additionalContext,
+        maxIterations,
+      });
 
-    let followupThreadId: string | undefined;
-    let finalToolsUsed = primaryResult.toolsUsed;
+      const newTools = result.toolsUsed.filter((t) => !accumulatedTools.has(t));
+      result.toolsUsed.forEach((t) => accumulatedTools.add(t));
 
-    if (this.shouldRunExplorationFollowup(primaryResult.toolsUsed, lastToolsUsed, requireToolmakerAction)) {
+      const allToolsNow = Array.from(accumulatedTools);
+      const coverageMet = !this.shouldRunExplorationFollowup(allToolsNow, lastToolsUsed, requireToolmakerAction);
+
+      let stopReason: ProactiveScanIterationSummary["stopReason"] | undefined;
+      if (coverageMet) stopReason = "coverage_met";
+      else if (!isFirst && newTools.length === 0) stopReason = "stagnation";
+      else if (i === scanIterations) stopReason = "max_iterations";
+
+      const summary: ProactiveScanIterationSummary = {
+        iteration: i,
+        threadId: thread.id,
+        toolsUsed: result.toolsUsed,
+        newToolsCount: newTools.length,
+        stopReason,
+      };
+      iterationSummaries.push(summary);
+
       addLog({
         level: "info",
         source: "scheduler",
-        message: "Proactive follow-up scan triggered due to low novelty/exploration depth.",
-        metadata: JSON.stringify({ firstTools: primaryResult.toolsUsed, lastToolsUsed }),
+        message: `[Proactive] Iteration ${i}/${scanIterations} complete — ${newTools.length} new tool(s), ${allToolsNow.length} total.${stopReason ? ` Stopping: ${stopReason}.` : ""}`,
+        metadata: JSON.stringify({ iteration: i, scanIterations, newTools, allToolsCount: allToolsNow.length, stopReason }),
       });
 
-      const followupThread = createThread("[proactive-scan-followup]", defaultAdminUserId, { threadType: "proactive" });
-      followupThreadId = followupThread.id;
-      const followupOrchestrator = new OrchestratorAgent(registry);
-      const followupResult = await followupOrchestrator.run(
-        PROACTIVE_FOLLOWUP_TASK_PROMPT,
-        {
-          userId: defaultAdminUserId,
-          threadId: followupThread.id,
-          additionalContext: this.buildExplorationFollowupMessage(connectedServers, mustTryTools),
-        },
-      );
-      finalToolsUsed = followupResult.toolsUsed;
-
-      if (this.shouldRunExplorationFollowup(finalToolsUsed, lastToolsUsed, requireToolmakerAction)) {
+      if (result.response) {
         addLog({
-          level: "warn",
-          source: "scheduler",
-          message: "Proactive follow-up did not fully satisfy exploration constraints.",
-          metadata: JSON.stringify({
-            toolsUsed: finalToolsUsed,
-            requireToolmakerAction,
-            hasExplorationCoverage: this.hasExplorationCategoryCoverage(finalToolsUsed),
-            hasToolmakerCoverage: this.hasToolmakerCoverage(finalToolsUsed),
-          }),
+          level: "thought",
+          source: "thought",
+          message: `[Proactive] Iteration ${i} response:\n${result.response.slice(0, 2000)}`,
+          metadata: JSON.stringify({ threadId: thread.id, full: result.response.length <= 2000 }),
         });
       }
+
+      if (stopReason) break;
     }
 
+    const finalToolsUsed = Array.from(accumulatedTools);
     this.setLastProactiveTools(finalToolsUsed);
 
-    addLog({
-      level: "thought",
-      source: "thought",
-      message: finalToolsUsed.length > 0
-        ? `[Proactive] Scan complete — used ${finalToolsUsed.length} tool(s): ${finalToolsUsed.join(", ")}.`
-        : "[Proactive] Scan complete — no tools were called.",
-      metadata: JSON.stringify({
-        threadId: scanThread.id,
-        toolsUsed: finalToolsUsed,
-      }),
-    });
-
-    if (primaryResult.response) {
-      addLog({
-        level: "thought",
-        source: "thought",
-        message: `[Proactive] Agent response:\n${primaryResult.response.slice(0, 2000)}`,
-        metadata: JSON.stringify({ threadId: scanThread.id, full: primaryResult.response.length <= 2000 }),
-      });
-    }
+    const primaryThreadId = iterationSummaries[0].threadId;
+    const followupThreadId = iterationSummaries.length > 1
+      ? iterationSummaries[iterationSummaries.length - 1].threadId
+      : undefined;
 
     addLog({
       level: "info",
       source: "scheduler",
       message: "Proactive scan completed.",
       metadata: JSON.stringify({
-        primaryThreadId: scanThread.id,
+        primaryThreadId,
         followupThreadId,
+        iterationCount: iterationSummaries.length,
         toolsUsed: finalToolsUsed,
-        responsePreview: primaryResult.response.slice(0, 500),
       }),
     });
 
     return {
-      primaryThreadId: scanThread.id,
+      primaryThreadId,
       followupThreadId,
       toolsUsed: finalToolsUsed,
+      iterationCount: iterationSummaries.length,
+      iterations: iterationSummaries,
     };
   }
 
@@ -299,14 +339,46 @@ export class ProactiveBatchJob extends BatchJob {
     return ["system.proactive.scan"];
   }
 
+  override getParameterDefinitions(): BatchJobParameterDefinition[] {
+    return [
+      {
+        key: "maxIterations",
+        label: "Max Agent Iterations",
+        type: "select",
+        options: ["5", "10", "15", "25", "40"],
+        defaultValue: "25",
+      },
+      {
+        key: "scanIterations",
+        label: "Scan Iterations",
+        type: "select",
+        options: ["1", "2", "3", "4", "5"],
+        defaultValue: "3",
+      },
+    ];
+  }
+
   async executeStep(ctx: StepExecutionContext, log: LogFn): Promise<StepExecutionResult> {
     const logCtx = { scheduleId: ctx.scheduleId, runId: ctx.runId, taskRunId: ctx.taskRunId, handlerName: ctx.handlerName };
+
+    let maxIterations: number | undefined;
+    let scanIterations: number | undefined;
+    try {
+      const parsed = JSON.parse(ctx.configJson || "{}");
+      if (typeof parsed.maxIterations === "number" && parsed.maxIterations > 0) {
+        maxIterations = parsed.maxIterations;
+      }
+      if (typeof parsed.scanIterations === "number" && parsed.scanIterations > 0) {
+        scanIterations = parsed.scanIterations;
+      }
+    } catch { /* use default */ }
+
     const scanResult = await ProactiveBatchJob.runProactiveScan({
       scheduleId: ctx.scheduleId,
       runId: ctx.runId,
       taskRunId: ctx.taskRunId,
       handlerName: ctx.handlerName,
-    });
+    }, maxIterations, scanIterations);
 
     if (!scanResult) {
       log("info", "Proactive scan skipped — previous scan still running.", logCtx);
@@ -316,6 +388,7 @@ export class ProactiveBatchJob extends BatchJob {
     log("info", "Proactive scan task completed.", logCtx, {
       primaryThreadId: scanResult.primaryThreadId,
       ...(scanResult.followupThreadId ? { followupThreadId: scanResult.followupThreadId } : {}),
+      iterationCount: scanResult.iterationCount,
       toolsUsed: scanResult.toolsUsed,
     });
 
@@ -327,12 +400,16 @@ export class ProactiveBatchJob extends BatchJob {
         threadId: scanResult.primaryThreadId,
         primaryThreadId: scanResult.primaryThreadId,
         ...(scanResult.followupThreadId ? { followupThreadId: scanResult.followupThreadId } : {}),
+        iterationCount: scanResult.iterationCount,
+        iterations: scanResult.iterations,
         toolsUsed: scanResult.toolsUsed,
       },
     };
   }
 
-  protected createDefaultTasks(): BatchJobSubTaskTemplate[] {
+  protected createDefaultTasks(parameters: Record<string, string> = {}): BatchJobSubTaskTemplate[] {
+    const maxIterations = parameters.maxIterations ? Number(parameters.maxIterations) : 25;
+    const scanIterations = parameters.scanIterations ? Number(parameters.scanIterations) : 3;
     return [
       {
         task_key: "scan",
@@ -341,6 +418,7 @@ export class ProactiveBatchJob extends BatchJob {
         execution_mode: "sync",
         sequence_no: 0,
         enabled: 1,
+        config_json: { maxIterations, scanIterations },
       },
     ];
   }

@@ -22,10 +22,36 @@ interface BatchJobParam {
  * Proactive, Maintenance, and Job Scout have no parameters.
  * Email: maxMessages
  */
+const MAX_AGENT_ITERATIONS_PARAM: BatchJobParam = {
+  key: "maxIterations",
+  label: "Max Agent Iterations",
+  options: [
+    { value: "5", label: "5 iterations" },
+    { value: "10", label: "10 iterations" },
+    { value: "15", label: "15 iterations" },
+    { value: "25", label: "25 iterations (default)" },
+    { value: "40", label: "40 iterations" },
+  ],
+  defaultValue: "25",
+};
+
+const SCAN_ITERATIONS_PARAM: BatchJobParam = {
+  key: "scanIterations",
+  label: "Scan Iterations",
+  options: [
+    { value: "1", label: "1 scan pass" },
+    { value: "2", label: "2 scan passes" },
+    { value: "3", label: "3 scan passes (default)" },
+    { value: "4", label: "4 scan passes" },
+    { value: "5", label: "5 scan passes" },
+  ],
+  defaultValue: "3",
+};
+
 const batchParameterDefs: Record<BatchJobType, BatchJobParam[]> = {
-  proactive: [],
+  proactive: [MAX_AGENT_ITERATIONS_PARAM, SCAN_ITERATIONS_PARAM],
   maintenance: [],
-  job_scout: [],
+  job_scout: [MAX_AGENT_ITERATIONS_PARAM],
   email: [
     {
       key: "maxMessages",

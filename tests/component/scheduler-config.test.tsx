@@ -73,7 +73,7 @@ describe("SchedulerConfig — interactions", () => {
     expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
   });
 
-  test("proactive batch shows no parameter fields (it has none)", async () => {
+  test("proactive batch shows Max Agent Iterations and Scan Iterations dropdowns", async () => {
     setupFetch();
     const { SchedulerConfig } = await import("@/components/scheduler-config");
     await act(async () => { render(<SchedulerConfig />); });
@@ -83,8 +83,10 @@ describe("SchedulerConfig — interactions", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/no parameters required/i)).toBeInTheDocument();
+      expect(screen.getByText("Max Agent Iterations")).toBeInTheDocument();
+      expect(screen.getByText("Scan Iterations")).toBeInTheDocument();
     });
+    expect(screen.queryByText(/no parameters required/i)).not.toBeInTheDocument();
   });
 
   test("maintenance batch shows no parameter fields (it has none)", async () => {
@@ -101,7 +103,7 @@ describe("SchedulerConfig — interactions", () => {
     });
   });
 
-  test("job_scout batch shows no parameter fields (it has none)", async () => {
+  test("job_scout batch shows Max Agent Iterations dropdown", async () => {
     setupFetch();
     const { SchedulerConfig } = await import("@/components/scheduler-config");
     await act(async () => { render(<SchedulerConfig />); });
@@ -111,7 +113,44 @@ describe("SchedulerConfig — interactions", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/no parameters required/i)).toBeInTheDocument();
+      expect(screen.getByText("Max Agent Iterations")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/no parameters required/i)).not.toBeInTheDocument();
+  });
+
+  test("proactive POST payload includes maxIterations parameter", async () => {
+    setupFetch();
+    const { SchedulerConfig } = await import("@/components/scheduler-config");
+    await act(async () => { render(<SchedulerConfig />); });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("New Proactive Scheduler"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^ok$/i })).toBeInTheDocument();
+    });
+
+    // Change maxIterations to 10
+    await act(async () => {
+      const select = screen.getByLabelText
+        ? screen.queryByDisplayValue("25 iterations (default)")
+        : screen.getByRole("combobox");
+      if (select) fireEvent.change(select, { target: { value: "10" } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^ok$/i }));
+    });
+
+    await waitFor(() => {
+      const postCalls = fetchMock.mock.calls.filter(
+        ([u, o]: [string, RequestInit?]) => u.includes("/api/scheduler/schedules") && o?.method === "POST"
+      );
+      expect(postCalls.length).toBe(1);
+      const body = JSON.parse(postCalls[0][1].body as string);
+      expect(body.batch_type).toBe("proactive");
+      expect(body.parameters).toHaveProperty("maxIterations");
     });
   });
 
