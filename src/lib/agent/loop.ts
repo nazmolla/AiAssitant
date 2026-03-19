@@ -214,7 +214,7 @@ export async function runAgentLoop(
 
   deps.addLog({
     level: "thought",
-    source: "agent",
+    source: "thought",
     message: continuation
       ? `Continuing agent loop in thread ${threadId} after approval`
       : `Processing user message in thread ${threadId}`,

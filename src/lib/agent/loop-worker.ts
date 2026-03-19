@@ -261,7 +261,7 @@ async function _runViaWorker(
 
   addLog({
     level: "thought",
-    source: "agent",
+    source: "thought",
     message: `Processing user message in thread ${threadId} (worker thread)`,
     metadata: JSON.stringify({
       messagePreview: userMessage.substring(0, 100),

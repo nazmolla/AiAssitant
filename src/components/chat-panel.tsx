@@ -75,7 +75,7 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
   // ── Extracted hooks ─────────────────────────────────────────────────────────
   const screenShare = useScreenShare();
   const fileUpload = useFileUpload();
-  const sendMessageRef = useRef<(() => void) | null>(null);
+  const sendMessageRef = useRef<((overrideThreadId?: string) => void) | null>(null);
 
   const audioControls = useAudioControls({
     onTranscription: (text) => {
@@ -198,13 +198,11 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
       // Set flag BEFORE createThread so the activeThread useEffect skips its
       // fetch (which would wipe the optimistic message added by sendMessage).
       pendingSendRef.current = true;
-      await createThread();
-      // After state settles, fire the send — requestAnimationFrame lets React
-      // flush the new activeThread into the chatStream hook's closure
-      requestAnimationFrame(() => {
-        pendingSendRef.current = false;
-        sendMessageRef.current?.();
-      });
+      const newThreadId = await createThread();
+      pendingSendRef.current = false;
+      // Pass the new thread ID directly — avoids relying on React re-rendering
+      // the hook closure before the send fires (React 18 concurrent mode timing).
+      chatStream.sendMessage(newThreadId);
     } else {
       chatStream.sendMessage();
     }

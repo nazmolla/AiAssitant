@@ -91,13 +91,38 @@ describe("useChatStream", () => {
     expect(result.current.messages).toEqual([]);
   });
 
-  test("sendMessage does nothing when activeThread is null", async () => {
+  test("sendMessage does nothing when activeThread is null and no override", async () => {
     const opts = makeOptions({ activeThread: null, getInput: jest.fn(() => "Hello") });
     const { result } = renderHook(() => useChatStream(opts));
 
     await act(async () => { await result.current.sendMessage(); });
 
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("sendMessage with overrideThreadId sends to override thread even when activeThread is null", async () => {
+    const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : { encode: (s: string) => Buffer.from(s) };
+    const mockReader = {
+      read: jest.fn()
+        .mockResolvedValueOnce({ value: encoder.encode("event: done\ndata: {}\n\n"), done: false })
+        .mockResolvedValueOnce({ value: undefined, done: true }),
+    };
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      body: { getReader: () => mockReader },
+    });
+
+    const opts = makeOptions({ activeThread: null, getInput: jest.fn(() => "Hello") });
+    const { result } = renderHook(() => useChatStream(opts));
+
+    await act(async () => { await result.current.sendMessage("new-thread-id"); });
+
+    // Fetch must be called with the override thread ID, not null activeThread
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/threads/new-thread-id/chat",
+      expect.any(Object)
+    );
   });
 
   test("sendMessage adds optimistic user message and calls clearInput", async () => {

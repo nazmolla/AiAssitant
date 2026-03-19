@@ -27,7 +27,7 @@ export interface UseChatStreamReturn {
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   thinkingSteps: ThinkingStep[];
   setThinkingSteps: React.Dispatch<React.SetStateAction<ThinkingStep[]>>;
-  sendMessage: () => Promise<void>;
+  sendMessage: (overrideThreadId?: string) => Promise<void>;
   abortStream: () => void;
 }
 
@@ -58,12 +58,13 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
     abortControllerRef.current?.abort();
   }, []);
 
-  const sendMessage = useCallback(async () => {
+  const sendMessage = useCallback(async (overrideThreadId?: string) => {
     if (sendInFlightRef.current) return;
     const input = getInput();
     const filesToSend = getPendingFiles();
     const sharing = isScreenSharing();
-    if ((!input.trim() && filesToSend.length === 0 && !sharing) || !activeThread) return;
+    const effectiveThreadId = overrideThreadId ?? activeThread;
+    if ((!input.trim() && filesToSend.length === 0 && !sharing) || !effectiveThreadId) return;
     sendInFlightRef.current = true;
 
     const userMsg = input;
@@ -94,7 +95,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
       ...prev,
       {
         id: optimisticId,
-        thread_id: activeThread,
+        thread_id: effectiveThreadId,
         role: "user",
         content: userMsg || null,
         tool_calls: null,
@@ -107,12 +108,12 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
     try {
       const uploadedMeta: AttachmentMeta[] = [];
       for (const pf of filesToSend) {
-        const meta = await uploadFile(pf.file, activeThread);
+        const meta = await uploadFile(pf.file, effectiveThreadId);
         uploadedMeta.push(meta);
         if (pf.previewUrl) URL.revokeObjectURL(pf.previewUrl);
       }
 
-      const res = await fetch(`/api/threads/${activeThread}/chat`, {
+      const res = await fetch(`/api/threads/${effectiveThreadId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: abortControllerRef.current?.signal,
@@ -129,7 +130,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
         if (userMsg) restoreInput(userMsg);
         setMessages((prev) => [
           ...prev,
-          { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${errData.error || res.statusText}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
+          { id: Date.now() + 1, thread_id: effectiveThreadId, role: "system", content: `Error: ${errData.error || res.statusText}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
         ]);
         return;
       }
@@ -196,7 +197,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
                   }
                   return [...prev, {
                     id: -1,
-                    thread_id: activeThread,
+                    thread_id: effectiveThreadId,
                     role: "assistant" as const,
                     content: token,
                     tool_calls: null,
@@ -229,7 +230,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
                 }
                 setMessages((prev) => [
                   ...prev,
-                  { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${data.error}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
+                  { id: Date.now() + 1, thread_id: effectiveThreadId, role: "system", content: `Error: ${data.error}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
                 ]);
               }
             } catch {
@@ -245,7 +246,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
       if (userMsg) restoreInput(userMsg);
       setMessages((prev) => [
         ...prev,
-        { id: Date.now() + 1, thread_id: activeThread, role: "system", content: `Error: ${err}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
+        { id: Date.now() + 1, thread_id: effectiveThreadId, role: "system", content: `Error: ${err}`, tool_calls: null, tool_results: null, attachments: null, created_at: new Date().toISOString() },
       ]);
     } finally {
       setLoading(false);

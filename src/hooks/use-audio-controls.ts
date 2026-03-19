@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 
 export interface UseAudioControlsOptions {
   onTranscription: (text: string) => void;
-  sendMessageRef: React.MutableRefObject<(() => void) | null>;
+  sendMessageRef: React.MutableRefObject<((overrideThreadId?: string) => void) | null>;
 }
 
 export interface UseAudioControlsReturn {
