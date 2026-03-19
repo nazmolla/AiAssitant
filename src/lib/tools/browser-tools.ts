@@ -16,7 +16,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 import type { ToolDefinition } from "@/lib/llm";
 import * as fs from "fs";
 import * as path from "path";
-import { assertExternalUrl, assertExternalUrlWithResolve } from "@/lib/agent/ssrf";
+import { assertExternalUrlWithResolve } from "@/lib/agent/ssrf";
 import { env } from "@/lib/env";
 import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 import {
@@ -334,19 +334,31 @@ export const BUILTIN_BROWSER_TOOLS: ToolDefinition[] = [
   },
 ];
 
-// ── Browser Session Manager ───────────────────────────────────
+// ── Screenshots directory ─────────────────────────────────────
 
 const SCREENSHOTS_DIR = path.join(process.cwd(), "data", "screenshots");
 
-class BrowserSession {
-  private browser: Browser | null = null;
-  private context: BrowserContext | null = null;
+// ── BaseTool class wrapper ────────────────────────────────────
+
+export class BrowserTools extends BaseTool {
+  readonly name = "browser";
+  readonly toolNamePrefix = "builtin.browser_";
+  readonly registrationOrder = 10;
+  readonly tools = BUILTIN_BROWSER_TOOLS;
+  readonly toolsRequiringApproval = [...BROWSER_TOOLS_REQUIRING_APPROVAL];
+
+  // ── Session state (formerly BrowserSession) ──────────────────
+
+  private _browser: Browser | null = null;
+  private _context: BrowserContext | null = null;
   private _page: Page | null = null;
   private _lock: Promise<void> = Promise.resolve();
 
+  // ── Lock / serialization ──────────────────────────────────────
+
   /** Serialize access to the browser session to prevent concurrent page mutations */
-  async withLock<T>(fn: () => Promise<T>): Promise<T> {
-    let release: () => void;
+  private async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
     const prev = this._lock;
     this._lock = gate;
@@ -354,20 +366,22 @@ class BrowserSession {
     try {
       return await fn();
     } finally {
-      release!();
+      release();
     }
   }
 
-  async getPage(): Promise<Page> {
-    if (!this.browser || !this._page || this._page.isClosed()) {
+  // ── Session lifecycle ─────────────────────────────────────────
+
+  private async getPage(): Promise<Page> {
+    if (!this._browser || !this._page || this._page.isClosed()) {
       await this.launch();
     }
     return this._page!;
   }
 
   private async launch(): Promise<void> {
-    if (this.browser) {
-      try { await this.browser.close(); } catch {}
+    if (this._browser) {
+      try { await this._browser.close(); } catch {}
     }
 
     // Ensure data dirs exist
@@ -375,7 +389,7 @@ class BrowserSession {
     fs.mkdirSync(userDataDir, { recursive: true });
     fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
 
-    this.browser = await chromium.launch({
+    this._browser = await chromium.launch({
       headless: true,
       args: [
         "--disable-blink-features=AutomationControlled",
@@ -384,7 +398,7 @@ class BrowserSession {
       ],
     });
 
-    this.context = await this.browser.newContext({
+    this._context = await this._browser.newContext({
       viewport: { width: BROWSER_VIEWPORT_WIDTH, height: BROWSER_VIEWPORT_HEIGHT },
       userAgent:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -394,7 +408,7 @@ class BrowserSession {
     });
 
     // Stealth: override navigator.webdriver
-    await this.context.addInitScript(() => {
+    await this._context.addInitScript(() => {
       Object.defineProperty(navigator, "webdriver", { get: () => false });
       // @ts-ignore
       window.chrome = { runtime: {} };
@@ -406,463 +420,38 @@ class BrowserSession {
       });
     });
 
-    this._page = await this.context.newPage();
+    this._page = await this._context.newPage();
 
     // Default timeout
     this._page.setDefaultTimeout(BROWSER_DEFAULT_TIMEOUT_MS);
     this._page.setDefaultNavigationTimeout(BROWSER_NAVIGATION_TIMEOUT_MS);
   }
 
-  async close(): Promise<void> {
-    if (this.browser) {
-      try { await this.browser.close(); } catch {}
-      this.browser = null;
-      this.context = null;
+  async closeSession(): Promise<void> {
+    if (this._browser) {
+      try { await this._browser.close(); } catch {}
+      this._browser = null;
+      this._context = null;
       this._page = null;
     }
   }
 
-  getContext(): BrowserContext | null {
-    return this.context;
+  private getContext(): BrowserContext | null {
+    return this._context;
   }
 
   isAlive(): boolean {
-    return this.browser !== null && this._page !== null && !this._page.isClosed();
+    return this._browser !== null && this._page !== null && !this._page.isClosed();
   }
-}
 
-// Singleton browser session
-let _session: BrowserSession | null = null;
-// ── Tool Executor ─────────────────────────────────────────────
-
-class BrowserExecution {
-  static async executeBrowserToolInner(
-    session: BrowserSession,
-    name: string,
-    args: Record<string, unknown>
-  ): Promise<unknown> {
-    switch (name) {
-    // ── Navigate ────────────────────────────────────────────
-    case "builtin.browser_navigate": {
-      const page = await session.getPage();
-      const url = args.url as string;
-
-      // SSRF protection: block internal/private URLs with DNS rebinding defence
-      await assertExternalUrlWithResolve(url);
-
-      try {
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: BROWSER_NAVIGATION_TIMEOUT_MS });
-      } catch (navErr: any) {
-        // Retry once with networkidle
-        try {
-          await page.goto(url, { waitUntil: "commit", timeout: BROWSER_NAVIGATION_TIMEOUT_MS });
-        } catch {
-          throw new Error(`Failed to navigate to ${url}: ${navErr.message}`);
-        }
-      }
-
-      if (args.waitFor) {
-        try {
-          await page.waitForSelector(args.waitFor as string, { timeout: BROWSER_SELECTOR_TIMEOUT_MS });
-        } catch {}
-      }
-      // Small settling delay
-      await page.waitForTimeout(BROWSER_SETTLE_DELAY_MS);
-
-      const title = await page.title();
-      const currentUrl = page.url();
-
-      // Get visible page text (first ~3000 chars) so the LLM understands what loaded
-      let pageText = "";
-      try {
-        pageText = await page.evaluate(() => {
-          const clone = document.body.cloneNode(true) as HTMLElement;
-          clone.querySelectorAll("script, style, nav, footer, noscript, svg, iframe").forEach(el => el.remove());
-          return (clone.innerText || "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-        });
-        pageText = pageText.slice(0, BROWSER_PAGE_TEXT_PREVIEW_CHARS);
-      } catch {}
-
-      // Get interactive elements (limited)
-      const elements = await BrowserTools.getInteractiveElements(page, undefined, undefined, 15);
-
-      return {
-        status: "navigated",
-        title,
-        url: currentUrl,
-        redirected: currentUrl !== url,
-        pageTextPreview: pageText,
-        interactiveElements: elements,
-      };
-    }
-
-    // ── Click ───────────────────────────────────────────────
-    case "builtin.browser_click": {
-      const page = await session.getPage();
-      const beforeUrl = page.url();
-
-      if (args.selector) {
-        await page.click(args.selector as string);
-      } else if (args.text) {
-        await page.getByText(args.text as string, { exact: false }).first().click();
-      } else {
-        throw new Error("Either 'selector' or 'text' must be provided.");
-      }
-
-      await page.waitForTimeout(BROWSER_SETTLE_DELAY_MS);
-
-      const afterUrl = page.url();
-      const summary = await BrowserTools.pageSummary(page);
-      return {
-        status: "clicked",
-        urlChanged: beforeUrl !== afterUrl,
-        ...BrowserTools.parsePageInfo(summary),
-      };
-    }
-
-    // ── Type ────────────────────────────────────────────────
-    case "builtin.browser_type": {
-      const page = await session.getPage();
-      const selector = args.selector as string;
-      const text = args.text as string;
-      const clear = args.clear !== false;
-      const pressEnter = args.pressEnter === true;
-
-      if (clear) {
-        await page.fill(selector, "");
-      }
-      await page.type(selector, text, { delay: 30 });
-
-      if (pressEnter) {
-        await page.press(selector, "Enter");
-        await page.waitForTimeout(2000);
-      }
-
-      const summary = await BrowserTools.pageSummary(page);
-      return {
-        status: "typed",
-        selector,
-        pressedEnter: pressEnter,
-        ...BrowserTools.parsePageInfo(summary),
-      };
-    }
-
-    // ── Fill Form ───────────────────────────────────────────
-    case "builtin.browser_fill_form": {
-      const page = await session.getPage();
-      const fields = args.fields as Array<{
-        selector: string;
-        value: string;
-        type?: string;
-      }>;
-
-      const results: string[] = [];
-      for (const field of fields) {
-        try {
-          const fieldType = field.type || "text";
-          switch (fieldType) {
-            case "select":
-              try {
-                await page.selectOption(field.selector, { label: field.value });
-              } catch {
-                await page.selectOption(field.selector, field.value);
-              }
-              results.push(`✓ Selected "${field.value}" in ${field.selector}`);
-              break;
-            case "checkbox":
-              if (field.value === "true" || field.value === "check") {
-                await page.check(field.selector);
-              } else {
-                await page.uncheck(field.selector);
-              }
-              results.push(`✓ Checkbox ${field.selector} set to ${field.value}`);
-              break;
-            case "file":
-              await page.setInputFiles(field.selector, field.value);
-              results.push(`✓ File "${field.value}" attached to ${field.selector}`);
-              break;
-            default:
-              await page.fill(field.selector, field.value);
-              results.push(`✓ Filled ${field.selector} with "${field.value.slice(0, 40)}..."`);
-          }
-        } catch (err: any) {
-          results.push(`✗ Failed ${field.selector}: ${err.message}`);
-        }
-      }
-
-      if (args.submit) {
-        try {
-          // Try common submit strategies
-          const submitBtn = await page.$(
-            'button[type="submit"], input[type="submit"], button:has-text("Submit"), button:has-text("Apply"), button:has-text("Save"), button:has-text("Send")'
-          );
-          if (submitBtn) {
-            await submitBtn.click();
-            await page.waitForTimeout(2000);
-            results.push("✓ Form submitted");
-          } else {
-            results.push("✗ No submit button found");
-          }
-        } catch (err: any) {
-          results.push(`✗ Submit failed: ${err.message}`);
-        }
-      }
-
-      const summary = await BrowserTools.pageSummary(page);
-      return {
-        status: "form_filled",
-        ...BrowserTools.parsePageInfo(summary),
-        fieldResults: results,
-      };
-    }
-
-    // ── Select Dropdown ─────────────────────────────────────
-    case "builtin.browser_select": {
-      const page = await session.getPage();
-      try {
-        await page.selectOption(args.selector as string, { label: args.value as string });
-      } catch {
-        await page.selectOption(args.selector as string, args.value as string);
-      }
-      return { status: "selected", selector: args.selector, value: args.value };
-    }
-
-    // ── Get Content ─────────────────────────────────────────
-    case "builtin.browser_get_content": {
-      const page = await session.getPage();
-      const maxLen = (args.maxLength as number) || BROWSER_MAX_CONTENT_CHARS;
-      let text: string;
-
-      if (args.selector) {
-        const el = await page.$(args.selector as string);
-        text = el ? (await el.innerText()) || "" : "(element not found)";
-      } else {
-        text = await page.evaluate(() => {
-          // Remove scripts, styles, nav, footer for cleaner text
-          const clone = document.body.cloneNode(true) as HTMLElement;
-          clone.querySelectorAll("script, style, nav, footer, noscript, svg").forEach((el) => el.remove());
-          return clone.innerText || "";
-        });
-      }
-
-      // Clean up excessive whitespace
-      text = text
-        .replace(/[ \t]+/g, " ")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim()
-        .slice(0, maxLen);
-
-      const summary = await BrowserTools.pageSummary(page);
-      return {
-        ...BrowserTools.parsePageInfo(summary),
-        contentLength: text.length,
-        content: text,
-      };
-    }
-
-    // ── Get Interactive Elements ────────────────────────────
-    case "builtin.browser_get_elements": {
-      const page = await session.getPage();
-      const elements = await BrowserTools.getInteractiveElements(
-        page,
-        args.selector as string | undefined,
-        args.types as string[] | undefined,
-        (args.maxResults as number) || BROWSER_MAX_ELEMENTS
-      );
-      const summary = await BrowserTools.pageSummary(page);
-      return {
-        ...BrowserTools.parsePageInfo(summary),
-        elements,
-      };
-    }
-
-    // ── Screenshot ──────────────────────────────────────────
-    case "builtin.browser_screenshot": {
-      const page = await session.getPage();
-      const timestamp = Date.now();
-      const filename = `screenshot-${timestamp}.png`;
-      const filepath = path.join(SCREENSHOTS_DIR, filename);
-
-      if (args.selector) {
-        const el = await page.$(args.selector as string);
-        if (el) {
-          await el.screenshot({ path: filepath });
-        } else {
-          throw new Error(`Element not found: ${args.selector}`);
-        }
-      } else {
-        await page.screenshot({
-          path: filepath,
-          fullPage: args.fullPage === true,
-        });
-      }
-
-      const summary = await BrowserTools.pageSummary(page);
-      return {
-        status: "screenshot_taken",
-        ...BrowserTools.parsePageInfo(summary),
-        screenshotPath: filepath,
-        relativePath: `data/screenshots/${filename}`,
-      };
-    }
-
-    // ── Scroll ──────────────────────────────────────────────
-    case "builtin.browser_scroll": {
-      const page = await session.getPage();
-      const direction = (args.direction as string) || "down";
-      const amount = (args.amount as number) || 500;
-      const delta = direction === "up" ? -amount : amount;
-
-      if (args.selector) {
-        await page.evaluate(
-          ({ sel, d }) => {
-            const el = document.querySelector(sel);
-            if (el) el.scrollBy(0, d);
-          },
-          { sel: args.selector as string, d: delta }
-        );
-      } else {
-        await page.evaluate((d) => window.scrollBy(0, d), delta);
-      }
-
-      await page.waitForTimeout(500);
-      return { status: "scrolled", direction, pixels: amount };
-    }
-
-    // ── Back ────────────────────────────────────────────────
-    case "builtin.browser_back": {
-      const page = await session.getPage();
-      await page.goBack({ waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(1000);
-      const summary = await BrowserTools.pageSummary(page);
-      return { status: "navigated_back", ...BrowserTools.parsePageInfo(summary) };
-    }
-
-    // ── Wait ────────────────────────────────────────────────
-    case "builtin.browser_wait": {
-      const page = await session.getPage();
-      const timeout = (args.timeout as number) || BROWSER_WAIT_TIMEOUT_MS;
-
-      if (args.selector) {
-        const state = (args.state as "visible" | "hidden" | "attached" | "detached") || "visible";
-        await page.waitForSelector(args.selector as string, { timeout, state });
-        return { status: "element_found", selector: args.selector };
-      }
-
-      // Fixed wait
-      await page.waitForTimeout(timeout);
-      return { status: "waited", ms: timeout };
-    }
-
-    // ── Upload File ─────────────────────────────────────────
-    case "builtin.browser_upload": {
-      const page = await session.getPage();
-      const filePath = args.filePath as string;
-      // Restrict file uploads to the FS_ALLOWED_ROOT to prevent exfiltration of sensitive files
-      const FS_ALLOWED_ROOT = env.FS_ALLOWED_ROOT;
-      const resolved = path.resolve(filePath);
-      if (!resolved.startsWith(FS_ALLOWED_ROOT + path.sep) && resolved !== FS_ALLOWED_ROOT) {
-        throw new Error(`Access denied: file path "${filePath}" is outside the allowed root directory.`);
-      }
-      if (!fs.existsSync(resolved)) {
-        throw new Error(`File not found: ${filePath}`);
-      }
-      await page.setInputFiles(args.selector as string, resolved);
-      return { status: "file_uploaded", filePath: resolved, selector: args.selector };
-    }
-
-    // ── Evaluate JS ─────────────────────────────────────────
-    case "builtin.browser_evaluate": {
-      const page = await session.getPage();
-      const result = await page.evaluate((code: string) => {
-        try {
-           
-          return eval(code);
-        } catch (e: any) {
-          return `Error: ${e.message}`;
-        }
-      }, args.script as string);
-      return {
-        status: "evaluated",
-        result: typeof result === "object" ? JSON.stringify(result) : String(result),
-      };
-    }
-
-    // ── Close ───────────────────────────────────────────────
-    case "builtin.browser_close": {
-      await session.close();
-      return { status: "browser_closed" };
-    }
-
-    // ── Tabs ────────────────────────────────────────────────
-    case "builtin.browser_tabs": {
-      const ctx = session.getContext();
-      if (!ctx) {
-        return { status: "no_browser", tabs: [] };
-      }
-      const pages = ctx.pages();
-
-      if (args.action === "list") {
-        const tabs = await Promise.all(
-          pages.map(async (p, i) => ({
-            index: i,
-            url: p.url(),
-            title: await p.title(),
-          }))
-        );
-        return { status: "listed", tabs };
-      }
-
-      if (args.action === "switch" && typeof args.index === "number") {
-        const targetPage = pages[args.index as number];
-        if (!targetPage) {
-          throw new Error(`Tab index ${args.index} not found. Total tabs: ${pages.length}`);
-        }
-        await targetPage.bringToFront();
-        const summary = await BrowserTools.pageSummary(targetPage);
-        return { status: "switched", ...BrowserTools.parsePageInfo(summary) };
-      }
-
-      throw new Error('action must be "list" or "switch".');
-    }
-
-      default:
-        throw new Error(`Unknown browser tool: "${name}"`);
-    }
-  }
-}
-
-/**
- * Close browser on process exit.
- */
-process.on("beforeExit", async () => {
-  await BrowserTools.closeActiveSession();
-});
-
-// ── BaseTool class wrapper ────────────────────────────────────
-
-export class BrowserTools extends BaseTool {
-  readonly name = "browser";
-  readonly toolNamePrefix = "builtin.browser_";
-  readonly registrationOrder = 10;
-  readonly tools = BUILTIN_BROWSER_TOOLS;
-  readonly toolsRequiringApproval = [...BROWSER_TOOLS_REQUIRING_APPROVAL];
+  // ── Static helpers ────────────────────────────────────────────
 
   static isTool(name: string): boolean {
     return name.startsWith("builtin.browser_");
   }
 
-  static getSession(): BrowserSession {
-    if (!_session) {
-      _session = new BrowserSession();
-    }
-    return _session;
-  }
-
   static async closeActiveSession(): Promise<void> {
-    if (_session) {
-      await _session.close();
-    }
+    await browserTools.closeSession();
   }
 
   static async pageSummary(page: Page): Promise<string> {
@@ -964,6 +553,8 @@ export class BrowserTools extends BaseTool {
     };
   }
 
+  // ── Command dispatch ──────────────────────────────────────────
+
   private readonly cmdMap: ReadonlyMap<string, (a: Record<string, unknown>) => Promise<unknown>>;
 
   constructor() {
@@ -987,9 +578,12 @@ export class BrowserTools extends BaseTool {
     ]);
   }
 
+  /**
+   * Static entry point used by module-level `executeBrowserTool` export.
+   * Delegates to the singleton instance so session state is preserved.
+   */
   static async executeBuiltin(name: string, args: Record<string, unknown>): Promise<unknown> {
-    const session = BrowserTools.getSession();
-    return session.withLock(() => BrowserExecution.executeBrowserToolInner(session, name, args));
+    return browserTools.execute(name, args, {} as ToolExecutionContext);
   }
 
   async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
@@ -998,27 +592,387 @@ export class BrowserTools extends BaseTool {
     return handler(args);
   }
 
-  private withSession(name: string, args: Record<string, unknown>): Promise<unknown> {
-    const session = BrowserTools.getSession();
-    return session.withLock(() => BrowserExecution.executeBrowserToolInner(session, name, args));
+  // ── Named command methods (each owns its implementation) ──────
+
+  private navigate(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      const url = args.url as string;
+
+      // SSRF protection: block internal/private URLs with DNS rebinding defence
+      await assertExternalUrlWithResolve(url);
+
+      try {
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: BROWSER_NAVIGATION_TIMEOUT_MS });
+      } catch (navErr: any) {
+        // Retry once with commit
+        try {
+          await page.goto(url, { waitUntil: "commit", timeout: BROWSER_NAVIGATION_TIMEOUT_MS });
+        } catch {
+          throw new Error(`Failed to navigate to ${url}: ${navErr.message}`);
+        }
+      }
+
+      if (args.waitFor) {
+        try {
+          await page.waitForSelector(args.waitFor as string, { timeout: BROWSER_SELECTOR_TIMEOUT_MS });
+        } catch {}
+      }
+      await page.waitForTimeout(BROWSER_SETTLE_DELAY_MS);
+
+      const title = await page.title();
+      const currentUrl = page.url();
+
+      let pageText = "";
+      try {
+        pageText = await page.evaluate(() => {
+          const clone = document.body.cloneNode(true) as HTMLElement;
+          clone.querySelectorAll("script, style, nav, footer, noscript, svg, iframe").forEach(el => el.remove());
+          return (clone.innerText || "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+        });
+        pageText = pageText.slice(0, BROWSER_PAGE_TEXT_PREVIEW_CHARS);
+      } catch {}
+
+      const elements = await BrowserTools.getInteractiveElements(page, undefined, undefined, 15);
+
+      return {
+        status: "navigated",
+        title,
+        url: currentUrl,
+        redirected: currentUrl !== url,
+        pageTextPreview: pageText,
+        interactiveElements: elements,
+      };
+    });
   }
 
-  private navigate(args: Record<string, unknown>): Promise<unknown>    { return this.withSession("builtin.browser_navigate", args); }
-  private click(args: Record<string, unknown>): Promise<unknown>       { return this.withSession("builtin.browser_click", args); }
-  private type(args: Record<string, unknown>): Promise<unknown>        { return this.withSession("builtin.browser_type", args); }
-  private fillForm(args: Record<string, unknown>): Promise<unknown>    { return this.withSession("builtin.browser_fill_form", args); }
-  private select(args: Record<string, unknown>): Promise<unknown>      { return this.withSession("builtin.browser_select", args); }
-  private getContent(args: Record<string, unknown>): Promise<unknown>  { return this.withSession("builtin.browser_get_content", args); }
-  private getElements(args: Record<string, unknown>): Promise<unknown> { return this.withSession("builtin.browser_get_elements", args); }
-  private screenshot(args: Record<string, unknown>): Promise<unknown>  { return this.withSession("builtin.browser_screenshot", args); }
-  private scroll(args: Record<string, unknown>): Promise<unknown>      { return this.withSession("builtin.browser_scroll", args); }
-  private back(args: Record<string, unknown>): Promise<unknown>        { return this.withSession("builtin.browser_back", args); }
-  private wait(args: Record<string, unknown>): Promise<unknown>        { return this.withSession("builtin.browser_wait", args); }
-  private upload(args: Record<string, unknown>): Promise<unknown>      { return this.withSession("builtin.browser_upload", args); }
-  private evaluate(args: Record<string, unknown>): Promise<unknown>    { return this.withSession("builtin.browser_evaluate", args); }
-  private close(args: Record<string, unknown>): Promise<unknown>       { return this.withSession("builtin.browser_close", args); }
-  private tabs(args: Record<string, unknown>): Promise<unknown>        { return this.withSession("builtin.browser_tabs", args); }
+  private click(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      const beforeUrl = page.url();
+
+      if (args.selector) {
+        await page.click(args.selector as string);
+      } else if (args.text) {
+        await page.getByText(args.text as string, { exact: false }).first().click();
+      } else {
+        throw new Error("Either 'selector' or 'text' must be provided.");
+      }
+
+      await page.waitForTimeout(BROWSER_SETTLE_DELAY_MS);
+
+      const afterUrl = page.url();
+      const summary = await BrowserTools.pageSummary(page);
+      return {
+        status: "clicked",
+        urlChanged: beforeUrl !== afterUrl,
+        ...BrowserTools.parsePageInfo(summary),
+      };
+    });
+  }
+
+  private type(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      const selector = args.selector as string;
+      const text = args.text as string;
+      const clear = args.clear !== false;
+      const pressEnter = args.pressEnter === true;
+
+      if (clear) {
+        await page.fill(selector, "");
+      }
+      await page.type(selector, text, { delay: 30 });
+
+      if (pressEnter) {
+        await page.press(selector, "Enter");
+        await page.waitForTimeout(2000);
+      }
+
+      const summary = await BrowserTools.pageSummary(page);
+      return {
+        status: "typed",
+        selector,
+        pressedEnter: pressEnter,
+        ...BrowserTools.parsePageInfo(summary),
+      };
+    });
+  }
+
+  private fillForm(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      const fields = args.fields as Array<{ selector: string; value: string; type?: string }>;
+
+      const results: string[] = [];
+      for (const field of fields) {
+        try {
+          const fieldType = field.type || "text";
+          switch (fieldType) {
+            case "select":
+              try {
+                await page.selectOption(field.selector, { label: field.value });
+              } catch {
+                await page.selectOption(field.selector, field.value);
+              }
+              results.push(`✓ Selected "${field.value}" in ${field.selector}`);
+              break;
+            case "checkbox":
+              if (field.value === "true" || field.value === "check") {
+                await page.check(field.selector);
+              } else {
+                await page.uncheck(field.selector);
+              }
+              results.push(`✓ Checkbox ${field.selector} set to ${field.value}`);
+              break;
+            case "file":
+              await page.setInputFiles(field.selector, field.value);
+              results.push(`✓ File "${field.value}" attached to ${field.selector}`);
+              break;
+            default:
+              await page.fill(field.selector, field.value);
+              results.push(`✓ Filled ${field.selector} with "${field.value.slice(0, 40)}..."`);
+          }
+        } catch (err: any) {
+          results.push(`✗ Failed ${field.selector}: ${err.message}`);
+        }
+      }
+
+      if (args.submit) {
+        try {
+          const submitBtn = await page.$(
+            'button[type="submit"], input[type="submit"], button:has-text("Submit"), button:has-text("Apply"), button:has-text("Save"), button:has-text("Send")'
+          );
+          if (submitBtn) {
+            await submitBtn.click();
+            await page.waitForTimeout(2000);
+            results.push("✓ Form submitted");
+          } else {
+            results.push("✗ No submit button found");
+          }
+        } catch (err: any) {
+          results.push(`✗ Submit failed: ${err.message}`);
+        }
+      }
+
+      const summary = await BrowserTools.pageSummary(page);
+      return {
+        status: "form_filled",
+        ...BrowserTools.parsePageInfo(summary),
+        fieldResults: results,
+      };
+    });
+  }
+
+  private select(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      try {
+        await page.selectOption(args.selector as string, { label: args.value as string });
+      } catch {
+        await page.selectOption(args.selector as string, args.value as string);
+      }
+      return { status: "selected", selector: args.selector, value: args.value };
+    });
+  }
+
+  private getContent(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      const maxLen = (args.maxLength as number) || BROWSER_MAX_CONTENT_CHARS;
+      let text: string;
+
+      if (args.selector) {
+        const el = await page.$(args.selector as string);
+        text = el ? (await el.innerText()) || "" : "(element not found)";
+      } else {
+        text = await page.evaluate(() => {
+          const clone = document.body.cloneNode(true) as HTMLElement;
+          clone.querySelectorAll("script, style, nav, footer, noscript, svg").forEach((el) => el.remove());
+          return clone.innerText || "";
+        });
+      }
+
+      text = text.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, maxLen);
+
+      const summary = await BrowserTools.pageSummary(page);
+      return {
+        ...BrowserTools.parsePageInfo(summary),
+        contentLength: text.length,
+        content: text,
+      };
+    });
+  }
+
+  private getElements(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      const elements = await BrowserTools.getInteractiveElements(
+        page,
+        args.selector as string | undefined,
+        args.types as string[] | undefined,
+        (args.maxResults as number) || BROWSER_MAX_ELEMENTS
+      );
+      const summary = await BrowserTools.pageSummary(page);
+      return {
+        ...BrowserTools.parsePageInfo(summary),
+        elements,
+      };
+    });
+  }
+
+  private screenshot(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      const timestamp = Date.now();
+      const filename = `screenshot-${timestamp}.png`;
+      const filepath = path.join(SCREENSHOTS_DIR, filename);
+
+      if (args.selector) {
+        const el = await page.$(args.selector as string);
+        if (el) {
+          await el.screenshot({ path: filepath });
+        } else {
+          throw new Error(`Element not found: ${args.selector}`);
+        }
+      } else {
+        await page.screenshot({ path: filepath, fullPage: args.fullPage === true });
+      }
+
+      const summary = await BrowserTools.pageSummary(page);
+      return {
+        status: "screenshot_taken",
+        ...BrowserTools.parsePageInfo(summary),
+        screenshotPath: filepath,
+        relativePath: `data/screenshots/${filename}`,
+      };
+    });
+  }
+
+  private scroll(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      const direction = (args.direction as string) || "down";
+      const amount = (args.amount as number) || 500;
+      const delta = direction === "up" ? -amount : amount;
+
+      if (args.selector) {
+        await page.evaluate(
+          ({ sel, d }) => { const el = document.querySelector(sel); if (el) el.scrollBy(0, d); },
+          { sel: args.selector as string, d: delta }
+        );
+      } else {
+        await page.evaluate((d) => window.scrollBy(0, d), delta);
+      }
+
+      await page.waitForTimeout(500);
+      return { status: "scrolled", direction, pixels: amount };
+    });
+  }
+
+  private back(_args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      await page.goBack({ waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(1000);
+      const summary = await BrowserTools.pageSummary(page);
+      return { status: "navigated_back", ...BrowserTools.parsePageInfo(summary) };
+    });
+  }
+
+  private wait(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      const timeout = (args.timeout as number) || BROWSER_WAIT_TIMEOUT_MS;
+
+      if (args.selector) {
+        const state = (args.state as "visible" | "hidden" | "attached" | "detached") || "visible";
+        await page.waitForSelector(args.selector as string, { timeout, state });
+        return { status: "element_found", selector: args.selector };
+      }
+
+      await page.waitForTimeout(timeout);
+      return { status: "waited", ms: timeout };
+    });
+  }
+
+  private upload(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      const filePath = args.filePath as string;
+      const FS_ALLOWED_ROOT = env.FS_ALLOWED_ROOT;
+      const resolved = path.resolve(filePath);
+      if (!resolved.startsWith(FS_ALLOWED_ROOT + path.sep) && resolved !== FS_ALLOWED_ROOT) {
+        throw new Error(`Access denied: file path "${filePath}" is outside the allowed root directory.`);
+      }
+      if (!fs.existsSync(resolved)) {
+        throw new Error(`File not found: ${filePath}`);
+      }
+      await page.setInputFiles(args.selector as string, resolved);
+      return { status: "file_uploaded", filePath: resolved, selector: args.selector };
+    });
+  }
+
+  private evaluate(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const page = await this.getPage();
+      const result = await page.evaluate((code: string) => {
+        try {
+          return eval(code);
+        } catch (e: any) {
+          return `Error: ${e.message}`;
+        }
+      }, args.script as string);
+      return {
+        status: "evaluated",
+        result: typeof result === "object" ? JSON.stringify(result) : String(result),
+      };
+    });
+  }
+
+  private close(_args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      await this.closeSession();
+      return { status: "browser_closed" };
+    });
+  }
+
+  private tabs(args: Record<string, unknown>): Promise<unknown> {
+    return this.withLock(async () => {
+      const ctx = this.getContext();
+      if (!ctx) {
+        return { status: "no_browser", tabs: [] };
+      }
+      const pages = ctx.pages();
+
+      if (args.action === "list") {
+        const tabs = await Promise.all(
+          pages.map(async (p, i) => ({ index: i, url: p.url(), title: await p.title() }))
+        );
+        return { status: "listed", tabs };
+      }
+
+      if (args.action === "switch" && typeof args.index === "number") {
+        const targetPage = pages[args.index as number];
+        if (!targetPage) {
+          throw new Error(`Tab index ${args.index} not found. Total tabs: ${pages.length}`);
+        }
+        await targetPage.bringToFront();
+        const summary = await BrowserTools.pageSummary(targetPage);
+        return { status: "switched", ...BrowserTools.parsePageInfo(summary) };
+      }
+
+      throw new Error('action must be "list" or "switch".');
+    });
+  }
 }
+
+/**
+ * Close browser on process exit.
+ */
+process.on("beforeExit", async () => {
+  await BrowserTools.closeActiveSession();
+});
 
 export const isBrowserTool = BrowserTools.isTool.bind(BrowserTools);
 export const executeBrowserTool = BrowserTools.executeBuiltin.bind(BrowserTools);
