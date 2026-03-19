@@ -966,9 +966,32 @@ export class NetworkTools extends BaseTool {
   readonly tools = BUILTIN_NETWORK_TOOLS;
   readonly toolsRequiringApproval = [...NETWORK_TOOLS_REQUIRING_APPROVAL];
 
-  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
-    return NetworkPublicApi.executeBuiltinNetworkTool(toolName, args);
+  private readonly cmdMap: ReadonlyMap<string, (a: Record<string, unknown>) => Promise<unknown>>;
+
+  constructor() {
+    super();
+    this.cmdMap = new Map<string, (a: Record<string, unknown>) => Promise<unknown>>([
+      [NET_TOOL_NAMES.PING,         (a) => this.ping(a)],
+      [NET_TOOL_NAMES.SCAN_NETWORK, (a) => this.scanNetwork(a)],
+      [NET_TOOL_NAMES.SCAN_PORTS,   (a) => this.scanPorts(a)],
+      [NET_TOOL_NAMES.CONNECT_SSH,  (a) => this.connectSsh(a)],
+      [NET_TOOL_NAMES.HTTP_REQUEST, (a) => this.httpRequest(a)],
+      [NET_TOOL_NAMES.WAKE_ON_LAN,  (a) => this.wakeOnLan(a)],
+    ]);
   }
+
+  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
+    const handler = this.cmdMap.get(toolName);
+    if (!handler) throw new Error(`Unknown built-in network tool: "${toolName}"`);
+    return handler(args);
+  }
+
+  private ping(args: Record<string, unknown>): Promise<unknown>         { return NetworkPingRuntime.netPing(args); }
+  private scanNetwork(args: Record<string, unknown>): Promise<unknown>  { return NetworkRuntime.netScanNetwork(args); }
+  private scanPorts(args: Record<string, unknown>): Promise<unknown>    { return NetworkRuntime.netScanPorts(args); }
+  private connectSsh(args: Record<string, unknown>): Promise<unknown>   { return NetworkRuntime.netConnectSsh(args); }
+  private httpRequest(args: Record<string, unknown>): Promise<unknown>  { return NetworkRuntime.netHttpRequest(args); }
+  private wakeOnLan(args: Record<string, unknown>): Promise<unknown>    { return NetworkRuntime.netWakeOnLan(args); }
 }
 
 export const networkTools = new NetworkTools();

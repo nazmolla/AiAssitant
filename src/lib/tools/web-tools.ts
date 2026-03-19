@@ -669,8 +669,36 @@ export class WebTools extends BaseTool {
     return (header + text).slice(0, maxLength);
   }
 
+  private readonly cmdMap: ReadonlyMap<string, (a: Record<string, unknown>) => Promise<unknown>>;
+
+  constructor() {
+    super();
+    this.cmdMap = new Map<string, (a: Record<string, unknown>) => Promise<unknown>>([
+      ["builtin.web_search",  (a) => this.webSearchCmd(a)],
+      ["builtin.web_fetch",   (a) => this.webFetchCmd(a)],
+      ["builtin.web_extract", (a) => this.webExtractCmd(a)],
+    ]);
+  }
+
   async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
-    return WebTools.executeBuiltin(toolName, args);
+    const handler = this.cmdMap.get(toolName);
+    if (!handler) throw new Error(`Unknown built-in web tool: "${toolName}"`);
+    return handler(args);
+  }
+
+  private async webSearchCmd(args: Record<string, unknown>): Promise<unknown> {
+    const search = await WebTools.webSearch(args.query as string, (args.maxResults as number) || 8);
+    return { query: args.query, resultCount: search.results.length, providerUsed: search.providerUsed, attempts: search.attempts, results: search.results };
+  }
+
+  private async webFetchCmd(args: Record<string, unknown>): Promise<unknown> {
+    const content = await WebTools.webFetch(args.url as string, (args.maxLength as number) || 12000);
+    return { url: args.url, contentLength: content.length, content };
+  }
+
+  private async webExtractCmd(args: Record<string, unknown>): Promise<unknown> {
+    const content = await WebTools.webExtract(args.url as string, args.query as string, (args.maxLength as number) || 8000);
+    return { url: args.url, query: args.query, contentLength: content.length, content };
   }
 }
 

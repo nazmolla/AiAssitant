@@ -964,14 +964,60 @@ export class BrowserTools extends BaseTool {
     };
   }
 
+  private readonly cmdMap: ReadonlyMap<string, (a: Record<string, unknown>) => Promise<unknown>>;
+
+  constructor() {
+    super();
+    this.cmdMap = new Map<string, (a: Record<string, unknown>) => Promise<unknown>>([
+      ["builtin.browser_navigate",     (a) => this.navigate(a)],
+      ["builtin.browser_click",        (a) => this.click(a)],
+      ["builtin.browser_type",         (a) => this.type(a)],
+      ["builtin.browser_fill_form",    (a) => this.fillForm(a)],
+      ["builtin.browser_select",       (a) => this.select(a)],
+      ["builtin.browser_get_content",  (a) => this.getContent(a)],
+      ["builtin.browser_get_elements", (a) => this.getElements(a)],
+      ["builtin.browser_screenshot",   (a) => this.screenshot(a)],
+      ["builtin.browser_scroll",       (a) => this.scroll(a)],
+      ["builtin.browser_back",         (a) => this.back(a)],
+      ["builtin.browser_wait",         (a) => this.wait(a)],
+      ["builtin.browser_upload",       (a) => this.upload(a)],
+      ["builtin.browser_evaluate",     (a) => this.evaluate(a)],
+      ["builtin.browser_close",        (a) => this.close(a)],
+      ["builtin.browser_tabs",         (a) => this.tabs(a)],
+    ]);
+  }
+
   static async executeBuiltin(name: string, args: Record<string, unknown>): Promise<unknown> {
     const session = BrowserTools.getSession();
     return session.withLock(() => BrowserExecution.executeBrowserToolInner(session, name, args));
   }
 
   async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
-    return BrowserTools.executeBuiltin(toolName, args);
+    const handler = this.cmdMap.get(toolName);
+    if (!handler) throw new Error(`Unknown built-in browser tool: "${toolName}"`);
+    return handler(args);
   }
+
+  private withSession(name: string, args: Record<string, unknown>): Promise<unknown> {
+    const session = BrowserTools.getSession();
+    return session.withLock(() => BrowserExecution.executeBrowserToolInner(session, name, args));
+  }
+
+  private navigate(args: Record<string, unknown>): Promise<unknown>    { return this.withSession("builtin.browser_navigate", args); }
+  private click(args: Record<string, unknown>): Promise<unknown>       { return this.withSession("builtin.browser_click", args); }
+  private type(args: Record<string, unknown>): Promise<unknown>        { return this.withSession("builtin.browser_type", args); }
+  private fillForm(args: Record<string, unknown>): Promise<unknown>    { return this.withSession("builtin.browser_fill_form", args); }
+  private select(args: Record<string, unknown>): Promise<unknown>      { return this.withSession("builtin.browser_select", args); }
+  private getContent(args: Record<string, unknown>): Promise<unknown>  { return this.withSession("builtin.browser_get_content", args); }
+  private getElements(args: Record<string, unknown>): Promise<unknown> { return this.withSession("builtin.browser_get_elements", args); }
+  private screenshot(args: Record<string, unknown>): Promise<unknown>  { return this.withSession("builtin.browser_screenshot", args); }
+  private scroll(args: Record<string, unknown>): Promise<unknown>      { return this.withSession("builtin.browser_scroll", args); }
+  private back(args: Record<string, unknown>): Promise<unknown>        { return this.withSession("builtin.browser_back", args); }
+  private wait(args: Record<string, unknown>): Promise<unknown>        { return this.withSession("builtin.browser_wait", args); }
+  private upload(args: Record<string, unknown>): Promise<unknown>      { return this.withSession("builtin.browser_upload", args); }
+  private evaluate(args: Record<string, unknown>): Promise<unknown>    { return this.withSession("builtin.browser_evaluate", args); }
+  private close(args: Record<string, unknown>): Promise<unknown>       { return this.withSession("builtin.browser_close", args); }
+  private tabs(args: Record<string, unknown>): Promise<unknown>        { return this.withSession("builtin.browser_tabs", args); }
 }
 
 export const isBrowserTool = BrowserTools.isTool.bind(BrowserTools);

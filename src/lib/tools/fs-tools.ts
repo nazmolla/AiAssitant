@@ -929,6 +929,24 @@ export class FsTools extends BaseTool {
   readonly tools = BUILTIN_FS_TOOLS;
   readonly toolsRequiringApproval = [...FS_TOOLS_REQUIRING_APPROVAL];
 
+  private readonly cmdMap: ReadonlyMap<string, (a: Record<string, unknown>) => Promise<unknown>>;
+
+  constructor() {
+    super();
+    this.cmdMap = new Map<string, (a: Record<string, unknown>) => Promise<unknown>>([
+      [FS_TOOL_NAMES.READ_FILE,      (a) => this.readFile(a)],
+      [FS_TOOL_NAMES.EXTRACT_TEXT,   (a) => this.extractText(a)],
+      [FS_TOOL_NAMES.READ_DIR,       (a) => this.readDirectory(a)],
+      [FS_TOOL_NAMES.FILE_INFO,      (a) => this.fileInfo(a)],
+      [FS_TOOL_NAMES.SEARCH_FILES,   (a) => this.searchFiles(a)],
+      [FS_TOOL_NAMES.CREATE_FILE,    (a) => this.createFile(a)],
+      [FS_TOOL_NAMES.UPDATE_FILE,    (a) => this.updateFile(a)],
+      [FS_TOOL_NAMES.DELETE_FILE,    (a) => this.deleteFile(a)],
+      [FS_TOOL_NAMES.DELETE_DIR,     (a) => this.deleteDirectory(a)],
+      [FS_TOOL_NAMES.EXECUTE_SCRIPT, (a) => this.executeScript(a)],
+    ]);
+  }
+
   static isTool(name: string): boolean {
     return FsExecution.isTool(name);
   }
@@ -938,8 +956,21 @@ export class FsTools extends BaseTool {
   }
 
   async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
-    return FsTools.executeBuiltin(toolName, args);
+    const handler = this.cmdMap.get(toolName);
+    if (!handler) throw new Error(`Unknown built-in fs tool: "${toolName}"`);
+    return handler(args);
   }
+
+  private readFile(args: Record<string, unknown>): Promise<unknown>      { return FsExecution.fsReadFile(args); }
+  private extractText(args: Record<string, unknown>): Promise<unknown>   { return FsExecution.fsExtractText(args); }
+  private readDirectory(args: Record<string, unknown>): Promise<unknown> { return FsExecution.fsReadDirectory(args); }
+  private fileInfo(args: Record<string, unknown>): Promise<unknown>      { return FsExecution.fsFileInfo(args); }
+  private searchFiles(args: Record<string, unknown>): Promise<unknown>   { return FsExecution.fsSearchFiles(args); }
+  private createFile(args: Record<string, unknown>): Promise<unknown>    { return FsExecution.fsCreateFile(args); }
+  private updateFile(args: Record<string, unknown>): Promise<unknown>    { return FsExecution.fsUpdateFile(args); }
+  private deleteFile(args: Record<string, unknown>): Promise<unknown>    { return FsExecution.fsDeleteFile(args); }
+  private deleteDirectory(args: Record<string, unknown>): Promise<unknown> { return FsExecution.fsDeleteDirectory(args); }
+  private executeScript(args: Record<string, unknown>): Promise<unknown> { return FsExecution.fsExecuteScript(args); }
 }
 
 export const fsTools = new FsTools();

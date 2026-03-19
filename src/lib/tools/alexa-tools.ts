@@ -953,9 +953,48 @@ export class AlexaTools extends BaseTool {
   readonly tools = BUILTIN_ALEXA_TOOLS;
   readonly toolsRequiringApproval = [...ALEXA_TOOLS_REQUIRING_APPROVAL];
 
-  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
-    return executeAlexaTool(toolName, args);
+  private readonly cmdMap: ReadonlyMap<string, (a: Record<string, unknown>) => Promise<unknown>>;
+
+  constructor() {
+    super();
+    this.cmdMap = new Map<string, (a: Record<string, unknown>) => Promise<unknown>>([
+      ["builtin.alexa_announce",               (a) => this.announce(a)],
+      ["builtin.alexa_get_bedroom_state",       (a) => this.getBedroomState(a)],
+      ["builtin.alexa_list_lights",             (a) => this.listLights(a)],
+      ["builtin.alexa_set_light_power",         (a) => this.setLightPower(a)],
+      ["builtin.alexa_set_light_brightness",    (a) => this.setLightBrightness(a)],
+      ["builtin.alexa_set_light_color",         (a) => this.setLightColor(a)],
+      ["builtin.alexa_get_music_status",        (a) => this.getMusicStatus(a)],
+      ["builtin.alexa_get_device_volumes",      (a) => this.getDeviceVolumes(a)],
+      ["builtin.alexa_set_device_volume",       (a) => this.setDeviceVolume(a)],
+      ["builtin.alexa_adjust_device_volume",    (a) => this.adjustDeviceVolume(a)],
+      ["builtin.alexa_get_all_sensor_data",     (a) => this.getAllSensorData(a)],
+      ["builtin.alexa_list_smarthome_devices",  (a) => this.listSmarthomeDevices(a)],
+      ["builtin.alexa_get_dnd_status",          (a) => this.getDndStatus(a)],
+      ["builtin.alexa_set_dnd_status",          (a) => this.setDndStatus(a)],
+    ]);
   }
+
+  async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
+    const handler = this.cmdMap.get(toolName);
+    if (!handler) throw new Error(`Unknown Alexa tool: "${toolName}"`);
+    return handler(args);
+  }
+
+  private announce(args: Record<string, unknown>): Promise<unknown>              { return executeAlexaTool("builtin.alexa_announce", args); }
+  private getBedroomState(args: Record<string, unknown>): Promise<unknown>       { return executeAlexaTool("builtin.alexa_get_bedroom_state", args); }
+  private listLights(args: Record<string, unknown>): Promise<unknown>            { return executeAlexaTool("builtin.alexa_list_lights", args); }
+  private setLightPower(args: Record<string, unknown>): Promise<unknown>         { return executeAlexaTool("builtin.alexa_set_light_power", args); }
+  private setLightBrightness(args: Record<string, unknown>): Promise<unknown>    { return executeAlexaTool("builtin.alexa_set_light_brightness", args); }
+  private setLightColor(args: Record<string, unknown>): Promise<unknown>         { return executeAlexaTool("builtin.alexa_set_light_color", args); }
+  private getMusicStatus(args: Record<string, unknown>): Promise<unknown>        { return executeAlexaTool("builtin.alexa_get_music_status", args); }
+  private getDeviceVolumes(args: Record<string, unknown>): Promise<unknown>      { return executeAlexaTool("builtin.alexa_get_device_volumes", args); }
+  private setDeviceVolume(args: Record<string, unknown>): Promise<unknown>       { return executeAlexaTool("builtin.alexa_set_device_volume", args); }
+  private adjustDeviceVolume(args: Record<string, unknown>): Promise<unknown>    { return executeAlexaTool("builtin.alexa_adjust_device_volume", args); }
+  private getAllSensorData(args: Record<string, unknown>): Promise<unknown>      { return executeAlexaTool("builtin.alexa_get_all_sensor_data", args); }
+  private listSmarthomeDevices(args: Record<string, unknown>): Promise<unknown>  { return executeAlexaTool("builtin.alexa_list_smarthome_devices", args); }
+  private getDndStatus(args: Record<string, unknown>): Promise<unknown>          { return executeAlexaTool("builtin.alexa_get_dnd_status", args); }
+  private setDndStatus(args: Record<string, unknown>): Promise<unknown>          { return executeAlexaTool("builtin.alexa_set_dnd_status", args); }
 }
 
 export const alexaTools = new AlexaTools();
