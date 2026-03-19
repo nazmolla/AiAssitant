@@ -24,7 +24,7 @@ export interface AgentLogInput {
   level: string;
   source: string | null;
   message: string;
-  metadata: string | null;
+  metadata?: string | null;
   /** Optional user to receive the in-app notification. Falls back to admin. */
   userId?: string;
 }
@@ -111,7 +111,7 @@ export function addLog(log: AgentLogInput): void {
   stmt(
     `INSERT INTO agent_logs (level, source, message, metadata, notify, notify_read, notify_type, notify_user_id, notify_body)
      VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
-  ).run(normalizedLevel, normalizedSource, log.message, log.metadata, notify, notifyType, notifyUserId, notifyBody);
+  ).run(normalizedLevel, normalizedSource, log.message, log.metadata ?? null, notify, notifyType, notifyUserId, notifyBody);
 }
 
 export function getRecentLogs(limit = 100, level?: UnifiedLogLevel | "all", source?: string | "all", metadataContains?: string[]): AgentLog[] {
