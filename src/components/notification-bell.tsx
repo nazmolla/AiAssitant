@@ -223,6 +223,7 @@ function typeIcon(type: string) {
     case "proactive_action": return <BuildIcon fontSize="small" color="info" />;
     case "channel_error": return <WarningIcon fontSize="small" color="warning" />;
     case "system_error": return <ErrorIcon fontSize="small" color="error" />;
+    case "warning": return <WarningIcon fontSize="small" color="warning" />;
     default: return <InfoIcon fontSize="small" color="info" />;
   }
 }
@@ -232,7 +233,8 @@ function typeColor(type: string): "error" | "warning" | "info" | "success" | "de
     case "tool_error":
     case "system_error": return "error";
     case "approval_required":
-    case "channel_error": return "warning";
+    case "channel_error":
+    case "warning": return "warning";
     case "proactive_action": return "info";
     default: return "default";
   }
@@ -261,11 +263,35 @@ export function NotificationBell() {
 
   useEffect(() => {
     fetchNotifications();
+
+    // SSE stream: receive new notifications in real-time
+    let es: EventSource | null = null;
+    let sseActive = false;
+    try {
+      es = new EventSource("/api/notifications/stream");
+      sseActive = true;
+      es.addEventListener("notification", () => {
+        // A new notification arrived — refresh the full list to get accurate unread counts
+        fetchNotifications();
+      });
+      es.onerror = () => {
+        sseActive = false;
+        es?.close();
+      };
+    } catch {
+      sseActive = false;
+    }
+
+    // Fallback poll — every 10 s when SSE is alive, every 5 s when it's not
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      fetchNotifications();
-    }, 30000);
-    return () => clearInterval(interval);
+      if (!sseActive) fetchNotifications();
+    }, sseActive ? 10000 : 5000);
+
+    return () => {
+      clearInterval(interval);
+      es?.close();
+    };
   }, [fetchNotifications]);
 
   const open = Boolean(anchorEl);

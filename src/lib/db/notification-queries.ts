@@ -10,6 +10,7 @@ export type NotificationType =
   | "proactive_action"
   | "channel_error"
   | "system_error"
+  | "warning"
   | "info";
 
 export interface NotificationRecord {

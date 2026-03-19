@@ -15,6 +15,7 @@ import {
   runDbMaintenance,
   setDbMaintenanceConfig,
   setServerMinLogLevel,
+  listNotifications,
 } from "@/lib/db/queries";
 
 beforeAll(() => setupTestDb());
@@ -253,5 +254,77 @@ describe("Agent Logs", () => {
 
     prefs = listApprovalPreferences(userId);
     expect(prefs.length).toBe(0);
+  });
+});
+
+// ── Notification wiring ───────────────────────────────────────────────────────
+
+describe("addLog → notification bell wiring", () => {
+  let adminId: string;
+
+  beforeAll(() => {
+    adminId = seedTestUser({ role: "admin" });
+  });
+
+  test("info level creates an in-app notification of type 'info'", () => {
+    const before = listNotifications(adminId).length;
+    addLog({ level: "info", source: "scheduler", message: "Proactive scan started", metadata: null, userId: adminId });
+    const after = listNotifications(adminId);
+    expect(after.length).toBe(before + 1);
+    const notif = after.find((n) => n.title === "Proactive scan started");
+    expect(notif).toBeDefined();
+    expect(notif!.type).toBe("info");
+  });
+
+  test("warning level creates a notification of type 'warning'", () => {
+    const before = listNotifications(adminId).length;
+    addLog({ level: "warning", source: "scheduler", message: "Disk space low", metadata: null, userId: adminId });
+    const after = listNotifications(adminId);
+    expect(after.length).toBe(before + 1);
+    const notif = after.find((n) => n.title === "Disk space low");
+    expect(notif!.type).toBe("warning");
+  });
+
+  test("error level creates a notification of type 'system_error'", () => {
+    const before = listNotifications(adminId).length;
+    addLog({ level: "error", source: "agent", message: "Tool execution failed", metadata: null, userId: adminId });
+    const after = listNotifications(adminId);
+    expect(after.length).toBe(before + 1);
+    expect(after.find((n) => n.title === "Tool execution failed")!.type).toBe("system_error");
+  });
+
+  test("critical level creates a notification of type 'system_error'", () => {
+    const before = listNotifications(adminId).length;
+    addLog({ level: "critical", source: "system", message: "Service crashed", metadata: null, userId: adminId });
+    const after = listNotifications(adminId);
+    expect(after.length).toBe(before + 1);
+    expect(after.find((n) => n.title === "Service crashed")!.type).toBe("system_error");
+  });
+
+  test("verbose level does NOT create a notification", () => {
+    const before = listNotifications(adminId).length;
+    addLog({ level: "verbose", source: "agent", message: "Step result verbose", metadata: null, userId: adminId });
+    expect(listNotifications(adminId).length).toBe(before);
+  });
+
+  test("thought level does NOT create a notification", () => {
+    const before = listNotifications(adminId).length;
+    addLog({ level: "thought", source: null, message: "Agent reasoning trace", metadata: null, userId: adminId });
+    expect(listNotifications(adminId).length).toBe(before);
+  });
+
+  test("debug level does NOT create a notification", () => {
+    const before = listNotifications(adminId).length;
+    addLog({ level: "debug", source: "tools", message: "Debug dump", metadata: null, userId: adminId });
+    expect(listNotifications(adminId).length).toBe(before);
+  });
+
+  test("long messages are truncated in the notification title", () => {
+    const longMsg = "A".repeat(120);
+    addLog({ level: "warning", source: "system", message: longMsg, metadata: null, userId: adminId });
+    const notif = listNotifications(adminId).find((n) => n.title.startsWith("AAA"));
+    expect(notif).toBeDefined();
+    expect(notif!.title.length).toBeLessThanOrEqual(100);
+    expect(notif!.body).toBeDefined();
   });
 });

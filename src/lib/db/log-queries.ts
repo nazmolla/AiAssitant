@@ -3,6 +3,8 @@ import { normalizeLogLevel, shouldKeepLog, type UnifiedLogLevel, isUnifiedLogLev
 import { appCache, CACHE_KEYS } from "@/lib/cache";
 import type { ILogger } from "@/lib/container";
 import { container } from "@/lib/container";
+import { createNotification, type NotificationType } from "./notification-queries";
+import { listUsers } from "./user-queries";
 
 /** Thin wrapper that passes the (patchable) `getDb` import to the cache */
 function stmt(sql: string) { return _cachedStmt(sql, getDb); }
@@ -23,6 +25,28 @@ export interface AgentLogInput {
   source: string | null;
   message: string;
   metadata: string | null;
+  /** Optional user to receive the in-app notification. Falls back to admin. */
+  userId?: string;
+}
+
+/** Raw log levels that warrant an in-app notification (excludes noisy internal levels). */
+const NOTIFICATION_RAW_LEVELS = new Set(["info", "warning", "warn", "error", "err", "critical", "fatal", "panic"]);
+
+function rawLevelToNotificationType(rawLevel: string): NotificationType {
+  if (rawLevel === "warning" || rawLevel === "warn") return "warning";
+  if (rawLevel === "error" || rawLevel === "err") return "system_error";
+  if (rawLevel === "critical" || rawLevel === "fatal" || rawLevel === "panic") return "system_error";
+  return "info";
+}
+
+let _cachedAdminId: string | undefined;
+function getAdminUserId(): string {
+  if (_cachedAdminId) return _cachedAdminId;
+  try {
+    const admin = listUsers().find((u) => u.role === "admin" && u.enabled === 1);
+    if (admin) { _cachedAdminId = admin.id; return admin.id; }
+  } catch { /* DB not ready yet */ }
+  return "";
 }
 
 export function getAppConfig(key: string): string | undefined {
@@ -71,6 +95,25 @@ export function addLog(log: AgentLogInput): void {
   stmt(
     `INSERT INTO agent_logs (level, source, message, metadata) VALUES (?, ?, ?, ?)`
   ).run(normalizedLevel, normalizedSource, log.message, log.metadata);
+
+  // Hardwire notification-worthy log levels to the in-app notification bell.
+  // Excludes noisy internal levels (verbose, debug, trace, thought).
+  if (NOTIFICATION_RAW_LEVELS.has(rawLevel)) {
+    try {
+      const notifUserId = log.userId || getAdminUserId();
+      if (notifUserId) {
+        const title = log.message.length > 100 ? log.message.slice(0, 97) + "…" : log.message;
+        const body = log.message.length > 100 ? log.message : null;
+        createNotification({
+          userId: notifUserId,
+          type: rawLevelToNotificationType(rawLevel),
+          title,
+          body,
+          metadata: log.metadata,
+        });
+      }
+    } catch { /* never let notification failure break logging */ }
+  }
 }
 
 export function getRecentLogs(limit = 100, level?: UnifiedLogLevel | "all", source?: string | "all", metadataContains?: string[]): AgentLog[] {
