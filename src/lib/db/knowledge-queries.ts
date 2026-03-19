@@ -174,7 +174,7 @@ export function upsertKnowledgeEmbedding(knowledgeId: number, embedding: number[
          is_archived = 0,
          updated_at = CURRENT_TIMESTAMP`
     )
-    .run(knowledgeId, null, encoded.binary, encoded.encoding, encoded.compression);
+    .run(knowledgeId, JSON.stringify(embedding), encoded.binary, encoded.encoding, encoded.compression);
 }
 
 /** List embeddings scoped to a user (via JOIN on user_knowledge) */
