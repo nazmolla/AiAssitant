@@ -34,7 +34,7 @@ REMOTE_DIR="~/AiAssistant"
 TAR_NAME="deploy.tar.gz"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 STAGING_DIR="/tmp/nexus-release-${TIMESTAMP}"
-PREVIEW_PORT=3001
+PREVIEW_PORT=3002
 PREVIEW_PID_FILE="/tmp/nexus-preview-${TIMESTAMP}.pid"
 MAX_BACKUPS=5          # keep last N DB backups on server
 HEALTH_WAIT=10         # seconds to wait after start before health check
@@ -42,8 +42,8 @@ STEPS=11
 ALLOW_SMOKE_FAIL="${DEPLOY_ALLOW_SMOKE_FAIL:-0}"   # set to 1 only for emergency/non-blocking smoke checks
 
 # ── Helpers ────────────────────────────────────────────────────────
-rcmd()  { ssh -o LogLevel=ERROR "${REMOTE}" "$@" 2>/dev/null; }
-rcmd_long() { ssh -o LogLevel=ERROR -o ServerAliveInterval=15 -o ServerAliveCountMax=10 "${REMOTE}" "$@" 2>/dev/null; }
+rcmd()  { ssh -o LogLevel=ERROR -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "${REMOTE}" "$@" 2>/dev/null; }
+rcmd_long() { ssh -o LogLevel=ERROR -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=10 "${REMOTE}" "$@" 2>/dev/null; }
 rcmd_diag() { ssh -o LogLevel=ERROR "${REMOTE}" "$@"; }
 fail()  { echo ""; echo "  ✗ FAILED: $1"; exit 1; }
 step()  { echo ""; echo "[${1}/${STEPS}] ${2}"; }
@@ -263,7 +263,7 @@ echo "  ✓ Build complete, dev deps pruned"
 # ── 8. Remote: staging heartbeat check ───────────────────────────
 step 8 "Starting staging preview and heartbeat check..."
 rcmd "test -f ${PREVIEW_PID_FILE} && kill \$(cat ${PREVIEW_PID_FILE}) 2>/dev/null || true; rm -f ${PREVIEW_PID_FILE}"
-rcmd "cd ${STAGING_DIR} && nohup env PORT=${PREVIEW_PORT} npm run start >/tmp/nexus-preview-${TIMESTAMP}.log 2>&1 & echo \$! > ${PREVIEW_PID_FILE}" \
+rcmd "cd ${STAGING_DIR} && nohup env PORT=${PREVIEW_PORT} npm run start </dev/null >/tmp/nexus-preview-${TIMESTAMP}.log 2>&1 & echo \$! > ${PREVIEW_PID_FILE}" \
   || fail "Failed to start staging preview instance"
 
 echo "  Waiting ${HEALTH_WAIT}s for staging preview startup..."
