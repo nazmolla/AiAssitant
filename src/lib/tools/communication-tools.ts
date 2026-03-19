@@ -1,6 +1,7 @@
 import type { ToolDefinition } from "@/lib/llm";
 import { listChannels, listChannelUserMappings } from "@/lib/db/channel-queries";
 import { getThreadMessages, type Thread } from "@/lib/db/thread-queries";
+import { createNotification } from "@/lib/db/notification-queries";
 import { getDb } from "@/lib/db/connection";
 import {
   type CommunicationChannelFactory,
@@ -19,7 +20,7 @@ export const BUILTIN_COMMUNICATION_TOOLS: ToolDefinition[] = [
   {
     name: COMMUNICATION_TOOL_NAMES.SEND,
     description:
-      "Send a message through an enabled communication channel (email, phone, discord, whatsapp, slack, teams).",
+      "Send a message through an external communication channel (email, phone, discord, whatsapp, slack, teams). Use this when you need to deliver content externally — e.g. emailing a report, sending a file attachment, or contacting someone outside the app. For internal in-app notifications use builtin.channel_notify instead.",
     inputSchema: {
       type: "object",
       properties: {
@@ -58,40 +59,24 @@ export const BUILTIN_COMMUNICATION_TOOLS: ToolDefinition[] = [
   {
     name: COMMUNICATION_TOOL_NAMES.NOTIFY,
     description:
-      "Send a notification through an enabled communication channel (email, phone, discord, whatsapp, slack, teams). Alias of channel_send with optional subject.",
+      "Post an in-app notification visible in the Nexus notification bell. Use this for informational updates, findings, alerts, and status messages that don't require sending an external message. For email/discord/etc. use builtin.channel_send instead.",
     inputSchema: {
       type: "object",
       properties: {
-        channelType: {
+        title: {
           type: "string",
-          description: "Optional channel type: email | phone | discord | whatsapp | slack | teams | telegram.",
-        },
-        channelLabel: {
-          type: "string",
-          description: "Optional exact channel label when multiple channels of the same type exist.",
-        },
-        externalRecipientId: {
-          type: "string",
-          description: "External recipient identifier for non-email channels (e.g., phone number or platform user id).",
-        },
-        emailRecipient: {
-          type: "string",
-          description: "Email recipient address when sending through an email channel.",
-        },
-        to: {
-          type: "string",
-          description: "Compatibility alias for recipient (email address or external recipient id).",
-        },
-        subject: {
-          type: "string",
-          description: "Optional notification subject. Defaults to 'Nexus Notification'.",
+          description: "Short notification title (shown as the heading in the notification bell).",
         },
         message: {
           type: "string",
-          description: "Notification body/content.",
+          description: "Notification body/detail text.",
+        },
+        type: {
+          type: "string",
+          description: "Notification type: info (default) | proactive_action | tool_error | system_error | channel_error.",
         },
       },
-      required: ["message"],
+      required: ["title", "message"],
     },
   },
   {
@@ -205,17 +190,32 @@ export class CommunicationTools extends BaseTool {
       return this.executeSend(args, context.userId);
     }
     if (toolName === COMMUNICATION_TOOL_NAMES.NOTIFY) {
-      const subject = getStringArg(args, "subject") || "Nexus Notification";
-      const message = getStringArg(args, "message");
-      if (!message) {
-        throw new Error("Missing required args: message.");
-      }
-      return this.executeSend({ ...args, subject, message }, context.userId);
+      return this.executeNotify(args, context.userId);
     }
     if (toolName === COMMUNICATION_TOOL_NAMES.RECEIVE) {
       return this.executeReceive(args, context.userId);
     }
     throw new Error(`Unknown communication tool: ${toolName}`);
+  }
+
+  private executeNotify(args: Record<string, unknown>, userId?: string): unknown {
+    const title = getStringArg(args, "title");
+    const message = getStringArg(args, "message");
+    if (!title || !message) {
+      throw new Error("Missing required args: title, message.");
+    }
+    const rawType = getStringArg(args, "type");
+    const allowedTypes = ["info", "proactive_action", "tool_error", "system_error", "channel_error"] as const;
+    type NotifType = typeof allowedTypes[number];
+    const type: NotifType = (allowedTypes as readonly string[]).includes(rawType) ? rawType as NotifType : "info";
+
+    const notification = createNotification({ userId: userId ?? "", type, title, body: message });
+    return {
+      status: "notified",
+      notificationId: notification.id,
+      type,
+      title,
+    };
   }
 
   private async executeSend(args: Record<string, unknown>, userId?: string): Promise<unknown> {
