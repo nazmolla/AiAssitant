@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import dynamic from "next/dynamic";
@@ -84,6 +84,8 @@ export default function HomePage() {
   const [isUserMetaLoading, setIsUserMetaLoading] = useState(true);
   const pathname = usePathname();
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
+  // Ref for opening the chat thread drawer from the app-level burger button
+  const openChatThreadsRef = useRef<(() => void) | null>(null);
 
   /* Derive initial tab + settings sub-page from the current URL */
   const pathSegments = pathname.split("/").filter(Boolean);
@@ -223,10 +225,27 @@ export default function HomePage() {
       <AppBar position="static" color="default">
         <Toolbar variant="dense" sx={{ gap: 1, justifyContent: "space-between" }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <IconButton size="small" onClick={() => setNavDrawerOpen(true)} sx={{ color: "text.secondary" }}>
+            <IconButton
+              size="small"
+              onClick={() => {
+                if (activeTab === "chat" && openChatThreadsRef.current) {
+                  openChatThreadsRef.current();
+                } else {
+                  setNavDrawerOpen(true);
+                }
+              }}
+              sx={{ color: "text.secondary" }}
+              title="Menu"
+            >
               <MenuIcon fontSize="small" />
             </IconButton>
-            <Typography variant="h6" color="primary" fontWeight={700} sx={{ letterSpacing: "-0.5px" }}>
+            <Typography
+              variant="h6"
+              color="primary"
+              fontWeight={700}
+              sx={{ letterSpacing: "-0.5px", cursor: "pointer", "&:hover": { opacity: 0.8 } }}
+              onClick={() => navigateTo("chat")}
+            >
               Nexus
             </Typography>
             {activeTabItem && (
@@ -325,7 +344,12 @@ export default function HomePage() {
       <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {/* ChatPanel kept mounted — hidden via CSS to preserve state & SSE connections */}
         <Box sx={{ display: activeTab === "chat" ? "flex" : "none", flex: 1, overflow: "hidden", flexDirection: "column" }}>
-          <ChatPanel />
+          <ChatPanel
+            openThreadDrawerRef={openChatThreadsRef}
+            navItems={tabItems}
+            activeNavTab={activeTab}
+            onNavigate={(tab) => { navigateTo(tab); }}
+          />
         </Box>
         {activeTab === "conversation" && <ConversationMode />}
         {activeTab === "dashboard" && (

@@ -135,7 +135,6 @@ function baseProps(overrides: Partial<ChatAreaProps> = {}): ChatAreaProps {
     activeThread: "thread-1",
     activeThreadTitle: "My Thread",
     showSidebar: false,
-    onToggleSidebar: jest.fn(),
     userName: "Test",
     playingTtsId: null,
     onPlayTts: jest.fn(),
@@ -173,11 +172,9 @@ describe("ChatArea — welcome state (no active thread)", () => {
     expect(screen.getByText(/where should we start/i)).toBeInTheDocument();
   });
 
-  test("burger menu button calls onToggleSidebar when clicked", () => {
-    const props = renderArea({ activeThread: null });
-    const menuBtn = screen.getByTitle("Conversations");
-    fireEvent.click(menuBtn);
-    expect(props.onToggleSidebar).toHaveBeenCalledTimes(1);
+  test("welcome screen renders without throwing", () => {
+    // The burger is now in the app-level AppBar, not inside ChatArea
+    expect(() => renderArea({ activeThread: null })).not.toThrow();
   });
 });
 

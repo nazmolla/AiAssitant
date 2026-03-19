@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Box from "@mui/material/Box";
 import { useSession } from "next-auth/react";
 import type { Thread } from "./chat-panel-types";
@@ -13,7 +13,16 @@ import { useAudioControls } from "@/hooks/use-audio-controls";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { useChatStream } from "@/hooks/use-chat-stream";
 
-export function ChatPanel() {
+export interface ChatPanelProps {
+  /** Called with (() => void) so the app-level burger can open the thread drawer */
+  openThreadDrawerRef?: { current: (() => void) | null };
+  /** App navigation items to show at the bottom of the thread drawer */
+  navItems?: { value: string; label: string; icon: React.ReactElement }[];
+  activeNavTab?: string;
+  onNavigate?: (tab: string) => void;
+}
+
+export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavigate }: ChatPanelProps = {}) {
   const { data: session } = useSession();
   const userName = (session?.user as { name?: string } | undefined)?.name ?? undefined;
 
@@ -25,6 +34,16 @@ export function ChatPanel() {
   const [actingApproval, setActingApproval] = useState<string | null>(null);
   const [resolvedApprovals, setResolvedApprovals] = useState<Record<string, string>>({});
   const [showSidebar, setShowSidebar] = useState(false);
+
+  // Wire up the external ref so the app-level burger can open this drawer
+  useEffect(() => {
+    if (openThreadDrawerRef) {
+      openThreadDrawerRef.current = () => setShowSidebar(true);
+    }
+    return () => {
+      if (openThreadDrawerRef) openThreadDrawerRef.current = null;
+    };
+  }, [openThreadDrawerRef]);
 
   // ── Debounced thread fetch ────────────────────────────────────────────────────
   const threadFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -280,7 +299,6 @@ export function ChatPanel() {
       .catch(console.error);
   }, [threads.length]);
 
-  const toggleSidebar = useCallback(() => setShowSidebar((v) => !v), []);
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -300,6 +318,9 @@ export function ChatPanel() {
         onDeleteThread={handleDeleteThread}
         onLoadMore={handleLoadMore}
         onClose={() => setShowSidebar(false)}
+        navItems={navItems}
+        activeNavTab={activeNavTab}
+        onNavigate={onNavigate}
       />
 
       {/* Main area */}
@@ -313,7 +334,6 @@ export function ChatPanel() {
             activeThread={activeThread}
             activeThreadTitle={activeThreadTitle}
             showSidebar={showSidebar}
-            onToggleSidebar={toggleSidebar}
             userName={userName}
             playingTtsId={audioControls.playingTtsId}
             onPlayTts={audioControls.playTts}

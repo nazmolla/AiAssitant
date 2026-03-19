@@ -5,6 +5,8 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import List from "@mui/material/List";
@@ -26,6 +28,10 @@ export interface ThreadSidebarProps {
   onDeleteThread: (id: string) => void;
   onLoadMore: () => void;
   onClose: () => void;
+  /** App-level navigation items shown at the bottom of the drawer */
+  navItems?: { value: string; label: string; icon: React.ReactElement }[];
+  activeNavTab?: string;
+  onNavigate?: (tab: string) => void;
 }
 
 export const ThreadSidebar = memo(function ThreadSidebar({
@@ -39,6 +45,9 @@ export const ThreadSidebar = memo(function ThreadSidebar({
   onDeleteThread,
   onLoadMore,
   onClose,
+  navItems,
+  activeNavTab,
+  onNavigate,
 }: ThreadSidebarProps) {
   return (
     <Drawer
@@ -152,6 +161,43 @@ export const ThreadSidebar = memo(function ThreadSidebar({
           </Box>
         )}
       </Box>
+
+      {/* App navigation section at the bottom */}
+      {navItems && navItems.length > 0 && onNavigate && (
+        <>
+          <Divider />
+          <Box sx={{ px: 0.5, py: 0.5 }}>
+            <List dense disablePadding>
+              {navItems.map((item) => (
+                <ListItemButton
+                  key={item.value}
+                  selected={activeNavTab === item.value}
+                  onClick={() => { onNavigate(item.value); onClose(); }}
+                  sx={{
+                    borderRadius: 1.5,
+                    minHeight: 36,
+                    py: 0.5,
+                    px: 1.5,
+                    mb: 0.25,
+                    "&.Mui-selected": {
+                      bgcolor: "primary.main",
+                      color: "primary.contrastText",
+                      "& .MuiListItemIcon-root": { color: "inherit" },
+                      "&:hover": { bgcolor: "primary.dark" },
+                    },
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: 28, color: "text.secondary" }}>{item.icon}</ListItemIcon>
+                  <ListItemText
+                    primary={item.label}
+                    primaryTypographyProps={{ fontSize: "0.8rem", fontWeight: 500 }}
+                  />
+                </ListItemButton>
+              ))}
+            </List>
+          </Box>
+        </>
+      )}
     </Drawer>
   );
 });

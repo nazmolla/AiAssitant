@@ -9,7 +9,6 @@ import Paper from "@mui/material/Paper";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Collapse from "@mui/material/Collapse";
-import MenuIcon from "@mui/icons-material/Menu";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -34,7 +33,6 @@ export interface ChatAreaProps {
   activeThread: string | null;
   activeThreadTitle: string | undefined;
   showSidebar: boolean;
-  onToggleSidebar: () => void;
   userName?: string;
   playingTtsId: number | null;
   onPlayTts: (id: number, text: string) => void;
@@ -51,7 +49,6 @@ export const ChatArea = memo(function ChatArea({
   activeThread,
   activeThreadTitle,
   showSidebar,
-  onToggleSidebar,
   userName,
   playingTtsId,
   onPlayTts,
@@ -184,46 +181,27 @@ export const ChatArea = memo(function ChatArea({
   if (!activeThread) {
     const greeting = userName ? `Hi ${userName}` : "Hi there";
     return (
-      <Box sx={{ flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
-        {/* Hamburger menu button */}
-        <Box sx={{ position: "absolute", top: 12, left: 12, zIndex: 1 }}>
-          <IconButton onClick={onToggleSidebar} size="medium" sx={{ color: "text.secondary" }} title="Conversations">
-            <MenuIcon />
-          </IconButton>
-        </Box>
-
-        {/* Centered welcome content */}
-        <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pb: 4, px: 2 }}>
-          <AutoFixHighIcon sx={{ fontSize: 56, color: "primary.main", mb: 2, opacity: 0.85 }} />
-          <Typography
-            variant="h4"
-            sx={{ fontWeight: 700, mb: 1, textAlign: "center", letterSpacing: "-0.5px" }}
-          >
-            {greeting}
-          </Typography>
-          <Typography
-            variant="h6"
-            color="text.secondary"
-            sx={{ fontWeight: 400, textAlign: "center", mb: 0 }}
-          >
-            Where should we start?
-          </Typography>
-        </Box>
+      <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pb: 4, px: 2 }}>
+        <AutoFixHighIcon sx={{ fontSize: 56, color: "primary.main", mb: 2, opacity: 0.85 }} />
+        <Typography
+          variant="h4"
+          sx={{ fontWeight: 700, mb: 1, textAlign: "center", letterSpacing: "-0.5px" }}
+        >
+          {greeting}
+        </Typography>
+        <Typography
+          variant="h6"
+          color="text.secondary"
+          sx={{ fontWeight: 400, textAlign: "center", mb: 0 }}
+        >
+          Where should we start?
+        </Typography>
       </Box>
     );
   }
 
   return (
     <>
-      {/* Thread header bar */}
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1, py: 0.75, borderBottom: 1, borderColor: "divider", minHeight: 44 }}>
-        <IconButton onClick={onToggleSidebar} size="small" sx={{ color: "text.secondary" }} title="Conversations">
-          <MenuIcon fontSize="small" />
-        </IconButton>
-        {activeThreadTitle && (
-          <Typography variant="caption" color="text.secondary" noWrap sx={{ fontWeight: 500 }}>{activeThreadTitle}</Typography>
-        )}
-      </Box>
       <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: "auto", p: 2 }}>
         {(() => {
           const rowItems = useReliableRowLayout

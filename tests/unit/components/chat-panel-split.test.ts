@@ -118,7 +118,7 @@ describe("ChatArea component", () => {
     expect(chatAreaSrc).toContain("export interface ChatAreaProps");
     const requiredProps = [
       "processedMessages", "loading", "thinkingSteps", "activeThread",
-      "activeThreadTitle", "showSidebar", "onToggleSidebar",
+      "activeThreadTitle", "showSidebar",
       "playingTtsId", "onPlayTts", "actingApproval", "resolvedApprovals", "onApproval",
     ];
     for (const prop of requiredProps) {

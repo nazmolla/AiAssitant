@@ -35,8 +35,10 @@ describe("Message list virtualization", () => {
     expect(chatAreaSrc).toContain("overscan:");
   });
 
-  test("uses absolute positioning for virtual items", () => {
-    expect(chatAreaSrc).toContain("position: \"absolute\"");
+  test("supports absolute positioning for virtual items (non-reliable layout path)", () => {
+    // The reliable layout (default) uses relative; the virtualizer fallback uses absolute.
+    // Both strings appear in the ternary: position: useReliableRowLayout ? "relative" : "absolute"
+    expect(chatAreaSrc).toContain('"absolute"');
     expect(chatAreaSrc).toContain("translateY(");
     expect(chatAreaSrc).toContain("getTotalSize()");
   });
