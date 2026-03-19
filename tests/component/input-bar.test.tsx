@@ -118,9 +118,9 @@ describe("InputBar â€” send button disabled/enabled state", () => {
     expect(screen.getByTitle("Attach files")).toBeDisabled();
   });
 
-  test("attach button is disabled when there is no active thread", () => {
+  test("attach button is enabled when there is no active thread (welcome mode allows attaching)", () => {
     renderBar({ activeThread: null });
-    expect(screen.getByTitle("Attach files")).toBeDisabled();
+    expect(screen.getByTitle("Attach files")).not.toBeDisabled();
   });
 });
 

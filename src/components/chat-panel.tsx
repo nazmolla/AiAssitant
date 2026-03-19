@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Box from "@mui/material/Box";
+import { useSession } from "next-auth/react";
 import type { Thread } from "./chat-panel-types";
 import { processMessages } from "./chat-panel-types";
 import { ThreadSidebar } from "./thread-sidebar";
@@ -13,6 +14,9 @@ import { useFileUpload } from "@/hooks/use-file-upload";
 import { useChatStream } from "@/hooks/use-chat-stream";
 
 export function ChatPanel() {
+  const { data: session } = useSession();
+  const userName = (session?.user as { name?: string } | undefined)?.name ?? undefined;
+
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadsTotal, setThreadsTotal] = useState(0);
   const [threadsHasMore, setThreadsHasMore] = useState(false);
@@ -20,7 +24,7 @@ export function ChatPanel() {
   const [input, setInput] = useState("");
   const [actingApproval, setActingApproval] = useState<string | null>(null);
   const [resolvedApprovals, setResolvedApprovals] = useState<Record<string, string>>({});
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(false);
 
   // ── Debounced thread fetch ────────────────────────────────────────────────────
   const threadFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,8 +89,7 @@ export function ChatPanel() {
 
   sendMessageRef.current = chatStream.sendMessage;
 
-  // ── Effects ─────────────────────────────────────────────────────────────
-
+  // ── Effects ─────────────────────────────────────────────────────────
   useEffect(() => {
     fetchThreadsDebounced(true);
     return () => { if (threadFetchTimerRef.current) clearTimeout(threadFetchTimerRef.current); };
@@ -134,7 +137,7 @@ export function ChatPanel() {
 
   // ── Thread CRUD ─────────────────────────────────────────────────────────
 
-  async function createThread() {
+  async function createThread(): Promise<string> {
     const res = await fetch("/api/threads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -145,6 +148,7 @@ export function ChatPanel() {
     setActiveThread(thread.id);
     chatStream.setMessages([]);
     fileUpload.setPendingFiles([]);
+    return thread.id;
   }
 
   async function handleDeleteThread(threadId: string) {
@@ -159,6 +163,24 @@ export function ChatPanel() {
       }
     } catch (err) { console.error("Failed to delete thread:", err); }
   }
+
+  // ── Auto-create thread on first send ────────────────────────────────────────
+
+  // Wrap sendMessage so that if there's no active thread, we create one first
+  const handleSendMessage = useCallback(async () => {
+    if (!activeThread) {
+      if (!inputRef.current.trim() && pendingFilesRef.current.length === 0) return;
+      await createThread();
+      // After state settles, fire the send — requestAnimationFrame lets React
+      // flush the new activeThread into the chatStream hook's closure
+      requestAnimationFrame(() => {
+        sendMessageRef.current?.();
+      });
+    } else {
+      chatStream.sendMessage();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeThread]);
 
   // ── Approval handling ───────────────────────────────────────────────────
 
@@ -198,8 +220,6 @@ export function ChatPanel() {
     }
   }
 
-  // ── Derived data ──────────────────────────────────────────────────────────
-
   // ── Restore-to-message ──────────────────────────────────────────────────
 
   async function handleRestoreToMessage(messageId: number) {
@@ -218,13 +238,10 @@ export function ChatPanel() {
         return;
       }
 
-      // Update local messages — remove everything from messageId onward
       chatStream.setMessages((prev) => prev.filter((m) => m.id < messageId));
 
-      // Re-send the restored message content via the normal chat flow
       if (data.content) {
         setInput(data.content);
-        // Use requestAnimationFrame to let state settle, then trigger send
         requestAnimationFrame(() => {
           sendMessageRef.current?.();
         });
@@ -236,6 +253,8 @@ export function ChatPanel() {
       alert(`Restore failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  // ── Derived data ──────────────────────────────────────────────────────────
 
   const activeThreadTitle = useMemo(() => threads.find(t => t.id === activeThread)?.title, [threads, activeThread]);
   const processedMessages = useMemo(
@@ -261,10 +280,15 @@ export function ChatPanel() {
       .catch(console.error);
   }, [threads.length]);
 
+  const toggleSidebar = useCallback(() => setShowSidebar((v) => !v), []);
+
   // ── Render ──────────────────────────────────────────────────────────────
 
+  const isWelcome = !activeThread;
+
   return (
-    <Box sx={{ display: "flex", height: "100%" }}>
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Thread drawer */}
       <ThreadSidebar
         threads={threads}
         threadsTotal={threadsTotal}
@@ -275,35 +299,65 @@ export function ChatPanel() {
         onCreateThread={createThread}
         onDeleteThread={handleDeleteThread}
         onLoadMore={handleLoadMore}
+        onClose={() => setShowSidebar(false)}
       />
-      <Box
-        sx={{
-          display: { xs: !showSidebar ? "flex" : "none", sm: "flex" },
-          flex: 1,
-          flexDirection: "column",
-          minWidth: 0,
-        }}
-      >
-        <ChatArea
-          processedMessages={processedMessages}
-          loading={chatStream.loading}
-          thinkingSteps={chatStream.thinkingSteps}
-          activeThread={activeThread}
-          activeThreadTitle={activeThreadTitle}
-          showSidebar={showSidebar}
-          onBackToSidebar={() => setShowSidebar(true)}
-          playingTtsId={audioControls.playingTtsId}
-          onPlayTts={audioControls.playTts}
-          actingApproval={actingApproval}
-          resolvedApprovals={resolvedApprovals}
-          onApproval={handleApproval}
-          onRestoreToMessage={handleRestoreToMessage}
-        />
-        {activeThread && (
+
+      {/* Main area */}
+      <Box sx={{ display: "flex", flex: 1, flexDirection: "column", minHeight: 0 }}>
+        {/* Chat area (messages or welcome screen) */}
+        <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <ChatArea
+            processedMessages={processedMessages}
+            loading={chatStream.loading}
+            thinkingSteps={chatStream.thinkingSteps}
+            activeThread={activeThread}
+            activeThreadTitle={activeThreadTitle}
+            showSidebar={showSidebar}
+            onToggleSidebar={toggleSidebar}
+            userName={userName}
+            playingTtsId={audioControls.playingTtsId}
+            onPlayTts={audioControls.playTts}
+            actingApproval={actingApproval}
+            resolvedApprovals={resolvedApprovals}
+            onApproval={handleApproval}
+            onRestoreToMessage={handleRestoreToMessage}
+          />
+        </Box>
+
+        {/* Input bar — always visible */}
+        {isWelcome ? (
+          <Box sx={{ pb: 4, pt: 2 }}>
+            <InputBar
+              input={input}
+              onInputChange={setInput}
+              onSendMessage={handleSendMessage}
+              loading={chatStream.loading}
+              activeThread={activeThread}
+              pendingFiles={fileUpload.pendingFiles}
+              onFileSelect={fileUpload.handleFileSelect}
+              onRemovePendingFile={fileUpload.removePendingFile}
+              fileInputRef={fileUpload.fileInputRef}
+              recording={audioControls.recording}
+              transcribing={audioControls.transcribing}
+              onStartRecording={audioControls.startRecording}
+              onStopRecording={audioControls.stopRecording}
+              screenShareEnabled={screenShare.screenShareEnabled}
+              screenSharing={screenShare.screenSharing}
+              onStartScreenShare={screenShare.startScreenShare}
+              onStopScreenShare={screenShare.stopScreenShare}
+              audioMode={audioControls.audioMode}
+              audioModeSpeaking={audioControls.audioModeSpeaking.current}
+              onToggleAudioMode={audioControls.toggleAudioMode}
+              latestFrameRef={screenShare.latestFrameRef}
+              frameImgRef={screenShare.frameImgRef}
+              welcomeMode
+            />
+          </Box>
+        ) : (
           <InputBar
             input={input}
             onInputChange={setInput}
-            onSendMessage={chatStream.sendMessage}
+            onSendMessage={handleSendMessage}
             loading={chatStream.loading}
             activeThread={activeThread}
             pendingFiles={fileUpload.pendingFiles}

@@ -118,7 +118,7 @@ describe("ChatArea component", () => {
     expect(chatAreaSrc).toContain("export interface ChatAreaProps");
     const requiredProps = [
       "processedMessages", "loading", "thinkingSteps", "activeThread",
-      "activeThreadTitle", "showSidebar", "onBackToSidebar",
+      "activeThreadTitle", "showSidebar", "onToggleSidebar",
       "playingTtsId", "onPlayTts", "actingApproval", "resolvedApprovals", "onApproval",
     ];
     for (const prop of requiredProps) {
@@ -132,9 +132,9 @@ describe("ChatArea component", () => {
     expect(chatAreaSrc).toMatch(/memo\(function AttachmentPreview/);
   });
 
-  test("handles empty state (no active thread)", () => {
-    expect(chatAreaSrc).toContain("No thread selected");
-    expect(chatAreaSrc).toContain("ChatBubbleOutlineIcon");
+  test("shows Gemini-style welcome state when no active thread", () => {
+    expect(chatAreaSrc).toContain("Where should we start?");
+    expect(chatAreaSrc).toContain("AutoFixHighIcon");
   });
 
   test("uses virtualized rendering with auto-scroll", () => {
@@ -183,7 +183,7 @@ describe("State isolation", () => {
     // ChatPanel retains thread list state and UI state
     expect(chatPanelSrc).toContain("useState<Thread[]>");
     expect(chatPanelSrc).toContain('useState("")'); // input
-    expect(chatPanelSrc).toContain("useState(true)"); // showSidebar
+    expect(chatPanelSrc).toContain("useState(false)"); // showSidebar (hidden by default)
     // Message[] and PendingFile[] state are now in extracted hooks
     expect(chatPanelSrc).toContain("useChatStream");
     expect(chatPanelSrc).toContain("useFileUpload");
@@ -222,10 +222,10 @@ describe("Reduced file sizes", () => {
   });
 
   test("each subcomponent is a reasonable size", () => {
-    expect(threadSidebarSrc.split("\n").length).toBeLessThan(200);
-    expect(inputBarSrc.split("\n").length).toBeLessThan(250);
+    expect(threadSidebarSrc.split("\n").length).toBeLessThan(250); // includes MUI Drawer
+    expect(inputBarSrc.split("\n").length).toBeLessThan(300); // welcomeMode variant adds lines
     // ChatArea is the largest since it includes ThinkingBlock, ThoughtsBlock, AttachmentPreview
-    // Keep a soft ceiling while allowing room for virtualization stability guards.
-    expect(chatAreaSrc.split("\n").length).toBeLessThan(780);
+    // Keep a soft ceiling while allowing room for welcome state + virtualization stability guards.
+    expect(chatAreaSrc.split("\n").length).toBeLessThan(800);
   });
 });

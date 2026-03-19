@@ -2,13 +2,13 @@
  * Component interaction tests for ChatArea.
  *
  * Tests cover:
- * - Empty state when no activeThread is set
+ * - Welcome state when no activeThread is set (Gemini-style greeting)
  * - Rendering user and assistant messages
  * - Approval buttons (Approve / Deny) call onApproval with correct action
  * - Resolved approvals show status chip instead of buttons
  * - TTS read-aloud button calls onPlayTts with message id and text
  * - Loading indicator for in-progress assistant message
- * - onBackToSidebar button calls callback
+ * - onToggleSidebar burger menu button calls callback
  *
  * @jest-environment jsdom
  */
@@ -53,7 +53,8 @@ jest.mock("@/components/markdown-message", () => ({
   default: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
 }));
 
-jest.mock("@mui/icons-material/ArrowBack", () => () => <span data-testid="ArrowBackIcon" />);
+jest.mock("@mui/icons-material/Menu", () => () => <span data-testid="MenuIcon" />);
+jest.mock("@mui/icons-material/AutoFixHigh", () => () => <span data-testid="AutoFixHighIcon" />);
 jest.mock("@mui/icons-material/AutoAwesome", () => () => <span data-testid="AutoAwesomeIcon" />);
 jest.mock("@mui/icons-material/CheckCircleOutline", () => () => <span data-testid="CheckCircleOutlineIcon" />);
 jest.mock("@mui/icons-material/ExpandMore", () => () => <span data-testid="ExpandMoreIcon" />);
@@ -64,7 +65,6 @@ jest.mock("@mui/icons-material/VolumeUp", () => () => <span data-testid="VolumeU
 jest.mock("@mui/icons-material/StopCircle", () => () => <span data-testid="StopCircleIcon" />);
 jest.mock("@mui/icons-material/Replay", () => () => <span data-testid="ReplayIcon" />);
 jest.mock("@mui/icons-material/AttachFile", () => () => <span data-testid="AttachFileIcon" />);
-jest.mock("@mui/icons-material/ChatBubbleOutline", () => () => <span data-testid="ChatBubbleOutlineIcon" />);
 
 import { ChatArea, type ChatAreaProps } from "@/components/chat-area";
 import type { ProcessedMessage } from "@/components/chat-panel-types";
@@ -135,7 +135,8 @@ function baseProps(overrides: Partial<ChatAreaProps> = {}): ChatAreaProps {
     activeThread: "thread-1",
     activeThreadTitle: "My Thread",
     showSidebar: false,
-    onBackToSidebar: jest.fn(),
+    onToggleSidebar: jest.fn(),
+    userName: "Test",
     playingTtsId: null,
     onPlayTts: jest.fn(),
     actingApproval: null,
@@ -153,33 +154,30 @@ function renderArea(overrides: Partial<ChatAreaProps> = {}) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// 1. EMPTY STATE (no active thread)
+// 1. WELCOME STATE (no active thread)
 // ════════════════════════════════════════════════════════════════
 
-describe("ChatArea — empty state (no active thread)", () => {
-  test("shows 'No thread selected' when activeThread is null", () => {
-    renderArea({ activeThread: null });
-    expect(screen.getByText("No thread selected")).toBeInTheDocument();
+describe("ChatArea — welcome state (no active thread)", () => {
+  test("shows greeting with user name when activeThread is null", () => {
+    renderArea({ activeThread: null, userName: "Mo" });
+    expect(screen.getByText("Hi Mo")).toBeInTheDocument();
   });
 
-  test("shows instructions to select or create a thread", () => {
-    renderArea({ activeThread: null });
-    expect(screen.getByText(/select or create a thread/i)).toBeInTheDocument();
+  test("shows fallback greeting when no userName provided", () => {
+    renderArea({ activeThread: null, userName: undefined });
+    expect(screen.getByText("Hi there")).toBeInTheDocument();
   });
 
-  test("onBackToSidebar button is rendered (mobile back button in empty state)", () => {
+  test("shows 'Where should we start?' subtitle", () => {
+    renderArea({ activeThread: null });
+    expect(screen.getByText(/where should we start/i)).toBeInTheDocument();
+  });
+
+  test("burger menu button calls onToggleSidebar when clicked", () => {
     const props = renderArea({ activeThread: null });
-    // The back button has "Threads" text in both empty and active states
-    const threadsButton = screen.queryByRole("button", { name: /threads/i });
-    // It may or may not be visible depending on screen size — verify it exists or callback exists
-    // The important thing is that clicking it calls the handler
-    if (threadsButton) {
-      fireEvent.click(threadsButton);
-      expect(props.onBackToSidebar).toHaveBeenCalled();
-    } else {
-      // At minimum the component should render without error
-      expect(screen.getByText("No thread selected")).toBeInTheDocument();
-    }
+    const menuBtn = screen.getByTitle("Conversations");
+    fireEvent.click(menuBtn);
+    expect(props.onToggleSidebar).toHaveBeenCalledTimes(1);
   });
 });
 

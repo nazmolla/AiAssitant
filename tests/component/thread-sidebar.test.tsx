@@ -23,6 +23,7 @@ jest.mock("next-auth/react", () => ({
 
 jest.mock("@mui/icons-material/Add", () => () => <span data-testid="AddIcon" />);
 jest.mock("@mui/icons-material/DeleteOutline", () => () => <span data-testid="DeleteOutlineIcon" />);
+jest.mock("@mui/icons-material/Close", () => () => <span data-testid="CloseIcon" />);
 
 import { ThreadSidebar, type ThreadSidebarProps } from "@/components/thread-sidebar";
 import type { Thread } from "@/components/chat-panel-types";
@@ -44,6 +45,7 @@ function baseProps(overrides: Partial<ThreadSidebarProps> = {}): ThreadSidebarPr
     onCreateThread: jest.fn(),
     onDeleteThread: jest.fn(),
     onLoadMore: jest.fn(),
+    onClose: jest.fn(),
     ...overrides,
   };
 }
@@ -63,9 +65,9 @@ describe("ThreadSidebar — rendering", () => {
     expect(() => renderSidebar()).not.toThrow();
   });
 
-  test("New Thread button is visible", () => {
+  test("New conversation button is visible", () => {
     renderSidebar();
-    expect(screen.getByRole("button", { name: /new thread/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /new conversation/i })).toBeInTheDocument();
   });
 
   test("renders thread titles", () => {
@@ -132,9 +134,9 @@ describe("ThreadSidebar — thread selection", () => {
 // ════════════════════════════════════════════════════════════════
 
 describe("ThreadSidebar — create thread", () => {
-  test("clicking New Thread button calls onCreateThread", () => {
+  test("clicking New conversation button calls onCreateThread", () => {
     const props = renderSidebar();
-    fireEvent.click(screen.getByRole("button", { name: /new thread/i }));
+    fireEvent.click(screen.getByRole("button", { name: /new conversation/i }));
     expect(props.onCreateThread).toHaveBeenCalledTimes(1);
   });
 });
