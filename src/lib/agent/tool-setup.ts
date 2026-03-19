@@ -9,7 +9,8 @@
 import type { ToolDefinition } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
 import { ALL_TOOL_CATEGORIES, buildCappedToolList } from "@/lib/tools";
-import { getUserById, listToolPolicies } from "@/lib/db";
+import { getUserById } from "@/lib/db/user-queries";
+import { listToolPolicies } from "@/lib/db/tool-policy-queries";
 
 /**
  * Build the full tool list (builtin + custom + MCP) and filter by user scope.

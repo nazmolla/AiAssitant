@@ -32,11 +32,11 @@ import {
   addMessage,
   getThreadMessages,
   getThread,
-  addLog,
   addAttachment,
   type Message,
   type AttachmentMeta,
-} from "@/lib/db";
+} from "@/lib/db/thread-queries";
+import { addLog } from "@/lib/db/log-queries";
 import crypto from "crypto";
 import { SYSTEM_PROMPT, MAX_TOOL_ITERATIONS, isUntrustedToolOutput } from "./system-prompt";
 import { buildKnowledgeContext, buildProfileContext } from "./context-builder";

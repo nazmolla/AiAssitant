@@ -5,7 +5,8 @@
  * Extracted to avoid circular dependencies between index and batch jobs.
  */
 
-import { addLog, listUsersWithPermissions } from "@/lib/db";
+import { addLog } from "@/lib/db/log-queries";
+import { listUsersWithPermissions } from "@/lib/db/user-queries";
 
 /* ── Quiet Hours (no audio-producing tools) ────────────────────── */
 

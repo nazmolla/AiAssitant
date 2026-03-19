@@ -1,8 +1,8 @@
+import { addLog } from "@/lib/db/log-queries";
+import { createThread } from "@/lib/db/thread-queries";
 import {
-  addLog,
   addSchedulerEvent,
   createSchedulerRun,
-  createThread,
   createSchedulerTaskRun,
   getSchedulerScheduleById,
   getSchedulerTasksForSchedule,
@@ -17,7 +17,7 @@ import {
   tryClaimSchedulerRun,
   updateSchedulerScheduleAfterDispatch,
   listEnabledSchedulerTaskHandlers,
-} from "@/lib/db";
+} from "@/lib/db/scheduler-queries";
 import {
   SCHEDULER_POLL_MS,
   SCHEDULER_LEASE_SECONDS,
