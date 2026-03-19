@@ -102,9 +102,9 @@ export const JOB_SCOUT_TASK_PROMPT =
   "Scout for job opportunities that genuinely match this user's profile, then deliver curated results with tailored resumes by email.\n\n" +
   "IMPORTANT: You are running on behalf of the specific user who scheduled this job. Load their profile first — do NOT use generic defaults.\n\n" +
   "Steps to complete:\n" +
-  "1. Load user profile: Use available knowledge tools (nexus_search_knowledge or MCP knowledge tools) to retrieve everything stored about this user — " +
+  "1. Load user profile: Your system context already contains injected knowledge about this user. Read it carefully to extract — " +
   "role preferences, skills, experience level, location, work mode (remote/hybrid/onsite), visa/work-authorisation constraints, salary expectations, " +
-  "companies to avoid, and any other career preferences. If knowledge tools are unavailable, use what is in the conversation context.\n" +
+  "companies to avoid, and any other career preferences. If any detail is missing from context, check MCP knowledge tools if available.\n" +
   "2. Search jobs: Use builtin.web_search with multiple targeted queries across job boards (LinkedIn Jobs, Indeed, Glassdoor, Google Jobs, Levels.fyi for tech). " +
   "Match queries precisely to the user's role, seniority, location, and constraints. Collect 10-20 raw candidates with direct URLs.\n" +
   "3. Score and match: For each candidate, score fit against the user's profile (0-10) based on: skill match, seniority, location/work-mode, " +
@@ -176,7 +176,8 @@ export const PROACTIVE_PRIMARY_TASK_PROMPT =
 
 export const PROACTIVE_FOLLOWUP_TASK_PROMPT =
   "Perform a targeted exploration pass. Cover areas the previous iteration missed: " +
-  "network/camera/occupancy discovery, user-centric intelligence (patterns, well-being, upcoming needs), world context relevant to the users, and toolmaker improvements.";
+  "network/camera/occupancy discovery, user-centric intelligence (patterns, well-being, upcoming needs), world context relevant to the users, and toolmaker improvements. " +
+  "IMPORTANT: Do NOT re-send channel_notify for any finding already surfaced in the prior iteration. Only notify about NEW discoveries not previously reported.";
 
 export function buildProactiveScanMessagePrompt(
   connectedServers: string[],

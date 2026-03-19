@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#1e3a5f" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <!-- Background -->
+  <rect width="64" height="64" rx="12" fill="#0f1923"/>
+  <!-- Glow -->
+  <circle cx="32" cy="32" r="24" fill="url(#glow)"/>
+  <!-- Network nodes -->
+  <circle cx="12" cy="20" r="3" fill="#3b82f6" opacity="0.7"/>
+  <circle cx="52" cy="20" r="3" fill="#3b82f6" opacity="0.7"/>
+  <circle cx="12" cy="44" r="3" fill="#3b82f6" opacity="0.7"/>
+  <circle cx="52" cy="44" r="3" fill="#3b82f6" opacity="0.7"/>
+  <!-- Network lines -->
+  <line x1="12" y1="20" x2="20" y2="24" stroke="#3b82f6" stroke-width="1" opacity="0.3"/>
+  <line x1="52" y1="20" x2="44" y2="24" stroke="#3b82f6" stroke-width="1" opacity="0.3"/>
+  <line x1="12" y1="44" x2="20" y2="40" stroke="#3b82f6" stroke-width="1" opacity="0.3"/>
+  <line x1="52" y1="44" x2="44" y2="40" stroke="#3b82f6" stroke-width="1" opacity="0.3"/>
+  <!-- N letter -->
+  <text x="32" y="42" font-family="Arial, sans-serif" font-size="30" font-weight="800" fill="#60a5fa" text-anchor="middle" filter="url(#blur)">N</text>
+  <text x="32" y="42" font-family="Arial, sans-serif" font-size="30" font-weight="800" fill="#93c5fd" text-anchor="middle">N</text>
+</svg>

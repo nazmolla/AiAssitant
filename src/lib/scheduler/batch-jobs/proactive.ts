@@ -170,7 +170,9 @@ ${prevSummary}
 Connected servers: ${serverList}
 Untried candidate tools: ${untriedCandidates.length > 0 ? untriedCandidates.join(", ") : "none — explore new areas"}
 
-Focus on coverage gaps not addressed in prior iterations: network/camera/occupancy discovery and toolmaker actions. Do NOT repeat tools already used unless essential for new insight. Target unexplored paths.`;
+Focus on coverage gaps not addressed in prior iterations: network/camera/occupancy discovery and toolmaker actions. Do NOT repeat tools already used unless essential for new insight. Target unexplored paths.
+
+**DEDUPLICATION RULE**: Do NOT send any channel_notify notification about a finding, device state, or insight that was already surfaced in a prior iteration of THIS scan session. Only notify about genuinely new discoveries not covered above.`;
   }
 
   // ── Main Execution ────────────────────────────────────

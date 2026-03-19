@@ -550,58 +550,101 @@ export function NotificationBell() {
         onClose={() => setExpandedOpen(false)}
         fullScreen
       >
-        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-          <Typography variant="h6" fontWeight={700}>Approval Center</Typography>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, pb: 0 }}>
+          <Typography variant="h6" fontWeight={700}>Notification Center</Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            {approvals.length > 0 && (
-              <>
-                <Button
-                  size="small"
-                  variant="contained"
-                  disabled={isBusy}
-                  onClick={() => handleBulkApproval(approvals.map((a) => a.id), "approved")}
-                >
-                  {isBusy ? "Processing..." : `Approve All (${approvals.length})`}
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={isBusy}
-                  onClick={() => handleBulkApproval(approvals.map((a) => a.id), "rejected")}
-                >
-                  Reject All ({approvals.length})
-                </Button>
-              </>
-            )}
-            <IconButton onClick={() => setExpandedOpen(false)} size="small" title="Close full view">
+            <IconButton onClick={() => setExpandedOpen(false)} size="small" title="Close">
               <CloseIcon fontSize="small" />
             </IconButton>
           </Box>
         </DialogTitle>
-        <DialogContent dividers>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Grouped by tool and request payload. Expand groups to review details, rationale, and execute bulk or per-item decisions.
-          </Typography>
-          <Box>
-            {groupedApprovals.map((g) => (
-              <ApprovalGroupCard
-                key={`approval-full-${g.key}`}
-                group={g}
-                acting={acting}
-                isBusy={isBusy}
-                onAction={handleApprovalAction}
-                onBulkAction={handleBulkApproval}
-                formatDate={formatDate}
-                dense={false}
-              />
-            ))}
-            {groupedApprovals.length === 0 && (
-              <Box sx={{ py: 8, textAlign: "center" }}>
-                <Typography sx={{ fontSize: "1.5rem", mb: 0.5, opacity: 0.3 }}>✅</Typography>
-                <Typography variant="body1" color="text.secondary">No pending approvals</Typography>
-              </Box>
-            )}
-          </Box>
+        <Box sx={{ borderBottom: 1, borderColor: "divider", px: 3 }}>
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v)}
+            sx={{ "& .MuiTab-root": { fontSize: "0.85rem", textTransform: "none" } }}
+          >
+            <Tab label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : notifications.length ? ` (${notifications.length})` : ""}`} />
+            <Tab label={`Approvals${approvals.length ? ` (${approvals.length})` : ""}`} />
+          </Tabs>
+        </Box>
+        <DialogContent dividers sx={{ p: 0 }}>
+          {/* ── Expanded Tab 0: All Notifications ── */}
+          {tab === 0 && (
+            <Box sx={{ maxWidth: 760, mx: "auto", py: 2, px: { xs: 1, sm: 3 } }}>
+              {unreadNotifications.length > 0 && (
+                <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 1 }}>
+                  <Button size="small" startIcon={<DoneAllIcon />} onClick={handleMarkAllRead} sx={{ textTransform: "none" }}>
+                    Mark all read
+                  </Button>
+                </Box>
+              )}
+              {unreadNotifications.map((n) => (
+                <NotificationCard key={n.id} notification={n} onMarkRead={handleMarkRead} onDismiss={handleDismiss} formatDate={formatDate} compact={false} />
+              ))}
+              {readNotifications.length > 0 && unreadNotifications.length > 0 && (
+                <Divider sx={{ my: 1 }}>
+                  <Chip label="Earlier" size="small" sx={{ fontSize: "0.65rem" }} />
+                </Divider>
+              )}
+              {readNotifications.map((n) => (
+                <NotificationCard key={n.id} notification={n} onMarkRead={handleMarkRead} onDismiss={handleDismiss} formatDate={formatDate} compact={false} />
+              ))}
+              {notifications.length === 0 && (
+                <Box sx={{ py: 8, textAlign: "center" }}>
+                  <Typography sx={{ fontSize: "1.5rem", mb: 0.5, opacity: 0.3 }}>🔔</Typography>
+                  <Typography variant="body1" color="text.secondary">No notifications</Typography>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {/* ── Expanded Tab 1: Approvals ── */}
+          {tab === 1 && (
+            <Box sx={{ maxWidth: 760, mx: "auto", py: 2, px: { xs: 1, sm: 3 } }}>
+              {approvals.length > 0 && (
+                <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end", mb: 2 }}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={isBusy}
+                    onClick={() => handleBulkApproval(approvals.map((a) => a.id), "approved")}
+                  >
+                    {isBusy ? "Processing..." : `Approve All (${approvals.length})`}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={isBusy}
+                    onClick={() => handleBulkApproval(approvals.map((a) => a.id), "rejected")}
+                  >
+                    Reject All ({approvals.length})
+                  </Button>
+                </Box>
+              )}
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Grouped by tool and request payload. Review details, rationale, and execute bulk or per-item decisions.
+              </Typography>
+              {groupedApprovals.map((g) => (
+                <ApprovalGroupCard
+                  key={`approval-full-${g.key}`}
+                  group={g}
+                  acting={acting}
+                  isBusy={isBusy}
+                  onAction={handleApprovalAction}
+                  onBulkAction={handleBulkApproval}
+                  formatDate={formatDate}
+                  dense={false}
+                />
+              ))}
+              {groupedApprovals.length === 0 && (
+                <Box sx={{ py: 8, textAlign: "center" }}>
+                  <Typography sx={{ fontSize: "1.5rem", mb: 0.5, opacity: 0.3 }}>✅</Typography>
+                  <Typography variant="body1" color="text.secondary">No pending approvals</Typography>
+                </Box>
+              )}
+            </Box>
+          )}
         </DialogContent>
       </Dialog>
     </>
@@ -615,11 +658,13 @@ function NotificationCard({
   onMarkRead,
   onDismiss,
   formatDate,
+  compact = true,
 }: {
   notification: NotificationItem;
   onMarkRead: (id: string) => void;
   onDismiss: (id: string) => void;
   formatDate: (d: string) => string;
+  compact?: boolean;
 }) {
   return (
     <Box
@@ -643,8 +688,8 @@ function NotificationCard({
           <Chip label={n.type.replace(/_/g, " ")} size="small" color={typeColor(n.type)} sx={{ fontSize: "0.6rem", height: 18 }} />
         </Box>
         {n.body && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.3, mb: 0.25 }}>
-            {n.body.length > 120 ? n.body.slice(0, 120) + "..." : n.body}
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.3, mb: 0.25, whiteSpace: compact ? undefined : "pre-wrap", wordBreak: "break-word" }}>
+            {compact && n.body.length > 120 ? n.body.slice(0, 120) + "..." : n.body}
           </Typography>
         )}
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mt: 0.25 }}>

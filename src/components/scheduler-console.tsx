@@ -807,6 +807,19 @@ export function SchedulerConsole() {
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-primary">Focused Header View: {selectedScheduleDetail.schedule.name}</h3>
                     <div className="flex w-full flex-wrap gap-1 sm:w-auto">
                       <Button className="w-full sm:w-auto" variant="outline" size="sm" onClick={() => setFocusedView(false)}>Close</Button>
+                      <Button
+                        className="w-full sm:w-auto"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (selectedScheduleId) {
+                            loadFocusedRuns(selectedScheduleId);
+                            loadScheduleDetail(selectedScheduleId);
+                          }
+                        }}
+                      >
+                        Refresh
+                      </Button>
                       <select
                         className="w-full rounded border border-white/[0.08] bg-background px-2 py-1 text-xs sm:w-auto"
                         value={runStatusFilter}
@@ -1216,7 +1229,7 @@ export function SchedulerConsole() {
                                                               <span className="text-muted-foreground ml-1">[{pm.thoughts.reduce((acc, t) => acc + t.toolCalls.length, 0)} tool call(s)]</span>
                                                             )}
                                                             {pm.displayContent && (
-                                                              <span className="whitespace-pre-wrap break-words">{pm.displayContent.slice(0, 500)}{pm.displayContent.length > 500 ? "…" : ""}</span>
+                                                              <span className="whitespace-pre-wrap break-words">{pm.displayContent}</span>
                                                             )}
                                                           </div>
                                                         ))}
