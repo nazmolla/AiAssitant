@@ -267,9 +267,10 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
 
       const orchestrator = new OrchestratorAgent(registry);
       const result = await orchestrator.run(taskPrompt, {
-        // Pass undefined so knowledge discovered here is stored as global (user_id=null).
-        // Tool access defaults to admin-level when userId is undefined.
-        userId: undefined,
+        // Pass empty string so knowledge is stored as global (user_id=null) via the
+        // `upsertKnowledge` normalization (empty string → null). Tool access defaults
+        // to admin-level when userId is falsy. Thread creation uses defaultAdminUserId.
+        userId: "",
         threadId: thread.id,
         additionalContext,
         maxIterations,
