@@ -14,6 +14,9 @@ import { URL } from "url";
 import { assertExternalUrlWithResolve } from "@/lib/agent/ssrf";
 import { getWebSearchProviderConfig, type WebSearchProviderType } from "@/lib/db/search-provider-queries";
 import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("tools.web-tools");
 
 // ── Tool Definitions ──────────────────────────────────────────
 
@@ -687,17 +690,26 @@ export class WebTools extends BaseTool {
   }
 
   private async webSearchCmd(args: Record<string, unknown>): Promise<unknown> {
+    const t0 = Date.now();
+    log.enter("webSearch", { query: args.query });
     const search = await WebTools.webSearch(args.query as string, (args.maxResults as number) || 8);
+    log.exit("webSearch", { resultCount: search.results.length, providerUsed: search.providerUsed }, Date.now() - t0);
     return { query: args.query, resultCount: search.results.length, providerUsed: search.providerUsed, attempts: search.attempts, results: search.results };
   }
 
   private async webFetchCmd(args: Record<string, unknown>): Promise<unknown> {
+    const t0 = Date.now();
+    log.enter("webFetch", { url: args.url });
     const content = await WebTools.webFetch(args.url as string, (args.maxLength as number) || 12000);
+    log.exit("webFetch", { contentLength: content.length }, Date.now() - t0);
     return { url: args.url, contentLength: content.length, content };
   }
 
   private async webExtractCmd(args: Record<string, unknown>): Promise<unknown> {
+    const t0 = Date.now();
+    log.enter("webExtract", { url: args.url, query: args.query });
     const content = await WebTools.webExtract(args.url as string, args.query as string, (args.maxLength as number) || 8000);
+    log.exit("webExtract", { contentLength: content.length }, Date.now() - t0);
     return { url: args.url, query: args.query, contentLength: content.length, content };
   }
 }

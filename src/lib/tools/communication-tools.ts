@@ -202,6 +202,8 @@ export class CommunicationTools extends BaseTool {
   }
 
   private executeNotify(args: Record<string, unknown>, userId?: string): unknown {
+    const t0 = Date.now();
+    log.enter("executeNotify", { userId });
     const title = getStringArg(args, "title");
     const message = getStringArg(args, "message");
     if (!title || !message) {
@@ -213,15 +215,19 @@ export class CommunicationTools extends BaseTool {
     const type: NotifType = (allowedTypes as readonly string[]).includes(rawType) ? rawType as NotifType : "info";
 
     const notification = createNotification({ userId: userId ?? "", type, title, body: message });
-    return {
+    const result = {
       status: "notified",
       notificationId: notification.id,
       type,
       title,
     };
+    log.exit("executeNotify", { notificationId: notification.id, type }, Date.now() - t0);
+    return result;
   }
 
   private async executeSend(args: Record<string, unknown>, userId?: string): Promise<unknown> {
+    const t0 = Date.now();
+    log.enter("executeSend", { userId });
     const channelType = getStringArg(args, "channelType");
     const channelLabel = getStringArg(args, "channelLabel");
     const subject = getStringArg(args, "subject");
@@ -255,7 +261,7 @@ export class CommunicationTools extends BaseTool {
 
     await instance.send(request);
 
-    return {
+    const result = {
       status: "sent",
       channelId: channel.id,
       channelType: channel.channel_type,
@@ -263,9 +269,13 @@ export class CommunicationTools extends BaseTool {
       recipient: emailRecipient || externalRecipientId || null,
       subject,
     };
+    log.exit("executeSend", { channelId: channel.id, channelType: channel.channel_type }, Date.now() - t0);
+    return result;
   }
 
   private async executeReceive(args: Record<string, unknown>, userId?: string): Promise<unknown> {
+    const t0 = Date.now();
+    log.enter("executeReceive", { userId });
     const channelType = getStringArg(args, "channelType");
     const channelLabel = getStringArg(args, "channelLabel");
     const externalSenderId = getStringArg(args, "externalSenderId");
@@ -323,7 +333,7 @@ export class CommunicationTools extends BaseTool {
       .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""))
       .slice(-limit);
 
-    return {
+    const result = {
       status: "ok",
       channelId: channel.id,
       channelType: channel.channel_type,
@@ -331,6 +341,8 @@ export class CommunicationTools extends BaseTool {
       count: sorted.length,
       messages: sorted,
     };
+    log.exit("executeReceive", { channelId: channel.id, count: sorted.length }, Date.now() - t0);
+    return result;
   }
 }
 

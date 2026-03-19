@@ -8,11 +8,16 @@ import {
   deleteUser,
   getUserPermissions,
 } from "@/lib/db/user-queries";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.admin.users");
 
 /**
  * GET /api/admin/users — List all users with permissions (admin only)
  */
 export async function GET() {
+  const t0 = Date.now();
+  log.enter("GET /api/admin/users");
   const guard = await requireAdmin();
   if ("error" in guard) return guard.error;
 
@@ -20,6 +25,7 @@ export async function GET() {
 
   // Strip password hashes from response
   const sanitized = users.map(({ password_hash, ...rest }) => rest);
+  log.exit("GET /api/admin/users", { count: sanitized.length }, Date.now() - t0);
   return NextResponse.json(sanitized);
 }
 
@@ -29,6 +35,8 @@ export async function GET() {
  * Body: { userId, role?, enabled?, permissions?: { chat?, knowledge?, ... } }
  */
 export async function PUT(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("PUT /api/admin/users");
   const guard = await requireAdmin();
   if ("error" in guard) return guard.error;
 
@@ -67,9 +75,11 @@ export async function PUT(req: NextRequest) {
     }
 
     const updatedPerms = getUserPermissions(userId);
+    log.exit("PUT /api/admin/users", { userId }, Date.now() - t0);
     return NextResponse.json({ ok: true, permissions: updatedPerms });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    log.error("PUT /api/admin/users failed", { userId }, err instanceof Error ? err : new Error(message));
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
@@ -80,6 +90,8 @@ export async function PUT(req: NextRequest) {
  * Body: { userId }
  */
 export async function DELETE(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("DELETE /api/admin/users");
   const guard = await requireAdmin();
   if ("error" in guard) return guard.error;
 
@@ -102,5 +114,6 @@ export async function DELETE(req: NextRequest) {
   }
 
   deleteUser(userId);
+  log.exit("DELETE /api/admin/users", { userId }, Date.now() - t0);
   return NextResponse.json({ ok: true });
 }

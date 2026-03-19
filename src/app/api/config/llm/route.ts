@@ -13,16 +13,29 @@ import {
 import { invalidateProviderCache } from "@/lib/llm/orchestrator";
 import { validateBody } from "@/lib/validation";
 import { createLlmProviderSchema } from "@/lib/schemas";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.config.llm");
 
 export async function GET() {
-  const auth = await requireAdmin();
-  if ("error" in auth) return auth.error;
+  const t0 = Date.now();
+  log.enter("GET /api/config/llm");
+  try {
+    const auth = await requireAdmin();
+    if ("error" in auth) return auth.error;
 
-  const providers = listLlmProviders().map(serializeRecord);
-  return NextResponse.json(providers);
+    const providers = listLlmProviders().map(serializeRecord);
+    log.exit("GET /api/config/llm", { count: providers.length }, Date.now() - t0);
+    return NextResponse.json(providers);
+  } catch (err) {
+    log.error("GET /api/config/llm failed", {}, err instanceof Error ? err : new Error(String(err)));
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("POST /api/config/llm");
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -40,10 +53,13 @@ export async function POST(req: NextRequest) {
   }
   const record = createLlmProvider({ label, providerType, purpose, config: normalizedConfig, isDefault });
   invalidateProviderCache();
+  log.exit("POST /api/config/llm", { providerId: record.id }, Date.now() - t0);
   return NextResponse.json(serializeRecord(record), { status: 201 });
 }
 
 export async function PATCH(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("PATCH /api/config/llm");
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -122,10 +138,13 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Provider not found." }, { status: 404 });
   }
   invalidateProviderCache();
+  log.exit("PATCH /api/config/llm", { providerId: id }, Date.now() - t0);
   return NextResponse.json(serializeRecord(updated));
 }
 
 export async function DELETE(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("DELETE /api/config/llm");
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -137,6 +156,7 @@ export async function DELETE(req: NextRequest) {
 
   deleteLlmProvider(id);
   invalidateProviderCache();
+  log.exit("DELETE /api/config/llm", { providerId: id }, Date.now() - t0);
   return NextResponse.json({ success: true });
 }
 

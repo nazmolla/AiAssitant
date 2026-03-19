@@ -3,8 +3,13 @@ import { requireUser } from "@/lib/auth/guard";
 import { listKnowledgePaginated, upsertKnowledge, updateKnowledge, deleteKnowledge, getKnowledgeEntry } from "@/lib/db";
 import { validateBody } from "@/lib/validation";
 import { updateKnowledgeSchema } from "@/lib/schemas";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.knowledge");
 
 export async function GET(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("GET /api/knowledge");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -13,10 +18,13 @@ export async function GET(req: NextRequest) {
   const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
 
   const result = listKnowledgePaginated(auth.user.id, limit, offset);
+  log.exit("GET /api/knowledge", {}, Date.now() - t0);
   return NextResponse.json(result);
 }
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("POST /api/knowledge");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -41,10 +49,13 @@ export async function POST(req: NextRequest) {
     },
     auth.user.id
   );
+  log.exit("POST /api/knowledge", { entity, attribute }, Date.now() - t0);
   return NextResponse.json({ success: true }, { status: 201 });
 }
 
 export async function PUT(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("PUT /api/knowledge");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -61,10 +72,13 @@ export async function PUT(req: NextRequest) {
   }
 
   updateKnowledge(id, updates);
+  log.exit("PUT /api/knowledge", { id }, Date.now() - t0);
   return NextResponse.json({ success: true });
 }
 
 export async function DELETE(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("DELETE /api/knowledge");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -82,5 +96,6 @@ export async function DELETE(req: NextRequest) {
   }
 
   deleteKnowledge(Number(id));
+  log.exit("DELETE /api/knowledge", { id }, Date.now() - t0);
   return NextResponse.json({ success: true });
 }

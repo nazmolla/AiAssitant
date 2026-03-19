@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { selectProvider, selectProviderForWorker } from "@/lib/llm/orchestrator";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.conversation.respond");
 import type { ChatMessage, ChatResponse, ToolDefinition, ToolCall } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
 import {
@@ -81,6 +84,8 @@ function extractApprovalReason(reasoning: string | undefined, args: Record<strin
 }
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("POST /api/conversation/respond");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -200,6 +205,7 @@ export async function POST(req: NextRequest) {
     }
   })();
 
+  log.exit("POST /api/conversation/respond", { userId: auth.user.id, toolCount: tools.length }, Date.now() - t0);
   return sseResponse(sse);
 }
 

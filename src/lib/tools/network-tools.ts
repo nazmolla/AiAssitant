@@ -23,6 +23,9 @@ import * as https from "https";
 import * as fs from "fs";
 import { Client as SSHClient } from "ssh2";
 import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("tools.network-tools");
 
 const execFileAsync = promisify(execFile);
 
@@ -259,9 +262,13 @@ export class NetworkTools extends BaseTool {
   }
 
   async execute(toolName: string, args: Record<string, unknown>, _context: ToolExecutionContext): Promise<unknown> {
+    const t0 = Date.now();
+    log.enter("execute", { toolName });
     const handler = this.cmdMap.get(toolName);
     if (!handler) throw new Error(`Unknown built-in network tool: "${toolName}"`);
-    return handler(args);
+    const result = await handler(args);
+    log.exit("execute", { toolName }, Date.now() - t0);
+    return result;
   }
 
   private ping(args: Record<string, unknown>): Promise<unknown>         { return NetworkTools.netPing(args); }

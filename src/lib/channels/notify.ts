@@ -18,6 +18,9 @@ import {
   type CommunicationChannelFactory,
   type ChannelFactoryDependencies,
 } from "@/lib/channels/communication-channel-factory";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("channels.notify");
 
 // Re-export from canonical location for backward compatibility
 export { notify, notifyAdmin, getUserNotificationLevel, shouldNotifyForLevel, normalizeNotificationLevel } from "@/lib/notifications";
@@ -43,6 +46,8 @@ export async function sendChannelNotification(
   subject: string,
   deps: ChannelDispatchDependencies = {},
 ): Promise<boolean> {
+  const t0 = Date.now();
+  log.enter("sendChannelNotification", { userId });
   const listChannelsFn = deps.listChannelsFn ?? listChannels;
   const listChannelUserMappingsFn = deps.listChannelUserMappingsFn ?? listChannelUserMappings;
   const addLogFn = deps.addLogFn ?? addLog;
@@ -61,6 +66,7 @@ export async function sendChannelNotification(
       const instance = channelFactory.create(channel);
       if (!instance.canSend({ userId, externalRecipientId: userMapping.external_id, subject, message })) continue;
       await instance.send({ userId, externalRecipientId: userMapping.external_id, subject, message });
+      log.exit("sendChannelNotification", { userId, channelType: channel.channel_type, sent: true }, Date.now() - t0);
       return true;
     } catch (err) {
       addLogFn({
@@ -69,6 +75,7 @@ export async function sendChannelNotification(
         message: `Failed channel notification via ${channel.channel_type}: ${err}`,
         metadata: JSON.stringify({ channelId: channel.id, userId }),
       });
+      log.warning("sendChannelNotification IM channel failed", { channelType: channel.channel_type, userId });
     }
   }
 
@@ -82,6 +89,7 @@ export async function sendChannelNotification(
     const instance = channelFactory.create(emailChannel);
     if (!instance.canSend({ userId, emailRecipient: email, subject, message })) return false;
     await instance.send({ userId, emailRecipient: email, subject, message });
+    log.exit("sendChannelNotification", { userId, channelType: "email", sent: true }, Date.now() - t0);
     return true;
   } catch (err) {
     addLogFn({
@@ -90,7 +98,9 @@ export async function sendChannelNotification(
       message: `Failed channel email notification fallback: ${err}`,
       metadata: JSON.stringify({ channelId: emailChannel.id, userId }),
     });
+    log.warning("sendChannelNotification email fallback failed", { channelId: emailChannel.id, userId });
   }
 
+  log.exit("sendChannelNotification", { userId, sent: false }, Date.now() - t0);
   return false;
 }

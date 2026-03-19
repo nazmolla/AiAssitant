@@ -20,6 +20,9 @@ import { getCustomToolDefinitions } from "@/lib/tools/custom-tools";
 import { getToolPolicy } from "@/lib/db/tool-policy-queries";
 import { addLog, getAppConfig, setAppConfig } from "@/lib/db/log-queries";
 import { createThread } from "@/lib/db/thread-queries";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("tools.proactive-scan-tool");
 import {
   type SchedulerBatchExecutionContext,
   getDefaultAdminUserId,
@@ -140,6 +143,8 @@ export async function runProactiveScan(context?: SchedulerBatchExecutionContext)
 }
 
 async function runProactiveScanInner(): Promise<ProactiveScanResult> {
+  const t0 = Date.now();
+  log.enter("runProactiveScanInner");
   const defaultAdminUserId = getDefaultAdminUserId() ?? "";
 
   addLog({
@@ -280,11 +285,13 @@ async function runProactiveScanInner(): Promise<ProactiveScanResult> {
     }),
   });
 
-  return {
+  const scanResult = {
     primaryThreadId: scanThread.id,
     followupThreadId,
     toolsUsed: finalToolsUsed,
   };
+  log.exit("runProactiveScanInner", { primaryThreadId: scanThread.id, toolsUsedCount: finalToolsUsed.length }, Date.now() - t0);
+  return scanResult;
 }
 
 export class ProactiveScanTool extends BaseTool {

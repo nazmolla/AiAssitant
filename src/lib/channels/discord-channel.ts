@@ -39,6 +39,9 @@ import {
   type CommunicationChannel,
 } from "@/lib/channels/communication-channel";
 import type { CommunicationChannelBuilder } from "@/lib/channels/channel-builder";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("channels.discord-channel");
 
 const activeBots = new Map<string, Client>();
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -120,6 +123,8 @@ export async function startDiscordBot(
   channelId: string,
   config: Record<string, unknown>
 ): Promise<void> {
+  const t0 = Date.now();
+  log.enter("startDiscordBot", { channelId });
   await stopDiscordBot(channelId);
 
   const botToken = String(config.botToken || "").trim();
@@ -302,6 +307,7 @@ export async function startDiscordBot(
     message: `Discord bot started for channel ${channelId}`,
     metadata: JSON.stringify({ channelId }),
   });
+  log.exit("startDiscordBot", { channelId }, Date.now() - t0);
 }
 
 export async function stopDiscordBot(channelId: string): Promise<void> {

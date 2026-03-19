@@ -5,6 +5,9 @@ import { executeApprovedTool, continueAgentLoop } from "@/lib/agent";
 import { executeProactiveApprovedTool } from "@/lib/scheduler";
 import type { ToolCall } from "@/lib/llm";
 import { TOOL_RESULT_TRUNCATION_LIMIT } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.approvals");
 
 function isApprovalCenterSource(source: string | null | undefined): boolean {
   const value = (source || "").toLowerCase();
@@ -12,6 +15,8 @@ function isApprovalCenterSource(source: string | null | undefined): boolean {
 }
 
 export async function GET() {
+  const t0 = Date.now();
+  log.enter("GET /api/approvals");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -29,7 +34,9 @@ export async function GET() {
     ? actionable
     : listPendingApprovalsForUser(auth.user.id);
 
-  return NextResponse.json(pending.filter((approval) => isApprovalCenterSource(approval.source)));
+  const filtered = pending.filter((approval) => isApprovalCenterSource(approval.source));
+  log.exit("GET /api/approvals", { count: filtered.length }, Date.now() - t0);
+  return NextResponse.json(filtered);
 }
 
 /**
@@ -52,6 +59,8 @@ function findToolCallId(threadId: string, toolName: string): string | undefined 
 }
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("POST /api/approvals");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -203,5 +212,6 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  log.exit("POST /api/approvals", { approvalId, action }, Date.now() - t0);
   return NextResponse.json({ status: action, remembered: rememberDecision ?? null });
 }

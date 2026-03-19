@@ -15,6 +15,9 @@ import {
   FILE_IMAGE_MAX_DIMENSION,
 } from "@/lib/constants";
 import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("tools.file-tools");
 
 const ATTACHMENTS_ROOT = path.join(process.cwd(), "data", "attachments");
 
@@ -82,6 +85,8 @@ export class FileTools extends BaseTool {
     args: Record<string, unknown>,
     context: { threadId?: string } = {}
   ): Promise<unknown> {
+    const t0 = Date.now();
+    log.enter("executeBuiltin", { name, threadId: context.threadId });
     const resolvedName = FileTools.resolveToolName(name);
     if (resolvedName !== FILE_TOOL_NAMES.GENERATE) {
       throw new Error(`Unknown file tool: ${name}`);
@@ -127,13 +132,15 @@ export class FileTools extends BaseTool {
       storagePath: `${threadId}/${storedName}`,
     };
 
-    return {
+    const result = {
       status: "created",
       format,
       filename: finalFilename,
       sizeBytes: bytes.length,
       attachments: [attachment],
     };
+    log.exit("executeBuiltin", { format, filename: finalFilename, sizeBytes: bytes.length }, Date.now() - t0);
+    return result;
   }
 
   private static resolveToolName(name: string): string {

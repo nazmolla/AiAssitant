@@ -7,6 +7,9 @@ import {
   type CommunicationChannel,
 } from "@/lib/channels/communication-channel";
 import type { CommunicationChannelBuilder } from "@/lib/channels/channel-builder";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("channels.email-channel");
 import {
   EmailServiceClient,
   type EmailConnectionConfig,
@@ -132,6 +135,8 @@ export class EmailChannel extends BaseCommunicationChannel {
   }
 
   async send(request: ChannelSendRequest): Promise<void> {
+    const t0 = Date.now();
+    log.enter("send", { channelId: this.id });
     const to = normalizeEmail(request.emailRecipient || "");
     if (!to) throw new Error("Email channel requires emailRecipient.");
 
@@ -148,6 +153,7 @@ export class EmailChannel extends BaseCommunicationChannel {
       text: themed.text,
       html: themed.html,
     });
+    log.exit("send", { channelId: this.id }, Date.now() - t0);
   }
 }
 

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { getRecentLogs, deleteAllLogs, deleteLogsByLevel, deleteLogsOlderThanDays, addLog } from "@/lib/db/log-queries";
 import { isUnifiedLogLevel } from "@/lib/logging/levels";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.logs");
 
 async function requireLogsReadAccess() {
   const auth = await requireUser();
@@ -20,6 +23,8 @@ async function requireLogsReadAccess() {
 }
 
 export async function GET(req: NextRequest) {
+  // NOTE: No log.enter/exit here — logging the act of reading logs is recursive
+  // and would pollute the results returned to the caller (including tests).
   const auth = await requireLogsReadAccess();
   if ("error" in auth) return auth.error;
 
@@ -49,6 +54,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("DELETE /api/logs");
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -99,6 +106,7 @@ export async function DELETE(req: NextRequest) {
     });
     return NextResponse.json({ error: "Invalid cleanup mode." }, { status: 400 });
   } catch (err) {
+    log.error("DELETE /api/logs failed", {}, err instanceof Error ? err : new Error(String(err)));
     addLog({
       level: "error",
       source: "api.logs",

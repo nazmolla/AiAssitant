@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { listMcpServers, upsertMcpServer, deleteMcpServer, getMcpServer } from "@/lib/db";
 import { getMcpManager } from "@/lib/mcp";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.mcp");
 
 export async function GET() {
+  const t0 = Date.now();
+  log.enter("GET /api/mcp");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -18,10 +23,13 @@ export async function GET() {
     connected: mcpManager.isConnected(s.id),
   }));
 
+  log.exit("GET /api/mcp", { count: serversWithStatus.length }, Date.now() - t0);
   return NextResponse.json(serversWithStatus);
 }
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("POST /api/mcp");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -89,10 +97,13 @@ export async function POST(req: NextRequest) {
     scope: serverScope,
   });
 
+  log.exit("POST /api/mcp", { serverId: id }, Date.now() - t0);
   return NextResponse.json({ success: true }, { status: 201 });
 }
 
 export async function DELETE(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("DELETE /api/mcp");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -129,8 +140,10 @@ export async function DELETE(req: NextRequest) {
     deleteMcpServer(id);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    log.error("DELETE /api/mcp failed", { serverId: id }, err instanceof Error ? err : new Error(msg));
     console.error(`Failed to delete MCP server ${id}:`, msg);
     return NextResponse.json({ error: "Failed to delete server." }, { status: 500 });
   }
+  log.exit("DELETE /api/mcp", { serverId: id }, Date.now() - t0);
   return NextResponse.json({ success: true });
 }

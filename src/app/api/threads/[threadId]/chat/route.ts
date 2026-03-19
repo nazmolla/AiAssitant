@@ -9,6 +9,9 @@ import {
   buildAttachmentParts,
   type AttachmentMeta,
 } from "@/lib/services/attachment-processor";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.threads.chat");
 
 /** Prevent Next.js from caching SSE responses */
 export const dynamic = "force-dynamic";
@@ -29,7 +32,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ threadId: string }> }
 ) {
+  const t0 = Date.now();
   const { threadId } = await params;
+  log.enter("POST /api/threads/[threadId]/chat", { threadId });
   const auth = await deps.requireUser();
   if ("error" in auth) return auth.error;
 
@@ -107,5 +112,6 @@ export async function POST(
     }
   })();
 
+  log.exit("POST /api/threads/[threadId]/chat", { threadId }, Date.now() - t0);
   return sseResponse(sse);
 }

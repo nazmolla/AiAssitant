@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { getUserProfile, upsertUserProfile, addLog } from "@/lib/db";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.config.profile");
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +20,8 @@ function sanitizeField(value: unknown, maxLen: number): string | undefined {
 }
 
 export async function GET() {
+  const t0 = Date.now();
+  log.enter("GET /api/config/profile");
   try {
     const auth = await requireUser();
     if ("error" in auth) return auth.error;
@@ -28,8 +33,10 @@ export async function GET() {
       message: "Fetched profile configuration.",
       metadata: JSON.stringify({ userId: auth.user.id, exists: !!profile }),
     });
+    log.exit("GET /api/config/profile", { exists: !!profile }, Date.now() - t0);
     return NextResponse.json(profile ?? null);
   } catch (e: any) {
+    log.error("GET /api/config/profile failed", {}, e instanceof Error ? e : new Error(String(e)));
     addLog({
       level: "error",
       source: "api.config.profile",
@@ -41,6 +48,8 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
+  const t0 = Date.now();
+  log.enter("PUT /api/config/profile");
   try {
     const auth = await requireUser();
     if ("error" in auth) return auth.error;
@@ -73,8 +82,10 @@ export async function PUT(req: Request) {
       message: "Updated profile configuration.",
       metadata: JSON.stringify({ userId: auth.user.id, fields: Object.keys(sanitized) }),
     });
+    log.exit("PUT /api/config/profile", { userId: auth.user.id }, Date.now() - t0);
     return NextResponse.json(updated);
   } catch (e: any) {
+    log.error("PUT /api/config/profile failed", {}, e instanceof Error ? e : new Error(String(e)));
     addLog({
       level: "error",
       source: "api.config.profile",

@@ -10,6 +10,9 @@ import {
   listPendingApprovalsForUser,
   cleanStaleApprovals,
 } from "@/lib/db";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.notifications");
 
 function isApprovalCenterSource(source: string | null | undefined): boolean {
   const value = (source || "").toLowerCase();
@@ -21,6 +24,8 @@ function isApprovalCenterSource(source: string | null | undefined): boolean {
  * Returns notifications + pending approvals merged into a unified feed.
  */
 export async function GET() {
+  const t0 = Date.now();
+  log.enter("GET /api/notifications");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -41,6 +46,7 @@ export async function GET() {
 
   const filteredApprovals = approvals.filter((approval) => isApprovalCenterSource(approval.source));
 
+  log.exit("GET /api/notifications", { notificationCount: notifications.length, approvalCount: filteredApprovals.length }, Date.now() - t0);
   return NextResponse.json({
     notifications,
     approvals: filteredApprovals,
@@ -53,6 +59,8 @@ export async function GET() {
  * Actions: markRead, markAllRead, dismiss
  */
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("POST /api/notifications");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -68,18 +76,22 @@ export async function POST(req: NextRequest) {
     case "markRead":
       if (!notificationId) return NextResponse.json({ error: "Missing notificationId" }, { status: 400 });
       markNotificationRead(String(notificationId), userId);
+      log.exit("POST /api/notifications", { action }, Date.now() - t0);
       return NextResponse.json({ ok: true });
 
     case "markAllRead":
       markAllNotificationsRead(userId);
+      log.exit("POST /api/notifications", { action }, Date.now() - t0);
       return NextResponse.json({ ok: true });
 
     case "dismiss":
       if (!notificationId) return NextResponse.json({ error: "Missing notificationId" }, { status: 400 });
       deleteNotification(String(notificationId), userId);
+      log.exit("POST /api/notifications", { action }, Date.now() - t0);
       return NextResponse.json({ ok: true });
 
     default:
+      log.exit("POST /api/notifications", { action, ok: false }, Date.now() - t0);
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
 }

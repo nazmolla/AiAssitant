@@ -4,6 +4,9 @@ import { listThreadsPaginated, createThread } from "@/lib/db/thread-queries";
 import { addLog } from "@/lib/db/log-queries";
 import { initializeDatabase } from "@/lib/db/init";
 import { THREADS_DEFAULT_LIMIT, THREADS_MAX_LIMIT } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.threads");
 
 let dbReady = false;
 
@@ -48,6 +51,8 @@ function ensureThreadRouteDbReady(): { ok: true } | { ok: false; response: NextR
 }
 
 export async function GET(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("GET /api/threads");
   const dbState = ensureThreadRouteDbReady();
   if (!dbState.ok) return dbState.response;
 
@@ -60,8 +65,10 @@ export async function GET(req: NextRequest) {
     const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
 
     const result = deps.listThreadsPaginated(auth.user.id, limit, offset);
+    log.exit("GET /api/threads", { count: result.threads?.length }, Date.now() - t0);
     return NextResponse.json(result);
   } catch (err) {
+    log.error("GET /api/threads failed", {}, err instanceof Error ? err : new Error(String(err)));
     deps.addLog({
       level: "error",
       source: "api.threads",
@@ -73,6 +80,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("POST /api/threads");
   const dbState = ensureThreadRouteDbReady();
   if (!dbState.ok) return dbState.response;
 
@@ -88,8 +97,10 @@ export async function POST(req: NextRequest) {
       message: "Created new thread.",
       metadata: JSON.stringify({ userId: auth.user.id, threadId: thread.id }),
     });
+    log.exit("POST /api/threads", { threadId: thread.id }, Date.now() - t0);
     return NextResponse.json(thread, { status: 201 });
   } catch (err) {
+    log.error("POST /api/threads failed", {}, err instanceof Error ? err : new Error(String(err)));
     deps.addLog({
       level: "error",
       source: "api.threads",

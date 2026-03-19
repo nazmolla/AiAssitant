@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/guard";
 import { addLog, createSchedulerSchedule, listSchedulerSchedulesPaginated, updateSchedulerTaskGraph } from "@/lib/db";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.scheduler.schedules");
 import { getBatchJob, type BatchJobType, type BatchJobSubTaskTemplate } from "@/lib/scheduler/batch-jobs";
 import { computeSchedulerNextRunAt, normalizeSchedulerIntervalExpr } from "@/lib/scheduler/next-run";
 
 export async function GET(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("GET /api/scheduler/schedules");
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -20,10 +25,13 @@ export async function GET(req: NextRequest) {
     message: "Fetched scheduler schedules.",
     metadata: JSON.stringify({ userId: auth.user.id, limit, offset, status: status || null }),
   });
+  log.exit("GET /api/scheduler/schedules", {}, Date.now() - t0);
   return NextResponse.json(result);
 }
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("POST /api/scheduler/schedules");
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -104,5 +112,6 @@ export async function POST(req: NextRequest) {
     metadata: JSON.stringify({ userId: auth.user.id, scheduleId: schedule.id, batchType, triggerType: schedule.trigger_type, triggerExpr: schedule.trigger_expr }),
   });
 
+  log.exit("POST /api/scheduler/schedules", { scheduleId: schedule.id, batchType }, Date.now() - t0);
   return NextResponse.json({ ok: true, schedule_id: schedule.id, schedule_key: schedule.schedule_key });
 }

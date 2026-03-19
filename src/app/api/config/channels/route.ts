@@ -8,6 +8,9 @@ import {
   getChannel,
   type ChannelType,
 } from "@/lib/db";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("api.config.channels");
 import { startDiscordBot, stopDiscordBot, isDiscordBotActive } from "@/lib/channels/discord-channel";
 import {
   formatEmailConnectError,
@@ -78,6 +81,8 @@ function maskSecrets(configJson: string): string {
 }
 
 export async function GET() {
+  const t0 = Date.now();
+  log.enter("GET /api/config/channels");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -87,10 +92,13 @@ export async function GET() {
     discord_bot_active: ch.channel_type === "discord" ? isDiscordBotActive(ch.id) : undefined,
   }));
 
+  log.exit("GET /api/config/channels", { count: channels.length }, Date.now() - t0);
   return NextResponse.json(channels);
 }
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("POST /api/config/channels");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -152,6 +160,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  log.exit("POST /api/config/channels", { channelId: record.id, channelType }, Date.now() - t0);
   return NextResponse.json(
     { ...record, config_json: maskSecrets(record.config_json) },
     { status: 201 }
@@ -159,6 +168,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("PATCH /api/config/channels");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -208,10 +219,13 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  log.exit("PATCH /api/config/channels", { channelId: id }, Date.now() - t0);
   return NextResponse.json({ ...updated, config_json: maskSecrets(updated.config_json) });
 }
 
 export async function DELETE(req: NextRequest) {
+  const t0 = Date.now();
+  log.enter("DELETE /api/config/channels");
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
@@ -234,6 +248,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   deleteChannel(id);
+  log.exit("DELETE /api/config/channels", { channelId: id }, Date.now() - t0);
   return NextResponse.json({ success: true });
 }
 

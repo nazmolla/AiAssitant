@@ -7,6 +7,9 @@ import { listMcpServers, type McpServerRecord } from "@/lib/db";
 import { addLog } from "@/lib/db";
 import type { ToolDefinition } from "@/lib/llm";
 import { MCP_CONNECT_TIMEOUT_MS } from "@/lib/constants";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("mcp.manager");
 
 /** OpenAI API enforces max 64 characters for tool function names. */
 export const MAX_TOOL_NAME_LENGTH = 64;
@@ -142,6 +145,8 @@ class McpManager {
    * Connect to a single MCP server.
    */
   async connect(server: McpServerRecord): Promise<ConnectedMcpServer> {
+    const t0 = Date.now();
+    log.enter("connect", { serverId: server.id, serverName: server.name });
     // Disconnect existing connection if any
     if (this.connections.has(server.id)) {
       await this.disconnect(server.id);
@@ -277,6 +282,7 @@ class McpManager {
       message: `Connected to MCP server "${server.name}" with ${tools.length} tools.`,
       metadata: JSON.stringify({ tools: tools.map((t) => t.name) }),
     });
+    log.exit("connect", { serverId: server.id, toolCount: tools.length }, Date.now() - t0);
 
     return connection;
   }
@@ -322,6 +328,8 @@ class McpManager {
     qualifiedName: string,
     args: Record<string, unknown>
   ): Promise<unknown> {
+    const t0 = Date.now();
+    log.enter("callTool", { qualifiedName });
     const dotIndex = qualifiedName.indexOf(".");
     if (dotIndex === -1) {
       throw new Error(`Invalid tool name format: "${qualifiedName}". Expected "serverId.toolName".`);
@@ -338,6 +346,7 @@ class McpManager {
     }
 
     const result = await conn.client.callTool({ name: toolName, arguments: args });
+    log.exit("callTool", { qualifiedName }, Date.now() - t0);
     return result;
   }
 

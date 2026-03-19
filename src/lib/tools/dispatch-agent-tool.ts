@@ -23,6 +23,9 @@
 
 import type { ToolDefinition } from "@/lib/llm";
 import { BaseTool, registerToolCategory, type ToolExecutionContext } from "./base-tool";
+import { createLogger } from "@/lib/logging/logger";
+
+const log = createLogger("tools.dispatch-agent-tool");
 
 export class DispatchAgentTool extends BaseTool {
   readonly name = "multi_agent_dispatch";
@@ -76,11 +79,14 @@ export class DispatchAgentTool extends BaseTool {
     args: Record<string, unknown>,
     context: ToolExecutionContext,
   ): Promise<unknown> {
+    const t0 = Date.now();
     const agentTypeId = String(args.agentTypeId ?? "").trim();
     const task = String(args.task ?? "").trim();
     const additionalContext = args.additionalContext
       ? String(args.additionalContext)
       : undefined;
+
+    log.enter("execute", { agentTypeId, userId: context.userId });
 
     if (!agentTypeId) {
       throw new Error("dispatch_agent: agentTypeId is required.");
@@ -114,13 +120,15 @@ export class DispatchAgentTool extends BaseTool {
       additionalContext,
     });
 
-    return {
+    const dispatchResult = {
       agentId: definition.id,
       agentRole: definition.name,
       task,
       response: result.response,
       toolsUsed: result.toolsUsed,
     };
+    log.exit("execute", { agentTypeId, toolsUsed: result.toolsUsed.length }, Date.now() - t0);
+    return dispatchResult;
   }
 }
 
