@@ -574,6 +574,7 @@ function ensureProfilePreferencesColumns(): void {
     addColumnIfMissing(table, "font", "TEXT DEFAULT 'inter'");
     addColumnIfMissing(table, "timezone", "TEXT DEFAULT ''");
     addColumnIfMissing(table, "notification_level", "TEXT DEFAULT 'disaster'");
+    addColumnIfMissing(table, "notification_level_inapp", "TEXT DEFAULT 'low'");
     addColumnIfMissing(table, "tts_voice", "TEXT DEFAULT 'nova'");
   }
 }

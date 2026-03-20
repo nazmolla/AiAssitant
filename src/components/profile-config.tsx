@@ -202,7 +202,20 @@ export function ProfileConfig() {
           </div>
 
           <div>
-            <label className={labelClass}>Notification Level</label>
+            <label className={labelClass}>In-App Notification Level</label>
+            <select value={p.profile.notification_level_inapp} onChange={(e) => p.update("notification_level_inapp", e.target.value)} className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
+              <option value="disaster">Disaster only</option>
+              <option value="high">High + disaster</option>
+              <option value="medium">Medium + high + disaster</option>
+              <option value="low">All notifications</option>
+            </select>
+            <p className="text-[10px] text-muted-foreground/50 mt-1">
+              Controls which severity levels appear in the notification bell and SSE stream.
+            </p>
+          </div>
+
+          <div>
+            <label className={labelClass}>External Notification Level</label>
             <select value={p.profile.notification_level} onChange={(e) => p.update("notification_level", e.target.value)} className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
               <option value="disaster">Disaster only</option>
               <option value="high">High + disaster</option>
@@ -210,7 +223,7 @@ export function ProfileConfig() {
               <option value="low">All notifications</option>
             </select>
             <p className="text-[10px] text-muted-foreground/50 mt-1">
-              Controls which severity levels appear in the notification bell and trigger external channel notifications (email, Discord, WhatsApp).
+              Controls which severity levels trigger external channel notifications (email, Discord, WhatsApp).
             </p>
           </div>
 

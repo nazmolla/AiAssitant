@@ -270,6 +270,7 @@ export interface UserProfile {
   company: string;
   screen_sharing_enabled: number;
   notification_level: string;
+  notification_level_inapp: string;
   theme: string;
   font: string;
   timezone: string;
@@ -303,6 +304,7 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
     company: profile.company ?? existing?.company ?? "",
     screen_sharing_enabled: profile.screen_sharing_enabled ?? existing?.screen_sharing_enabled ?? 1,
     notification_level: profile.notification_level ?? existing?.notification_level ?? "disaster",
+    notification_level_inapp: profile.notification_level_inapp ?? existing?.notification_level_inapp ?? "low",
     theme: profile.theme ?? existing?.theme ?? "ember",
     font: profile.font ?? existing?.font ?? "inter",
     timezone: profile.timezone ?? existing?.timezone ?? "",
@@ -310,8 +312,8 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
   };
   getDb()
     .prepare(
-      `INSERT INTO user_profiles (user_id, display_name, avatar_url, title, bio, location, phone, email, website, linkedin, github, twitter, skills, languages, company, screen_sharing_enabled, notification_level, theme, font, timezone, tts_voice, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `INSERT INTO user_profiles (user_id, display_name, avatar_url, title, bio, location, phone, email, website, linkedin, github, twitter, skills, languages, company, screen_sharing_enabled, notification_level, notification_level_inapp, theme, font, timezone, tts_voice, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(user_id) DO UPDATE SET
          display_name = excluded.display_name,
          avatar_url = excluded.avatar_url,
@@ -328,7 +330,8 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
          languages = excluded.languages,
          company = excluded.company,
          screen_sharing_enabled = excluded.screen_sharing_enabled,
-        notification_level = excluded.notification_level,
+         notification_level = excluded.notification_level,
+         notification_level_inapp = excluded.notification_level_inapp,
          theme = excluded.theme,
          font = excluded.font,
          timezone = excluded.timezone,
@@ -340,7 +343,8 @@ export function upsertUserProfile(userId: string, profile: Partial<Omit<UserProf
       p.display_name, p.avatar_url, p.title, p.bio, p.location,
       p.phone, p.email, p.website, p.linkedin,
       p.github, p.twitter, p.skills, p.languages, p.company,
-      p.screen_sharing_enabled, p.notification_level, p.theme, p.font, p.timezone, p.tts_voice
+      p.screen_sharing_enabled, p.notification_level, p.notification_level_inapp,
+      p.theme, p.font, p.timezone, p.tts_voice
     );
   appCache.invalidate(`${CACHE_KEYS.PROFILE_PREFIX}${userId}`);
   return getUserProfile(userId)!;

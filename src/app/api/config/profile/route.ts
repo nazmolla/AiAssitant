@@ -60,7 +60,7 @@ export async function PUT(req: Request) {
       "display_name", "avatar_url", "title", "bio", "location", "phone",
       "email", "website", "linkedin", "github", "twitter",
       "skills", "languages", "company", "screen_sharing_enabled",
-      "notification_level", "theme", "font", "timezone", "tts_voice",
+      "notification_level", "notification_level_inapp", "theme", "font", "timezone", "tts_voice",
     ] as const;
     const sanitized: Record<string, unknown> = {};
     for (const key of ALLOWED_FIELDS) {
@@ -70,6 +70,8 @@ export async function PUT(req: Request) {
           ? (body[key] ? 1 : 0)
           : key === "notification_level"
             ? (NOTIFICATION_LEVELS.has(String(body[key]).toLowerCase()) ? String(body[key]).toLowerCase() : "disaster")
+          : key === "notification_level_inapp"
+            ? (NOTIFICATION_LEVELS.has(String(body[key]).toLowerCase()) ? String(body[key]).toLowerCase() : "low")
           : key === "tts_voice"
             ? (VALID_TTS_VOICES.has(String(body[key]).toLowerCase()) ? String(body[key]).toLowerCase() : "nova")
           : sanitizeField(body[key], maxLen);

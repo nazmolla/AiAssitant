@@ -139,14 +139,19 @@ export function markAllNotificationsRead(userId: string): void {
 }
 
 /**
- * Dismiss all unread notifications — sets notify=0 so they disappear from the bell.
- * Used by "Mark all as read" so the bell is cleared entirely.
+ * Dismiss ALL visible notifications — sets notify=0 so the bell is entirely cleared.
+ * Includes both unread (notify_read=0) and previously-read (notify_read=1) rows.
  * Rows remain in agent_logs and are visible in the dashboard.
  */
-export function dismissAllUnreadNotifications(userId: string): void {
+export function dismissAllNotifications(userId: string): void {
   getDb().prepare(
-    "UPDATE agent_logs SET notify = 0, notify_read = 1 WHERE notify = 1 AND notify_user_id = ? AND notify_read = 0"
+    "UPDATE agent_logs SET notify = 0, notify_read = 1 WHERE notify = 1 AND notify_user_id = ?"
   ).run(userId);
+}
+
+/** @deprecated Use dismissAllNotifications — kept for backward compat */
+export function dismissAllUnreadNotifications(userId: string): void {
+  dismissAllNotifications(userId);
 }
 
 /**

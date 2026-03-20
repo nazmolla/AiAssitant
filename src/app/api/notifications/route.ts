@@ -4,7 +4,7 @@ import {
   listNotifications,
   countUnreadNotifications,
   markNotificationRead,
-  dismissAllUnreadNotifications,
+  dismissAllNotifications,
   deleteNotification,
   listPendingApprovals,
   listPendingApprovalsForUser,
@@ -33,9 +33,9 @@ export async function GET() {
   const userId = auth.user.id;
   const isAdmin = auth.user.role === "admin";
 
-  // Apply per-user notification level threshold
+  // Apply per-user in-app notification level threshold (separate from external channel threshold)
   const profile = getUserProfile(userId);
-  const minLevel = profile?.notification_level ?? "low";
+  const minLevel = profile?.notification_level_inapp ?? "low";
 
   // Fetch persistent notifications
   const notifications = listNotifications(userId, 50, minLevel);
@@ -85,8 +85,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
 
     case "markAllRead":
-      // Dismiss all unread so they vanish from the bell (still accessible in dashboard logs)
-      dismissAllUnreadNotifications(userId);
+      // Dismiss ALL visible notifications so the bell is entirely cleared
+      dismissAllNotifications(userId);
       log.exit("POST /api/notifications", { action }, Date.now() - t0);
       return NextResponse.json({ ok: true });
 

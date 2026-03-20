@@ -17,11 +17,11 @@ export async function GET() {
 
   const userId = auth.user.id;
 
-  // Resolve per-user notification level threshold once at stream-open
+  // Resolve per-user in-app notification level threshold once at stream-open
   const profileRow = getDb()
-    .prepare("SELECT notification_level FROM user_profiles WHERE user_id = ?")
-    .get(userId) as { notification_level?: string } | undefined;
-  const minLevel = profileRow?.notification_level ?? "low";
+    .prepare("SELECT notification_level_inapp FROM user_profiles WHERE user_id = ?")
+    .get(userId) as { notification_level_inapp?: string } | undefined;
+  const minLevel = profileRow?.notification_level_inapp ?? "low";
   const allowedTypes = allowedTypesForLevel(minLevel);
   const typeClause = allowedTypes
     ? `AND (notify_type IN (${allowedTypes.map(() => "?").join(",")}) OR notify_type IS NULL)`

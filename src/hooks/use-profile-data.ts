@@ -18,6 +18,7 @@ export interface ProfileData {
   company: string;
   screen_sharing_enabled: number;
   notification_level: string;
+  notification_level_inapp: string;
   theme: string;
   font: string;
   timezone: string;
@@ -41,6 +42,7 @@ export const EMPTY_PROFILE: ProfileData = {
   company: "",
   screen_sharing_enabled: 1,
   notification_level: "disaster",
+  notification_level_inapp: "low",
   theme: "ember",
   font: "inter",
   timezone: "",
