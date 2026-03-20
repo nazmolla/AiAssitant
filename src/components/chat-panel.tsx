@@ -130,14 +130,14 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
   }, [fetchThreadsDebounced]);
 
   useEffect(() => {
-    chatStream.abortStream();
-    chatStream.setLoading(false);
     chatStream.setThinkingSteps([]);
     if (!activeThread) return;
-    // Skip loading messages for a freshly-created thread that is about to
-    // receive a send — the optimistic UI from sendMessage owns the state.
-    // Reset the flag here so subsequent thread switches fetch normally.
+    // MUST check before abortStream: if a welcome-screen send just started,
+    // abortStream would kill the in-flight SSE fetch. Skip everything and let
+    // sendMessage own the state for this thread.
     if (pendingSendRef.current) { pendingSendRef.current = false; return; }
+    chatStream.abortStream();
+    chatStream.setLoading(false);
     fetch(`/api/threads/${activeThread}`)
       .then((r) => r.json())
       .then((data) => chatStream.setMessages(data.messages || []))
