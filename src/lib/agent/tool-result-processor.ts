@@ -71,14 +71,41 @@ function collectScreenshotAttachments(
   }
 
   let sizeBytes = 0;
+  let localFileFound = false;
   for (const candidate of [normalizedScreenshotPath, rawScreenshotPath]) {
     if (!candidate) continue;
     try {
       const stats = fs.statSync(candidate);
       sizeBytes = stats.size;
+      localFileFound = true;
       break;
     } catch {
       // Try next candidate
+    }
+  }
+
+  // If the screenshot file is not on the local filesystem (e.g. MCP server running on
+  // a remote machine), fall back to extracting the base64 image from the MCP content array
+  // and saving it locally so Nexus can serve it via /api/attachments.
+  if (!localFileFound) {
+    type McpImageContent = { type: string; data?: string; mimeType?: string };
+    const contentArr = resultObj?.content as McpImageContent[] | undefined;
+    const imgContent = Array.isArray(contentArr)
+      ? contentArr.find((c) => c.type === "image" && typeof c.data === "string" && c.mimeType?.startsWith("image/"))
+      : undefined;
+    if (imgContent?.data) {
+      try {
+        const imgBuffer = Buffer.from(imgContent.data, "base64");
+        const imgFilename = `mcp-screenshot-${Date.now()}.png`;
+        const screenshotsDir = path.join("data", "screenshots");
+        fs.mkdirSync(screenshotsDir, { recursive: true });
+        fs.writeFileSync(path.join(screenshotsDir, imgFilename), imgBuffer);
+        storagePath = `screenshots/${imgFilename}`;
+        sizeBytes = imgBuffer.length;
+        log.info("Saved remote MCP screenshot locally", { imgFilename, sizeBytes });
+      } catch (saveErr) {
+        log.warning("Failed to save remote MCP screenshot base64 locally", { error: String(saveErr) });
+      }
     }
   }
 
