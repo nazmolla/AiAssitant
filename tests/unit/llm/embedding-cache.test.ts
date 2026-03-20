@@ -122,7 +122,9 @@ describe("Embedding result cache", () => {
     await generateEmbedding("perf test");
     const cachedMs = performance.now() - t2;
 
-    expect(cachedMs).toBeLessThan(uncachedMs + 1); // cached never slower
-    expect(embeddingCallCount).toBe(1); // only one API call
+    expect(embeddingCallCount).toBe(1); // only one API call — cache hit proven
+    // Timing: cached should be faster, but CI scheduling variance can be 10x+ so
+    // we just verify the API wasn't called again (above) rather than asserting exact latency.
+    expect(cachedMs).toBeLessThan(uncachedMs + 50); // generous CI-safe bound
   });
 });
