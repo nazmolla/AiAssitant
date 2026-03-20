@@ -69,6 +69,7 @@ For any file change, complete **all** of the following in order:
 6. **Wait for CI quality gate** — check the GitHub Actions run triggered by the push; do NOT proceed until the run is green.
 7. **Deploy** via `bash deploy.sh <host> <user>` **only after step 6 is green**.
 8. **Verify** deployment health/logs/smoke checks (`journalctl -u nexus-agent`, HTTP 200).
+9. **Close the GitHub issue** — post a closure comment summarizing: what was implemented, which commit/version shipped it, and any relevant test/deploy evidence. Then close the issue with `gh issue close <number>`.
 
 Also update when relevant: tests (unit/integration/component), docs (`README`, `INSTALLATION`, `ARCHITECTURE`, `TECH_SPECS`), and vulnerability status.
 
@@ -104,6 +105,7 @@ Before any final "done" response, run an internal self-review against all three 
 - [ ] Deployed via `deploy.sh`
 - [ ] Health/log checks passed
 - [ ] Committed and pushed
+- [ ] GitHub issue closed with a closure comment (version shipped, what changed, test/deploy evidence)
 
 If any review would fail, continue working — do not finalize.
 
