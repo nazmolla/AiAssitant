@@ -8,6 +8,49 @@
 
 ---
 
+## Notifications not appearing in the bell
+
+### Symptoms
+- Expected notifications (info, warnings) do not appear in the notification bell
+
+### Checks
+- Go to **Settings → Profile → Notification Level**
+- If set to `high` or `disaster`, low-severity types (`info`, `warning`, `proactive_action`) are filtered out from the bell
+- Lower the threshold to `low` (All notifications) to see everything
+- Note: `approval_required` and `system_error` always appear regardless of threshold
+
+---
+
+## "Mark all as read" — notifications still visible elsewhere
+
+### Expected behaviour
+- "Mark all as read" dismisses all unread notifications from the bell entirely
+- They are **not deleted** — they remain accessible in **Dashboard → Logs**
+
+---
+
+## Email monitoring not running
+
+### Checks
+- The email monitoring schedule (`workflow.email.pipeline`) is seeded **paused** by default — it requires an Email channel to be configured
+- Go to **Settings → Channels** → add an Email channel (SMTP + IMAP)
+- Then go to **Settings → Scheduler** → find "Email Monitoring" → click **Resume**
+- If the schedule is not visible, check that you are logged in as an admin
+
+---
+
+## Display name shows wrong/stale name
+
+### Symptoms
+- Header or welcome screen shows an old name after updating profile
+
+### Resolution
+- The display name is fetched live from your profile on each page load
+- Hard-refresh the page (`Ctrl+Shift+R` / `Cmd+Shift+R`) to force a fresh fetch
+- Verify the name was saved: Settings → Profile → save and confirm the response is success
+
+---
+
 ## UI briefly shows loading/flicker
 
 ### Symptoms

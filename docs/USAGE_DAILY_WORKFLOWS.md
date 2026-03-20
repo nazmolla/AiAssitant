@@ -12,6 +12,7 @@
 
 Use the **Chat** tab for day-to-day AI interactions.
 
+- **Welcome screen** — When no thread is selected, type your message and press Enter (or click Send). A thread is created automatically and your message is sent in one step.
 - Start or select a thread, then send messages
 - Responses stream in real-time with intermediate thinking steps visible
 - Every response shows an "Analyzing…" block revealing the agent's process (model selection, knowledge retrieval, tool calls)
@@ -34,6 +35,8 @@ When a tool action requires approval:
 4. Choose **Always Allow/Reject** to save as a Standing Order for future calls
 
 **Proactive approvals** from the background scheduler appear in the notification bell with a "Proactive" badge (admin-visible only).
+
+> **Note:** The notification bell only shows notifications at or above your **Notification Level** threshold (Settings → Profile → Notification Level). If you are not seeing expected notifications, check that your threshold is set low enough. "Mark all as read" clears the bell entirely — all notifications remain in Dashboard → Logs.
 
 ![Approvals](images/usage-approvals.png)
 
@@ -69,8 +72,8 @@ The **Knowledge** tab manages your personal fact vault.
 
 Access from **Account menu (top-right) → Profile** or **Settings → Profile**:
 
-- Update personal information, skills, and links
-- Set notification threshold (`low` / `medium` / `high` / `disaster`)
+- Update personal information, skills, and links (display name is shown live in the header — changes appear immediately on next page load)
+- Set **Notification Level** (`low` / `medium` / `high` / `disaster`) — controls which notifications appear in the bell **and** trigger external channel alerts (email, Discord, WhatsApp)
 - Choose TTS voice and theme preferences
 
 ![Profile settings](images/usage-settings-profile.png)

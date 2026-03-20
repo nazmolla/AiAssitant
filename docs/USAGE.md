@@ -48,6 +48,8 @@ All screenshots are captured from a **local test environment** with sample data.
 - **Knowledge Capture** — Every conversation is mined for durable facts, keeping the knowledge vault up to date automatically.
 - **Proactive Scheduler** — Background automation that monitors tools, creates tasks, and surfaces actions for approval.
 - **Job Scout** — Discovers matching roles, generates tailored resumes, and delivers them by email. Requires an Email channel and up-to-date profile.
+- **Notification Bell** — The bell is filtered by your **Notification Level** preference (Settings → Profile). Only notifications at or above your threshold appear. "Mark all as read" clears the bell entirely — notifications remain accessible in Dashboard → Logs.
+- **Welcome Screen** — Sending a message from the welcome screen (no thread selected) automatically creates a thread and sends the message in one step.
 
 ---
 
@@ -61,6 +63,8 @@ The **Conversation** tab provides hands-free voice interaction:
 4. **Interrupt** anytime by speaking while the agent is responding
 
 Features: 9 TTS voices, auto/manual listen toggle, audio level visualizer, real-time transcript, and status indicators (Listening → Transcribing → Thinking → Speaking).
+
+The Conversation endpoint uses your full knowledge vault, user profile, and connected MCP servers — the same context available in chat mode.
 
 Requires HTTPS or localhost, plus configured STT and TTS providers.
 

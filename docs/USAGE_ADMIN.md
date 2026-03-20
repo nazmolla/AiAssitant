@@ -44,6 +44,17 @@ Tools run in a VM sandbox with restricted runtime surface and timeout-bound exec
 
 ---
 
+## MCP Server Access Control
+
+Settings → MCP Servers → edit any server to control who can use it:
+
+- **Global** — the server is available to all users (default)
+- **Restricted** — only users you assign can use it; tick each user in the checklist that appears when Restricted is selected
+
+Use Restricted scope for high-privilege servers (e.g. HomeAssistant, file system, internal APIs) where you do not want every user to have access.
+
+---
+
 ## Scheduler Console
 
 Settings → Scheduler provides a live operations console:
@@ -51,6 +62,18 @@ Settings → Scheduler provides a live operations console:
 - **Child Tasks** and recent runs when a header is selected
 - **Focus View** for full run history with task-run log links
 - Health metrics via the API (`GET /api/scheduler/health`)
+
+**Default schedules (seeded on every fresh install):**
+
+| Schedule | Default Status | Notes |
+|----------|---------------|-------|
+| System Proactive Scan | Active | Runs every 15 min |
+| System DB Maintenance | Active | Runs hourly |
+| System Knowledge Maintenance | Active | Runs every 60 s |
+| Job Scout Pipeline | **Paused** | Activate after configuring job preferences |
+| Email Monitoring | **Paused** | Activate after configuring an Email channel |
+
+Resume paused schedules from the Scheduler console once the prerequisite configuration is in place.
 
 ---
 

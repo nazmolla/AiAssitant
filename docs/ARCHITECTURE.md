@@ -146,7 +146,7 @@ This loop also supports end-to-end career workflows: discover relevant jobs from
 
 - **Speech-to-Text** — Mic button records audio (MediaRecorder, `audio/webm`), transcribed by OpenAI Whisper via `POST /api/audio/transcribe`. Optional local Whisper fallback when cloud STT fails.
 - **Text-to-Speech** — Speaker icon on assistant messages plays TTS-1 audio (9 voices, user-selectable). Supports mp3/wav/pcm/opus/aac/flac output.
-- **Conversation Mode** — Full-screen voice tab (`/conversation`) with VAD-based auto-listen, interrupt/barge-in, and lightweight `/api/conversation/respond` endpoint (full tool support, no DB persistence).
+- **Conversation Mode** — Full-screen voice tab (`/conversation`) with VAD-based auto-listen, interrupt/barge-in, and `/api/conversation/respond` endpoint (full tool support, knowledge retrieval, user profile context, and MCP context — no DB persistence).
 - **ESP32 Atom Echo** — Standalone Arduino firmware with on-device wake-word detection via micro-wake-up. See [`esp32/atom-echo-nexus/README.md`](../esp32/atom-echo-nexus/README.md).
 
 ### Real-Time Streaming
@@ -193,7 +193,8 @@ All caches use explicit invalidation on mutations as the primary mechanism, with
 
 ### Notification & Channel Safety
 
-- **Per-user thresholds** — Notifications filtered by each user's `notification_level` (low → disaster).
+- **Per-user thresholds** — The notification bell and external channel delivery (email, Discord, WhatsApp) both respect each user's `notification_level` profile setting (low → disaster). Type-to-level map: `info`=low, `proactive_action`/`warning`=medium, `tool_error`/`channel_error`=high, `system_error`/`approval_required`=disaster.
+- **Bell dismissal** — "Mark all as read" dismisses notifications from the bell entirely (`notify=0`). They remain accessible in the Dashboard logs view and are never deleted from the database.
 - **Severity capping** — Smart home/IoT tools are capped at `high` severity (never `disaster`).
 - **Injection boundary** — Inbound email bodies are treated as untrusted content and sanitized before LLM ingestion.
 - **Per-message UID persistence** — IMAP processing updates last-seen UID per message to prevent re-processing on crash.
@@ -206,7 +207,7 @@ All caches use explicit invalidation on mutations as the primary mechanism, with
 |-----------|-------------|
 | **Multi-User Isolation** | Knowledge, threads, and profiles scoped by `user_id`. No cross-user data leakage. |
 | **Proactive Intelligence** | Background scheduler polls MCP tools, writes actions into a persisted task queue, and executes due tasks. Can create new custom tools at runtime. |
-| **Unified Scheduler** | Normalized parent schedules → child tasks → immutable run history. Powers proactive scans, knowledge maintenance, DB cleanup, and batch workflows (e.g. Job Scout). |
+| **Unified Scheduler** | Normalized parent schedules → child tasks → immutable run history. Powers proactive scans, knowledge maintenance, DB cleanup, and batch workflows (e.g. Job Scout, Email Monitoring). Five system schedules are seeded on every fresh install: proactive scan (active), DB maintenance (active), knowledge maintenance (active), job scout pipeline (paused — needs user config), and email monitoring (paused — needs email credentials). |
 | **Autonomous Knowledge Capture** | Every chat turn is mined for durable facts, keeping the Knowledge Vault current without manual entry. |
 | **Vector-Aware Reasoning** | Semantic embedding search retrieves relevant knowledge before responding (skipped if vault is empty). |
 | **Human-in-the-Loop (HITL)** | Default-deny tool policy system for all tools (built-in, custom, MCP). Standing orders let users save approval preferences. |
@@ -223,8 +224,9 @@ All caches use explicit invalidation on mutations as the primary mechanism, with
 
 ## UI Navigation
 
-- The header account area (top-right) provides quick access to **Profile** and **Sign out**.
+- The header account area (top-right) provides quick access to **Profile** and **Sign out**. The account display name is fetched live from the user profile on page load — always reflects the current `display_name`, not a stale session token.
 - Approvals and system notifications are accessed via the **bell icon** (Notification Center), not as a standalone tab.
+- Sending a message from the **welcome screen** (no active thread selected) atomically creates a new thread and sends the message in a single operation — no separate "create thread first" step required.
 
 ---
 
@@ -278,7 +280,7 @@ Permissions are fetched from `GET /api/admin/users/me`. Hidden pages are removed
 
 - **Knowledge** — `user_knowledge` keyed by `user_id`; same entity/attribute can exist per user.
 - **Threads** — Each thread has a `user_id` foreign key; ownership enforced on all operations.
-- **MCP Servers** — `scope` field: global (all users) or user-scoped (owner only).
+- **MCP Servers** — `scope` field: `global` (visible to all users) or `restricted` (assigned to specific users via Settings → MCP Servers → edit → Global/Restricted toggle + user checkboxes). A junction table `mcp_server_users` maps restricted servers to allowed users.
 - **Channels** — Owned by creator; webhook messages resolve the channel owner as the active user.
 
 ---

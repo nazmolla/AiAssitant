@@ -81,7 +81,14 @@ CREATE TABLE mcp_servers (
     auth_type TEXT DEFAULT 'none',      -- 'none' | 'bearer' | 'oauth'
     access_token TEXT, client_id TEXT, client_secret TEXT,
     user_id TEXT REFERENCES users(id),  -- NULL = global
-    scope TEXT DEFAULT 'global'         -- 'global' | 'user'
+    scope TEXT DEFAULT 'global'         -- 'global' | 'restricted'
+);
+
+CREATE TABLE mcp_server_users (
+    mcp_server_id TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (mcp_server_id, user_id)
+    -- Junction table for restricted MCP server access control
 );
 
 CREATE TABLE llm_providers (
@@ -186,18 +193,25 @@ CREATE TABLE approval_queue (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- NOTE: The `notifications` table is kept for schema compatibility only.
+-- Active notifications are stored as agent_logs rows with notify=1.
+-- notify_type values: 'approval_required' | 'tool_error' | 'proactive_action' | 'channel_error' | 'system_error' | 'warning' | 'info'
+-- notify_read=1 → read; notify=0 → dismissed (no longer appears in bell, still visible in dashboard logs).
+-- "Mark all as read" dismisses all unread notifications (notify=0) rather than just setting notify_read=1,
+-- so the bell is cleared entirely. Notifications remain accessible via Dashboard → Logs.
+-- Filtering: GET /api/notifications and the SSE stream both respect the user's notification_level profile
+-- setting, applying a type-to-level filter: info=low, proactive_action/warning=medium,
+-- tool_error/channel_error=high, system_error/approval_required=disaster.
 CREATE TABLE notifications (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,                  -- 'approval_required' | 'tool_error' | 'proactive_action' | 'channel_error' | 'system_error' | 'info'
+    type TEXT NOT NULL,
     title TEXT NOT NULL,
     body TEXT,
-    metadata TEXT,                       -- JSON blob for extra context
+    metadata TEXT,
     read INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_notifications_user_read ON notifications (user_id, read);
-CREATE INDEX idx_notifications_created ON notifications (created_at);
 ```
 
 ### E. Custom Tools (Self-Extending)
@@ -305,7 +319,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `GET` | `/api/admin/users` | Admin | List all users with permissions |
 | `PUT/DELETE` | `/api/admin/users` | Admin | Update user role/status or delete user |
 | `GET` | `/api/admin/users/me` | User | Get current user's role and permissions |
-| `POST` | `/api/conversation/respond` | User | Lightweight LLM endpoint for voice conversation with full tool support (SSE streaming: `token`, `tool_call`, `tool_result`, `done`, `error` events). Skips knowledge retrieval, profile context, and DB persistence for fast response. |
+| `POST` | `/api/conversation/respond` | User | LLM endpoint for voice conversation with full tool support (SSE streaming: `token`, `tool_call`, `tool_result`, `done`, `error` events). Includes knowledge retrieval, user profile context, and MCP server context in the system prompt. No DB thread persistence. |
 
 ---
 
@@ -563,13 +577,13 @@ Each row reports topic rate and delta impact against overall rate.
 
 ### Coverage
 
-**1855 tests across 145 suites** — all passing.
+**2046 tests across 163 suites** — all passing.
 
 | Category | Suites | Description |
 |----------|--------|-------------|
-| Unit | ~72 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards, knowledge retrieval, inbound email classification, attachment size guards, embedding cache, provider cache, auth cache, decrypted row cache, vault embedding cache, ChatPanel split verification, message converter, base tool |
-| Integration | ~6 | End-to-end API flows, MCP integration, channel routing, SSE concurrency & disconnect safety |
-| Component | ~11 | Full navigation (every page + settings sub-page), component rendering, settings panel, tool policies, profile config, markdown rendering, TTS-to-listening transitions, interrupt / barge-in, chat area interactions |
+| Unit | ~103 | Agent loop, gatekeeper, discovery, orchestrator, DB queries, API routes, auth guards, knowledge retrieval, notification level filtering, inbound email classification, attachment size guards, embedding cache, provider cache, auth cache, decrypted row cache, vault embedding cache, ChatPanel split verification, message converter, base tool |
+| Integration | ~27 | End-to-end API flows, MCP integration, channel routing, SSE concurrency & disconnect safety, notification dismiss/threshold |
+| Component | ~33 | All mission-critical UI components with full interaction coverage: full navigation, chat-panel (welcome send, thread select/delete/load-more), chat area, input bar, thread sidebar, notification bell, approval inbox, LLM config, MCP config (scope + user assignment), channels, scheduler console, knowledge vault, user management, profile config, custom tools, tool policies, standing orders |
 
 ### Component Test Architecture
 

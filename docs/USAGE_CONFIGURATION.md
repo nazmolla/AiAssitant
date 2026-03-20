@@ -34,7 +34,9 @@ Add external tool servers, connect, and discover tools. Supports auto-refresh wh
 | SSE | `http://host:port/.../sse` |
 | Streamable HTTP | `http://host:port/...` |
 
-Scopes: **Global** (shared with all users) or **User** (owner-only).
+Scopes:
+- **Global** — visible and available to all users.
+- **Restricted** — available only to assigned users. After setting a server to Restricted, a user checklist appears; tick each user who should have access. Assignments are saved per-server and can be updated at any time from the edit form.
 
 ---
 
@@ -116,7 +118,7 @@ The **Conversation** tab provides hands-free voice mode:
 3. Response is spoken back, then auto-listen resumes
 4. Use Auto/Manual toggle, voice selector, or Stop button as needed
 
-Requires HTTPS or localhost, plus configured STT, TTS, and LLM providers.
+The conversation endpoint uses your full knowledge vault, user profile context, and connected MCP servers — identical context to the main chat. Requires HTTPS or localhost, plus configured STT, TTS, and LLM providers.
 
 ---
 

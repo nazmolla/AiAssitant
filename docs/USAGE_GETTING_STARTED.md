@@ -28,16 +28,15 @@ Nexus runs as a single-page command center with tab navigation in the left drawe
 | **Knowledge** | View and manage remembered facts |
 | **Settings** | Configure providers, tools, channels, and admin features |
 
-The **notification bell** (top-right) shows pending approvals and system alerts.
-Your **account name** (top-right) opens quick access to **Profile** and **Sign out**.
+The **notification bell** (top-right) shows pending approvals and system alerts filtered by your **Notification Level** preference (Settings → Profile). "Mark all as read" clears all notifications from the bell — they remain in Dashboard → Logs.
+Your **account name** (top-right) opens quick access to **Profile** and **Sign out**. The display name is fetched live from your profile on each page load.
 
 ## 3) First Successful Flow
 
 1. Go to **Chat**
-2. Create a new thread
-3. Send a message
-4. Verify the streaming response appears
-5. If a tool call requires approval, approve it inline or via the notification bell
+2. Type a message on the **welcome screen** and press Enter (or click Send) — a thread is created automatically, or create one manually via the sidebar
+3. Verify the streaming response appears
+4. If a tool call requires approval, approve it inline or via the notification bell
 
 ![Chat tab](images/usage-chat.png)
 
