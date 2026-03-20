@@ -34,11 +34,14 @@ describe("Middleware Matcher Config", () => {
   ];
 
   // Exact routes (no wildcard)
-  const requiredExact = ["/api/notifications"];
+  const requiredExact = [
+    "/api/notifications",
+    "/api/notifications/stream", // rate-limited; auth bypass allows unauthenticated SSE
+    "/api/client-error",         // rate-limited; auth bypass allows unauthenticated error reporting
+  ];
 
   // Routes intentionally NOT in the matcher
   const excludedRoutes = [
-    "/api/client-error", // intentionally unauthenticated
     "/api/auth", // NextAuth handles its own auth
   ];
 
@@ -68,8 +71,7 @@ describe("Middleware Matcher Config", () => {
   );
 
   test("matcher has expected number of entries", () => {
-    expect(matcher).toHaveLength(
-      requiredPrefixes.length + requiredExact.length
-    );
+    // 12 wildcard prefix routes + 3 exact routes = 15
+    expect(matcher).toHaveLength(requiredPrefixes.length + requiredExact.length);
   });
 });

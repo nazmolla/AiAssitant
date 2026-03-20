@@ -21,6 +21,8 @@ import type { ToolDefinition, ToolCall } from "@/lib/llm";
 import { BaseTool, type ToolExecutionContext, registerToolCategory } from "./base-tool";
 import { findDuplicateToolMatch } from "./tool-duplicate-gate";
 import * as vm from "vm";
+import { spawn } from "child_process";
+import path from "path";
 import { ValidationError, NotFoundError, IntegrationError } from "@/lib/errors";
 import { SANDBOX_TIMEOUT_MS, SANDBOX_VALIDATION_TIMEOUT_MS } from "@/lib/constants";
 import { createLogger } from "@/lib/logging/logger";
@@ -523,33 +525,53 @@ class CustomToolRuntime {
     code: string,
     args: Record<string, unknown>
   ): Promise<unknown> {
-    const sandbox = CustomToolRuntime.buildSandboxContext(args);
-    vm.createContext(sandbox);
+    // Run in an isolated child process with an empty environment so that
+    // parent process secrets (env vars, DB connections) are not accessible.
+    // This prevents constructor-chain prototype escapes from reaching sensitive state.
+    return new Promise((resolve, reject) => {
+      const runnerPath = path.resolve(process.cwd(), "scripts/sandbox-runner.cjs");
+      const child = spawn(process.execPath, [runnerPath], {
+        env: { SANDBOX_TIMEOUT: String(SANDBOX_TIMEOUT_MS) }, // minimal env — no inherited secrets
+        stdio: ["pipe", "pipe", "pipe"],
+      });
 
-    const wrappedCode = `
-    (async () => {
-      const args = __args__;
-      ${code}
-    })().then(r => { __result__ = r; }).catch(e => { __result__ = { __error__: e.message || String(e) }; });
-  `;
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
+      child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
 
-    const script = new vm.Script(wrappedCode, {
-      filename: "custom-tool.js",
+      const killTimer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new IntegrationError("Custom tool sandbox timed out"));
+      }, SANDBOX_TIMEOUT_MS + 2000);
+
+      child.on("close", () => {
+        clearTimeout(killTimer);
+        try {
+          const parsed = JSON.parse(stdout || "{}") as { result?: unknown; error?: string; logs?: { level: string; msg: string }[] };
+          // Relay sandbox console logs
+          for (const entry of parsed.logs ?? []) {
+            CustomToolRuntime.emitCustomToolLog(entry.level as "verbose" | "warning" | "error", [entry.msg]);
+          }
+          if (parsed.error) {
+            reject(new IntegrationError(parsed.error));
+          } else {
+            resolve(parsed.result ?? { status: "completed", note: "Tool returned no explicit value." });
+          }
+        } catch {
+          reject(new IntegrationError(`Sandbox runner returned invalid output: ${stderr || stdout}`));
+        }
+      });
+
+      child.on("error", (err) => {
+        clearTimeout(killTimer);
+        reject(new IntegrationError(`Failed to start sandbox runner: ${err.message}`));
+      });
+
+      // Send code and args to the child via stdin
+      child.stdin.write(JSON.stringify({ code, args }));
+      child.stdin.end();
     });
-
-    script.runInContext(sandbox, { timeout: SANDBOX_TIMEOUT_MS });
-
-    const start = Date.now();
-    while (sandbox.__result__ === undefined && Date.now() - start < SANDBOX_TIMEOUT_MS) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-
-    const result = sandbox.__result__;
-    if (result && typeof result === "object" && "__error__" in (result as Record<string, unknown>)) {
-      throw new IntegrationError((result as Record<string, unknown>).__error__ as string);
-    }
-
-    return result ?? { status: "completed", note: "Tool returned no explicit value." };
   }
 }
 

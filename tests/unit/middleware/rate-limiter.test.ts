@@ -21,7 +21,9 @@ function makeRequest(opts: { ip?: string; path?: string; auth?: string } = {}) {
   const { ip = "10.0.0.1", path = "/api/threads/abc", auth } = opts;
   const url = `http://localhost:3000${path}`;
   const headers = new Headers();
-  headers.set("x-forwarded-for", ip);
+  // Use x-real-ip — the middleware now prefers req.ip then x-real-ip over x-forwarded-for
+  // to prevent client-side IP spoofing. In the test environment req.ip is undefined.
+  headers.set("x-real-ip", ip);
   if (auth) headers.set("authorization", auth);
   return new NextRequest(url, { headers });
 }

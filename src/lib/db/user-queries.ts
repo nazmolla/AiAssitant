@@ -192,12 +192,17 @@ export function updateUserPermissions(userId: string, perms: Partial<Omit<UserPe
   ).run(userId);
 
   const VALID_FIELDS = new Set(["chat", "knowledge", "dashboard", "approvals", "mcp_servers", "channels", "llm_config", "screen_sharing"]);
+  // Build a single UPDATE instead of one query per field (was N round-trips)
+  const setClauses: string[] = [];
+  const values: (number | string)[] = [];
   for (const [key, value] of Object.entries(perms)) {
-    // Strict whitelist check — key must be an exact match in VALID_FIELDS (prevents SQL injection via key)
     if (VALID_FIELDS.has(key) && (value === 0 || value === 1)) {
-      // key is guaranteed to be one of the hardcoded VALID_FIELDS strings (Set.has passed)
-      db.prepare(`UPDATE user_permissions SET ${key} = ? WHERE user_id = ?`).run(value, userId);
+      setClauses.push(`${key} = ?`);
+      values.push(value);
     }
+  }
+  if (setClauses.length > 0) {
+    db.prepare(`UPDATE user_permissions SET ${setClauses.join(", ")} WHERE user_id = ?`).run(...values, userId);
   }
 }
 

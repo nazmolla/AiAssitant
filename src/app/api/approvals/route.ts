@@ -20,18 +20,13 @@ export async function GET() {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  const all = listPendingApprovals();
-
-  // Clean up stale approvals in bulk (O(1) queries, not O(n) per-approval loop)
+  // Clean up stale approvals first, then fetch once
   cleanStaleApprovals();
-
-  // Re-fetch after cleanup to get only actionable approvals
-  const actionable = listPendingApprovals();
 
   // Scope visibility: admins see all, regular users see only their threads
   // Proactive approvals (no thread) are admin-only
   const pending = auth.user.role === "admin"
-    ? actionable
+    ? listPendingApprovals()
     : listPendingApprovalsForUser(auth.user.id);
 
   const filtered = pending.filter((approval) => isApprovalCenterSource(approval.source));

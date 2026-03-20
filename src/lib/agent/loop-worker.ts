@@ -394,11 +394,11 @@ async function _runViaWorker(
     metadata: JSON.stringify({ threadId, toolsUsed }),
   });
 
-  /* ── 10. Auto-generate thread title ─────────────────────────── */
-  await maybeUpdateThreadTitle(threadId, userMessage, finalContent);
+  /* ── 10. Auto-generate thread title (fire-and-forget — must not block SSE response) ── */
+  maybeUpdateThreadTitle(threadId, userMessage, finalContent).catch(() => { /* non-critical */ });
 
-  /* ── 11. Knowledge ingestion ────────────────────────────────── */
-  await persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId);
+  /* ── 11. Knowledge ingestion (fire-and-forget — must not block SSE response) ────── */
+  persistKnowledgeFromTurn(threadId, knowledgeSnippets, userId).catch(() => { /* non-critical */ });
 
   return {
     content: finalContent,

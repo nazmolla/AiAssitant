@@ -589,6 +589,10 @@ function ensureAgentLogsNotifyColumns(): void {
   try {
     getDb().exec("CREATE INDEX IF NOT EXISTS idx_agent_logs_notify ON agent_logs(notify, notify_user_id, notify_read, created_at DESC)");
   } catch { /* index may already exist */ }
+  try {
+    getDb().exec("CREATE INDEX IF NOT EXISTS idx_agent_logs_level ON agent_logs(level, created_at DESC)");
+    getDb().exec("CREATE INDEX IF NOT EXISTS idx_agent_logs_source ON agent_logs(source, created_at DESC)");
+  } catch { /* indexes may already exist */ }
 }
 
 function normalizeAgentLogLevels(): void {

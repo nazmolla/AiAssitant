@@ -46,10 +46,13 @@ describe("POST /api/channels/[channelId]/webhook (phone)", () => {
     }).toString();
 
     const req = new NextRequest(
-      `http://localhost/api/channels/${channelId}/webhook?secret=${encodeURIComponent(webhookSecret)}`,
+      `http://localhost/api/channels/${channelId}/webhook`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "x-webhook-secret": webhookSecret,
+        },
         body,
       },
     );

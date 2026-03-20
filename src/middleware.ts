@@ -39,7 +39,11 @@ setInterval(() => {
 }, RATE_LIMIT_WINDOW_MS);
 
 export function applyRateLimit(req: NextRequest): NextResponse | null {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  // Prefer the server-assigned IP (set by the Edge runtime / reverse proxy infrastructure)
+  // over the client-supplied X-Forwarded-For header to prevent IP spoofing bypass.
+  const ip = (req as unknown as { ip?: string }).ip
+    || req.headers.get("x-real-ip")
+    || "unknown";
   if (isRateLimited(ip)) {
     return NextResponse.json(
       { error: "Too many requests. Please slow down." },
@@ -67,6 +71,12 @@ export function checkAuthBypass(req: NextRequest): NextResponse | null {
 
   // Inbound channel webhooks use their own secret-based auth
   if (WEBHOOK_PATTERN.test(req.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
+  // Client-error endpoint is intentionally unauthenticated (fires before session is available)
+  // Rate limiting is applied above; no session auth required here
+  if (req.nextUrl.pathname === "/api/client-error") {
     return NextResponse.next();
   }
 
@@ -129,6 +139,8 @@ export const config = {
     "/api/audio/:path*",
     "/api/conversation/:path*",
     "/api/notifications",
+    "/api/notifications/stream",
     "/api/channels/:path*",
+    "/api/client-error",
   ],
 };

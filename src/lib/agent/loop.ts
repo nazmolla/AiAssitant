@@ -188,11 +188,13 @@ export async function runAgentLoop(
     }
   }
 
+  // Fetch thread messages once and reuse for both queryText extraction and chat history
+  const dbMessages = deps.getThreadMessages(threadId);
+
   // In continuation mode, extract the last user message from DB for knowledge retrieval
   const queryText = continuation
     ? (() => {
-        const msgs = deps.getThreadMessages(threadId);
-        const lastUser = [...msgs].reverse().find((m) => m.role === "user");
+        const lastUser = [...dbMessages].reverse().find((m) => m.role === "user");
         return lastUser?.content || "";
       })()
     : userMessage;
@@ -204,7 +206,6 @@ export async function runAgentLoop(
   onStatus?.({ step: "Building context", detail: "Loading user profile and chat history" });
   const profileContext = buildProfileContext(userId);
   const mcpContext = buildMcpContext();
-  const dbMessages = deps.getThreadMessages(threadId);
   const chatMessages = dbMessagesToChat(dbMessages, continuation ? undefined : contentParts);
 
   const toolsUsed: string[] = [];

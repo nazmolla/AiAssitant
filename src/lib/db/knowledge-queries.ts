@@ -19,11 +19,11 @@ export interface KnowledgeEntry {
   last_updated: string;
 }
 
-export function listKnowledge(userId?: string): KnowledgeEntry[] {
+export function listKnowledge(userId?: string, limit = 500): KnowledgeEntry[] {
   if (!userId) return [];
   return getDb()
-    .prepare("SELECT * FROM user_knowledge WHERE user_id = ? OR user_id IS NULL ORDER BY last_updated DESC")
-    .all(userId) as KnowledgeEntry[];
+    .prepare("SELECT * FROM user_knowledge WHERE user_id = ? OR user_id IS NULL ORDER BY last_updated DESC LIMIT ?")
+    .all(userId, limit) as KnowledgeEntry[];
 }
 
 export function listKnowledgePaginated(userId: string, limit = 100, offset = 0): PaginatedResult<KnowledgeEntry> {

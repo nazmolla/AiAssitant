@@ -82,13 +82,11 @@ export function createNotification(n: {
     throw new Error("createNotification: userId is required");
   }
   const level = notifyTypeToLogLevel(n.type);
-  const row = getDb()
-    .prepare(
-      `INSERT INTO agent_logs (level, source, message, metadata, notify, notify_read, notify_type, notify_user_id, notify_body)
-       VALUES (?, 'notification', ?, ?, 1, 0, ?, ?, ?)
-       RETURNING id, notify_user_id as user_id, notify_type as type, message as title, notify_body as body, metadata, notify_read as read, created_at`
-    )
-    .get(level, n.title, n.metadata ?? null, n.type, n.userId, n.body ?? null) as NotificationRecord;
+  const row = stmt(
+    `INSERT INTO agent_logs (level, source, message, metadata, notify, notify_read, notify_type, notify_user_id, notify_body)
+     VALUES (?, 'notification', ?, ?, 1, 0, ?, ?, ?)
+     RETURNING id, notify_user_id as user_id, notify_type as type, message as title, notify_body as body, metadata, notify_read as read, created_at`
+  ).get(level, n.title, n.metadata ?? null, n.type, n.userId, n.body ?? null) as NotificationRecord;
   return row;
 }
 
@@ -127,15 +125,11 @@ export function countUnreadNotifications(userId: string, minLevel?: string): num
 
 export function markNotificationRead(id: string | number, userId: string): void {
   const numId = typeof id === "string" ? parseInt(id, 10) : id;
-  getDb().prepare(
-    "UPDATE agent_logs SET notify_read = 1 WHERE id = ? AND notify_user_id = ? AND notify = 1"
-  ).run(numId, userId);
+  stmt("UPDATE agent_logs SET notify_read = 1 WHERE id = ? AND notify_user_id = ? AND notify = 1").run(numId, userId);
 }
 
 export function markAllNotificationsRead(userId: string): void {
-  getDb().prepare(
-    "UPDATE agent_logs SET notify_read = 1 WHERE notify = 1 AND notify_user_id = ? AND notify_read = 0"
-  ).run(userId);
+  stmt("UPDATE agent_logs SET notify_read = 1 WHERE notify = 1 AND notify_user_id = ? AND notify_read = 0").run(userId);
 }
 
 /**
@@ -144,9 +138,7 @@ export function markAllNotificationsRead(userId: string): void {
  * Rows remain in agent_logs and are visible in the dashboard.
  */
 export function dismissAllNotifications(userId: string): void {
-  getDb().prepare(
-    "UPDATE agent_logs SET notify = 0, notify_read = 1 WHERE notify = 1 AND notify_user_id = ?"
-  ).run(userId);
+  stmt("UPDATE agent_logs SET notify = 0, notify_read = 1 WHERE notify = 1 AND notify_user_id = ?").run(userId);
 }
 
 /** @deprecated Use dismissAllNotifications — kept for backward compat */
@@ -160,9 +152,7 @@ export function dismissAllUnreadNotifications(userId: string): void {
  */
 export function deleteNotification(id: string | number, userId: string): void {
   const numId = typeof id === "string" ? parseInt(id, 10) : id;
-  getDb().prepare(
-    "UPDATE agent_logs SET notify = 0 WHERE id = ? AND notify_user_id = ?"
-  ).run(numId, userId);
+  stmt("UPDATE agent_logs SET notify = 0 WHERE id = ? AND notify_user_id = ?").run(numId, userId);
 }
 
 /**

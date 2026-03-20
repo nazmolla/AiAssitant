@@ -6,7 +6,7 @@ const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 const nextConfig = {
   compress: false, // Disabled — nginx handles compression. Next.js gzip buffers SSE streams.
   poweredByHeader: false,
-  productionBrowserSourceMaps: true,
+  productionBrowserSourceMaps: false,
   images: {
     unoptimized: true,
   },

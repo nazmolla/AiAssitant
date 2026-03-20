@@ -27,7 +27,8 @@ function makeRequest(
   const url = `http://localhost:3000${path}`;
   const headers = new Headers();
   if (options?.ip) {
-    headers.set("x-forwarded-for", options.ip);
+    // Use x-real-ip — middleware prefers req.ip then x-real-ip over x-forwarded-for
+    headers.set("x-real-ip", options.ip);
   }
   if (options?.authorization) {
     headers.set("authorization", options.authorization);
