@@ -227,15 +227,9 @@ export default function HomePage() {
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <IconButton
               size="small"
-              onClick={() => {
-                if (activeTab === "chat" && openChatThreadsRef.current) {
-                  openChatThreadsRef.current();
-                } else {
-                  setNavDrawerOpen(true);
-                }
-              }}
+              onClick={() => setNavDrawerOpen((prev) => !prev)}
               sx={{ color: "text.secondary" }}
-              title="Menu"
+              title={navDrawerOpen ? "Collapse menu" : "Expand menu"}
             >
               <MenuIcon fontSize="small" />
             </IconButton>
@@ -295,79 +289,142 @@ export default function HomePage() {
         </Toolbar>
       </AppBar>
 
-      {/* Navigation Drawer */}
-      <Drawer
-        anchor="left"
-        open={navDrawerOpen}
-        onClose={() => setNavDrawerOpen(false)}
-        slotProps={{ paper: { sx: { width: DRAWER_WIDTH, bgcolor: "background.paper", backgroundImage: "none" } } }}
-      >
-        <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: "divider" }}>
-          <Typography variant="h6" color="primary" fontWeight={700} sx={{ fontSize: "1.1rem" }}>Nexus</Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.65rem" }}>Command Center</Typography>
-        </Box>
-        <List disablePadding sx={{ flex: 1, py: 0.5, px: 0.5 }}>
-          {tabItems.map((t) => (
-            <ListItemButton
-              key={t.value}
-              selected={activeTab === t.value}
-              onClick={() => { navigateTo(t.value); setNavDrawerOpen(false); }}
-              sx={{
-                borderRadius: 1.5,
-                minHeight: 38,
-                py: 0.75,
-                px: 1.5,
-                mb: 0.25,
-                "&.Mui-selected": { bgcolor: "primary.main", color: "primary.contrastText", "& .MuiListItemIcon-root": { color: "inherit" }, "&:hover": { bgcolor: "primary.dark" } },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 32, color: "text.secondary" }}>{t.icon}</ListItemIcon>
-              <ListItemText primary={t.label} primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: 500 }} />
-            </ListItemButton>
-          ))}
-        </List>
-        <Divider />
-        <Box sx={{ px: 2, py: 1.5 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-            <FiberManualRecordIcon sx={{ fontSize: 8, color: "success.main" }} />
-            <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.75rem" }} noWrap>
-              {displayName || session.user?.email}
-            </Typography>
-          </Box>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6rem", display: "block" }}>
-            Nexus v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}
-          </Typography>
-        </Box>
-      </Drawer>
+      {/* Overlay nav Drawer — shown on chat page where persistent sidebar is absent */}
+      {activeTab === "chat" && (
+        <Drawer
+          anchor="left"
+          open={navDrawerOpen}
+          onClose={() => setNavDrawerOpen(false)}
+          slotProps={{ paper: { sx: { width: DRAWER_WIDTH, bgcolor: "background.paper", backgroundImage: "none" } } }}
+        >
+          <List sx={{ pt: 1 }}>
+            {tabItems.map((t) => (
+              <ListItemButton
+                key={t.value}
+                selected={activeTab === t.value}
+                onClick={() => { navigateTo(t.value); setNavDrawerOpen(false); }}
+                sx={{ borderRadius: 1, mx: 0.5 }}
+              >
+                <ListItemIcon sx={{ minWidth: 36, color: "text.secondary" }}>{t.icon}</ListItemIcon>
+                <ListItemText primary={t.label} primaryTypographyProps={{ fontSize: "0.9rem" }} />
+              </ListItemButton>
+            ))}
+          </List>
+        </Drawer>
+      )}
 
-      {/* Content */}
-      <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {/* ChatPanel kept mounted — hidden via CSS to preserve state & SSE connections */}
-        <Box sx={{ display: activeTab === "chat" ? "flex" : "none", flex: 1, overflow: "hidden", flexDirection: "column" }}>
-          <ChatPanel
-            openThreadDrawerRef={openChatThreadsRef}
-            navItems={tabItems}
-            activeNavTab={activeTab}
-            onNavigate={(tab) => { navigateTo(tab); }}
-          />
+      {/* Body: persistent mini-rail sidebar + content */}
+      <Box sx={{ flex: 1, overflow: "hidden", display: "flex" }}>
+
+        {/* Persistent nav sidebar — shown on non-chat pages as a mini-rail */}
+        {activeTab !== "chat" && (
+          <Box
+            sx={{
+              width: navDrawerOpen ? DRAWER_WIDTH : DRAWER_MINI_WIDTH,
+              flexShrink: 0,
+              transition: "width 0.2s ease",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              bgcolor: "background.paper",
+              borderRight: 1,
+              borderColor: "divider",
+            }}
+          >
+            {/* Spacer — pushes nav items to the bottom */}
+            <Box sx={{ flex: 1 }} />
+
+            {/* Nav items anchored at bottom-left */}
+            <List disablePadding sx={{ py: 0.5, px: 0.5 }}>
+              {tabItems.map((t) => (
+                <ListItemButton
+                  key={t.value}
+                  selected={activeTab === t.value}
+                  onClick={() => { navigateTo(t.value); setNavDrawerOpen(false); }}
+                  title={!navDrawerOpen ? t.label : undefined}
+                  sx={{
+                    borderRadius: 1.5,
+                    minHeight: 40,
+                    py: 0.75,
+                    px: navDrawerOpen ? 1.5 : 0,
+                    mb: 0.25,
+                    justifyContent: navDrawerOpen ? "flex-start" : "center",
+                    "&.Mui-selected": {
+                      bgcolor: "primary.main",
+                      color: "primary.contrastText",
+                      "& .MuiListItemIcon-root": { color: "inherit" },
+                      "&:hover": { bgcolor: "primary.dark" },
+                    },
+                  }}
+                >
+                  <ListItemIcon
+                    sx={{
+                      minWidth: navDrawerOpen ? 32 : 0,
+                      color: "text.secondary",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {t.icon}
+                  </ListItemIcon>
+                  {navDrawerOpen && (
+                    <ListItemText
+                      primary={t.label}
+                      primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: 500, noWrap: true }}
+                    />
+                  )}
+                </ListItemButton>
+              ))}
+            </List>
+
+            {/* User info footer — only when expanded */}
+            {navDrawerOpen && (
+              <>
+                <Divider />
+                <Box sx={{ px: 2, py: 1.25 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                    <FiberManualRecordIcon sx={{ fontSize: 8, color: "success.main", flexShrink: 0 }} />
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.75rem" }} noWrap>
+                      {displayName || session.user?.email}
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6rem", display: "block" }}>
+                    v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}
+                  </Typography>
+                </Box>
+              </>
+            )}
+          </Box>
+        )}
+
+        {/* Content */}
+        <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          {/* ChatPanel kept mounted — hidden via CSS to preserve state & SSE connections */}
+          <Box sx={{ display: activeTab === "chat" ? "flex" : "none", flex: 1, overflow: "hidden", flexDirection: "column" }}>
+            <ChatPanel
+              openThreadDrawerRef={openChatThreadsRef}
+              navItems={tabItems}
+              activeNavTab={activeTab}
+              onNavigate={(tab) => { navigateTo(tab); }}
+            />
+          </Box>
+          {activeTab === "conversation" && <ConversationMode />}
+          {activeTab === "dashboard" && (
+            <AppPageBackbone>
+              <AgentDashboard />
+            </AppPageBackbone>
+          )}
+          {activeTab === "scheduler" && (
+            <AppPageBackbone>
+              <SchedulerConsole />
+            </AppPageBackbone>
+          )}
+          {activeTab === "knowledge" && (
+            <AppPageBackbone>
+              <KnowledgeVault />
+            </AppPageBackbone>
+          )}
+          {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} isUserMetaLoading={isUserMetaLoading} activePage={settingsPage} onNavigate={navigateToSettings} />}
         </Box>
-        {activeTab === "conversation" && <ConversationMode />}
-        {activeTab === "dashboard" && (
-          <AppPageBackbone>
-            <AgentDashboard />
-          </AppPageBackbone>
-        )}
-        {activeTab === "scheduler" && (
-          <AppPageBackbone>
-            <SchedulerConsole />
-          </AppPageBackbone>
-        )}
-        {activeTab === "knowledge" && (
-          <AppPageBackbone>
-            <KnowledgeVault />
-          </AppPageBackbone>
-        )}
-        {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} isUserMetaLoading={isUserMetaLoading} activePage={settingsPage} onNavigate={navigateToSettings} />}
       </Box>
     </Box>
   );
@@ -421,6 +478,7 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
 };
 
 const DRAWER_WIDTH = 200;
+const DRAWER_MINI_WIDTH = 52;
 
 function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavigate }: { userRole: string; perms: Record<string, number>; isUserMetaLoading: boolean; activePage?: string; onNavigate: (page: string) => void }) {
   const visiblePages = useMemo(() => {
