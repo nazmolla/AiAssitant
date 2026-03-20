@@ -26,7 +26,7 @@ describe("unified scheduler foundation schema", () => {
     ]));
   });
 
-  test("seeds system unified scheduler schedules for proactive, maintenance, and job scout pipeline", () => {
+  test("seeds system unified scheduler schedules for proactive, maintenance, job scout pipeline, and email monitoring", () => {
     const { getDb } = require("@/lib/db/connection");
     const db = getDb();
     const { initializeDatabase } = require("@/lib/db/init");
@@ -38,7 +38,8 @@ describe("unified scheduler foundation schema", () => {
         'system.proactive.scan',
         'system.db_maintenance.run_due',
         'system.knowledge_maintenance.run_due',
-        'workflow.job_scout.pipeline'
+        'workflow.job_scout.pipeline',
+        'workflow.email.pipeline'
       ) ORDER BY schedule_key`
     ).all() as Array<{ schedule_key: string }>).map((row) => row.schedule_key);
 
@@ -46,6 +47,7 @@ describe("unified scheduler foundation schema", () => {
       "system.db_maintenance.run_due",
       "system.knowledge_maintenance.run_due",
       "system.proactive.scan",
+      "workflow.email.pipeline",
       "workflow.job_scout.pipeline",
     ]);
 
@@ -55,6 +57,17 @@ describe("unified scheduler foundation schema", () => {
     ).get() as { c: number };
 
     expect(jobScoutTaskCount.c).toBe(1);
+
+    // Email pipeline: seeded as paused (requires credentials), task uses correct handler
+    const emailRow = db.prepare(
+      `SELECT s.status, t.handler_name FROM scheduler_schedules s
+       JOIN scheduler_tasks t ON t.schedule_id = s.id
+       WHERE s.schedule_key = 'workflow.email.pipeline'`
+    ).get() as { status: string; handler_name: string } | undefined;
+
+    expect(emailRow).toBeDefined();
+    expect(emailRow?.status).toBe("paused");
+    expect(emailRow?.handler_name).toBe("workflow.email.run");
   });
 
   test("does not reseed schedules that were explicitly suppressed", () => {
@@ -75,7 +88,8 @@ describe("unified scheduler foundation schema", () => {
          'system.proactive.scan',
          'system.db_maintenance.run_due',
          'system.knowledge_maintenance.run_due',
-         'workflow.job_scout.pipeline'
+         'workflow.job_scout.pipeline',
+         'workflow.email.pipeline'
        )
        ORDER BY schedule_key`
     ).all() as Array<{ schedule_key: string }>).map((row) => row.schedule_key);
@@ -83,6 +97,7 @@ describe("unified scheduler foundation schema", () => {
     expect(presentKeys).toEqual([
       "system.db_maintenance.run_due",
       "system.knowledge_maintenance.run_due",
+      "workflow.email.pipeline",
     ]);
   });
 });

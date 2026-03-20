@@ -917,6 +917,28 @@ function ensureSystemUnifiedSchedules(): void {
         );
       }
     }
+
+    if (!suppressedScheduleKeys.has("workflow.email.pipeline")) {
+      const emailId = ensureByKey("workflow.email.pipeline");
+      upsertSchedule.run(
+        emailId,
+        "workflow.email.pipeline",
+        "Email Monitoring",
+        "workflow.email",
+        "every:5:minute",
+        "paused",
+        JSON.stringify({ strategy: "none", maxAttempts: 1 })
+      );
+      upsertTask.run(
+        `sched_task_${emailId}_run`,
+        emailId,
+        "run",
+        "Run email monitoring",
+        "workflow.email.run",
+        0,
+        JSON.stringify({ source: "unified" })
+      );
+    }
   });
 
   tx();
