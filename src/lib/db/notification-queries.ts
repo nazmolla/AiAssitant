@@ -19,6 +19,36 @@ export type NotificationType =
   | "warning"
   | "info";
 
+/**
+ * Maps notification types to the minimum notification_level required to show them.
+ * notification_level hierarchy (ascending): low → medium → high → disaster
+ */
+export const NOTIFICATION_TYPE_LEVELS: Record<NotificationType, string> = {
+  info: "low",
+  proactive_action: "medium",
+  warning: "medium",
+  tool_error: "high",
+  channel_error: "high",
+  system_error: "disaster",
+  approval_required: "disaster",
+};
+
+const LEVEL_ORDER = ["low", "medium", "high", "disaster"] as const;
+type Level = (typeof LEVEL_ORDER)[number];
+
+/**
+ * Returns the notification types allowed for a given minimum level.
+ * e.g. allowedTypesForLevel("high") → ["tool_error","channel_error","system_error","approval_required"]
+ * Returns null when all types are allowed (level "low").
+ */
+export function allowedTypesForLevel(minLevel: string): NotificationType[] | null {
+  const idx = LEVEL_ORDER.indexOf(minLevel as Level);
+  if (idx <= 0) return null; // "low" = show everything
+  return (Object.entries(NOTIFICATION_TYPE_LEVELS) as [NotificationType, string][])
+    .filter(([, typeLevel]) => LEVEL_ORDER.indexOf(typeLevel as Level) >= idx)
+    .map(([type]) => type);
+}
+
 export interface NotificationRecord {
   /** Integer ID from agent_logs */
   id: number;
@@ -62,20 +92,36 @@ export function createNotification(n: {
   return row;
 }
 
-export function listNotifications(userId: string, limit = 50): NotificationRecord[] {
-  return stmt(
-    `SELECT id, notify_user_id as user_id, notify_type as type, message as title, notify_body as body,
-            metadata, notify_read as read, created_at
-     FROM agent_logs
-     WHERE notify = 1 AND notify_user_id = ?
-     ORDER BY created_at DESC LIMIT ?`
-  ).all(userId, limit) as NotificationRecord[];
+export function listNotifications(userId: string, limit = 50, minLevel?: string): NotificationRecord[] {
+  const allowed = minLevel ? allowedTypesForLevel(minLevel) : null;
+  const typeClause = allowed
+    ? `AND (notify_type IN (${allowed.map(() => "?").join(",")}) OR notify_type IS NULL)`
+    : "";
+  const params: (string | number)[] = allowed
+    ? [userId, ...allowed, limit]
+    : [userId, limit];
+  return getDb()
+    .prepare(
+      `SELECT id, notify_user_id as user_id, notify_type as type, message as title, notify_body as body,
+              metadata, notify_read as read, created_at
+       FROM agent_logs
+       WHERE notify = 1 AND notify_user_id = ? ${typeClause}
+       ORDER BY created_at DESC LIMIT ?`
+    )
+    .all(...params) as NotificationRecord[];
 }
 
-export function countUnreadNotifications(userId: string): number {
-  const row = stmt(
-    "SELECT COUNT(*) as count FROM agent_logs WHERE notify = 1 AND notify_user_id = ? AND notify_read = 0"
-  ).get(userId) as { count: number };
+export function countUnreadNotifications(userId: string, minLevel?: string): number {
+  const allowed = minLevel ? allowedTypesForLevel(minLevel) : null;
+  const typeClause = allowed
+    ? `AND (notify_type IN (${allowed.map(() => "?").join(",")}) OR notify_type IS NULL)`
+    : "";
+  const params: (string | number)[] = allowed ? [userId, ...allowed] : [userId];
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) as count FROM agent_logs WHERE notify = 1 AND notify_user_id = ? AND notify_read = 0 ${typeClause}`
+    )
+    .get(...params) as { count: number };
   return row.count;
 }
 
@@ -89,6 +135,17 @@ export function markNotificationRead(id: string | number, userId: string): void 
 export function markAllNotificationsRead(userId: string): void {
   getDb().prepare(
     "UPDATE agent_logs SET notify_read = 1 WHERE notify = 1 AND notify_user_id = ? AND notify_read = 0"
+  ).run(userId);
+}
+
+/**
+ * Dismiss all unread notifications — sets notify=0 so they disappear from the bell.
+ * Used by "Mark all as read" so the bell is cleared entirely.
+ * Rows remain in agent_logs and are visible in the dashboard.
+ */
+export function dismissAllUnreadNotifications(userId: string): void {
+  getDb().prepare(
+    "UPDATE agent_logs SET notify = 0, notify_read = 1 WHERE notify = 1 AND notify_user_id = ? AND notify_read = 0"
   ).run(userId);
 }
 

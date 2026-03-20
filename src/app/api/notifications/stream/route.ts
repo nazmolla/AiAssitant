@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { getDb } from "@/lib/db/connection";
+import { allowedTypesForLevel } from "@/lib/db/notification-queries";
 import type { NotificationRecord } from "@/lib/db/notification-queries";
 import { sseEvent } from "@/lib/sse";
 import { SSE_HEARTBEAT_INTERVAL_MS } from "@/lib/constants";
@@ -16,14 +17,27 @@ export async function GET() {
 
   const userId = auth.user.id;
 
+  // Resolve per-user notification level threshold once at stream-open
+  const profileRow = getDb()
+    .prepare("SELECT notification_level FROM user_profiles WHERE user_id = ?")
+    .get(userId) as { notification_level?: string } | undefined;
+  const minLevel = profileRow?.notification_level ?? "low";
+  const allowedTypes = allowedTypesForLevel(minLevel);
+  const typeClause = allowedTypes
+    ? `AND (notify_type IN (${allowedTypes.map(() => "?").join(",")}) OR notify_type IS NULL)`
+    : "";
+
   // Start cursor at the latest notification row id so we only stream NEW ones
   let cursor: number = (() => {
     try {
+      const params: (string | number)[] = allowedTypes
+        ? [userId, ...allowedTypes]
+        : [userId];
       const row = getDb()
         .prepare(
-          "SELECT id FROM agent_logs WHERE notify = 1 AND notify_user_id = ? ORDER BY created_at DESC LIMIT 1"
+          `SELECT id FROM agent_logs WHERE notify = 1 AND notify_user_id = ? ${typeClause} ORDER BY created_at DESC LIMIT 1`
         )
-        .get(userId) as { id: number } | undefined;
+        .get(...params) as { id: number } | undefined;
       return row?.id ?? 0;
     } catch {
       return 0;
@@ -45,15 +59,18 @@ export async function GET() {
     if (closed) return;
     try {
       const db = getDb();
+      const params: (string | number)[] = allowedTypes
+        ? [userId, ...allowedTypes, cursor]
+        : [userId, cursor];
       const rows = db
         .prepare(
           `SELECT id, notify_user_id as user_id, notify_type as type, message as title,
                   notify_body as body, metadata, notify_read as read, created_at
            FROM agent_logs
-           WHERE notify = 1 AND notify_user_id = ? AND id > ?
+           WHERE notify = 1 AND notify_user_id = ? ${typeClause} AND id > ?
            ORDER BY id ASC LIMIT 50`
         )
-        .all(userId, cursor) as NotificationRecord[];
+        .all(...params) as NotificationRecord[];
       for (const row of rows) {
         send(sseEvent("notification", row));
         cursor = row.id;

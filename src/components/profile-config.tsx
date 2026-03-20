@@ -210,7 +210,7 @@ export function ProfileConfig() {
               <option value="low">All notifications</option>
             </select>
             <p className="text-[10px] text-muted-foreground/50 mt-1">
-              Controls which severity levels trigger external channel notifications (email, Discord, WhatsApp). In-app notifications (bell icon) always appear regardless of this setting.
+              Controls which severity levels appear in the notification bell and trigger external channel notifications (email, Discord, WhatsApp).
             </p>
           </div>
 

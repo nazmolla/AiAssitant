@@ -18,6 +18,8 @@ import {
   listNotifications,
   countUnreadNotifications,
   markAllNotificationsRead,
+  dismissAllUnreadNotifications,
+  allowedTypesForLevel,
 } from "@/lib/db/queries";
 
 let adminId: string;
@@ -156,5 +158,55 @@ describe("Notifications/Logs merge — notifications stored in agent_logs", () =
     expect(countUnreadNotifications(adminId)).toBeGreaterThan(0);
     markAllNotificationsRead(adminId);
     expect(countUnreadNotifications(adminId)).toBe(0);
+  });
+
+  test("dismissAllUnreadNotifications removes notifications from the bell entirely", () => {
+    createNotification({ userId: userId, type: "info", title: "Dismiss me" });
+    createNotification({ userId: userId, type: "warning", title: "Dismiss me too" });
+    expect(listNotifications(userId).length).toBeGreaterThan(0);
+
+    dismissAllUnreadNotifications(userId);
+
+    // After dismiss, unread count is 0
+    expect(countUnreadNotifications(userId)).toBe(0);
+    // And they no longer appear in the bell (notify=0)
+    expect(listNotifications(userId).filter(n => n.read === 0).length).toBe(0);
+  });
+
+  test("allowedTypesForLevel returns null for 'low' (show all)", () => {
+    expect(allowedTypesForLevel("low")).toBeNull();
+  });
+
+  test("allowedTypesForLevel('high') excludes info, warning, proactive_action", () => {
+    const allowed = allowedTypesForLevel("high")!;
+    expect(allowed).not.toContain("info");
+    expect(allowed).not.toContain("warning");
+    expect(allowed).not.toContain("proactive_action");
+    expect(allowed).toContain("tool_error");
+    expect(allowed).toContain("channel_error");
+    expect(allowed).toContain("system_error");
+    expect(allowed).toContain("approval_required");
+  });
+
+  test("listNotifications with minLevel='high' excludes info and warning", () => {
+    createNotification({ userId: userId, type: "info", title: "Info should be hidden" });
+    createNotification({ userId: userId, type: "tool_error", title: "Error should show" });
+
+    const filtered = listNotifications(userId, 50, "high");
+    expect(filtered.some(n => n.type === "info")).toBe(false);
+    expect(filtered.some(n => n.type === "warning")).toBe(false);
+    expect(filtered.some(n => n.type === "tool_error")).toBe(true);
+  });
+
+  test("countUnreadNotifications with minLevel='disaster' only counts system_error and approval_required", () => {
+    // Dismiss everything first for a clean slate
+    dismissAllUnreadNotifications(userId);
+
+    createNotification({ userId: userId, type: "info", title: "Info" });
+    createNotification({ userId: userId, type: "warning", title: "Warning" });
+    createNotification({ userId: userId, type: "system_error", title: "Critical" });
+
+    const count = countUnreadNotifications(userId, "disaster");
+    expect(count).toBe(1); // only system_error
   });
 });

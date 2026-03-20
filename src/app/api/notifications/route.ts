@@ -4,11 +4,12 @@ import {
   listNotifications,
   countUnreadNotifications,
   markNotificationRead,
-  markAllNotificationsRead,
+  dismissAllUnreadNotifications,
   deleteNotification,
   listPendingApprovals,
   listPendingApprovalsForUser,
   cleanStaleApprovals,
+  getUserProfile,
 } from "@/lib/db";
 import { createLogger } from "@/lib/logging/logger";
 
@@ -32,9 +33,13 @@ export async function GET() {
   const userId = auth.user.id;
   const isAdmin = auth.user.role === "admin";
 
+  // Apply per-user notification level threshold
+  const profile = getUserProfile(userId);
+  const minLevel = profile?.notification_level ?? "low";
+
   // Fetch persistent notifications
-  const notifications = listNotifications(userId);
-  const unreadCount = countUnreadNotifications(userId);
+  const notifications = listNotifications(userId, 50, minLevel);
+  const unreadCount = countUnreadNotifications(userId, minLevel);
 
   // Clean stale approvals in bulk (O(1) queries, not O(n))
   cleanStaleApprovals();
@@ -80,7 +85,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
 
     case "markAllRead":
-      markAllNotificationsRead(userId);
+      // Dismiss all unread so they vanish from the bell (still accessible in dashboard logs)
+      dismissAllUnreadNotifications(userId);
       log.exit("POST /api/notifications", { action }, Date.now() - t0);
       return NextResponse.json({ ok: true });
 
