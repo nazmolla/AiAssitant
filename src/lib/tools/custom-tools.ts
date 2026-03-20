@@ -531,7 +531,7 @@ class CustomToolRuntime {
     return new Promise((resolve, reject) => {
       const runnerPath = path.resolve(process.cwd(), "scripts/sandbox-runner.cjs");
       const child = spawn(process.execPath, [runnerPath], {
-        env: { SANDBOX_TIMEOUT: String(SANDBOX_TIMEOUT_MS) }, // minimal env — no inherited secrets
+        env: { SANDBOX_TIMEOUT: String(SANDBOX_TIMEOUT_MS), NODE_ENV: "production" }, // minimal env — no inherited secrets
         stdio: ["pipe", "pipe", "pipe"],
       });
 

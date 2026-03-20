@@ -1,6 +1,6 @@
 {
   "name": "nexus-agent",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -72,7 +72,11 @@
     "remark-gfm": "^4.0.1",
     "ssh2": "^1.17.0",
     "tailwind-merge": "^2.5.2",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^3.4.12",
     "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.6.2",
     "uuid": "^10.0.0",
     "zod": "^4.3.6"
   },
@@ -94,18 +98,14 @@
     "@types/react-dom": "^19.2.3",
     "@types/ssh2": "^1.15.5",
     "@types/uuid": "^10.0.0",
-    "autoprefixer": "^10.4.20",
     "eslint": "^9.39.3",
     "eslint-config-next": "^16.1.6",
     "identity-obj-proxy": "^3.0.0",
     "jest": "^30.3.0",
     "jest-environment-jsdom": "^30.2.0",
-    "postcss": "^8.5.8",
-    "tailwindcss": "^3.4.12",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
-    "tsx": "^4.19.1",
-    "typescript": "^5.6.2"
+    "tsx": "^4.19.1"
   },
   "overrides": {
     "undici": "^6.23.0"
