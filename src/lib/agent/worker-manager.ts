@@ -15,6 +15,7 @@ import path from "path";
 import type { ChatMessage, ToolDefinition, ToolCall } from "@/lib/llm";
 import { addLog } from "@/lib/db";
 import { env } from "@/lib/env";
+import { LLM_CLIENT_TIMEOUT_MS } from "@/lib/constants";
 import { createLogger } from "@/lib/logging/logger";
 
 const log = createLogger("agent.worker-manager");
@@ -336,9 +337,9 @@ function assignTask(
   handle.pw = pw;
 
   const timeout = setTimeout(() => {
-    settleTask(pw, () => reject(new Error("Agent worker timed out after 30s")), true);
+    settleTask(pw, () => reject(new Error(`Agent worker timed out after ${LLM_CLIENT_TIMEOUT_MS / 1000}s`)), true);
     replaceWorker(pw);
-  }, 30_000);
+  }, LLM_CLIENT_TIMEOUT_MS);
 
   pw.task = {
     settled: false,
@@ -401,9 +402,9 @@ export function runLlmInWorker(
         if (idx !== -1) taskQueue.splice(idx, 1);
         if (handle.state !== "settled") {
           handle.state = "settled";
-          reject(new Error("Worker pool queue timeout — all workers busy for 30s"));
+          reject(new Error(`Worker pool queue timeout — all workers busy for ${LLM_CLIENT_TIMEOUT_MS / 1000}s`));
         }
-      }, 30_000);
+      }, LLM_CLIENT_TIMEOUT_MS);
 
       queuedEntry = {
         config,

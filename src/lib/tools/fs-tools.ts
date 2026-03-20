@@ -21,6 +21,7 @@ import type { ToolDefinition } from "@/lib/llm";
 import * as fs from "fs";
 import { promises as fsp } from "fs";
 import * as path from "path";
+import JSZip from "jszip";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { env } from "@/lib/env";
@@ -636,6 +637,34 @@ export class FsTools extends BaseTool {
         extractedChars: 0,
         text: "",
       };
+    }
+
+    // Fast-path: DOCX files — extract text from word/document.xml inside the ZIP
+    if (filePath.toLowerCase().endsWith(".docx")) {
+      const zipBuf = await fsp.readFile(filePath);
+      const zip = await JSZip.loadAsync(zipBuf);
+      const docXml = zip.file("word/document.xml");
+      if (docXml) {
+        const xml = await docXml.async("text");
+        // Strip XML tags, decode entities, collapse whitespace
+        const textRaw = xml
+          .replace(/<w:br[^/]*/g, "\n")   // line breaks
+          .replace(/<\/w:p>/g, "\n")       // paragraph ends → newline
+          .replace(/<[^>]+>/g, "")         // all other tags
+          .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+          .replace(/[ \t]+/g, " ")
+          .trim();
+        const text = textRaw.length > maxChars ? textRaw.slice(0, maxChars) : textRaw;
+        return {
+          filePath,
+          size: stat.size,
+          offset: 0,
+          bytesRead: stat.size,
+          hasMore: false,
+          extractedChars: textRaw.length,
+          text,
+        };
+      }
     }
 
     const end = Math.min(stat.size - 1, byteOffset + readLen - 1);

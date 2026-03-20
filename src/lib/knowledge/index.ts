@@ -106,6 +106,13 @@ export async function ingestKnowledgeFromText(payload: KnowledgeIngestionPayload
     log.exit("ingestKnowledgeFromText", { saved }, Date.now() - t0);
     return saved;
   } catch (err) {
+    // Azure content management policy (HTTP 400) — the conversation contained content that
+    // the provider's content filter rejected. This is not an error; silently skip ingestion.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("400") || msg.toLowerCase().includes("content_filter") || msg.toLowerCase().includes("content management policy")) {
+      log.info("Knowledge ingestion skipped — content filter policy", { source: payload.source });
+      return 0;
+    }
     addLog({
       level: "warn",
       source: "knowledge",

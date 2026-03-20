@@ -17,21 +17,34 @@ import { createLogger } from "@/lib/logging/logger";
 const log = createLogger("agent.tool-result-processor");
 
 export interface ProcessedToolResult {
-  /** Attachments collected from this tool call (screenshots, generated files). */
+  /**
+   * Screenshot attachments only — carried forward to the final assistant
+   * message so they render inline in the UI. Generic file attachments are
+   * already saved on the tool message and must NOT be added again here.
+   */
   attachments: AttachmentMeta[];
   /** Content injected into the LLM chat (may differ from DB content). */
   llmContent: string;
 }
 
 /**
- * Detect and collect screenshot attachments from a browser_screenshot tool result.
+ * Detect and collect screenshot attachments from a screenshot tool result.
+ * Handles builtin.browser_screenshot and any MCP tool whose result contains
+ * a screenshotPath / relativePath field (generic detection).
  */
 function collectScreenshotAttachments(
   toolCall: ToolCall,
   resultObj: Record<string, unknown> | undefined,
   threadId: string
 ): { attachments: AttachmentMeta[]; llmOverride: string | null } {
-  if (toolCall.name !== "builtin.browser_screenshot") {
+  const isBuiltinScreenshot = toolCall.name === "builtin.browser_screenshot";
+  const hasScreenshotField =
+    typeof resultObj?.screenshotPath === "string" ||
+    typeof resultObj?.relativePath === "string";
+
+  // Only process if it's a builtin screenshot tool OR any tool that returns
+  // a screenshot path field (MCP screenshot tools use the same field names).
+  if (!isBuiltinScreenshot && !hasScreenshotField) {
     return { attachments: [], llmOverride: null };
   }
 
@@ -142,9 +155,9 @@ export function processExecutedToolResult(
 
   const resultObj = result as Record<string, unknown> | undefined;
 
-  // Collect screenshot attachments
+  // Collect screenshot attachments (carried to final assistant message for inline rendering)
   const screenshotResult = collectScreenshotAttachments(toolCall, resultObj, threadId);
-  // Collect generic attachments from tool result
+  // Collect generic attachments from tool result (saved only to the tool message — not the final assistant message)
   const genericAttachments = collectGenericAttachments(resultObj);
   const allAttachments = [...screenshotResult.attachments, ...genericAttachments];
   const llmToolResult = screenshotResult.llmOverride ?? toolResult;
@@ -184,7 +197,9 @@ export function processExecutedToolResult(
     : llmToolResult;
 
   log.exit("processExecutedToolResult", { toolName: toolCall.name, attachmentCount: allAttachments.length }, Date.now() - t0);
-  return { attachments: allAttachments, llmContent };
+  // Return only screenshot attachments so loop.ts can add them to the final assistant message.
+  // Generic file attachments are already persisted on the tool message above.
+  return { attachments: screenshotResult.attachments, llmContent };
 }
 
 /**

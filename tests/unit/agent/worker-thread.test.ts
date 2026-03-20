@@ -472,8 +472,9 @@ describe("Worker Manager — timeout", () => {
     jest.useRealTimers();
   });
 
-  test("worker times out after 30 seconds, not 300", async () => {
+  test("worker times out after LLM_CLIENT_TIMEOUT_MS (120s), not 30s", async () => {
     const { runLlmInWorker } = require("@/lib/agent/worker-manager");
+    const { LLM_CLIENT_TIMEOUT_MS } = require("@/lib/constants");
 
     const { promise } = runLlmInWorker({
       provider: { providerType: "openai", apiKey: "sk-test", model: "gpt-4" },
@@ -482,8 +483,8 @@ describe("Worker Manager — timeout", () => {
       tools: [],
     });
 
-    // At 29 seconds, the promise should still be pending
-    jest.advanceTimersByTime(29_000);
+    // At LLM_CLIENT_TIMEOUT_MS - 1ms, the promise should still be pending
+    jest.advanceTimersByTime(LLM_CLIENT_TIMEOUT_MS - 1);
     const racePending = Promise.race([
       promise.then(() => "resolved").catch(() => "rejected"),
       new Promise((r) => setTimeout(() => r("pending"), 0)),
@@ -491,10 +492,10 @@ describe("Worker Manager — timeout", () => {
     jest.advanceTimersByTime(0);
     expect(await racePending).toBe("pending");
 
-    // At 30 seconds, the worker should be terminated and promise rejected
-    jest.advanceTimersByTime(1_000);
+    // At LLM_CLIENT_TIMEOUT_MS, the worker should be terminated and promise rejected
+    jest.advanceTimersByTime(1);
 
-    await expect(promise).rejects.toThrow("Agent worker timed out after 30s");
+    await expect(promise).rejects.toThrow(`Agent worker timed out after ${LLM_CLIENT_TIMEOUT_MS / 1000}s`);
     const taskWorker = MockWorker.findTaskWorker()!;
     expect(taskWorker.terminate).toHaveBeenCalled();
   });

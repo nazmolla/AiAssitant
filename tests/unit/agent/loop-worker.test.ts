@@ -218,9 +218,10 @@ describe("runAgentLoopWithWorker — worker path", () => {
     );
 
     expect(mockExecuteWithGatekeeper).toHaveBeenCalled();
+    // Generic file attachments are saved on the tool message (no duplicate on the final message)
     expect(db.addAttachment).toHaveBeenCalled();
-    expect(result.attachments).toHaveLength(1);
-    expect(result.attachments[0].filename).toBe("report.pdf");
+    // result.attachments only contains screenshots; generic files are on the tool message
+    expect(result.attachments).toHaveLength(0);
   });
 });
 
