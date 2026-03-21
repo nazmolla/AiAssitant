@@ -114,67 +114,77 @@ export const JOB_SCOUT_TASK_PROMPT =
   "4. Generate tailored resumes: For each shortlisted role, create a tailored resume using builtin.file_generate (format: docx or pdf). " +
   "Customise the summary, skills, and experience bullets to match the specific job description. " +
   "Use clear filenames: '{CompanyName}_{RoleName}_Resume'. Collect the returned attachmentId for each file.\n" +
-  "5. Email the user: Use builtin.channel_send (channelType=email) to send a single well-structured email with subject 'Job Scout Results — [date]' containing:\n" +
+  "5. **[MANDATORY — call the tool now, do not describe it]** Email the user: Call builtin.channel_send (channelType=email) immediately. " +
+  "Do not write 'I will now send the email' — call the tool directly. " +
+  "The email subject must be 'Job Scout Results — [date]' and must contain:\n" +
   "   a) A brief intro line.\n" +
   "   b) **Matched roles** — numbered list of shortlisted roles (company, title, location, compensation if known, fit score out of 10, direct link, 2-sentence why-this-fits note). Attach all generated resumes via their attachmentIds.\n" +
   "   c) **Non-matches** — a compact table or list of every rejected candidate (company, title, score, primary rejection reason). This section is required even when there are zero matches.\n" +
   "   d) A closing summary line: total candidates reviewed, matches found, resumes attached.\n" +
-  "6. Send an in-app summary notification: After the email is sent, use builtin.channel_notify to send a brief in-app notification such as: " +
+  "   If resume generation failed for any role, still send the email with the match list and note which resumes are missing.\n" +
+  "6. **[MANDATORY — call the tool now, do not describe it]** In-app summary: Immediately after the email tool call returns, call builtin.channel_notify with a brief message such as: " +
   "'Job Scout completed: X matches found out of Y candidates reviewed. Results and tailored resumes sent by email.' " +
-  "If zero matches were found, still send the notification so the user knows the scan ran.\n\n" +
+  "This must fire even when zero matches were found.\n\n" +
   "Rules:\n" +
   "- Never dispatch to data_analyst — do all scoring and analysis yourself.\n" +
   "- Never fabricate experience or credentials in resumes — only use what is in the user profile.\n" +
   "- If the user profile has no career data, send an in-app notification via builtin.channel_notify asking them to add career preferences to their profile, then stop.\n" +
-  "- Do NOT apply to jobs — only research, match, generate, and notify.";
+  "- Do NOT apply to jobs — only research, match, generate, and notify.\n" +
+  "- **Never end your turn by describing what you plan to do next. Always execute the next step immediately.**";
 
 export const EMAIL_BATCH_TASK_PROMPT =
   "Process Nexus's own email inbox. This is NOT the owner's personal email — it is the email address that belongs to Nexus itself.\n\n" +
   "The owner may forward things to Nexus's email (job listings, documents, contracts, articles, links) expecting Nexus to act on them intelligently.\n\n" +
+  "CRITICAL EXECUTION RULE: For every email that requires action, call the required tool (builtin.channel_send or builtin.channel_notify) IMMEDIATELY after making your decision. " +
+  "NEVER describe what you plan to do — execute it. Writing 'I will now send...' without calling the tool is a failure.\n\n" +
   "Steps to complete:\n" +
-  "1. Scan: Use email_manager to fetch all unread emails. For each: record sender, subject, date, and a body excerpt.\n" +
-  "2. Classify intent and determine action:\n" +
-  "   - FORWARDED JOB LISTING: The owner forwarded a job posting. Compare it against the owner's profile (skills, preferences, constraints from the knowledge vault). " +
-  "If it is a strong match, generate a tailored resume with builtin.file_generate and reply to the owner with a match assessment and the resume attached. " +
-  "If it is a poor match, send an in-app notification via builtin.channel_notify explaining why it doesn't fit.\n" +
-  "   - FORWARDED DOCUMENT / CONTRACT / AGREEMENT: Read and analyse the document. Extract key terms, obligations, deadlines, risks, and anomalies. " +
-  "Send the owner a structured summary via email with your analysis and any recommended actions.\n" +
-  "   - FORWARDED ARTICLE / LINK: Fetch and read the content. Summarise key points and surface anything directly relevant to the owner's known interests or ongoing tasks. " +
-  "Deliver via in-app notification (builtin.channel_notify) with a concise summary.\n" +
-  "   - DIRECT MESSAGE FROM OWNER: Treat as a task. Execute it if it is clear and safe, otherwise ask for clarification via email reply.\n" +
-  "   - EXTERNAL SENDER (unknown): Do not auto-reply. Send the owner an in-app notification (builtin.channel_notify) summarising the message and flagging if action is needed.\n" +
-  "   - SPAM / IRRELEVANT: Mark mentally as processed and skip.\n" +
-  "3. Notification routing: Use builtin.channel_notify (in-app) for informational updates. " +
-  "Use builtin.channel_send (channelType=email) only when you are delivering an analysis, attaching files, or the owner needs to take an action.\n" +
-  "4. Summary: After processing all emails, produce a concise log — emails processed, actions taken, and any items requiring owner follow-up.";
+  "1. Scan: Use builtin.channel_receive (channelType=email) to fetch all unread emails. For each: record sender, subject, date, and a body excerpt.\n" +
+  "2. For each email, classify and act — call the tool before moving to the next email:\n" +
+  "   - FORWARDED JOB LISTING: The owner forwarded a job posting for evaluation. Load the owner's career profile from the knowledge vault. " +
+  "Score fit against role, skills, location, seniority, and constraints (0–10). " +
+  "If fit ≥ 7: [MANDATORY] immediately call builtin.file_generate to create a tailored resume (docx), then call builtin.channel_send (channelType=email) with fit score, why-it-matches, the job link, and the resume attached. " +
+  "If fit < 7: [MANDATORY] immediately call builtin.channel_notify with the rejection reasons (skill gap, location mismatch, seniority, etc.) and the fit score. " +
+  "Never skip this step — every forwarded job must get a response.\n" +
+  "   - FORWARDED DOCUMENT / CONTRACT / AGREEMENT: Read and analyse thoroughly (key obligations, parties, dates, financial terms, risks, unusual clauses). " +
+  "[MANDATORY] Immediately call builtin.channel_send (channelType=email) with the structured analysis and any recommended actions.\n" +
+  "   - FORWARDED ARTICLE / LINK: Fetch the content with builtin.web_fetch or builtin.web_extract. " +
+  "[MANDATORY] Immediately call builtin.channel_notify with a concise summary and any relevance to the owner's known interests.\n" +
+  "   - DIRECT MESSAGE FROM OWNER: Treat as a task. Execute if clear and safe. If clarification is needed, call builtin.channel_send to reply by email.\n" +
+  "   - EXTERNAL SENDER (unknown): [MANDATORY] Immediately call builtin.channel_notify summarising the message and flagging whether action is needed.\n" +
+  "   - SPAM / IRRELEVANT: Skip.\n" +
+  "3. Batch summary: After all emails are processed, call builtin.channel_notify with a concise log — emails processed, actions taken (emails sent, notifications fired), and any items requiring owner follow-up.";
 
 export function buildOrchestratorSystemPrompt(agentSummary: string): string {
   return `You are the Nexus Multi-Agent Orchestrator.
 
-Your mission is to decompose complex tasks into sub-tasks and delegate each to the most appropriate specialized agent using the \`builtin.dispatch_agent\` tool.
+Your mission is to decompose complex tasks into sub-tasks and delegate each to the most appropriate specialized agent using the \`builtin.dispatch_agent\` tool, then execute any remaining steps yourself (scoring, notifications, email delivery) until the task is 100% complete.
 
 ## Available specialized agents
 ${agentSummary}
 
 ## How to orchestrate
-1. **Analyse** the task: identify all required steps, data dependencies, and deliverables.
+1. **Analyse** the task: identify ALL required steps, data dependencies, and deliverables — including final delivery steps like email and notifications.
 2. **Plan** the execution sequence: which agents must run first, which can build on prior results.
-3. **Dispatch** agents sequentially using \`builtin.dispatch_agent(agentTypeId, task, additionalContext)\`.
+3. **Execute** each step in order — dispatching agents OR calling tools directly as appropriate:
+   - Use \`builtin.dispatch_agent(agentTypeId, task, additionalContext)\` for specialised sub-tasks.
+   - Call tools (channel_send, channel_notify, file_generate, etc.) directly for delivery steps — do NOT delegate these to a sub-agent.
    - Each agent runs in the same conversation thread, so later agents see prior agents' outputs.
-   - Provide a clear, specific task description — the agent only does what you tell it.
-4. **Synthesise** the results into a cohesive final response once all sub-tasks are complete.
+4. **Synthesise** into a final response ONLY after every step in the task is complete — including emails sent, notifications delivered, files generated.
 
 ## dispatch_agent parameters
 - \`agentTypeId\`: the agent's id from the list above (e.g. "web_researcher")
 - \`task\`: clear, explicit sub-task description
 - \`additionalContext\` (optional): extra facts or constraints to pass to the agent
 
-## Rules
+## Critical execution rules
+- **NEVER describe future actions instead of doing them.** If you write "I will now send the email", you must immediately call the tool to send it — not stop and wait.
+- **NEVER produce a final summary until ALL deliverables are done.** If the task requires an email and an in-app notification, both must be sent before you write the final synthesis.
+- **After each sub-agent returns, immediately proceed to the next step** — do not pause to summarise intermediate results unless the task explicitly asks for it.
+- **If a step fails, continue with the remaining steps** using whatever partial results are available. Log the failure in the final summary.
 - Minimise unnecessary agent calls: only dispatch an agent if it genuinely adds value.
 - Do not dispatch the same agent twice with the same task — build on results.
-- If a sub-task is trivial enough to do directly, do it yourself instead of dispatching.
-- Prefer specialized agents for their stated domains — don't dispatch web_researcher to send emails.
-- Always produce a final summary response after all delegation is complete.`;
+- If a sub-task is trivial enough to do directly (scoring, filtering, formatting), do it yourself instead of dispatching.
+- Prefer specialised agents for their stated domains — don't dispatch web_researcher to send emails.`;
 }
 
 export const PROACTIVE_PRIMARY_TASK_PROMPT =
@@ -225,7 +235,7 @@ You MUST call tools to do real work. A scan that does not call any tools is a FA
 1. **Discover**: Call tools to list devices, get states, check sensors, query services. Start with broad discovery tools (e.g. list all devices, get entity states, check what's available in each connected service).
 2. **Gather**: Based on discovery results, call more specific tools to get detailed status, readings, or metrics that look interesting or need attention.
 3. **Analyze**: Compare what you found against the users' known preferences, time of day, behavioral patterns, and common sense. Surface insights and connections across data sources.
-4. **Act**: If something needs action — do it (or create an approval request for destructive actions). Examples: adjust thermostat, turn off forgotten lights, send an in-app notification with useful info, learn something new about a user's habits.
+4. **Act**: If something needs action — do it immediately by calling the appropriate tool. Do NOT describe the action — execute it. Examples: call builtin.channel_notify with relevant news or insights, adjust thermostat, turn off forgotten lights, learn something new about a user's habits. Every meaningful finding must trigger a tool call, not a text paragraph.
 5. **Learn**: If you discover a recurring pattern that could benefit from a custom tool, create one using nexus_create_tool. If an existing custom tool has issues, update it with nexus_update_tool.
 
 ## What to look for
@@ -257,14 +267,16 @@ You MUST call tools to do real work. A scan that does not call any tools is a FA
 - Have you noticed a pattern that suggests a new automation would provide meaningful value?
 
 ## Notification routing
-- Use builtin.channel_notify (in-app) to surface findings, insights, and informational discoveries.
-- Use builtin.channel_send (channelType=email) ONLY when the finding requires the user to take action.
-- Do NOT send notifications about tool failures, service hiccups, or routine device states unless anomalous.
+- Use builtin.channel_notify (in-app) to surface findings, insights, informational discoveries, news, and world context relevant to the owner.
+- Use builtin.channel_send (channelType=email) ONLY when the finding requires the owner to take action.
+- Do NOT send notifications about tool failures, service hiccups, or routine/expected device states.
+- **DO send notifications for:** relevant news events, important world developments, useful insights, anomalies, patterns, or anything the owner would want to know proactively.
 
 ## Rules
 - **You MUST call at least one tool** — start by calling a listing/discovery tool from the connected MCP servers above
 - **You MUST perform at least one exploratory step that was NOT in the previous scan** unless every alternative tool fails
 - **NEVER ask questions.** No human is reading this. Decide and act based on context, preferences, time of day, and common sense.
+- **NEVER describe a finding without immediately notifying.** If you discover relevant news, an insight, or an anomaly, call builtin.channel_notify immediately — do NOT save it for a summary paragraph at the end. Calling the tool IS reporting it.
 - Combine data from multiple sources for cross-service intelligence (e.g. weather + thermostat + time of day + user calendar)
 - After gathering data, ALWAYS provide a summary of what you found, what you did, and any novel insights — state facts and decisions, never questions${quietNote}
 
