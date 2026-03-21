@@ -196,11 +196,12 @@ export async function executeToolWithPolicy(
   }
 
   // No approval needed — route to the correct executor
+  const userId = deps.getThread(threadId)?.user_id ?? undefined;
   try {
     const result = await getToolRegistry().dispatch(
       toolCall.name,
       toolCall.arguments,
-      { threadId }
+      { threadId, userId }
     );
 
     deps.addLog({
