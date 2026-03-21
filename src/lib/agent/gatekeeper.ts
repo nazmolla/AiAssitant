@@ -262,11 +262,12 @@ export async function executeWithGatekeeper(
   }
 
   // No approval needed — execute directly
+  const userId = getThread(threadId)?.user_id ?? undefined;
   try {
     const result = await getToolRegistry().dispatch(
       toolCall.name,
       toolCall.arguments,
-      { threadId }
+      { threadId, userId }
     );
 
     addLog({
@@ -304,11 +305,12 @@ export async function executeApprovedTool(
 ): Promise<GatekeeperResult> {
   const t0 = Date.now();
   log.enter("executeApprovedTool", { toolName, threadId });
+  const userId = getThread(threadId)?.user_id ?? undefined;
   try {
     const result = await getToolRegistry().dispatch(
       toolName,
       args,
-      { threadId }
+      { threadId, userId }
     );
 
     // Resume the thread

@@ -109,13 +109,19 @@ export const JOB_SCOUT_TASK_PROMPT =
   "2. Search jobs: Use builtin.web_search with multiple targeted queries across job boards (LinkedIn Jobs, Indeed, Glassdoor, Google Jobs, Levels.fyi for tech). " +
   "Match queries precisely to the user's role, seniority, location, and constraints. Collect 10-20 raw candidates with direct URLs.\n" +
   "3. Score and match: For each candidate, score fit against the user's profile (0-10) based on: skill match, seniority, location/work-mode, " +
-  "compensation range, company quality/culture signals. Reject poor fits. Shortlist the top 3-5 strongest matches.\n" +
+  "compensation range, company quality/culture signals. Reject poor fits (score < 6). Shortlist the top 3-5 strongest matches (score ≥ 6). " +
+  "For each rejected candidate, record the primary rejection reason: skill_gap | location_mismatch | seniority_mismatch | compensation_mismatch | visa_constraint | company_excluded | other.\n" +
   "4. Generate tailored resumes: For each shortlisted role, create a tailored resume using builtin.file_generate (format: docx or pdf). " +
   "Customise the summary, skills, and experience bullets to match the specific job description. " +
   "Use clear filenames: '{CompanyName}_{RoleName}_Resume'. Collect the returned attachmentId for each file.\n" +
-  "5. Email the user: Use builtin.channel_send (channelType=email) to send a single well-structured email containing: " +
-  "a brief intro, a numbered list of matched roles (company, title, location, compensation if known, fit score, link, 2-sentence why-this-fits note), " +
-  "and attach all generated resumes via their attachmentIds. Subject: 'Job Scout Results — [date]'.\n\n" +
+  "5. Email the user: Use builtin.channel_send (channelType=email) to send a single well-structured email with subject 'Job Scout Results — [date]' containing:\n" +
+  "   a) A brief intro line.\n" +
+  "   b) **Matched roles** — numbered list of shortlisted roles (company, title, location, compensation if known, fit score out of 10, direct link, 2-sentence why-this-fits note). Attach all generated resumes via their attachmentIds.\n" +
+  "   c) **Non-matches** — a compact table or list of every rejected candidate (company, title, score, primary rejection reason). This section is required even when there are zero matches.\n" +
+  "   d) A closing summary line: total candidates reviewed, matches found, resumes attached.\n" +
+  "6. Send an in-app summary notification: After the email is sent, use builtin.channel_notify to send a brief in-app notification such as: " +
+  "'Job Scout completed: X matches found out of Y candidates reviewed. Results and tailored resumes sent by email.' " +
+  "If zero matches were found, still send the notification so the user knows the scan ran.\n\n" +
   "Rules:\n" +
   "- Never dispatch to data_analyst — do all scoring and analysis yourself.\n" +
   "- Never fabricate experience or credentials in resumes — only use what is in the user profile.\n" +
