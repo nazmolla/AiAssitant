@@ -42,6 +42,9 @@ export const SCHEDULER_BATCH_SIZE = 25;
 /** Max chars of task response stored for logging */
 export const SCHEDULER_RESPONSE_PREVIEW_CHARS = 4_000;
 
+/** Hours after which a run stuck in 'running' state is considered stale and marked 'timeout' */
+export const SCHEDULER_STALE_RUN_HOURS = 2;
+
 /* ── File System Tools ────────────────────────────────────────────── */
 
 /** Max file size for a single read operation (2 MB) */

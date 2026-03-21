@@ -275,6 +275,26 @@ export function setSchedulerRunStatus(runId: string, status: SchedulerRunStatus,
   ).run(status, status, isTerminal ? 1 : 0, errorMessage ?? null, errorMessage ?? null, runId);
 }
 
+/**
+ * Mark all runs that have been stuck in 'running' status since before `olderThanIso`
+ * as 'timeout'. Returns the IDs of recovered runs.
+ */
+export function markStaleSchedulerRunsAsTimeout(olderThanIso: string): string[] {
+  const stale = getDb().prepare(
+    `SELECT id FROM scheduler_runs WHERE status = 'running' AND started_at < ?`
+  ).all(olderThanIso) as { id: string }[];
+  if (stale.length === 0) return [];
+
+  const msg = "Recovered by stale-run detector: run exceeded max execution time.";
+  const update = getDb().prepare(
+    `UPDATE scheduler_runs SET status = 'timeout', finished_at = CURRENT_TIMESTAMP, error_message = ? WHERE id = ?`
+  );
+  for (const { id } of stale) {
+    update.run(msg, id);
+  }
+  return stale.map((r) => r.id);
+}
+
 export function setSchedulerTaskRunStatus(taskRunId: string, status: SchedulerTaskRunStatus, outputJson?: string | null, errorMessage?: string | null): void {
   const current = stmt("SELECT status FROM scheduler_task_runs WHERE id = ?").get(taskRunId) as { status: SchedulerTaskRunStatus } | undefined;
   if (!current) return;

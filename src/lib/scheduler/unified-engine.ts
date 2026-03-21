@@ -13,6 +13,7 @@ import {
   heartbeatSchedulerClaim,
   listDueSchedulerSchedules,
   listRunnableSchedulerRuns,
+  markStaleSchedulerRunsAsTimeout,
   releaseSchedulerClaim,
   setSchedulerTaskRunLogRef,
   setSchedulerRunStatus,
@@ -26,6 +27,7 @@ import {
   SCHEDULER_LEASE_SECONDS,
   SCHEDULER_BATCH_SIZE,
   SCHEDULER_RESPONSE_PREVIEW_CHARS,
+  SCHEDULER_STALE_RUN_HOURS,
 } from "@/lib/constants";
 import { computeSchedulerNextRunAt } from "@/lib/scheduler/next-run";
 import { findBatchJobForHandler } from "@/lib/scheduler/batch-jobs";
@@ -125,6 +127,24 @@ function validateRegisteredHandlers(): void {
     message: "Found enabled scheduler tasks with unregistered handlers.",
     metadata: JSON.stringify({ unknown }),
   });
+}
+
+/**
+ * Detect runs stuck in 'running' state beyond SCHEDULER_STALE_RUN_HOURS and mark
+ * them as 'timeout' so their schedule can dispatch new runs. This recovers from
+ * server crashes or hanging agent loops that never wrote a terminal status.
+ */
+function recoverStaleRuns(): void {
+  const cutoff = new Date(Date.now() - SCHEDULER_STALE_RUN_HOURS * 60 * 60 * 1000).toISOString();
+  const recovered = markStaleSchedulerRunsAsTimeout(cutoff);
+  if (recovered.length > 0) {
+    schedulerEngineDependencies.addLog({
+      level: "warning",
+      source: "scheduler-engine",
+      message: `Recovered ${recovered.length} stale scheduler run(s) stuck in 'running' state for >${SCHEDULER_STALE_RUN_HOURS}h.`,
+      metadata: JSON.stringify({ runIds: recovered }),
+    });
+  }
 }
 
 function dispatchDueSchedules(): void {
@@ -391,6 +411,7 @@ async function engineTick(): Promise<void> {
   if (engineState.tickRunning) return;
   engineState.tickRunning = true;
   try {
+    recoverStaleRuns();
     dispatchDueSchedules();
     await executeRunnableRun();
   } finally {
