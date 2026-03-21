@@ -135,8 +135,7 @@ function validateRegisteredHandlers(): void {
  * server crashes or hanging agent loops that never wrote a terminal status.
  */
 function recoverStaleRuns(): void {
-  const cutoff = new Date(Date.now() - SCHEDULER_STALE_RUN_HOURS * 60 * 60 * 1000).toISOString();
-  const recovered = markStaleSchedulerRunsAsTimeout(cutoff);
+  const recovered = markStaleSchedulerRunsAsTimeout(SCHEDULER_STALE_RUN_HOURS);
   if (recovered.length > 0) {
     schedulerEngineDependencies.addLog({
       level: "warning",

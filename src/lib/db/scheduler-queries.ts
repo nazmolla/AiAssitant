@@ -276,13 +276,15 @@ export function setSchedulerRunStatus(runId: string, status: SchedulerRunStatus,
 }
 
 /**
- * Mark all runs that have been stuck in 'running' status since before `olderThanIso`
- * as 'timeout'. Returns the IDs of recovered runs.
+ * Mark all runs that have been stuck in 'running' status for longer than
+ * `staleHours` hours as 'timeout'. Uses SQLite's datetime() for the comparison
+ * so that the stored format ('YYYY-MM-DD HH:MM:SS') is compared correctly.
+ * Returns the IDs of recovered runs.
  */
-export function markStaleSchedulerRunsAsTimeout(olderThanIso: string): string[] {
+export function markStaleSchedulerRunsAsTimeout(staleHours: number): string[] {
   const stale = getDb().prepare(
-    `SELECT id FROM scheduler_runs WHERE status = 'running' AND started_at < ?`
-  ).all(olderThanIso) as { id: string }[];
+    `SELECT id FROM scheduler_runs WHERE status = 'running' AND started_at < datetime('now', ? || ' hours')`
+  ).all(`-${staleHours}`) as { id: string }[];
   if (stale.length === 0) return [];
 
   const msg = "Recovered by stale-run detector: run exceeded max execution time.";
