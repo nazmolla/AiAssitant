@@ -20,6 +20,7 @@ export async function executeToolWithPolicy(
   toolCall: ToolCall,
   threadId: string,
   reasoning?: string,
+  userId?: string,
   deps: ToolExecutorDeps = defaultToolExecutorDeps,
 ): Promise<import("./gatekeeper").GatekeeperResult> {
   const t0 = Date.now();
@@ -196,12 +197,13 @@ export async function executeToolWithPolicy(
   }
 
   // No approval needed — route to the correct executor
-  const userId = deps.getThread(threadId)?.user_id ?? undefined;
+  // Prefer the userId passed by the caller (e.g. from runAgentLoop), fall back to DB lookup.
+  const resolvedUserId = userId ?? (deps.getThread(threadId)?.user_id ?? undefined);
   try {
     const result = await getToolRegistry().dispatch(
       toolCall.name,
       toolCall.arguments,
-      { threadId, userId }
+      { threadId, userId: resolvedUserId }
     );
 
     deps.addLog({

@@ -291,7 +291,7 @@ export async function runAgentLoop(
       for (const toolCall of toolCalls) {
         await yieldLoop(); // yield between tool executions
         onStatus?.({ step: "Executing tool", detail: toolCall.name });
-        const result = await deps.executeToolWithPolicy(toolCall, threadId, response.content || undefined);
+        const result = await deps.executeToolWithPolicy(toolCall, threadId, response.content || undefined, userId);
 
         if (result.status === "pending_approval") {
           pendingApprovals.push(toolCall.name);
