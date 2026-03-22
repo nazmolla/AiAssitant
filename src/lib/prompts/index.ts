@@ -112,20 +112,32 @@ export const JOB_SCOUT_TASK_PROMPT =
   "3. Score and match: For each candidate, score fit against the user's profile (0-10) based on: skill match, seniority, location/work-mode, " +
   "compensation range, company quality/culture signals. Reject poor fits (score < 6). Shortlist the top 3-5 strongest matches (score ≥ 6). " +
   "For each rejected candidate, record the primary rejection reason: skill_gap | location_mismatch | seniority_mismatch | compensation_mismatch | visa_constraint | company_excluded | other.\n" +
-  "4. Generate tailored resumes: For each shortlisted role, create a tailored resume using builtin.file_generate (format: docx or pdf). " +
+  "4. Generate tailored resumes: For each shortlisted role, create a tailored resume using builtin.file_generate (format: docx). " +
   "Customise the summary, skills, and experience bullets to match the specific job description. " +
-  "Use clear filenames: '{CompanyName}_{RoleName}_Resume'. Collect the returned attachmentId for each file.\n" +
+  "Use clear filenames: '{CompanyName}_{RoleName}_Resume'. From each file_generate result, save the `storagePath` and `filename` fields — you will need them in step 5.\n" +
   "5. **[MANDATORY — call the tool now, do not describe it]** Email the user: Call builtin.channel_send (channelType=email) immediately. " +
   "Do not write 'I will now send the email' — call the tool directly. " +
+  "Pass the generated resume files as attachments using the `attachments` field: " +
+  "`attachments: [{ storagePath: \"<storagePath from file_generate>\", filename: \"<filename from file_generate>\" }, ...]`. " +
+  "Include one entry per resume. If a resume was not generated, omit it (do not pass a null entry). " +
   "The email subject must be 'Job Scout Results — [date]' and must contain:\n" +
   "   a) A brief intro line.\n" +
-  "   b) **Matched roles** — numbered list of shortlisted roles (company, title, location, compensation if known, fit score out of 10, direct link, 2-sentence why-this-fits note). Attach all generated resumes via their attachmentIds.\n" +
+  "   b) **Matched roles** — numbered list of shortlisted roles (company, title, location, compensation if known, fit score out of 10, direct link, 2-sentence why-this-fits note).\n" +
   "   c) **Non-matches** — a compact table or list of every rejected candidate (company, title, score, primary rejection reason). This section is required even when there are zero matches.\n" +
   "   d) A closing summary line: total candidates reviewed, matches found, resumes attached.\n" +
   "   If resume generation failed for any role, still send the email with the match list and note which resumes are missing.\n" +
-  "6. **[MANDATORY — call the tool now, do not describe it]** In-app summary: Immediately after the email tool call returns, call builtin.channel_notify with a brief message such as: " +
+  "   **If channel_send fails:** retry the call once with the same arguments. If it fails again, call builtin.channel_notify reporting: 'Job Scout email delivery failed — [error summary]. Matches: [list of roles]. Results not emailed.'\n" +
+  "6. **[MANDATORY — call the tool now, do not describe it]** In-app summary: Immediately after the email tool call returns (success or failure), call builtin.channel_notify with a brief message such as: " +
   "'Job Scout completed: X matches found out of Y candidates reviewed. Results and tailored resumes sent by email.' " +
-  "This must fire even when zero matches were found.\n\n" +
+  "This must fire even when zero matches were found and even when the email step failed.\n" +
+  "   **If channel_notify fails:** retry once. If both attempts fail, log the failure in your final response text and continue.\n" +
+  "7. **Completion checkpoint:** Before ending your turn, confirm all of the following were executed (not just described):\n" +
+  "   - [ ] builtin.knowledge_search called\n" +
+  "   - [ ] builtin.web_search called with at least 2 queries\n" +
+  "   - [ ] builtin.file_generate called for each shortlisted role\n" +
+  "   - [ ] builtin.channel_send called (or retried and fell back to channel_notify on failure)\n" +
+  "   - [ ] builtin.channel_notify called for in-app summary\n" +
+  "   If any item was NOT executed, execute it now before finishing.\n\n" +
   "Rules:\n" +
   "- Never dispatch to data_analyst — do all scoring and analysis yourself.\n" +
   "- Never fabricate experience or credentials in resumes — only use what is in the user profile.\n" +
@@ -143,11 +155,12 @@ export const EMAIL_BATCH_TASK_PROMPT =
   "2. For each email, classify and act — call the tool before moving to the next email:\n" +
   "   - FORWARDED JOB LISTING: The owner forwarded a job posting for evaluation. Load the owner's career profile from the knowledge vault. " +
   "Score fit against role, skills, location, seniority, and constraints (0–10). " +
-  "If fit ≥ 7: [MANDATORY] immediately call builtin.file_generate to create a tailored resume (docx), then call builtin.channel_send (channelType=email) with fit score, why-it-matches, the job link, and the resume attached. " +
+  "If fit ≥ 7: [MANDATORY] immediately call builtin.file_generate to create a tailored resume (docx), then immediately call builtin.channel_send (channelType=email) with fit score, why-it-matches, the job link, and the resume attached using `attachments: [{ storagePath: '<storagePath from file_generate result>', filename: '<filename from file_generate result>' }]`. " +
+  "**If channel_send fails, retry once. If it fails again, call builtin.channel_notify instead with the fit score, job details, and a note that email delivery failed.** " +
   "If fit < 7: [MANDATORY] immediately call builtin.channel_notify with the rejection reasons (skill gap, location mismatch, seniority, etc.) and the fit score. " +
   "Never skip this step — every forwarded job must get a response.\n" +
   "   - FORWARDED DOCUMENT / CONTRACT / AGREEMENT: Read and analyse thoroughly (key obligations, parties, dates, financial terms, risks, unusual clauses). " +
-  "[MANDATORY] Immediately call builtin.channel_send (channelType=email) with the structured analysis and any recommended actions.\n" +
+  "[MANDATORY] Immediately call builtin.channel_send (channelType=email) with the structured analysis and any recommended actions. If channel_send fails, retry once, then fall back to builtin.channel_notify with the analysis summary.\n" +
   "   - FORWARDED ARTICLE / LINK: Fetch the content with builtin.web_fetch or builtin.web_extract. " +
   "[MANDATORY] Immediately call builtin.channel_notify with a concise summary and any relevance to the owner's known interests.\n" +
   "   - DIRECT MESSAGE FROM OWNER: Treat as a task. Execute if clear and safe. If clarification is needed, call builtin.channel_send to reply by email.\n" +
@@ -184,6 +197,8 @@ ${agentSummary}
 - **NEVER produce a final summary until ALL deliverables are done.** If the task requires an email and an in-app notification, both must be sent before you write the final synthesis.
 - **After each sub-agent returns, immediately proceed to the next step** — do not pause to summarise intermediate results unless the task explicitly asks for it.
 - **If a step fails, continue with the remaining steps** using whatever partial results are available. Log the failure in the final summary.
+- **Delivery retry rule:** If builtin.channel_send or builtin.channel_notify fails, retry once immediately with the same arguments. If the retry also fails, log the failure and continue — do NOT skip remaining steps.
+- **Email attachment rule:** When calling builtin.channel_send after builtin.file_generate, always pass the \`attachments\` field using the \`storagePath\` and \`filename\` from the file_generate result. Never omit the attachments field when a file was generated for delivery.
 - Minimise unnecessary agent calls: only dispatch an agent if it genuinely adds value.
 - Do not dispatch the same agent twice with the same task — build on results.
 - If a sub-task is trivial enough to do directly (scoring, filtering, formatting), do it yourself instead of dispatching.
@@ -406,7 +421,7 @@ SINGLE-TURN EXECUTION: You must complete ALL actions in this one turn. Do not wr
 **Forwarded job listing**: The owner forwarded this for evaluation.
 - Call builtin.knowledge_search with queries like 'career', 'skills', 'role', 'resume' to load the owner's career profile. Do NOT declare data missing until you have searched.
 - Compare the job to the profile. Score fit 1-10.
-- [MANDATORY: call the tool now] If fit ≥ 7: call builtin.file_generate to create a tailored resume (docx), then immediately call builtin.channel_send (channelType=email) with fit score, why it's a match, the job link, and the resume attached.
+- [MANDATORY: call the tool now] If fit ≥ 7: call builtin.file_generate to create a tailored resume (docx). From the result, capture the storagePath and filename fields. Then immediately call builtin.channel_send (channelType=email) with fit score, why it's a match, the job link, and the resume attached using attachments: [{ storagePath: '<storagePath from file_generate>', filename: '<filename from file_generate>' }]. **If channel_send fails, retry once. If it fails again, call builtin.channel_notify with the fit score, job details, and note that email delivery failed.**
 - [MANDATORY: call the tool now] If fit < 7: immediately call builtin.channel_notify explaining why it doesn't match (specific reasons: skill gap, location mismatch, seniority, etc.) and the fit score.
 
 **Forwarded document / contract / agreement**:

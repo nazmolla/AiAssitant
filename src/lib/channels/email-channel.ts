@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import type { SendMailOptions } from "nodemailer";
 import { ImapFlow } from "imapflow";
 import type { ChannelRecord } from "@/lib/db/channel-queries";
@@ -8,6 +10,26 @@ import {
 } from "@/lib/channels/communication-channel";
 import type { CommunicationChannelBuilder } from "@/lib/channels/channel-builder";
 import { createLogger } from "@/lib/logging/logger";
+
+const ATTACHMENTS_ROOT = path.join(process.cwd(), "data", "attachments");
+
+const MIME_BY_EXT: Record<string, string> = {
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain",
+  ".md": "text/markdown",
+  ".csv": "text/csv",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+};
+
+function guessContentType(storagePath: string): string {
+  const ext = path.extname(storagePath).toLowerCase();
+  return MIME_BY_EXT[ext] ?? "application/octet-stream";
+}
 
 const log = createLogger("channels.email-channel");
 import {
@@ -146,14 +168,34 @@ export class EmailChannel extends BaseCommunicationChannel {
     }
 
     const themed = this.buildThemedEmailBodyFn(request.subject, request.message);
-    await this.sendSmtpMailFn(emailCfg, {
+
+    const fileAttachments: { filename: string; content: Buffer; contentType: string }[] = [];
+    for (const att of request.attachments ?? []) {
+      const fullPath = path.join(ATTACHMENTS_ROOT, att.storagePath.replace(/\.\./g, ""));
+      if (fs.existsSync(fullPath)) {
+        fileAttachments.push({
+          filename: att.filename || path.basename(att.storagePath),
+          content: fs.readFileSync(fullPath),
+          contentType: guessContentType(att.storagePath),
+        });
+      } else {
+        log.warning("send: attachment file not found, skipping", { storagePath: att.storagePath });
+      }
+    }
+
+    const mailOptions: SendMailOptions = {
       from: emailCfg.fromAddress,
       to,
       subject: request.subject,
       text: themed.text,
       html: themed.html,
-    });
-    log.exit("send", { channelId: this.id }, Date.now() - t0);
+    };
+    if (fileAttachments.length > 0) {
+      mailOptions.attachments = fileAttachments;
+    }
+
+    await this.sendSmtpMailFn(emailCfg, mailOptions);
+    log.exit("send", { channelId: this.id, attachments: fileAttachments.length }, Date.now() - t0);
   }
 }
 

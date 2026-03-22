@@ -108,7 +108,60 @@ describe("createDefaultCommunicationChannelFactory", () => {
     await channel.send({ userId: "u", subject: "Subject", message: "Message", emailRecipient: "to@test.com" });
 
     expect(mockBuildThemedEmailBody).toHaveBeenCalledWith("Subject", "Message");
-    expect(mockSendSmtpMail).toHaveBeenCalled();
+    expect(mockSendSmtpMail).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.not.objectContaining({ attachments: expect.anything() }),
+    );
+  });
+
+  test("email channel includes file attachment when storagePath exists on disk", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const existsSyncSpy = jest.spyOn(fs, "existsSync").mockReturnValue(true);
+    const readFileSyncSpy = jest.spyOn(fs, "readFileSync").mockReturnValue(Buffer.from("DOCX_BYTES") as unknown as string);
+
+    const factory = createDefaultCommunicationChannelFactory();
+    const channel = factory.create(makeChannel({ channel_type: "email" }));
+
+    await channel.send({
+      userId: "u",
+      subject: "Resume",
+      message: "See attached",
+      emailRecipient: "to@test.com",
+      attachments: [{ storagePath: "thread-1/abc.docx", filename: "Resume.docx" }],
+    });
+
+    expect(existsSyncSpy).toHaveBeenCalled();
+    expect(readFileSyncSpy).toHaveBeenCalled();
+    const mailCall = mockSendSmtpMail.mock.calls[0][1] as Record<string, unknown>;
+    expect(Array.isArray(mailCall.attachments)).toBe(true);
+    const att = (mailCall.attachments as Array<Record<string, unknown>>)[0];
+    expect(att.filename).toBe("Resume.docx");
+    expect(att.content).toEqual(Buffer.from("DOCX_BYTES"));
+    expect(att.contentType).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+
+    existsSyncSpy.mockRestore();
+    readFileSyncSpy.mockRestore();
+  });
+
+  test("email channel skips attachment when file does not exist on disk", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const existsSyncSpy = jest.spyOn(fs, "existsSync").mockReturnValue(false);
+
+    const factory = createDefaultCommunicationChannelFactory();
+    const channel = factory.create(makeChannel({ channel_type: "email" }));
+
+    await channel.send({
+      userId: "u",
+      subject: "Resume",
+      message: "See attached",
+      emailRecipient: "to@test.com",
+      attachments: [{ storagePath: "thread-1/missing.docx" }],
+    });
+
+    const mailCall = mockSendSmtpMail.mock.calls[0][1] as Record<string, unknown>;
+    expect(mailCall.attachments).toBeUndefined();
+
+    existsSyncSpy.mockRestore();
   });
 
   test("builds teams channel and posts via webhook", async () => {

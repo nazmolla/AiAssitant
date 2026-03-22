@@ -55,6 +55,24 @@ export const BUILTIN_COMMUNICATION_TOOLS: ToolDefinition[] = [
           type: "string",
           description: "Message body/content.",
         },
+        attachments: {
+          type: "array",
+          description: "Optional list of generated files to attach (email channels only). Use the storagePath and filename from a prior builtin.file_generate result.",
+          items: {
+            type: "object",
+            properties: {
+              storagePath: {
+                type: "string",
+                description: "Relative storage path returned by builtin.file_generate, e.g. '{threadId}/{fileId}.docx'.",
+              },
+              filename: {
+                type: "string",
+                description: "Display filename for the email attachment (e.g. 'Mohamed_Resume.docx').",
+              },
+            },
+            required: ["storagePath"],
+          },
+        },
       },
       required: ["subject", "message"],
     },
@@ -240,6 +258,15 @@ export class CommunicationTools extends BaseTool {
       throw new Error("Missing required args: subject, message.");
     }
 
+    const rawAttachments = Array.isArray(args.attachments) ? args.attachments : [];
+    const attachments = rawAttachments
+      .filter((a): a is Record<string, unknown> => a !== null && typeof a === "object")
+      .map((a) => ({
+        storagePath: typeof a.storagePath === "string" ? a.storagePath : "",
+        filename: typeof a.filename === "string" ? a.filename : undefined,
+      }))
+      .filter((a) => a.storagePath.length > 0);
+
     const channel = pickChannel(userId, channelType || undefined, channelLabel || undefined);
     const isEmailChannel = channel.channel_type === "email";
     const emailRecipient = explicitEmail || (isEmailChannel ? aliasTo : "");
@@ -251,6 +278,7 @@ export class CommunicationTools extends BaseTool {
       message,
       emailRecipient: emailRecipient || undefined,
       externalRecipientId: externalRecipientId || undefined,
+      attachments: attachments.length > 0 ? attachments : undefined,
     };
 
     const channelFactory = await this.getChannelFactory();
