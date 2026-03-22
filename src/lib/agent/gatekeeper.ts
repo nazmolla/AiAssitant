@@ -70,7 +70,8 @@ function truncateResult(result: unknown, maxLen = GATEKEEPER_RESULT_PREVIEW_CHAR
 export async function executeWithGatekeeper(
   toolCall: ToolCall,
   threadId: string,
-  reasoning?: string
+  reasoning?: string,
+  userId?: string
 ): Promise<GatekeeperResult> {
   const t0 = Date.now();
   log.enter("executeWithGatekeeper", { toolName: toolCall.name, threadId });
@@ -262,12 +263,14 @@ export async function executeWithGatekeeper(
   }
 
   // No approval needed — execute directly
-  const userId = getThread(threadId)?.user_id ?? undefined;
+  // Prefer explicitly-passed userId; fall back to thread lookup.
+  // Use || (not ??) so an empty string triggers the fallback.
+  const resolvedUserId = userId || (getThread(threadId)?.user_id ?? undefined);
   try {
     const result = await getToolRegistry().dispatch(
       toolCall.name,
       toolCall.arguments,
-      { threadId, userId }
+      { threadId, userId: resolvedUserId }
     );
 
     addLog({

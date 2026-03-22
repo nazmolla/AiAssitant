@@ -93,6 +93,25 @@ describe("executeWithGatekeeper — default-deny for MCP tools", () => {
 
     expect(result.status).toBe("executed");
   });
+
+  test("empty string userId falls back to thread user_id (not passed as empty)", async () => {
+    upsertToolPolicy({
+      tool_name: "mcp_safe_tool_userid",
+      mcp_id: null,
+      requires_approval: 0,
+    });
+
+    // Pass empty string as userId — the thread has a valid user_id.
+    // Should execute successfully (not throw) because gatekeeper uses thread's user_id as fallback.
+    const result = await executeWithGatekeeper(
+      { id: "tc-4", name: "mcp_safe_tool_userid", arguments: {} },
+      threadId,
+      "test reasoning",
+      "" // empty string — should fall back to thread.user_id
+    );
+
+    expect(result.status).toBe("executed");
+  });
 });
 
 describe("Tool policy seeding", () => {

@@ -49,7 +49,7 @@ import {
 } from "./loop";
 import { buildMcpContext } from "./context-builder";
 import { executeWithGatekeeper } from "./gatekeeper";
-import { newTrace } from "@/lib/logging/logger";
+
 import { processExecutedToolResult, processFailedToolResult } from "./tool-result-processor";
 
 /* ── Re-export for convenience ──────────────────────────────────── */
@@ -314,7 +314,7 @@ async function _runViaWorker(
 
       for (const toolCall of calls) {
         onStatus?.({ step: "Executing tool", detail: toolCall.name });
-        const gkResult = await executeWithGatekeeper(toolCall, threadId, assistantContent || undefined);
+        const gkResult = await executeWithGatekeeper(toolCall, threadId, assistantContent || undefined, userId);
 
         if (gkResult.status === "pending_approval") {
           pendingApprovals.push(toolCall.name);

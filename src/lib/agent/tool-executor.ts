@@ -198,7 +198,8 @@ export async function executeToolWithPolicy(
 
   // No approval needed — route to the correct executor
   // Prefer the userId passed by the caller (e.g. from runAgentLoop), fall back to DB lookup.
-  const resolvedUserId = userId ?? (deps.getThread(threadId)?.user_id ?? undefined);
+  // Use || (not ??) so that an empty string is treated the same as undefined and triggers the fallback.
+  const resolvedUserId = userId || (deps.getThread(threadId)?.user_id ?? undefined);
   try {
     const result = await getToolRegistry().dispatch(
       toolCall.name,
