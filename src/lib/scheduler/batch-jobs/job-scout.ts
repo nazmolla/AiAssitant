@@ -2,6 +2,7 @@
   createThread,
   getSchedulerScheduleById,
 } from "@/lib/db";
+import { retrieveKnowledge } from "@/lib/knowledge/retriever";
 import {
   BatchJob,
   type BatchJobParameterDefinition,
@@ -71,11 +72,33 @@ export class JobScoutBatchJob extends BatchJob {
       log("info", "Created pipeline thread for job scout run.", logCtx, { threadId: runThreadId });
     }
 
+    // Pre-fetch career knowledge so it is guaranteed to be available in context.
+    // Retrieve across multiple career-relevant queries and merge unique entries.
+    const careerQueries = ["career", "skills", "experience", "role", "resume", "education", "location", "salary", "contact", "achievements"];
+    const knowledgeMap = new Map<number, { entity: string; attribute: string; value: string }>();
+    for (const q of careerQueries) {
+      const entries = await retrieveKnowledge(q, 20, userId);
+      for (const e of entries) {
+        if (!knowledgeMap.has(e.id)) knowledgeMap.set(e.id, { entity: e.entity, attribute: e.attribute, value: e.value });
+      }
+    }
+    const careerKnowledge = Array.from(knowledgeMap.values());
+
+    let knowledgeContext = "";
+    if (careerKnowledge.length > 0) {
+      knowledgeContext = "\n\n## Pre-loaded career profile from knowledge vault\nUse this data to score jobs and generate resumes. Do NOT fabricate any information not present here.\n" +
+        careerKnowledge.map((k) => `- ${k.entity} / ${k.attribute}: ${k.value}`).join("\n");
+      log("info", `Injected ${careerKnowledge.length} career knowledge entries into job scout context.`, logCtx);
+    } else {
+      log("warning", "No career knowledge found for user — job scout may abort.", logCtx);
+    }
+
+    const fullContext = [additionalContext, knowledgeContext].filter(Boolean).join("\n");
     const registry = AgentRegistry.getInstance();
     const orchestrator = new OrchestratorAgent(registry);
     const result = await orchestrator.run(
-      additionalContext ? `${JOB_SCOUT_TASK_PROMPT}\n\n## User context\n${additionalContext}` : JOB_SCOUT_TASK_PROMPT,
-      { userId, threadId: runThreadId, maxIterations },
+      JOB_SCOUT_TASK_PROMPT,
+      { userId, threadId: runThreadId, maxIterations, additionalContext: fullContext || undefined },
     );
 
     log("info", "Job scout orchestration completed.", logCtx, {

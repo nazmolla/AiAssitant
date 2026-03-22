@@ -144,3 +144,49 @@ describe("CommunicationTools channel_notify", () => {
     expect(sendMock).not.toHaveBeenCalled();
   });
 });
+
+describe("CommunicationTools channel_receive since parameter", () => {
+  const mockPrepare = jest.fn();
+  const mockAll = jest.fn();
+
+  beforeEach(() => {
+    mockAll.mockReturnValue([]);
+    mockPrepare.mockReturnValue({ all: mockAll });
+    const { getDb } = require("@/lib/db/connection");
+    (getDb as jest.Mock).mockReturnValue({ prepare: mockPrepare });
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test("channel_receive schema includes since field", () => {
+    const receiveTool = BUILTIN_COMMUNICATION_TOOLS.find((t) => t.name === COMMUNICATION_TOOL_NAMES.RECEIVE);
+    expect(receiveTool).toBeDefined();
+    expect(receiveTool!.inputSchema.properties).toHaveProperty("since");
+  });
+
+  test("channel_receive without since does not add timestamp filter to query", async () => {
+    const tools = new CommunicationTools();
+    await tools.execute(
+      COMMUNICATION_TOOL_NAMES.RECEIVE,
+      { channelType: "email" },
+      { threadId: "thread-1", userId: "user-1" },
+    );
+    const capturedQuery: string = mockPrepare.mock.calls[0][0];
+    expect(capturedQuery).not.toContain("last_message_at >=");
+  });
+
+  test("channel_receive with since adds timestamp filter to query", async () => {
+    const tools = new CommunicationTools();
+    await tools.execute(
+      COMMUNICATION_TOOL_NAMES.RECEIVE,
+      { channelType: "email", since: "2026-03-22T00:00:00.000Z" },
+      { threadId: "thread-1", userId: "user-1" },
+    );
+    const capturedQuery: string = mockPrepare.mock.calls[0][0];
+    expect(capturedQuery).toContain("last_message_at >=");
+    const capturedParams = mockAll.mock.calls[0];
+    expect(capturedParams).toContain("2026-03-22T00:00:00.000Z");
+  });
+});

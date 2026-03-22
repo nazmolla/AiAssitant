@@ -12,6 +12,7 @@
 import {
   createThread,
   getSchedulerScheduleById,
+  listSchedulerRunsBySchedule,
 } from "@/lib/db";
 import {
   BatchJob,
@@ -64,6 +65,15 @@ export class EmailBatchJob extends BatchJob {
       throw new Error("Missing userId for email batch. Set schedule owner_id.");
     }
 
+    // Find the previous successful run to determine the since-timestamp for deduplication.
+    // Default to 24 hours ago if no prior run exists.
+    const previousRuns = listSchedulerRunsBySchedule(scheduleId, 10);
+    const lastSuccessRun = previousRuns.find((r) => r.status === "success" && r.started_at);
+    const sinceTimestamp = lastSuccessRun?.started_at
+      ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const sinceContext = `\n\nEMAIL DEDUPLICATION: Only process emails that arrived after ${sinceTimestamp} (ISO timestamp). When calling builtin.channel_receive, pass since="${sinceTimestamp}" to filter out previously processed emails.`;
+
     let runThreadId = threadId;
     if (!runThreadId) {
       const schedule = getSchedulerScheduleById(scheduleId);
@@ -74,8 +84,9 @@ export class EmailBatchJob extends BatchJob {
 
     const registry = AgentRegistry.getInstance();
     const orchestrator = new OrchestratorAgent(registry);
+    const fullContext = [additionalContext, sinceContext].filter(Boolean).join("\n");
     const result = await orchestrator.run(
-      additionalContext ? `${EMAIL_BATCH_TASK_PROMPT}\n\n## User context\n${additionalContext}` : EMAIL_BATCH_TASK_PROMPT,
+      `${EMAIL_BATCH_TASK_PROMPT}\n\n## System context\n${fullContext}`,
       { userId, threadId: runThreadId },
     );
 

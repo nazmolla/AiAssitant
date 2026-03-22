@@ -123,6 +123,10 @@ export const BUILTIN_COMMUNICATION_TOOLS: ToolDefinition[] = [
           type: "number",
           description: "Max number of messages to return (1-50, default 10).",
         },
+        since: {
+          type: "string",
+          description: "Optional ISO 8601 timestamp. Only return threads whose last message arrived at or after this time. Use to avoid re-processing previously seen messages (e.g. pass the timestamp from the start of the last batch run).",
+        },
       },
       required: [],
     },
@@ -308,6 +312,7 @@ export class CommunicationTools extends BaseTool {
     const channelLabel = getStringArg(args, "channelLabel");
     const externalSenderId = getStringArg(args, "externalSenderId");
     const limit = normalizeLimit(args.limit, 10);
+    const since = getStringArg(args, "since");
 
     const channel = pickChannel(userId, channelType || undefined, channelLabel || undefined);
 
@@ -327,6 +332,10 @@ export class CommunicationTools extends BaseTool {
     if (externalSenderId) {
       query += " AND external_sender_id = ?";
       params.push(externalSenderId);
+    }
+    if (since) {
+      query += " AND last_message_at >= ?";
+      params.push(since);
     }
 
     query += " ORDER BY last_message_at DESC LIMIT 20";
