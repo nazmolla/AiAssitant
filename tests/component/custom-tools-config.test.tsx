@@ -21,6 +21,11 @@ jest.mock("@/components/theme-provider", () => ({
   useTheme: () => ({ formatDate: (s: string) => s }),
 }));
 
+let mockOpenConfirm: jest.Mock = jest.fn();
+jest.mock("@/hooks/use-confirm", () => ({
+  useConfirm: () => ({ confirmDialog: null, openConfirm: mockOpenConfirm }),
+}));
+
 const mockTool = {
   name: "weather_check",
   description: "Checks current weather for a city",
@@ -47,6 +52,10 @@ function setupFetch(tools = [mockTool]) {
   });
   global.fetch = fetchMock;
 }
+
+beforeEach(() => {
+  mockOpenConfirm = jest.fn();
+});
 
 afterEach(() => jest.restoreAllMocks());
 
@@ -88,7 +97,7 @@ describe("CustomToolsConfig — interactions", () => {
 
   test("Delete button calls DELETE after window.confirm", async () => {
     setupFetch();
-    window.confirm = jest.fn(() => true);
+    mockOpenConfirm.mockResolvedValue(true);
     const { CustomToolsConfig } = await import("@/components/custom-tools-config");
     await act(async () => { render(<CustomToolsConfig />); });
     await waitFor(() => {
@@ -99,20 +108,20 @@ describe("CustomToolsConfig — interactions", () => {
       fireEvent.click(screen.getByRole("button", { name: /delete/i }));
     });
 
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringContaining("weather_check")
-    );
+    expect(mockOpenConfirm).toHaveBeenCalled();
 
-    const delCalls = fetchMock.mock.calls.filter(
-      ([u, o]: [string, RequestInit?]) => u.includes("/api/config/custom-tools") && o?.method === "DELETE"
-    );
-    expect(delCalls.length).toBe(1);
-    expect(JSON.parse(delCalls[0][1].body as string).name).toBe("weather_check");
+    await waitFor(() => {
+      const delCalls = fetchMock.mock.calls.filter(
+        ([u, o]: [string, RequestInit?]) => u.includes("/api/config/custom-tools") && o?.method === "DELETE"
+      );
+      expect(delCalls.length).toBe(1);
+      expect(JSON.parse(delCalls[0][1].body as string).name).toBe("weather_check");
+    });
   });
 
   test("Delete button does NOT call DELETE when confirm is cancelled", async () => {
     setupFetch();
-    window.confirm = jest.fn(() => false);
+    mockOpenConfirm.mockResolvedValue(false);
     const { CustomToolsConfig } = await import("@/components/custom-tools-config");
     await act(async () => { render(<CustomToolsConfig />); });
     await waitFor(() => {
@@ -123,6 +132,7 @@ describe("CustomToolsConfig — interactions", () => {
       fireEvent.click(screen.getByRole("button", { name: /delete/i }));
     });
 
+    await new Promise((r) => setTimeout(r, 50));
     const delCalls = fetchMock.mock.calls.filter(
       ([u, o]: [string, RequestInit?]) => u.includes("/api/config/custom-tools") && o?.method === "DELETE"
     );

@@ -966,14 +966,15 @@ export class FsTools extends BaseTool {
         stdout: stdout.slice(0, FS_MAX_SCRIPT_OUTPUT),
         stderr: stderr.slice(0, FS_MAX_SCRIPT_OUTPUT),
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errObj = err as { stderr?: string; message?: string; code?: number; stdout?: string; killed?: boolean };
       return {
         command,
         cwd,
-        exitCode: err.code ?? 1,
-        stdout: (err.stdout || "").slice(0, FS_MAX_SCRIPT_OUTPUT),
-        stderr: (err.stderr || err.message || "").slice(0, FS_MAX_SCRIPT_OUTPUT),
-        error: err.killed ? "Process timed out" : undefined,
+        exitCode: errObj.code ?? 1,
+        stdout: (errObj.stdout || "").slice(0, FS_MAX_SCRIPT_OUTPUT),
+        stderr: (errObj.stderr || errObj.message || "").slice(0, FS_MAX_SCRIPT_OUTPUT),
+        error: errObj.killed ? "Process timed out" : undefined,
       };
     }
   }

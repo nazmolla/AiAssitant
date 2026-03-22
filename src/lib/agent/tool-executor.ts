@@ -95,104 +95,105 @@ export async function executeToolWithPolicy(
       return { status: "executed", result: { status: "ignored", reason: "auto_ignored_by_preference" } };
     }
 
+    // preferenceDecision === "approved" falls through here — skip the manual approval request.
     if (preferenceDecision !== "approved") {
-    if (!reason) {
-      deps.addLog({
-        level: "warning",
-        source: "hitl",
-        message: `Skipped approval for tool "${toolCall.name}" because no reason was provided.`,
-        metadata: JSON.stringify({ threadId, requester }),
-      });
-      return {
-        status: "error",
-        error: `Approval for ${toolCall.name} requires a clear reason. Ask again with a specific reason before requesting approval.`,
-      };
-    }
+      if (!reason) {
+        deps.addLog({
+          level: "warning",
+          source: "hitl",
+          message: `Skipped approval for tool "${toolCall.name}" because no reason was provided.`,
+          metadata: JSON.stringify({ threadId, requester }),
+        });
+        return {
+          status: "error",
+          error: `Approval for ${toolCall.name} requires a clear reason. Ask again with a specific reason before requesting approval.`,
+        };
+      }
 
-    if (source === "chat") {
-      const inlineMeta = JSON.stringify({
+      if (source === "chat") {
+        const inlineMeta = JSON.stringify({
+          tool_name: toolCall.name,
+          args: toolCall.arguments,
+          reason,
+          requester,
+          source,
+          tool_call_id: toolCall.id,
+        });
+
+        deps.updateThreadStatus(threadId, "awaiting_user_confirmation");
+        deps.addMessage({
+          thread_id: threadId,
+          role: "system",
+          content:
+            `Approval needed to continue.\n` +
+            `Requester: ${requester}\n` +
+            `Action: ${toolCall.name}\n` +
+            `Reason: ${reason}\n` +
+            `Reply with \"approve\" to continue or \"reject\" to cancel.\n` +
+            `<!-- INLINE_APPROVAL:${inlineMeta} -->`,
+          tool_calls: null,
+          tool_results: null,
+          attachments: null,
+        });
+
+        return { status: "pending_approval", approvalId: `inline-${threadId}-${Date.now()}` };
+      }
+
+      deps.addLog({
+        level: "info",
+        source: "hitl",
+        message: `Tool "${toolCall.name}" requires approval (${source}).`,
+        metadata: JSON.stringify({ threadId, args: toolCall.arguments, requester, source }),
+      });
+
+      const approval = deps.createApprovalRequest({
+        thread_id: threadId,
+        tool_name: toolCall.name,
+        args: JSON.stringify(toolCall.arguments),
+        reasoning: reason,
+        nl_request: nlRequest,
+        source,
+      });
+
+      const approvalMeta = JSON.stringify({
+        approvalId: approval.id,
         tool_name: toolCall.name,
         args: toolCall.arguments,
-        reason,
+        reasoning: reason,
+        nl_request: nlRequest,
         requester,
         source,
-        tool_call_id: toolCall.id,
       });
 
-      deps.updateThreadStatus(threadId, "awaiting_user_confirmation");
-      deps.addMessage({
-        thread_id: threadId,
-        role: "system",
-        content:
-          `Approval needed to continue.\n` +
-          `Requester: ${requester}\n` +
-          `Action: ${toolCall.name}\n` +
-          `Reason: ${reason}\n` +
-          `Reply with \"approve\" to continue or \"reject\" to cancel.\n` +
-          `<!-- INLINE_APPROVAL:${inlineMeta} -->`,
-        tool_calls: null,
-        tool_results: null,
-        attachments: null,
-      });
+      // Only freeze interactive threads; proactive/email workflows stay asynchronous.
+      if (thread?.thread_type === "interactive") {
+        deps.updateThreadStatus(threadId, "awaiting_approval");
+        deps.addMessage({
+          thread_id: threadId,
+          role: "system",
+          content: `⏸️ Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
+          tool_calls: null,
+          tool_results: null,
+          attachments: null,
+        });
+      }
 
-      return { status: "pending_approval", approvalId: `inline-${threadId}-${Date.now()}` };
-    }
+      try {
+        await deps.notifyAdmin(
+          `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nRequester: ${requester}\nReason: ${reason}`,
+          "Nexus Approval Required",
+          { level: "medium", notificationType: "approval_required" }
+        );
+      } catch (err) {
+        deps.addLog({
+          level: "warning",
+          source: "hitl",
+          message: "Failed to send approval notification.",
+          metadata: JSON.stringify({ toolName: toolCall.name, threadId, error: err instanceof Error ? err.message : String(err) }),
+        });
+      }
 
-    deps.addLog({
-      level: "info",
-      source: "hitl",
-      message: `Tool "${toolCall.name}" requires approval (${source}).`,
-      metadata: JSON.stringify({ threadId, args: toolCall.arguments, requester, source }),
-    });
-
-    const approval = deps.createApprovalRequest({
-      thread_id: threadId,
-      tool_name: toolCall.name,
-      args: JSON.stringify(toolCall.arguments),
-      reasoning: reason,
-      nl_request: nlRequest,
-      source,
-    });
-
-    const approvalMeta = JSON.stringify({
-      approvalId: approval.id,
-      tool_name: toolCall.name,
-      args: toolCall.arguments,
-      reasoning: reason,
-      nl_request: nlRequest,
-      requester,
-      source,
-    });
-
-    // Only freeze interactive threads; proactive/email workflows stay asynchronous.
-    if (thread?.thread_type === "interactive") {
-      deps.updateThreadStatus(threadId, "awaiting_approval");
-      deps.addMessage({
-        thread_id: threadId,
-        role: "system",
-        content: `⏸️ Action paused: "${toolCall.name}" requires your approval.\n<!-- APPROVAL:${approvalMeta} -->`,
-        tool_calls: null,
-        tool_results: null,
-        attachments: null,
-      });
-    }
-
-    try {
-      await deps.notifyAdmin(
-        `Approval required for tool ${toolCall.name}.\nThread: ${threadId}\nRequester: ${requester}\nReason: ${reason}`,
-        "Nexus Approval Required",
-        { level: "medium", notificationType: "approval_required" }
-      );
-    } catch (err) {
-      deps.addLog({
-        level: "warning",
-        source: "hitl",
-        message: "Failed to send approval notification.",
-        metadata: JSON.stringify({ toolName: toolCall.name, threadId, error: err instanceof Error ? err.message : String(err) }),
-      });
-    }
-
-    return { status: "pending_approval", approvalId: approval.id };
+      return { status: "pending_approval", approvalId: approval.id };
     }
   }
 
@@ -215,14 +216,15 @@ export async function executeToolWithPolicy(
     });
     log.exit("executeToolWithPolicy", { status: "executed", tool: toolCall.name }, Date.now() - t0);
     return { status: "executed", result };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     deps.addLog({
       level: "error",
       source: "agent",
-      message: `Tool "${toolCall.name}" failed: ${err.message}`,
+      message: `Tool "${toolCall.name}" failed: ${errMsg}`,
       metadata: JSON.stringify({ threadId }),
     });
     log.error("executeToolWithPolicy dispatch failed", { tool: toolCall.name, threadId }, err);
-    return { status: "error", error: err.message };
+    return { status: "error", error: errMsg };
   }
 }

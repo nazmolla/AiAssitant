@@ -21,6 +21,11 @@ jest.mock("@/components/theme-provider", () => ({
   useTheme: () => ({ formatDate: (s: string) => s }),
 }));
 
+let mockOpenConfirm: jest.Mock = jest.fn();
+jest.mock("@/hooks/use-confirm", () => ({
+  useConfirm: () => ({ confirmDialog: null, openConfirm: mockOpenConfirm }),
+}));
+
 const mockChannel = {
   id: "ch-1",
   channel_type: "telegram",
@@ -51,6 +56,10 @@ function setupFetch(channels = [mockChannel]) {
   });
   global.fetch = fetchMock;
 }
+
+beforeEach(() => {
+  mockOpenConfirm = jest.fn();
+});
 
 afterEach(() => jest.restoreAllMocks());
 
@@ -153,7 +162,7 @@ describe("ChannelsConfig — interactions", () => {
 
   test("delete button calls DELETE after window.confirm", async () => {
     setupFetch();
-    window.confirm = jest.fn(() => true);
+    mockOpenConfirm.mockResolvedValue(true);
     const { ChannelsConfig } = await import("@/components/channels-config");
     await act(async () => { render(<ChannelsConfig />); });
     await waitFor(() => {
@@ -164,17 +173,19 @@ describe("ChannelsConfig — interactions", () => {
     expect(deleteBtns.length).toBeGreaterThanOrEqual(1);
     await act(async () => { fireEvent.click(deleteBtns[0]); });
 
-    expect(window.confirm).toHaveBeenCalled();
-    const delCalls = fetchMock.mock.calls.filter(
-      ([u, o]: [string, RequestInit?]) => u.includes("/api/config/channels") && o?.method === "DELETE"
-    );
-    expect(delCalls.length).toBe(1);
-    expect(delCalls[0][0]).toContain("id=ch-1");
+    expect(mockOpenConfirm).toHaveBeenCalled();
+    await waitFor(() => {
+      const delCalls = fetchMock.mock.calls.filter(
+        ([u, o]: [string, RequestInit?]) => u.includes("/api/config/channels") && o?.method === "DELETE"
+      );
+      expect(delCalls.length).toBe(1);
+      expect(delCalls[0][0]).toContain("id=ch-1");
+    });
   });
 
   test("delete button does NOT call DELETE when confirm is cancelled", async () => {
     setupFetch();
-    window.confirm = jest.fn(() => false);
+    mockOpenConfirm.mockResolvedValue(false);
     const { ChannelsConfig } = await import("@/components/channels-config");
     await act(async () => { render(<ChannelsConfig />); });
     await waitFor(() => {
@@ -184,6 +195,7 @@ describe("ChannelsConfig — interactions", () => {
     const deleteBtns = screen.getAllByRole("button", { name: /✕/i });
     await act(async () => { fireEvent.click(deleteBtns[0]); });
 
+    await new Promise((r) => setTimeout(r, 50));
     const delCalls = fetchMock.mock.calls.filter(
       ([u, o]: [string, RequestInit?]) => u.includes("/api/config/channels") && o?.method === "DELETE"
     );

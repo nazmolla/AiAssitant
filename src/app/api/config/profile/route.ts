@@ -35,7 +35,7 @@ export async function GET() {
     });
     log.exit("GET /api/config/profile", { exists: !!profile }, Date.now() - t0);
     return NextResponse.json(profile ?? null);
-  } catch (e: any) {
+  } catch (e: unknown) {
     log.error("GET /api/config/profile failed", {}, e instanceof Error ? e : new Error(String(e)));
     addLog({
       level: "error",
@@ -86,7 +86,7 @@ export async function PUT(req: Request) {
     });
     log.exit("PUT /api/config/profile", { userId: auth.user.id }, Date.now() - t0);
     return NextResponse.json(updated);
-  } catch (e: any) {
+  } catch (e: unknown) {
     log.error("PUT /api/config/profile failed", {}, e instanceof Error ? e : new Error(String(e)));
     addLog({
       level: "error",

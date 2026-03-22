@@ -24,8 +24,13 @@ export async function PUT(req: Request) {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
-  const body = await req.json();
-  const { ubidMain, atMain } = body as { ubidMain?: string; atMain?: string };
+  let body: { ubidMain?: string; atMain?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { ubidMain, atMain } = body;
 
   if (!ubidMain || !atMain) {
     return NextResponse.json({ error: "Both ubidMain and atMain are required." }, { status: 400 });

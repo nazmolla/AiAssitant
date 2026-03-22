@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { ApiKeysConfig } from "@/components/api-keys-config";
+import { useConfirm } from "@/hooks/use-confirm";
 
 type AuthProviderType = "azure-ad" | "google" | "discord";
 
@@ -76,6 +77,7 @@ export function AuthConfig() {
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const { confirmDialog, openConfirm } = useConfirm();
 
   const fetchProviders = async () => {
     setLoading(true);
@@ -168,7 +170,7 @@ export function AuthConfig() {
   };
 
   const handleDelete = async (provider: AuthProvider) => {
-    if (!confirm(`Remove ${provider.label} configuration?`)) return;
+    if (!(await openConfirm(`Remove ${provider.label} configuration?`))) return;
     await fetch(`/api/config/auth?id=${provider.id}`, { method: "DELETE" });
     await fetchProviders();
   };
@@ -271,6 +273,7 @@ export function AuthConfig() {
       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mt-6 pt-4 border-t border-border">API Keys</h3>
       <p className="text-xs text-muted-foreground -mt-2">Create bearer tokens for mobile apps, scripts, and external integrations.</p>
       <ApiKeysConfig />
+      {confirmDialog}
     </div>
   );
 }

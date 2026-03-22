@@ -733,8 +733,8 @@ export class BrowserTools extends BaseTool {
               await page.fill(field.selector, field.value);
               results.push(`✓ Filled ${field.selector} with "${field.value.slice(0, 40)}..."`);
           }
-        } catch (err: any) {
-          results.push(`✗ Failed ${field.selector}: ${err.message}`);
+        } catch (err: unknown) {
+          results.push(`✗ Failed ${field.selector}: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
 
@@ -750,8 +750,8 @@ export class BrowserTools extends BaseTool {
           } else {
             results.push("✗ No submit button found");
           }
-        } catch (err: any) {
-          results.push(`✗ Submit failed: ${err.message}`);
+        } catch (err: unknown) {
+          results.push(`✗ Submit failed: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
 
@@ -919,8 +919,8 @@ export class BrowserTools extends BaseTool {
       const result = await page.evaluate((code: string) => {
         try {
           return eval(code);
-        } catch (e: any) {
-          return `Error: ${e.message}`;
+        } catch (e: unknown) {
+          return `Error: ${e instanceof Error ? e.message : String(e)}`;
         }
       }, args.script as string);
       return {

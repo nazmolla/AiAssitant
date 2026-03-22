@@ -138,6 +138,11 @@ jest.mock("@/hooks/use-audio-controls", () => ({
   }),
 }));
 
+let mockOpenConfirm: jest.Mock = jest.fn();
+jest.mock("@/hooks/use-confirm", () => ({
+  useConfirm: () => ({ confirmDialog: null, openConfirm: mockOpenConfirm }),
+}));
+
 jest.mock("@/components/theme-provider", () => ({
   useTheme: () => ({ theme: "light", setTheme: jest.fn(), formatDate: (s: string) => s }),
   ThemeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -292,7 +297,7 @@ describe("ChatPanel — thread deletion", () => {
   });
 
   test("deleting active thread calls DELETE and clears messages, returns to welcome screen", async () => {
-    window.confirm = jest.fn().mockReturnValue(true);
+    mockOpenConfirm.mockResolvedValue(true);
 
     await act(async () => { render(<ChatPanel />); });
 
@@ -320,7 +325,7 @@ describe("ChatPanel — thread deletion", () => {
   });
 
   test("deleting a non-active thread does NOT clear messages or change active thread", async () => {
-    window.confirm = jest.fn().mockReturnValue(true);
+    mockOpenConfirm.mockResolvedValue(true);
 
     await act(async () => { render(<ChatPanel />); });
 
@@ -348,7 +353,7 @@ describe("ChatPanel — thread deletion", () => {
   });
 
   test("cancelling the delete confirm does NOT call DELETE", async () => {
-    window.confirm = jest.fn().mockReturnValue(false);
+    mockOpenConfirm.mockResolvedValue(false);
 
     await act(async () => { render(<ChatPanel />); });
 

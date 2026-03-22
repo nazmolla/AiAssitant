@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/hooks/use-confirm";
 
 interface CustomTool {
   name: string;
@@ -23,6 +24,7 @@ export function CustomToolsConfig() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
+  const { confirmDialog, openConfirm } = useConfirm();
 
   const fetchTools = async () => {
     try {
@@ -59,7 +61,7 @@ export function CustomToolsConfig() {
   };
 
   const handleDelete = async (name: string) => {
-    const confirmed = window.confirm(`Delete custom tool "${name}"? This cannot be undone.`);
+    const confirmed = await openConfirm(`Delete custom tool "${name}"? This cannot be undone.`);
     if (!confirmed) return;
 
     try {
@@ -243,6 +245,7 @@ export function CustomToolsConfig() {
           </div>
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 }

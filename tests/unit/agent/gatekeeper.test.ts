@@ -20,18 +20,46 @@ import { NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/network-tools";
 import { COMMUNICATION_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/communication-tools";
 import { ALEXA_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/alexa-tools";
 
-// Mock MCP manager so executeWithGatekeeper can call tools
-jest.mock("@/lib/mcp", () => ({
-  getMcpManager: () => ({
-    callTool: jest.fn(async (name: string, _args: unknown) => ({
+// Mock tool registry so executeToolWithPolicy can dispatch tools
+jest.mock("@/lib/agent/tool-registry", () => ({
+  getToolRegistry: () => ({
+    dispatch: jest.fn(async (name: string, _args: unknown) => ({
       content: `Result of ${name}`,
     })),
   }),
 }));
 
-import { executeWithGatekeeper } from "@/lib/agent/gatekeeper";
+// Mock normalizeToolName — pass-through
+jest.mock("@/lib/agent/discovery", () => ({
+  normalizeToolName: (name: string) => name,
+}));
+
+import { executeToolWithPolicy } from "@/lib/agent/tool-executor";
+import type { ToolExecutorDeps } from "@/lib/agent/tool-executor-deps";
 
 let userId: string;
+
+function makeDeps(threadId: string, overrides: Partial<ToolExecutorDeps> = {}): ToolExecutorDeps {
+  return {
+    addLog: jest.fn(),
+    getUserById: jest.fn(() => ({ display_name: "Test User", email: "test@test.com" })),
+    getToolPolicy: (name: string) => getToolPolicy(name) as ReturnType<ToolExecutorDeps["getToolPolicy"]>,
+    createApprovalRequest: jest.fn(() => ({ id: "approval-gk-test" })),
+    updateThreadStatus: jest.fn(),
+    addMessage: jest.fn(),
+    getThread: jest.fn(() => ({
+      id: threadId,
+      user_id: userId,
+      thread_type: "proactive" as const,
+      channel_id: null,
+      external_sender_id: null,
+    })),
+    findApprovalPreferenceDecision: jest.fn(() => null),
+    getChannel: jest.fn(() => undefined),
+    notifyAdmin: jest.fn(async () => {}),
+    ...overrides,
+  };
+}
 
 beforeAll(() => {
   setupTestDb();
@@ -39,7 +67,7 @@ beforeAll(() => {
 });
 afterAll(() => teardownTestDb());
 
-describe("executeWithGatekeeper — default-deny for MCP tools", () => {
+describe("executeToolWithPolicy — default-deny for MCP tools", () => {
   let threadId: string;
 
   beforeEach(() => {
@@ -51,10 +79,12 @@ describe("executeWithGatekeeper — default-deny for MCP tools", () => {
     // No policy exists for this tool — should be gated
     expect(getToolPolicy("mcp_tool_no_policy")).toBeUndefined();
 
-    const result = await executeWithGatekeeper(
+    const result = await executeToolWithPolicy(
       { id: "tc-1", name: "mcp_tool_no_policy", arguments: { key: "value" } },
       threadId,
-      "test reasoning"
+      "test reasoning",
+      userId,
+      makeDeps(threadId)
     );
 
     expect(result.status).toBe("pending_approval");
@@ -68,10 +98,12 @@ describe("executeWithGatekeeper — default-deny for MCP tools", () => {
       requires_approval: 1,
     });
 
-    const result = await executeWithGatekeeper(
+    const result = await executeToolWithPolicy(
       { id: "tc-2", name: "mcp_sensitive_tool", arguments: {} },
       threadId,
-      "test reasoning"
+      "test reasoning",
+      userId,
+      makeDeps(threadId)
     );
 
     expect(result.status).toBe("pending_approval");
@@ -85,10 +117,12 @@ describe("executeWithGatekeeper — default-deny for MCP tools", () => {
       requires_approval: 0,
     });
 
-    const result = await executeWithGatekeeper(
+    const result = await executeToolWithPolicy(
       { id: "tc-3", name: "mcp_safe_tool", arguments: {} },
       threadId,
-      "test reasoning"
+      "test reasoning",
+      userId,
+      makeDeps(threadId)
     );
 
     expect(result.status).toBe("executed");
@@ -102,12 +136,13 @@ describe("executeWithGatekeeper — default-deny for MCP tools", () => {
     });
 
     // Pass empty string as userId — the thread has a valid user_id.
-    // Should execute successfully (not throw) because gatekeeper uses thread's user_id as fallback.
-    const result = await executeWithGatekeeper(
+    // Should execute successfully (not throw) because executor uses thread's user_id as fallback.
+    const result = await executeToolWithPolicy(
       { id: "tc-4", name: "mcp_safe_tool_userid", arguments: {} },
       threadId,
       "test reasoning",
-      "" // empty string — should fall back to thread.user_id
+      "", // empty string — should fall back to thread.user_id
+      makeDeps(threadId)
     );
 
     expect(result.status).toBe("executed");

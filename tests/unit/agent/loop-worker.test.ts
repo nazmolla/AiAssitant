@@ -25,7 +25,7 @@ jest.mock("@/lib/agent/loop", () => ({
 
 const mockIsWorkerAvailable = jest.fn();
 const mockRunLlmInWorker = jest.fn();
-const mockExecuteWithGatekeeper = jest.fn();
+const mockExecuteToolWithPolicy = jest.fn();
 
 jest.mock("@/lib/agent/worker-manager", () => ({
   isWorkerAvailable: () => mockIsWorkerAvailable(),
@@ -74,8 +74,8 @@ jest.mock("@/lib/knowledge/retriever", () => ({
   needsKnowledgeRetrieval: jest.fn().mockReturnValue(false),
 }));
 
-jest.mock("@/lib/agent/gatekeeper", () => ({
-  executeWithGatekeeper: (...args: unknown[]) => mockExecuteWithGatekeeper(...args),
+jest.mock("@/lib/agent/tool-executor", () => ({
+  executeToolWithPolicy: (...args: unknown[]) => mockExecuteToolWithPolicy(...args),
 }));
 
 // Import module AFTER mocks are in place
@@ -173,7 +173,7 @@ describe("runAgentLoopWithWorker — worker path", () => {
     };
 
     mockIsWorkerAvailable.mockReturnValue(true);
-    mockExecuteWithGatekeeper.mockResolvedValue({
+    mockExecuteToolWithPolicy.mockResolvedValue({
       status: "executed",
       result: {
         status: "created",
@@ -217,7 +217,7 @@ describe("runAgentLoopWithWorker — worker path", () => {
       false, "user-1"
     );
 
-    expect(mockExecuteWithGatekeeper).toHaveBeenCalled();
+    expect(mockExecuteToolWithPolicy).toHaveBeenCalled();
     // Generic file attachments are saved on the tool message (no duplicate on the final message)
     expect(db.addAttachment).toHaveBeenCalled();
     // result.attachments only contains screenshots; generic files are on the tool message

@@ -22,7 +22,12 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
-  const body = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const providerType = body.provider_type as AuthProviderType;
   const label = typeof body.label === "string" ? body.label.trim() : "";
 
@@ -78,7 +83,12 @@ export async function PATCH(req: NextRequest) {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
-  const body = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const id = typeof body.id === "string" ? body.id : null;
   if (!id) {
     return NextResponse.json({ error: "id is required." }, { status: 400 });

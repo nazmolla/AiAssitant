@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 
+export interface UseScreenShareOptions {
+  onError?: (msg: string) => void;
+}
+
 export interface UseScreenShareReturn {
   screenSharing: boolean;
   screenShareEnabled: boolean;
@@ -12,7 +16,8 @@ export interface UseScreenShareReturn {
   stopScreenShare: () => void;
 }
 
-export function useScreenShare(): UseScreenShareReturn {
+export function useScreenShare({ onError }: UseScreenShareOptions = {}): UseScreenShareReturn {
+  const notify = onError ?? ((msg: string) => console.error("[useScreenShare]", msg));
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [screenSharing, setScreenSharing] = useState(false);
   const [screenShareEnabled, setScreenShareEnabled] = useState(true);
@@ -55,9 +60,8 @@ export function useScreenShare(): UseScreenShareReturn {
 
   async function startScreenShare() {
     if (!navigator.mediaDevices?.getDisplayMedia) {
-      alert(
-        "Screen sharing is not available.\n\n" +
-        "This feature requires a secure context (HTTPS or localhost).\n" +
+      notify(
+        "Screen sharing is not available. This feature requires a secure context (HTTPS or localhost). " +
         "If you're accessing via HTTP over a network, enable HTTPS or use localhost."
       );
       return;
@@ -107,7 +111,7 @@ export function useScreenShare(): UseScreenShareReturn {
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "NotAllowedError") return;
       console.error("Screen share failed:", err);
-      alert("Screen sharing failed: " + (err instanceof Error ? err.message : String(err)));
+      notify("Screen sharing failed: " + (err instanceof Error ? err.message : String(err)));
     }
   }
 

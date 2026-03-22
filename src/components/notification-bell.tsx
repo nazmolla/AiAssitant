@@ -27,6 +27,7 @@ import DoneAllIcon from "@mui/icons-material/DoneAll";
 import OpenInFullIcon from "@mui/icons-material/OpenInFull";
 import CloseIcon from "@mui/icons-material/Close";
 import { useTheme } from "@/components/theme-provider";
+import { useToast } from "@/hooks/use-toast";
 
 interface ApprovalRequest {
   id: string;
@@ -249,6 +250,7 @@ export function NotificationBell() {
   const [acting, setActing] = useState<Set<string>>(new Set());
   const [expandedOpen, setExpandedOpen] = useState(false);
   const { formatDate } = useTheme();
+  const { toastSnackbar, showToast } = useToast();
 
   const fetchNotifications = useCallback(() => {
     fetch("/api/notifications")
@@ -343,7 +345,7 @@ export function NotificationBell() {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || `Failed to ${action === "approved" ? "approve" : action} (HTTP ${res.status})`);
+        showToast(data.error || `Failed to ${action === "approved" ? "approve" : action} (HTTP ${res.status})`);
         return;
       }
       fetchNotifications();
@@ -352,7 +354,7 @@ export function NotificationBell() {
       }
     } catch (err) {
       console.error(err);
-      alert(`Action failed: ${err instanceof Error ? err.message : String(err)}`);
+      showToast(`Action failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setActing((prev) => {
         const next = new Set(prev);
@@ -647,6 +649,7 @@ export function NotificationBell() {
           )}
         </DialogContent>
       </Dialog>
+      {toastSnackbar}
     </>
   );
 }

@@ -59,12 +59,13 @@ export async function POST(req: NextRequest) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  const body = await req.json();
-  const { approvalId, action, rememberDecision } = body as {
-    approvalId?: string;
-    action?: "approved" | "rejected" | "ignored";
-    rememberDecision?: "approved" | "rejected" | "ignored";
-  };
+  let body: { approvalId?: string; action?: "approved" | "rejected" | "ignored"; rememberDecision?: "approved" | "rejected" | "ignored" };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { approvalId, action, rememberDecision } = body;
 
   if (!approvalId || !action || !["approved", "rejected", "ignored"].includes(action)) {
     return NextResponse.json(

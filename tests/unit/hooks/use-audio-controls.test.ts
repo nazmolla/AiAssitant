@@ -66,9 +66,8 @@ describe("useAudioControls", () => {
     expect(result.current.audioModeSpeaking.current).toBe(false);
   });
 
-  test("startRecording alerts when mediaDevices unavailable", async () => {
-    const alertMock = jest.fn();
-    global.alert = alertMock;
+  test("startRecording calls onError when mediaDevices unavailable", async () => {
+    const onError = jest.fn();
 
     // Remove mediaDevices
     const original = navigator.mediaDevices;
@@ -77,12 +76,12 @@ describe("useAudioControls", () => {
       configurable: true,
     });
 
-    const opts = makeOptions();
+    const opts = { ...makeOptions(), onError };
     const { result } = renderHook(() => useAudioControls(opts));
 
     await act(async () => { await result.current.startRecording(); });
 
-    expect(alertMock).toHaveBeenCalledWith(expect.stringContaining("Microphone access is not available"));
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining("Microphone access is not available"));
     expect(result.current.recording).toBe(false);
 
     // Restore

@@ -314,7 +314,6 @@ src/
 │   ├── agent-dashboard.tsx     # Full analytics dashboard + drilldown log explorer
 │   ├── alexa-config.tsx        # Alexa Smart Home credential management
 │   ├── api-keys-config.tsx     # API key management
-│   ├── approval-inbox.tsx      # HITL approval UI (legacy, superseded by notification-bell)
 │   ├── auth-config.tsx         # Authentication provider configuration
 │   ├── channels-config.tsx     # Channel management (user-scoped)
 │   ├── chat-panel.tsx          # Thin chat orchestrator — composes hooks + ThreadSidebar + ChatArea + InputBar
@@ -345,12 +344,16 @@ src/
 │   └── use-screen-share.ts     # Screen capture lifecycle, preference fetching
 ├── lib/
 │   ├── agent/                  # Core agent logic
-│   │   ├── loop.ts             # Sense-Think-Act agent loop
-│   │   ├── loop-worker.ts      # Worker thread integration layer (fallback to main thread)
+│   │   ├── loop.ts             # Sense-Think-Act agent loop (main-thread path)
+│   │   ├── loop-worker.ts      # Worker thread integration layer (offloads LLM calls; falls back to main thread)
 │   │   ├── worker-manager.ts   # Worker lifecycle, IPC handling, 120s timeout
-│   │   ├── gatekeeper.ts       # HITL policy enforcement
+│   │   ├── tool-executor.ts    # Unified HITL policy enforcement + dispatch (used by both loop.ts and loop-worker.ts)
+│   │   ├── tool-executor-deps.ts # DI interfaces for tool-executor (enables unit testing without DB)
+│   │   ├── gatekeeper.ts       # executeApprovedTool only — executes pre-approved tool calls (approvals API)
+│   │   ├── approval-handler.ts # Inline approval parsing helpers (extractApprovalReason, isAffirmativeApproval)
+│   │   ├── context-builder.ts  # buildProfileContext, buildKnowledgeContext, buildMcpContext — shared by both loop paths
 │   │   ├── discovery.ts        # Tool discovery, group inference, name normalization
-│   │   └── tool-registry.ts    # ToolRegistry — dispatch loop, MCP catch-all
+│   │   └── tool-registry.ts    # ToolRegistry — dispatch by category, MCP catch-all
 │   ├── tools/                  # Tool category implementations (self-registering)
 │   │   ├── base-tool.ts        # BaseTool abstract class, ToolCategory interface, self-registration infra
 │   │   ├── index.ts            # Barrel export — re-exports trigger self-registration; ALL_TOOL_CATEGORIES auto-discovered
@@ -399,7 +402,9 @@ src/
 │   ├── env.ts                  # Centralized environment config (Zod-validated, typed)
 │   ├── audio.ts                # Audio utility (getAudioClient, transcribeAudio, textToSpeech)
 │   ├── cache.ts                # In-memory write-through cache (LLM providers, tool policies, users, profiles)
-│   ├── scheduler/              # Proactive cron scheduler
+│   ├── scheduler/              # Proactive cron scheduler (interval/cron/once tasks, subtask tree, batch jobs)
+│   ├── agent/multi-agent/      # Multi-agent framework — BaseAgent, AgentRegistry, AgentCatalog, orchestrator
+│   │                           # BaseAgent.run() wraps runAgentLoop; agents are scheduled via the cron scheduler
 │   ├── knowledge-maintenance/  # Evening knowledge dedupe worker launcher + scheduling helpers
 │   └── bootstrap.ts            # Runtime initialization
 ├── middleware.ts                # Auth + rate limiting + security middleware

@@ -497,8 +497,8 @@ class CustomToolRuntime {
 
     try {
       new Function("args", `return (async () => { ${code} })();`);
-    } catch (err: any) {
-      return `Implementation code has syntax errors: ${err.message}`;
+    } catch (err: unknown) {
+      return `Implementation code has syntax errors: ${err instanceof Error ? err.message : String(err)}`;
     }
 
     const sandbox = CustomToolRuntime.buildSandboxContext({});
@@ -514,8 +514,8 @@ class CustomToolRuntime {
     try {
       const script = new vm.Script(wrappedCode, { filename: "custom-tool-validate.js" });
       script.runInContext(sandbox, { timeout: SANDBOX_VALIDATION_TIMEOUT_MS });
-    } catch (err: any) {
-      return `Implementation code failed sandbox compilation: ${err.message}`;
+    } catch (err: unknown) {
+      return `Implementation code failed sandbox compilation: ${err instanceof Error ? err.message : String(err)}`;
     }
 
     return null;

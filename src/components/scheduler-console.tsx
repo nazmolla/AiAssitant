@@ -9,6 +9,7 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import Collapse from "@mui/material/Collapse";
+import { useConfirm } from "@/hooks/use-confirm";
 
 type ScheduleStatus = "active" | "paused" | "archived";
 type RunStatus = "scheduled" | "queued" | "claimed" | "running" | "success" | "partial_success" | "failed" | "cancelled" | "timeout";
@@ -154,6 +155,7 @@ const CRON_OPTIONS: { value: string; label: string }[] = [
 
 export function SchedulerConsole() {
   const { formatDate } = useTheme();
+  const { confirmDialog, openConfirm } = useConfirm();
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
   const [overview, setOverview] = useState<SchedulerOverview | null>(null);
   const [schedules, setSchedules] = useState<SchedulerScheduleRecord[]>([]);
@@ -464,7 +466,7 @@ export function SchedulerConsole() {
 
   const deleteSelectedSchedule = async () => {
     if (!selectedScheduleDetail?.schedule) return;
-    const ok = window.confirm("Delete this schedule and all subtasks/runs? This action cannot be undone.");
+    const ok = await openConfirm("Delete this schedule and all subtasks/runs? This action cannot be undone.");
     if (!ok) return;
 
     setSavingDetail(true);
@@ -494,7 +496,7 @@ export function SchedulerConsole() {
 
   const bulkDeleteSchedules = async () => {
     if (selectedScheduleIds.length === 0) return;
-    const ok = window.confirm(`Delete ${selectedScheduleIds.length} selected schedules with cascade? This cannot be undone.`);
+    const ok = await openConfirm(`Delete ${selectedScheduleIds.length} selected schedules with cascade? This cannot be undone.`);
     if (!ok) return;
 
     setSavingDetail(true);
@@ -1288,6 +1290,7 @@ export function SchedulerConsole() {
           )}
         </CardContent>
       </Card>
+      {confirmDialog}
     </div>
   );
 }

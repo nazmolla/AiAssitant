@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/hooks/use-confirm";
 
 type LlmProviderType = "azure-openai" | "openai" | "anthropic" | "litellm";
 type LlmProviderPurpose = "chat" | "embedding" | "tts" | "stt";
@@ -101,6 +102,7 @@ export function LlmConfig() {
   const [providers, setProviders] = useState<LlmProvider[]>([]);
   const [loading, setLoading] = useState(false);
   const [providerType, setProviderType] = useState<LlmProviderType>("azure-openai");
+  const { confirmDialog, openConfirm } = useConfirm();
   const [purpose, setPurpose] = useState<LlmProviderPurpose>("chat");
   const [label, setLabel] = useState("");
   const [configValues, setConfigValues] = useState<ConfigFormState>(initialConfigState("azure-openai"));
@@ -268,7 +270,7 @@ export function LlmConfig() {
   };
 
   const handleDelete = async (id: string, displayLabel: string) => {
-    const confirmed = window.confirm(`Remove ${displayLabel}?`);
+    const confirmed = await openConfirm(`Remove ${displayLabel}?`);
     if (!confirmed) return;
     try {
       const res = await fetch(`/api/config/llm?id=${id}`, { method: "DELETE" });
@@ -547,6 +549,7 @@ export function LlmConfig() {
           </div>
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 }

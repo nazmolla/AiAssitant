@@ -46,9 +46,8 @@ describe("useScreenShare", () => {
     expect(result.current.latestFrameRef.current).toBeNull();
   });
 
-  test("startScreenShare alerts when getDisplayMedia is unavailable", async () => {
-    const alertMock = jest.fn();
-    global.alert = alertMock;
+  test("startScreenShare calls onError when getDisplayMedia is unavailable", async () => {
+    const onError = jest.fn();
 
     // Ensure getDisplayMedia is not available
     Object.defineProperty(navigator, "mediaDevices", {
@@ -56,17 +55,16 @@ describe("useScreenShare", () => {
       configurable: true,
     });
 
-    const { result } = renderHook(() => useScreenShare());
+    const { result } = renderHook(() => useScreenShare({ onError }));
 
     await act(async () => { await result.current.startScreenShare(); });
 
-    expect(alertMock).toHaveBeenCalledWith(expect.stringContaining("Screen sharing is not available"));
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining("Screen sharing is not available"));
     expect(result.current.screenSharing).toBe(false);
   });
 
   test("startScreenShare handles NotAllowedError silently", async () => {
-    const alertMock = jest.fn();
-    global.alert = alertMock;
+    const onError = jest.fn();
 
     Object.defineProperty(navigator, "mediaDevices", {
       value: {
@@ -75,12 +73,12 @@ describe("useScreenShare", () => {
       configurable: true,
     });
 
-    const { result } = renderHook(() => useScreenShare());
+    const { result } = renderHook(() => useScreenShare({ onError }));
 
     await act(async () => { await result.current.startScreenShare(); });
 
-    // NotAllowedError should be handled silently (no alert)
-    expect(alertMock).not.toHaveBeenCalled();
+    // NotAllowedError should be handled silently (no onError call)
+    expect(onError).not.toHaveBeenCalled();
     expect(result.current.screenSharing).toBe(false);
   });
 

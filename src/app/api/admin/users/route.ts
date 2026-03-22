@@ -40,7 +40,12 @@ export async function PUT(req: NextRequest) {
   const guard = await requireAdmin();
   if ("error" in guard) return guard.error;
 
-  const body = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { userId, role, enabled, permissions } = body;
 
   if (!userId || typeof userId !== "string") {
@@ -95,7 +100,12 @@ export async function DELETE(req: NextRequest) {
   const guard = await requireAdmin();
   if ("error" in guard) return guard.error;
 
-  const body = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { userId } = body;
 
   if (!userId || typeof userId !== "string") {

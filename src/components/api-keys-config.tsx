@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "@/components/theme-provider";
+import { useToast } from "@/hooks/use-toast";
 
 const ALL_SCOPES = ["chat", "knowledge", "approvals", "threads", "logs"] as const;
 
@@ -44,6 +45,7 @@ export function ApiKeysConfig() {
   const [expiresIn, setExpiresIn] = useState<string>("");
 
   const { formatDate } = useTheme();
+  const { toastSnackbar, showToast } = useToast();
 
   const load = useCallback(async () => {
     try {
@@ -87,10 +89,10 @@ export function ApiKeysConfig() {
         await load();
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to create key");
+        showToast(err.error || "Failed to create key");
       }
     } catch {
-      alert("Failed to create key");
+      showToast("Failed to create key");
     } finally {
       setCreating(false);
     }
@@ -108,10 +110,10 @@ export function ApiKeysConfig() {
         await load();
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to delete key");
+        showToast(err.error || "Failed to delete key");
       }
     } catch {
-      alert("Failed to delete key");
+      showToast("Failed to delete key");
     }
   };
 
@@ -368,6 +370,7 @@ export function ApiKeysConfig() {
           </p>
         </CardContent>
       </Card>
+      {toastSnackbar}
     </div>
   );
 }

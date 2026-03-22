@@ -21,6 +21,11 @@ jest.mock("@/components/theme-provider", () => ({
   useTheme: () => ({ formatDate: (s: string) => s }),
 }));
 
+let mockOpenConfirm: jest.Mock = jest.fn();
+jest.mock("@/hooks/use-confirm", () => ({
+  useConfirm: () => ({ confirmDialog: null, openConfirm: mockOpenConfirm }),
+}));
+
 // jsdom doesn't support scrollIntoView
 Element.prototype.scrollIntoView = jest.fn();
 
@@ -67,6 +72,10 @@ function setupFetch(providers = [mockProvider, secondProvider]) {
   });
   global.fetch = fetchMock;
 }
+
+beforeEach(() => {
+  mockOpenConfirm = jest.fn();
+});
 
 afterEach(() => jest.restoreAllMocks());
 
@@ -154,7 +163,7 @@ describe("LlmConfig — interactions", () => {
 
   test("Remove button calls DELETE after window.confirm", async () => {
     setupFetch();
-    window.confirm = jest.fn(() => true);
+    mockOpenConfirm.mockResolvedValue(true);
     const { LlmConfig } = await import("@/components/llm-config");
     await act(async () => { render(<LlmConfig />); });
     await waitFor(() => {
@@ -166,18 +175,20 @@ describe("LlmConfig — interactions", () => {
 
     await act(async () => { fireEvent.click(removeBtns[0]); });
 
-    expect(window.confirm).toHaveBeenCalled();
+    expect(mockOpenConfirm).toHaveBeenCalled();
 
-    const delCalls = fetchMock.mock.calls.filter(
-      ([u, o]: [string, RequestInit?]) => u.includes("/api/config/llm") && o?.method === "DELETE"
-    );
-    expect(delCalls.length).toBe(1);
-    expect(delCalls[0][0]).toContain("id=prov-1");
+    await waitFor(() => {
+      const delCalls = fetchMock.mock.calls.filter(
+        ([u, o]: [string, RequestInit?]) => u.includes("/api/config/llm") && o?.method === "DELETE"
+      );
+      expect(delCalls.length).toBe(1);
+      expect(delCalls[0][0]).toContain("id=prov-1");
+    });
   });
 
   test("Remove button does NOT call DELETE when confirm is cancelled", async () => {
     setupFetch();
-    window.confirm = jest.fn(() => false);
+    mockOpenConfirm.mockResolvedValue(false);
     const { LlmConfig } = await import("@/components/llm-config");
     await act(async () => { render(<LlmConfig />); });
     await waitFor(() => {
@@ -187,6 +198,7 @@ describe("LlmConfig — interactions", () => {
     const removeBtns = screen.getAllByRole("button", { name: /remove/i });
     await act(async () => { fireEvent.click(removeBtns[0]); });
 
+    await new Promise((r) => setTimeout(r, 50));
     const delCalls = fetchMock.mock.calls.filter(
       ([u, o]: [string, RequestInit?]) => u.includes("/api/config/llm") && o?.method === "DELETE"
     );

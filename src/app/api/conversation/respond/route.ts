@@ -7,16 +7,9 @@ const log = createLogger("api.conversation.respond");
 import type { ChatMessage, ChatResponse, ToolDefinition, ToolCall } from "@/lib/llm";
 import { getMcpManager } from "@/lib/mcp";
 import {
-  isBuiltinWebTool, executeBuiltinWebTool,
-  isBrowserTool, executeBrowserTool,
-  isFsTool, executeBuiltinFsTool,
-  isNetworkTool, executeBuiltinNetworkTool,
-  isCommunicationTool, executeBuiltinCommunicationTool,
-  isFileTool, executeBuiltinFileTool,
-  isAlexaTool, executeAlexaTool,
-  isCustomTool, executeCustomTool, getCustomToolDefinitions,
-  isWorkerAvailable,
+  getCustomToolDefinitions,
   ALL_TOOL_CATEGORIES,
+  getToolRegistry,
 } from "@/lib/agent";
 import { isWorkerAvailable as checkWorkerAvailable, runLlmInWorker, type WorkerToolResult } from "@/lib/agent/worker-manager";
 import { buildCappedToolList, MAX_TOOLS_PER_REQUEST } from "@/lib/tools/tool-cap";
@@ -29,6 +22,7 @@ import {
 import { createSSEStream, sseResponse, sseEvent } from "@/lib/sse";
 import { CONVERSATION_SYSTEM_PROMPT } from "@/lib/prompts";
 import { buildKnowledgeContext, buildProfileContext, buildMcpContext } from "@/lib/agent/context-builder";
+import { extractApprovalReason } from "@/lib/agent/approval-handler";
 
 /**
  * POST /api/conversation/respond
@@ -65,24 +59,6 @@ export const dynamic = "force-dynamic";
 
 /** Yield the event loop so other requests can be processed */
 const yieldLoop = () => new Promise<void>((r) => setImmediate(r));
-
-function extractApprovalReason(reasoning: string | undefined, args: Record<string, unknown>): string | null {
-  const fromReasoning = (reasoning || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => !!line && !line.startsWith("{"));
-
-  if (fromReasoning) return fromReasoning.slice(0, 500);
-
-  for (const key of ["reason", "rationale", "justification", "purpose", "why", "note", "message"]) {
-    const value = args[key];
-    if (typeof value === "string" && value.trim()) {
-      return value.trim().slice(0, 500);
-    }
-  }
-
-  return null;
-}
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
@@ -337,28 +313,7 @@ async function executeConversationTool(
       };
     }
 
-    let result: unknown;
-
-    if (isBuiltinWebTool(tc.name)) {
-      result = await executeBuiltinWebTool(tc.name, tc.arguments);
-    } else if (isBrowserTool(tc.name)) {
-      result = await executeBrowserTool(tc.name, tc.arguments);
-    } else if (isFsTool(tc.name)) {
-      result = await executeBuiltinFsTool(tc.name, tc.arguments);
-    } else if (isNetworkTool(tc.name)) {
-      result = await executeBuiltinNetworkTool(tc.name, tc.arguments);
-    } else if (isCommunicationTool(tc.name)) {
-      result = await executeBuiltinCommunicationTool(tc.name, tc.arguments, { threadId: "", userId });
-    } else if (isFileTool(tc.name)) {
-      result = await executeBuiltinFileTool(tc.name, tc.arguments, {});
-    } else if (isAlexaTool(tc.name)) {
-      result = await executeAlexaTool(tc.name, tc.arguments);
-    } else if (isCustomTool(tc.name)) {
-      result = await executeCustomTool(tc.name, tc.arguments);
-    } else {
-      // MCP tool
-      result = await getMcpManager().callTool(tc.name, tc.arguments);
-    }
+    const result = await getToolRegistry().dispatch(tc.name, tc.arguments, { threadId: "", userId });
 
     addLog({
       level: "info",

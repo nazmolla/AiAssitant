@@ -26,6 +26,11 @@ jest.mock("@/components/api-keys-config", () => ({
   ApiKeysConfig: () => <div data-testid="api-keys-config">API Keys Mock</div>,
 }));
 
+let mockOpenConfirm: jest.Mock = jest.fn();
+jest.mock("@/hooks/use-confirm", () => ({
+  useConfirm: () => ({ confirmDialog: null, openConfirm: mockOpenConfirm }),
+}));
+
 const mockAzureProvider = {
   id: "auth-1",
   provider_type: "azure-ad",
@@ -59,6 +64,10 @@ function setupFetch(providers: typeof mockAzureProvider[] = []) {
   });
   global.fetch = fetchMock;
 }
+
+beforeEach(() => {
+  mockOpenConfirm = jest.fn();
+});
 
 afterEach(() => jest.restoreAllMocks());
 
@@ -196,7 +205,7 @@ describe("AuthConfig — interactions", () => {
 
   test("Remove button calls DELETE after window.confirm", async () => {
     setupFetch([mockAzureProvider]);
-    window.confirm = jest.fn(() => true);
+    mockOpenConfirm.mockResolvedValue(true);
     const { AuthConfig } = await import("@/components/auth-config");
     await act(async () => { render(<AuthConfig />); });
     await waitFor(() => {
@@ -206,17 +215,19 @@ describe("AuthConfig — interactions", () => {
     const removeBtn = screen.getByRole("button", { name: /remove/i });
     await act(async () => { fireEvent.click(removeBtn); });
 
-    expect(window.confirm).toHaveBeenCalled();
-    const delCalls = fetchMock.mock.calls.filter(
-      ([u, o]: [string, RequestInit?]) => u.includes("/api/config/auth") && o?.method === "DELETE"
-    );
-    expect(delCalls.length).toBe(1);
-    expect(delCalls[0][0]).toContain("id=auth-1");
+    expect(mockOpenConfirm).toHaveBeenCalled();
+    await waitFor(() => {
+      const delCalls = fetchMock.mock.calls.filter(
+        ([u, o]: [string, RequestInit?]) => u.includes("/api/config/auth") && o?.method === "DELETE"
+      );
+      expect(delCalls.length).toBe(1);
+      expect(delCalls[0][0]).toContain("id=auth-1");
+    });
   });
 
   test("Remove button does NOT call DELETE when confirm is cancelled", async () => {
     setupFetch([mockAzureProvider]);
-    window.confirm = jest.fn(() => false);
+    mockOpenConfirm.mockResolvedValue(false);
     const { AuthConfig } = await import("@/components/auth-config");
     await act(async () => { render(<AuthConfig />); });
     await waitFor(() => {
@@ -226,6 +237,7 @@ describe("AuthConfig — interactions", () => {
     const removeBtn = screen.getByRole("button", { name: /remove/i });
     await act(async () => { fireEvent.click(removeBtn); });
 
+    await new Promise((r) => setTimeout(r, 50));
     const delCalls = fetchMock.mock.calls.filter(
       ([u, o]: [string, RequestInit?]) => u.includes("/api/config/auth") && o?.method === "DELETE"
     );

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/components/theme-provider";
+import { useToast } from "@/hooks/use-toast";
 
 interface UserPermissions {
   user_id: string;
@@ -48,6 +49,7 @@ export function UserManagement() {
   const [saving, setSaving] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const { formatDate } = useTheme();
+  const { toastSnackbar, showToast } = useToast();
 
   const load = useCallback(async () => {
     try {
@@ -77,10 +79,10 @@ export function UserManagement() {
         await load();
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to update user");
+        showToast(err.error || "Failed to update user");
       }
     } catch {
-      alert("Failed to update user");
+      showToast("Failed to update user");
     } finally {
       setSaving(null);
     }
@@ -98,10 +100,10 @@ export function UserManagement() {
         await load();
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to delete user");
+        showToast(err.error || "Failed to delete user");
       }
     } catch {
-      alert("Failed to delete user");
+      showToast("Failed to delete user");
     }
   };
 
@@ -368,6 +370,7 @@ export function UserManagement() {
           No users found.
         </div>
       )}
+      {toastSnackbar}
     </div>
   );
 }

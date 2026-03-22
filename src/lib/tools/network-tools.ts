@@ -382,13 +382,14 @@ export class NetworkTools extends BaseTool {
         stats: statsLine?.trim() || null,
         rtt: rttLine?.trim() || null,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errObj = err as { stderr?: string; message?: string; stdout?: string };
       return {
         host,
         reachable: false,
         count,
-        output: (err.stdout || "").slice(0, NET_MAX_OUTPUT),
-        error: err.stderr || err.message,
+        output: (errObj.stdout || "").slice(0, NET_MAX_OUTPUT),
+        error: errObj.stderr || errObj.message,
       };
     }
   }
@@ -814,12 +815,13 @@ export class NetworkTools extends BaseTool {
       if (keyPath) {
         try {
           connConfig.privateKey = fs.readFileSync(keyPath);
-        } catch (err: any) {
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
           clearTimeout(timer);
           resolve({
             host, username, port, command,
-            exitCode: 1, stdout: "", stderr: `Failed to read key file: ${err.message}`,
-            error: `Failed to read key file: ${err.message}`,
+            exitCode: 1, stdout: "", stderr: `Failed to read key file: ${errMsg}`,
+            error: `Failed to read key file: ${errMsg}`,
           });
           return;
         }

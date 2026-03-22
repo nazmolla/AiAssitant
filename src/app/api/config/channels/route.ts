@@ -102,7 +102,12 @@ export async function POST(req: NextRequest) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  const body = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { label, channelType, config } = body;
 
   if (!label || !channelType || !config) {
@@ -173,7 +178,12 @@ export async function PATCH(req: NextRequest) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
-  const body = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { id, label, channelType, config, enabled } = body;
 
   if (!id) {

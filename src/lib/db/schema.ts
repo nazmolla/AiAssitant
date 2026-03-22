@@ -477,6 +477,7 @@ CREATE INDEX IF NOT EXISTS idx_approval_queue_thread ON approval_queue(thread_id
 CREATE INDEX IF NOT EXISTS idx_agent_logs_created ON agent_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_logs_level ON agent_logs(level, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_logs_source ON agent_logs(source, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_logs_notify ON agent_logs(notify, notify_user_id) WHERE notify = 1;
 CREATE INDEX IF NOT EXISTS idx_channels_user_id ON channels(user_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_servers_user_id ON mcp_servers(user_id);
 CREATE INDEX IF NOT EXISTS idx_channel_user_mappings_channel ON channel_user_mappings(channel_id);

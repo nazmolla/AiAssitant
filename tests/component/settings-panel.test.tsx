@@ -81,7 +81,6 @@ global.fetch = jest.fn().mockImplementation((url: string) => {
 
 // Stub all lazy-loaded settings sub-pages
 jest.mock("@/components/chat-panel", () => ({ ChatPanel: () => <div>Chat</div> }));
-jest.mock("@/components/approval-inbox", () => ({ ApprovalInbox: () => <div>Approvals</div> }));
 jest.mock("@/components/knowledge-vault", () => ({ KnowledgeVault: () => <div>Knowledge</div> }));
 jest.mock("@/components/agent-dashboard", () => ({ AgentDashboard: () => <div>Dashboard</div> }));
 jest.mock("@/components/mcp-config", () => ({ McpConfig: () => <div data-testid="mcp">MCP Config</div> }));

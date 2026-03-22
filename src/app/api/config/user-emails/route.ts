@@ -32,7 +32,7 @@ export async function GET() {
       primary: primaryEmail,
       secondary: secondaryEmails,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     addLog({
       level: "error",
       source: "api.config.user-emails",
@@ -90,7 +90,7 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ success: true, email: normalizedEmail });
-  } catch (e: any) {
+  } catch (e: unknown) {
     addLog({
       level: "error",
       source: "api.config.user-emails",
@@ -148,7 +148,7 @@ export async function DELETE(req: Request) {
     });
 
     return NextResponse.json({ success: true });
-  } catch (e: any) {
+  } catch (e: unknown) {
     addLog({
       level: "error",
       source: "api.config.user-emails",

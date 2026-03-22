@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useConfirm } from "@/hooks/use-confirm";
 
 type ChannelType = "whatsapp" | "slack" | "email" | "telegram" | "discord" | "teams" | "phone";
 
@@ -82,6 +83,7 @@ export function ChannelsConfig() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const { confirmDialog, openConfirm } = useConfirm();
 
   const fetchChannels = () => {
     fetch("/api/config/channels")
@@ -148,7 +150,7 @@ export function ChannelsConfig() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this channel?")) return;
+    if (!(await openConfirm("Delete this channel?"))) return;
     await fetch(`/api/config/channels?id=${id}`, { method: "DELETE" });
     fetchChannels();
   }
@@ -386,6 +388,7 @@ export function ChannelsConfig() {
           </CardContent>
         </Card>
       )}
+      {confirmDialog}
     </div>
   );
 }

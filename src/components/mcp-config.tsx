@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 
 interface McpServer {
   id: string;
@@ -31,6 +32,7 @@ interface AdminUser {
 export function McpConfig() {
   const [servers, setServers] = useState<McpServer[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const { toastSnackbar, showToast } = useToast();
 
   // Add server form
   const [newName, setNewName] = useState("");
@@ -300,12 +302,12 @@ export function McpConfig() {
           const data = await res.json();
           if (data.error) errorMsg = data.error;
         } catch {}
-        alert(errorMsg);
+        showToast(errorMsg);
         return;
       }
     } catch (err) {
       console.error("Delete failed:", err);
-      alert(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+      showToast(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     fetchAll();
   }
@@ -617,7 +619,7 @@ export function McpConfig() {
           </CardContent>
         </Card>
       )}
-
+      {toastSnackbar}
     </div>
   );
 }

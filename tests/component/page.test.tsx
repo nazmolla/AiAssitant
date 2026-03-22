@@ -112,7 +112,6 @@ global.fetch = mockFetch;
 
 // Mock lazy-loaded components (return simple stubs)
 jest.mock("@/components/chat-panel", () => ({ ChatPanel: () => <div data-testid="chat-panel">Chat</div> }));
-jest.mock("@/components/approval-inbox", () => ({ ApprovalInbox: () => <div data-testid="approval-inbox">Approvals</div> }));
 jest.mock("@/components/knowledge-vault", () => ({ KnowledgeVault: () => <div data-testid="knowledge-vault">Knowledge</div> }));
 jest.mock("@/components/agent-dashboard", () => ({ AgentDashboard: () => <div data-testid="agent-dashboard">Dashboard</div> }));
 jest.mock("@/components/mcp-config", () => ({ McpConfig: () => <div data-testid="mcp-config">MCP</div> }));

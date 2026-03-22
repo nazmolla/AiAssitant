@@ -38,7 +38,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "API key management requires session authentication." }, { status: 403 });
   }
 
-  const body = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const name = (body.name ?? "").trim().slice(0, 100); // max 100 chars
   if (!name) {
     return NextResponse.json({ error: "Key name is required." }, { status: 400 });
@@ -105,7 +110,12 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "API key management requires session authentication." }, { status: 403 });
   }
 
-  const body = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const keyId = body.id;
   if (!keyId) {
     return NextResponse.json({ error: "Key ID is required." }, { status: 400 });

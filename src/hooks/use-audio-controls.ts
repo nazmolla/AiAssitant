@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react";
 export interface UseAudioControlsOptions {
   onTranscription: (text: string) => void;
   sendMessageRef: React.MutableRefObject<((overrideThreadId?: string) => void) | null>;
+  onError?: (msg: string) => void;
 }
 
 export interface UseAudioControlsReturn {
@@ -25,7 +26,9 @@ export interface UseAudioControlsReturn {
 export function useAudioControls({
   onTranscription,
   sendMessageRef,
+  onError,
 }: UseAudioControlsOptions): UseAudioControlsReturn {
+  const notify = onError ?? ((msg: string) => console.error("[useAudioControls]", msg));
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -45,9 +48,8 @@ export function useAudioControls({
 
   async function startRecording() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert(
-        "Microphone access is not available.\n\n"
-        + "This feature requires HTTPS or localhost. "
+      notify(
+        "Microphone access is not available. This feature requires HTTPS or localhost. "
         + "If you're accessing the app over HTTP on a non-localhost address, "
         + "your browser blocks microphone access for security reasons."
       );
@@ -95,10 +97,10 @@ export function useAudioControls({
               onTranscription(data.text);
             }
           } else {
-            alert("Transcription failed: " + (data.error || `HTTP ${res.status}`));
+            notify("Transcription failed: " + (data.error || `HTTP ${res.status}`));
           }
         } catch (err) {
-          alert("Transcription failed: " + (err instanceof Error ? err.message : String(err)));
+          notify("Transcription failed: " + (err instanceof Error ? err.message : String(err)));
         } finally {
           setTranscribing(false);
         }
@@ -110,9 +112,9 @@ export function useAudioControls({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("Permission") || msg.includes("NotAllowed")) {
-        alert("Microphone permission was denied. Please allow microphone access in your browser settings.");
+        notify("Microphone permission was denied. Please allow microphone access in your browser settings.");
       } else {
-        alert("Could not start recording: " + msg);
+        notify("Could not start recording: " + msg);
       }
     }
   }
@@ -152,7 +154,7 @@ export function useAudioControls({
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
-        alert("Text-to-speech failed: " + (errData?.error || `HTTP ${res.status}`));
+        notify("Text-to-speech failed: " + (errData?.error || `HTTP ${res.status}`));
         setPlayingTtsId(null);
         return;
       }
@@ -174,7 +176,7 @@ export function useAudioControls({
 
       await audio.play();
     } catch (err) {
-      alert("Text-to-speech failed: " + (err instanceof Error ? err.message : String(err)));
+      notify("Text-to-speech failed: " + (err instanceof Error ? err.message : String(err)));
       setPlayingTtsId(null);
     }
   }

@@ -12,6 +12,8 @@ import { useScreenShare } from "@/hooks/use-screen-share";
 import { useAudioControls } from "@/hooks/use-audio-controls";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { useChatStream } from "@/hooks/use-chat-stream";
+import { useConfirm } from "@/hooks/use-confirm";
+import { useToast } from "@/hooks/use-toast";
 
 export interface ChatPanelProps {
   /** Called with (() => void) so the app-level burger can open the thread drawer */
@@ -85,7 +87,9 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
   }, []);
 
   // ── Extracted hooks ─────────────────────────────────────────────────────────
-  const screenShare = useScreenShare();
+  const { confirmDialog, openConfirm } = useConfirm();
+  const { toastSnackbar, showToast } = useToast();
+  const screenShare = useScreenShare({ onError: showToast });
   const fileUpload = useFileUpload();
   const sendMessageRef = useRef<((overrideThreadId?: string) => void) | null>(null);
 
@@ -98,6 +102,7 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
       }
     },
     sendMessageRef,
+    onError: showToast,
   });
 
   const inputRef = useRef(input);
@@ -190,7 +195,7 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
   }
 
   async function handleDeleteThread(threadId: string) {
-    if (!confirm("Delete this thread and all its messages?")) return;
+    if (!(await openConfirm("Delete this thread and all its messages?"))) return;
     try {
       const res = await fetch(`/api/threads/${threadId}`, { method: "DELETE" });
       if (!res.ok) { const err = await res.json(); console.error(err.error); return; }
@@ -235,7 +240,7 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || `Failed to ${action === "approved" ? "approve" : "deny"} (HTTP ${res.status})`);
+        showToast(data.error || `Failed to ${action === "approved" ? "approve" : "deny"} (HTTP ${res.status})`);
         return;
       }
 
@@ -254,7 +259,7 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
       window.dispatchEvent(new CustomEvent("approval-resolved", { detail: data }));
     } catch (err) {
       console.error("Approval action failed:", err);
-      alert(`Approval action failed: ${err instanceof Error ? err.message : String(err)}`);
+      showToast(`Approval action failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setActingApproval(null);
     }
@@ -264,7 +269,7 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
 
   async function handleRestoreToMessage(messageId: number) {
     if (!activeThread) return;
-    if (!confirm("Restore to this message? All messages after it will be deleted and this message will be resent.")) return;
+    if (!(await openConfirm("Restore to this message? All messages after it will be deleted and this message will be resent."))) return;
 
     try {
       const res = await fetch(`/api/threads/${activeThread}/restore`, {
@@ -274,7 +279,7 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || `Restore failed (HTTP ${res.status})`);
+        showToast(data.error || `Restore failed (HTTP ${res.status})`);
         return;
       }
 
@@ -290,7 +295,7 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
       fetchThreadsDebounced();
     } catch (err) {
       console.error("Restore failed:", err);
-      alert(`Restore failed: ${err instanceof Error ? err.message : String(err)}`);
+      showToast(`Restore failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -421,6 +426,8 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
           />
         )}
       </Box>
+      {confirmDialog}
+      {toastSnackbar}
     </Box>
   );
 }
