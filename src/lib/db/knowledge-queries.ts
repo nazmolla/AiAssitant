@@ -213,6 +213,21 @@ export function listKnowledgeEmbeddings(userId?: string): ParsedKnowledgeEmbeddi
   return parsed;
 }
 
+/**
+ * Returns true if a non-archived embedding already exists for the given knowledge ID.
+ * Used to skip redundant embedding API calls when re-ingesting existing facts.
+ */
+export function hasKnowledgeEmbedding(knowledgeId: number): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT 1 FROM knowledge_embeddings
+       WHERE knowledge_id = ? AND coalesce(is_archived, 0) = 0
+       LIMIT 1`
+    )
+    .get(knowledgeId);
+  return row !== undefined;
+}
+
 export function listKnowledgeEntriesForArchival(cutoffDays: number, limit = 500): KnowledgeEntry[] {
   return getDb()
     .prepare(

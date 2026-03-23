@@ -1,6 +1,6 @@
 import { createChatProvider } from "@/lib/llm";
 import { generateEmbedding } from "@/lib/llm/embeddings";
-import { upsertKnowledge, upsertKnowledgeEmbedding, addLog } from "@/lib/db";
+import { upsertKnowledge, upsertKnowledgeEmbedding, hasKnowledgeEmbedding, addLog } from "@/lib/db";
 import { invalidateEmbeddingCache } from "./retriever";
 import { KNOWLEDGE_PROMPT_MAX_CHARS } from "@/lib/constants";
 import { KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT } from "@/lib/prompts";
@@ -199,6 +199,10 @@ function looksLikeInjection(text: string): boolean {
 }
 
 async function indexEmbedding(knowledgeId: number, content: string) {
+  // Skip the embedding API call if this knowledge entry already has an embedding.
+  // This prevents redundant (costly) API calls when re-ingesting existing facts.
+  if (hasKnowledgeEmbedding(knowledgeId)) return;
+
   try {
     const embedding = await generateEmbedding(content);
     if (embedding.length === 0) return;

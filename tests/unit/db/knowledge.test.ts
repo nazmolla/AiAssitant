@@ -10,6 +10,7 @@ import {
   updateKnowledge,
   deleteKnowledge,
   upsertKnowledgeEmbedding,
+  hasKnowledgeEmbedding,
   listKnowledgeEmbeddings,
   getKnowledgeEntriesByIds,
 } from "@/lib/db/queries";
@@ -120,6 +121,22 @@ describe("Knowledge Embeddings", () => {
   test("listKnowledgeEmbeddings without user id returns empty", () => {
     const embeddings = listKnowledgeEmbeddings();
     expect(embeddings).toEqual([]);
+  });
+
+  test("hasKnowledgeEmbedding returns false when no embedding exists", () => {
+    const id = upsertKnowledge(
+      { user_id: userA, entity: "NoEmbed", attribute: "test", value: "value", source_context: null }, userA
+    );
+    expect(hasKnowledgeEmbedding(id)).toBe(false);
+  });
+
+  test("hasKnowledgeEmbedding returns true after embedding is stored", () => {
+    const id = upsertKnowledge(
+      { user_id: userA, entity: "WithEmbed", attribute: "test", value: "value", source_context: null }, userA
+    );
+    expect(hasKnowledgeEmbedding(id)).toBe(false);
+    upsertKnowledgeEmbedding(id, [0.1, 0.2, 0.3]);
+    expect(hasKnowledgeEmbedding(id)).toBe(true);
   });
 
   test("getKnowledgeEntriesByIds returns correct entries", () => {
