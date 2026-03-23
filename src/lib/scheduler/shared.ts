@@ -13,12 +13,6 @@ import { listUsersWithPermissions } from "@/lib/db/user-queries";
 export const QUIET_HOURS_START = 22; // 10 PM
 export const QUIET_HOURS_END = 8;   // 8 AM
 
-const NOISY_BUILTIN_TOOLS = new Set([
-  "builtin.alexa_announce",
-  "builtin.alexa_set_device_volume",
-  "builtin.alexa_adjust_device_volume",
-]);
-
 const NOISY_TOOL_PATTERNS = /\b(announce|play_media|play_music|play_sound|play_audio|speak|tts|text_to_speech|media_play)\b/i;
 
 export function isQuietHours(): boolean {
@@ -26,18 +20,7 @@ export function isQuietHours(): boolean {
   return hour >= QUIET_HOURS_START || hour < QUIET_HOURS_END;
 }
 
-export function isNoisyTool(toolName: string, args?: Record<string, unknown>): boolean {
-  if (NOISY_BUILTIN_TOOLS.has(toolName)) {
-    if (toolName === "builtin.alexa_set_device_volume") {
-      const volume = typeof args?.volume === "number" ? args.volume : -1;
-      return volume > 0;
-    }
-    if (toolName === "builtin.alexa_adjust_device_volume") {
-      const amount = typeof args?.amount === "number" ? args.amount : 0;
-      return amount > 0;
-    }
-    return true;
-  }
+export function isNoisyTool(toolName: string, _args?: Record<string, unknown>): boolean {
   return NOISY_TOOL_PATTERNS.test(toolName);
 }
 

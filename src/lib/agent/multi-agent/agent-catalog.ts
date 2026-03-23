@@ -72,7 +72,7 @@ export const DEFAULT_AGENT_CATALOG: AgentTypeDefinition[] = [
     id: "house_manager",
     name: "House Manager",
     description:
-      "Monitors and controls smart home devices via Alexa, Home Assistant, and other MCP integrations. Handles device states, automation routines, sensors, and comfort adjustments.",
+      "Monitors and controls smart home devices via Home Assistant and other MCP integrations. Handles device states, automation routines, sensors, and comfort adjustments.",
     capabilities: ["smart_home", "device_control", "automation", "sensors"],
     systemPrompt: MULTI_AGENT_SYSTEM_PROMPTS.house_manager,
   },

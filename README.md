@@ -14,7 +14,7 @@
 | **Multi-Agent Scheduling** | Proactive background agents driven by the unified scheduler; supports interval, cron, and one-shot triggers with retry/misfire policies |
 | **Voice** | Speech-to-text (Whisper), text-to-speech (9 voices), hands-free conversation mode with VAD and interrupt support, local Whisper fallback, ESP32 Atom Echo hardware |
 | **Channels** | Web chat, WhatsApp, Discord, email (SMTP+IMAP), custom webhooks |
-| **Automation** | Playwright browser tools, file system tools, Alexa Smart Home (14 tools), background scheduler with proactive intelligence |
+| **Automation** | Playwright browser tools, file system tools, background scheduler with proactive intelligence |
 | **Safety** | Human-in-the-loop (default-deny), standing orders, prompt injection defense, CSP headers, rate limiting |
 | **Multi-User** | Per-user knowledge, threads, channels, profiles. Role-based access (admin/user) with granular permissions |
 | **Observability** | Analytics dashboard with KPIs, session trends, drilldown logs. Unified scheduler console with run history |

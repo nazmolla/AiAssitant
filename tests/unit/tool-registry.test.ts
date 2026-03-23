@@ -144,10 +144,10 @@ describe("getToolRegistry (singleton)", () => {
     expect(a).toBe(b);
   });
 
-  test("registers all 9 built-in categories and custom", () => {
+  test("registers all 8 built-in categories and custom", () => {
     const registry = getToolRegistry();
-    // 9 built-in categories (web, browser, fs, multi_agent_dispatch, network, communication, file, alexa, custom) + 1 MCP = 10
-    expect(registry.size).toBe(10);
+    // 8 built-in categories (web, browser, fs, multi_agent_dispatch, network, communication, file, custom) + 1 MCP = 9
+    expect(registry.size).toBe(9);
   });
 
   test("finds category for each builtin tool type", () => {
@@ -159,7 +159,6 @@ describe("getToolRegistry (singleton)", () => {
     expect(registry.findCategory("builtin.channel_send")?.name).toBe("communication");
     expect(registry.findCategory("builtin.channel_notify")?.name).toBe("communication");
     expect(registry.findCategory("builtin.file_generate")?.name).toBe("file");
-    expect(registry.findCategory("builtin.alexa_announce")?.name).toBe("alexa");
   });
 
   test("custom tools match the custom category", () => {

@@ -16,4 +16,3 @@ export {
 } from "@/lib/tools/communication-tools";
 export { BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool, FILE_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/file-tools";
 export { isCustomTool, executeCustomTool, getCustomToolDefinitions, loadCustomToolsFromDb, validateImplementation, BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/custom-tools";
-export { BUILTIN_ALEXA_TOOLS, isAlexaTool, executeAlexaTool, ALEXA_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/alexa-tools";

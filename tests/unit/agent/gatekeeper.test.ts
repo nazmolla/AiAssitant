@@ -18,7 +18,6 @@ import {
 import { FS_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/fs-tools";
 import { NETWORK_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/network-tools";
 import { COMMUNICATION_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/communication-tools";
-import { ALEXA_TOOLS_REQUIRING_APPROVAL } from "@/lib/tools/alexa-tools";
 
 // Mock tool registry so executeToolWithPolicy can dispatch tools
 jest.mock("@/lib/agent/tool-registry", () => ({
@@ -246,61 +245,6 @@ describe("Tool policy seeding", () => {
     expect(COMMUNICATION_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.channel_receive");
   });
 
-  test("Alexa mutating tools are defined in ALEXA_TOOLS_REQUIRING_APPROVAL", () => {
-    expect(ALEXA_TOOLS_REQUIRING_APPROVAL).toContain("builtin.alexa_announce");
-    expect(ALEXA_TOOLS_REQUIRING_APPROVAL).toContain("builtin.alexa_set_light_power");
-    expect(ALEXA_TOOLS_REQUIRING_APPROVAL).toContain("builtin.alexa_set_light_brightness");
-    expect(ALEXA_TOOLS_REQUIRING_APPROVAL).toContain("builtin.alexa_set_light_color");
-    expect(ALEXA_TOOLS_REQUIRING_APPROVAL).toContain("builtin.alexa_set_device_volume");
-    expect(ALEXA_TOOLS_REQUIRING_APPROVAL).toContain("builtin.alexa_adjust_device_volume");
-    expect(ALEXA_TOOLS_REQUIRING_APPROVAL).toContain("builtin.alexa_set_dnd_status");
-    // Read-only Alexa tools should NOT require approval
-    expect(ALEXA_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.alexa_get_bedroom_state");
-    expect(ALEXA_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.alexa_list_lights");
-    expect(ALEXA_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.alexa_get_music_status");
-    expect(ALEXA_TOOLS_REQUIRING_APPROVAL).not.toContain("builtin.alexa_get_dnd_status");
-  });
-
-  test("initializeDatabase seeds policies for Alexa tools", () => {
-    const { initializeDatabase } = require("@/lib/db/init");
-    initializeDatabase();
-
-    const policies = listToolPolicies();
-    const policyNames = policies.map((p: any) => p.tool_name);
-
-    // Alexa tools should have policies
-    expect(policyNames).toContain("builtin.alexa_announce");
-    expect(policyNames).toContain("builtin.alexa_get_bedroom_state");
-    expect(policyNames).toContain("builtin.alexa_list_lights");
-    expect(policyNames).toContain("builtin.alexa_set_light_power");
-    expect(policyNames).toContain("builtin.alexa_get_dnd_status");
-    expect(policyNames).toContain("builtin.alexa_set_dnd_status");
-  });
-
-  test("Alexa mutating tools have requires_approval=1, read-only have 0", () => {
-    const { initializeDatabase } = require("@/lib/db/init");
-    initializeDatabase();
-
-    // Mutating: requires approval
-    const announce = getToolPolicy("builtin.alexa_announce");
-    expect(announce?.requires_approval).toBe(1);
-
-    const setLightPower = getToolPolicy("builtin.alexa_set_light_power");
-    expect(setLightPower?.requires_approval).toBe(1);
-
-    const setDnd = getToolPolicy("builtin.alexa_set_dnd_status");
-    expect(setDnd?.requires_approval).toBe(1);
-
-    // Read-only: no approval
-    const getState = getToolPolicy("builtin.alexa_get_bedroom_state");
-    expect(getState?.requires_approval).toBe(0);
-
-    const listLights = getToolPolicy("builtin.alexa_list_lights");
-    expect(listLights?.requires_approval).toBe(0);
-
-    const getDnd = getToolPolicy("builtin.alexa_get_dnd_status");
-    expect(getDnd?.requires_approval).toBe(0);
-  });
 });
 
 describe("Tool policy preference decisions — via real DB", () => {

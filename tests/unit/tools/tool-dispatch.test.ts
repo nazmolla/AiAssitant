@@ -117,63 +117,6 @@ describe("FsTools — command-map dispatch", () => {
   });
 });
 
-// ── AlexaTools ─────────────────────────────────────────────────────────────
-
-jest.mock("@/lib/db/log-queries", () => ({ getAppConfig: jest.fn(() => null) }));
-
-describe("AlexaTools — command-map dispatch", () => {
-  let AlexaTools: typeof import("@/lib/tools/alexa-tools").AlexaTools;
-
-  beforeAll(async () => {
-    ({ AlexaTools } = await import("@/lib/tools/alexa-tools"));
-  });
-
-  test("dispatches all 14 Alexa tool names to named instance methods", async () => {
-    const tool = new AlexaTools();
-    const toolNames = [
-      "builtin.alexa_announce",
-      "builtin.alexa_get_bedroom_state",
-      "builtin.alexa_list_lights",
-      "builtin.alexa_set_light_power",
-      "builtin.alexa_set_light_brightness",
-      "builtin.alexa_set_light_color",
-      "builtin.alexa_get_music_status",
-      "builtin.alexa_get_device_volumes",
-      "builtin.alexa_set_device_volume",
-      "builtin.alexa_adjust_device_volume",
-      "builtin.alexa_get_all_sensor_data",
-      "builtin.alexa_list_smarthome_devices",
-      "builtin.alexa_get_dnd_status",
-      "builtin.alexa_set_dnd_status",
-    ];
-    const methodNames = [
-      "announce", "getBedroomState", "listLights", "setLightPower",
-      "setLightBrightness", "setLightColor", "getMusicStatus", "getDeviceVolumes",
-      "setDeviceVolume", "adjustDeviceVolume", "getAllSensorData", "listSmarthomeDevices",
-      "getDndStatus", "setDndStatus",
-    ];
-
-    const spies: jest.SpyInstance[] = methodNames.map((m) =>
-      jest.spyOn(tool as any, m).mockResolvedValue({})
-    );
-
-    const ctx = {} as any;
-    for (const name of toolNames) {
-      await tool.execute(name, {}, ctx);
-    }
-
-    for (const spy of spies) {
-      expect(spy).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  test("throws for unknown Alexa tool name", async () => {
-    const tool = new AlexaTools();
-    await expect(tool.execute("builtin.alexa_unknown", {}, {} as any))
-      .rejects.toThrow("Unknown Alexa tool");
-  });
-});
-
 // ── WebTools ───────────────────────────────────────────────────────────────
 
 jest.mock("@/lib/db/search-provider-queries", () => ({

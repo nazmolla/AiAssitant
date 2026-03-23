@@ -1003,6 +1003,9 @@ export function initializeDatabase(): void {
   ensureCommunicationToolPolicyDefaults();
   encryptExistingSecrets();
   revokeExpiredKeys();
+  // Migration: remove deprecated Alexa config keys and tool policies
+  try { db.prepare("DELETE FROM config WHERE key IN ('alexa.ubid_main', 'alexa.at_main')").run(); } catch { /* table may not exist */ }
+  try { db.prepare("DELETE FROM tool_policies WHERE tool_name LIKE 'builtin.alexa_%'").run(); } catch { /* table may not exist */ }
   warnIfDbShrunk();
   // Run periodic optimizer — updates query planner stats; no-op on first call if stats are fresh
   try { db.exec("PRAGMA optimize;"); } catch { /* non-critical */ }

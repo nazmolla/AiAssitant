@@ -18,7 +18,6 @@ const TOOL_PREFIX_GROUPS: Array<{ prefix: string; group: string }> = [
   { prefix: "builtin.channel_", group: "Communication Channels" },
   { prefix: "builtin.file_", group: "File Generation" },
   { prefix: "builtin.nexus_", group: "Tool Management" },
-  { prefix: "builtin.alexa_", group: "Alexa Smart Home" },
   { prefix: "custom.", group: "Custom Tools" },
 ];
 
@@ -108,7 +107,7 @@ function getBuiltinShortNameMap(): Map<string, string> {
  * Normalize a tool name the LLM may have mangled.
  *
  * The LLM sometimes strips the "builtin." prefix when calling a tool
- * (e.g. "alexa_announce" instead of "builtin.alexa_announce").
+ * (e.g. "web_search" instead of "builtin.web_search").
  * This function restores it when the short name matches a known builtin.
  */
 export function normalizeToolName(name: string): string {

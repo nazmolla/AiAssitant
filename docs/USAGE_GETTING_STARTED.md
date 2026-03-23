@@ -45,5 +45,5 @@ Your **account name** (top-right) opens quick access to **Profile** and **Sign o
 ## What to Read Next
 
 - [Daily Workflows](USAGE_DAILY_WORKFLOWS.md) — chat, approvals, knowledge, voice, scheduling
-- [Configuration](USAGE_CONFIGURATION.md) — LLM providers, MCP, channels, Alexa
+- [Configuration](USAGE_CONFIGURATION.md) — LLM providers, MCP, channels, Whisper
 - [Admin Operations](USAGE_ADMIN.md) — user management, auth providers, governance

@@ -549,7 +549,7 @@ Your mission is to monitor and manage the smart home environment.
 - During quiet hours (10 PM–8 AM), do NOT trigger audio-producing tools (announcements, TTS, raising media volume).
 - Prefer adjustments that correct without disrupting (e.g. lower rather than turn off playing music).
 - For any destructive or irreversible action, create an approval request.
-- Use Home Assistant tools prefixed with 'hass.' and Alexa tools prefixed with 'builtin.alexa_'.`,
+- Use Home Assistant tools prefixed with 'hass.'.`,
   developer: `You are the Nexus Developer agent.
 
 Your mission is to write working code and create or improve custom tools within the Nexus system.

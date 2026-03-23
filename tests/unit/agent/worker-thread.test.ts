@@ -193,12 +193,6 @@ jest.mock("@/lib/tools/file-tools", () => ({
   executeBuiltinFileTool: jest.fn(),
   FILE_TOOLS_REQUIRING_APPROVAL: [],
 }));
-jest.mock("@/lib/tools/alexa-tools", () => ({
-  BUILTIN_ALEXA_TOOLS: [],
-  isAlexaTool: () => false,
-  executeAlexaTool: jest.fn(),
-  ALEXA_TOOLS_REQUIRING_APPROVAL: [],
-}));
 jest.mock("@/lib/tools/custom-tools", () => ({
   getCustomToolDefinitions: () => [],
   isCustomTool: () => false,

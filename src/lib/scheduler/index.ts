@@ -28,8 +28,6 @@ import {
   executeBuiltinFileTool,
   isCustomTool,
   executeCustomTool,
-  isAlexaTool,
-  executeAlexaTool,
 } from "@/lib/agent";
 import { normalizeToolName } from "@/lib/agent/discovery";
 import { addLog } from "@/lib/db";
@@ -103,9 +101,6 @@ async function executeSchedulerTool(
       skipped: false,
       result: await executeBuiltinCommunicationTool(toolName, args, { threadId: "", userId: undefined }),
     };
-  }
-  if (isAlexaTool(toolName)) {
-    return { skipped: false, result: await executeAlexaTool(toolName, args) };
   }
   if (isCustomTool(toolName)) {
     return { skipped: false, result: await executeCustomTool(toolName, args) };

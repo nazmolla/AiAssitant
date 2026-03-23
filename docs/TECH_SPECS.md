@@ -257,8 +257,6 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 
 | Key | Description | Encrypted |
 |-----|-------------|:-:|
-| `alexa.ubid_main` | Amazon Alexa UBID_MAIN cookie | ✅ |
-| `alexa.at_main` | Amazon Alexa AT_MAIN cookie | ✅ |
 | `log_level_min` | Minimum log severity level to persist | ❌ |
 | `proactive_cron_schedule` | Cron expression for proactive scheduler interval (default: `*/15 * * * *`) | ❌ |
 | `knowledge_maintenance_enabled` | Enable/disable nightly knowledge maintenance worker (`1`/`0`) | ❌ |
@@ -293,7 +291,6 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 | `GET/POST/PATCH/DELETE` | `/api/config/channels` | User | Manage communication channels (user-scoped, ownership enforced) |
 | `GET/PUT` | `/api/config/profile` | User | Get/update user profile (user-scoped) |
 | `GET/POST/DELETE` | `/api/config/user-emails` | User | Get/add/remove secondary email addresses for multi-email support |
-| `GET/PUT` | `/api/config/alexa` | Admin | Get masked / store encrypted Alexa Smart Home credentials |
 | `GET/PUT` | `/api/config/search-providers` | Admin | Get/update DB-backed web search provider config (enabled flags, priority, encrypted API keys) |
 | `GET/POST/PUT/DELETE` | `/api/config/custom-tools` | Admin | Manage agent-created custom tools |
 | `POST` | `/api/channels/[channelId]/webhook` | Webhook | Receive inbound messages from channels |
@@ -325,7 +322,7 @@ The `app_config` table stores application-wide settings as key-value pairs. Sens
 
 ## Tool Dispatch & Name Normalization
 
-All built-in tools use the `builtin.` prefix (e.g. `builtin.alexa_announce`, `builtin.browser_navigate`). MCP tools use `serverId.toolName` format.
+All built-in tools use the `builtin.` prefix (e.g. `builtin.web_search`, `builtin.browser_navigate`). MCP tools use `serverId.toolName` format.
 
 **Tool name length enforcement**: The OpenAI API enforces a maximum of **64 characters** for tool `function.name`. MCP tool names are qualified as `serverId.toolName` where `serverId` is a UUID (36 chars) + dot = 37-char prefix, leaving 27 characters for the tool name. The `qualifyToolName()` function in `manager.ts` truncates the tool-name portion when the combined name exceeds 64 characters, and maintains a `toolNameMap` reverse mapping so `callTool()` can resolve the truncated name back to the original MCP tool name. Custom tools enforce the same 2–64 character limit at creation time.
 
@@ -335,9 +332,9 @@ All built-in tools use the `builtin.` prefix (e.g. `builtin.alexa_announce`, `bu
 
 **Dispatch chain** (via `ToolRegistry` — `tool-registry.ts`, `ALL_TOOL_CATEGORIES`):
 
-`webTools → browserTools → fsTools → networkTools → emailTools → fileTools → alexaTools → workflowTools → customTools → MCP catch-all`
+`webTools → browserTools → fsTools → networkTools → emailTools → fileTools → workflowTools → customTools → MCP catch-all`
 
-**Tool categories**: 9 built-in `BaseTool` subclasses auto-discovered via self-registration into `ALL_TOOL_CATEGORIES` (`src/lib/tools/index.ts`), plus the MCP catch-all. Each category is a class extending `BaseTool` (abstract class in `base-tool.ts`) with `name`, `toolNamePrefix`, `tools: ToolDefinition[]`, `matches(toolName)`, and `execute(toolName, args, context)`.
+**Tool categories**: 8 built-in `BaseTool` subclasses auto-discovered via self-registration into `ALL_TOOL_CATEGORIES` (`src/lib/tools/index.ts`), plus the MCP catch-all. Each category is a class extending `BaseTool` (abstract class in `base-tool.ts`) with `name`, `toolNamePrefix`, `tools: ToolDefinition[]`, `matches(toolName)`, and `execute(toolName, args, context)`.
 
 ### Auto-Discovery (Self-Registration)
 
@@ -355,7 +352,6 @@ Tool categories self-register at module load time — no hardcoded array to main
 | 30 | network | `network-tools.ts` |
 | 40 | email | `email-tools.ts` |
 | 50 | file | `file-tools.ts` |
-| 60 | alexa | `alexa-tools.ts` |
 | 70 | workflow | `workflow-tools.ts` |
 | 1000 | custom | `custom-tools.ts` |
 
@@ -395,7 +391,7 @@ Workflow tools (`builtin.workflow_*`) provide the tool-layer abstraction for sch
 
 **`WorkflowTools`** (`workflow-tools.ts`) is a composite `BaseTool` that aggregates all system tools via dependency injection. Its constructor accepts `children: ToolCategory[]` (defaults to the 4 system tools). Dispatch uses polymorphic `child.matches(toolName)` — no switch statements.
 
-**Name normalization**: The LLM sometimes strips the `builtin.` prefix when calling tools (e.g. `alexa_announce` instead of `builtin.alexa_announce`). The `normalizeToolName()` function in `discovery.ts` lazily builds a map of all known builtin short names and restores the prefix before dispatch. Applied in all three dispatch entry points.
+**Name normalization**: The LLM sometimes strips the `builtin.` prefix when calling tools (e.g. `web_search` instead of `builtin.web_search`). The `normalizeToolName()` function in `discovery.ts` lazily builds a map of all known builtin short names and restores the prefix before dispatch. Applied in all three dispatch entry points.
 
 **Orphaned tool_calls sanitization**: When the agent loop is interrupted mid-tool-execution, an assistant message with `tool_calls` may be saved to the DB without corresponding tool result messages. `dbMessagesToChat()` in `message-converter.ts` detects these orphaned sequences (assistant `tool_calls` where not all `tool_call_id`s have matching tool results) and strips them from the chat history sent to the LLM. This is read-time only — no DB data is modified — so broken threads auto-recover on next message send.
 

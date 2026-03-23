@@ -115,7 +115,7 @@ describe("dashboard-analytics helpers", () => {
       expect(inferTopic([{ id: 1, level: "verbose", source: null, message: "billing issue", metadata: null, created_at: "" }])).toBe("Payment");
     });
     test("infers Device", () => {
-      expect(inferTopic([{ id: 1, level: "verbose", source: null, message: "alexa not responding", metadata: null, created_at: "" }])).toBe("Device");
+      expect(inferTopic([{ id: 1, level: "verbose", source: null, message: "smarthome device offline", metadata: null, created_at: "" }])).toBe("Device");
     });
     test("defaults to General", () => {
       expect(inferTopic([{ id: 1, level: "verbose", source: null, message: "hello world", metadata: null, created_at: "" }])).toBe("General");

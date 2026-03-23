@@ -43,8 +43,6 @@ export {
   validateImplementation, BUILTIN_TOOLMAKER_TOOLS, CUSTOM_TOOLS_REQUIRING_APPROVAL,
   CUSTOM_TOOL_PREFIX, TOOL_CREATOR_NAME,
 } from "./custom-tools";
-export { alexaTools, AlexaTools, BUILTIN_ALEXA_TOOLS, isAlexaTool, executeAlexaTool, ALEXA_TOOLS_REQUIRING_APPROVAL } from "./alexa-tools";
-export { getAlexaConfig, saveAlexaConfig } from "./alexa-tools";
 export { PromptTool, type PromptToolConfig } from "./prompt-tool";
 export { dispatchAgentTool, DispatchAgentTool } from "./dispatch-agent-tool";
 

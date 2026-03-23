@@ -43,7 +43,6 @@ flowchart LR
             BROWSER["Browser Tools"]
             FS["File System Tools"]
             CUSTOM["Custom Tools (Sandbox)"]
-            ALEXA["Alexa Smart Home (14)"]
         end
         subgraph MCP["MCP Servers"]
             STDIO["Stdio"]
@@ -217,7 +216,6 @@ All caches use explicit invalidation on mutations as the primary mechanism, with
 | **MCP Auto-Refresh** | Subscribes to `list_changed` notifications. Tool list refreshed with 500 ms debounce — no restart required. |
 | **Browser Automation** | Playwright-powered tools for page navigation, form filling, screenshots, and session management. |
 | **Multi-Channel Comms** | WhatsApp, Discord, webhooks, email — each channel resolves senders to internal users. |
-| **Alexa Smart Home** | 14 tools for announcements, lights, volume, sensors, DND, and device management. |
 | **Analytics Dashboard** | Date-range KPIs, session outcomes, trend charts, and topic drivers with drilldown to raw logs. |
 
 ---
@@ -256,7 +254,6 @@ The Settings tab contains 13 chip-selectable sub-pages, gated by permissions or 
 | `mcp` | MCP Servers | `mcp_servers` perm |
 | `policies` | Tool Policies | Admin |
 | `standing-orders` | Standing Orders | — |
-| `alexa` | Alexa | — |
 | `whisper` | Local Whisper | — |
 | `logging` | Logging | Admin |
 | `db-management` | DB Management | Admin |
@@ -312,7 +309,6 @@ src/
 │   ├── ui/                     # MUI adapter primitives (button, card, input, badge, switch, textarea, scroll-area)
 │   ├── change-password-section.tsx # Standalone password change form for local auth users
 │   ├── agent-dashboard.tsx     # Full analytics dashboard + drilldown log explorer
-│   ├── alexa-config.tsx        # Alexa Smart Home credential management
 │   ├── api-keys-config.tsx     # API key management
 │   ├── auth-config.tsx         # Authentication provider configuration
 │   ├── channels-config.tsx     # Channel management (user-scoped)
@@ -363,7 +359,6 @@ src/
 │   │   ├── network-tools.ts    # Network/HTTP tools
 │   │   ├── email-tools.ts      # Email send/receive tools
 │   │   ├── file-tools.ts       # File generation tools (PDF, DOCX, etc.)
-│   │   ├── alexa-tools.ts      # Alexa Smart Home integration (14 tools)
 │   │   ├── workflow-tools.ts   # Composite workflow tool (DI, polymorphic dispatch)
 │   │   ├── custom-tools.ts     # Self-extending tool system (VM sandbox)
 │   │   ├── prompt-tool.ts      # PromptTool class — wraps system prompt + runAgentLoop()

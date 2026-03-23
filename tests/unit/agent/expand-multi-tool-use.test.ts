@@ -12,7 +12,7 @@ describe("expandMultiToolUse", () => {
   test("passes through regular tool calls unchanged", () => {
     const calls: ToolCall[] = [
       { id: "tc_1", name: "builtin.web_search", arguments: { query: "test" } },
-      { id: "tc_2", name: "builtin.alexa_announce", arguments: { message: "hello" } },
+      { id: "tc_2", name: "builtin.net_ping", arguments: { host: "1.1.1.1" } },
     ];
 
     const result = expandMultiToolUse(calls);
@@ -28,7 +28,7 @@ describe("expandMultiToolUse", () => {
         arguments: {
           tool_uses: [
             { recipient_name: "functions.builtin.web_search", parameters: { query: "weather" } },
-            { recipient_name: "functions.builtin.alexa_announce", parameters: { message: "hi" } },
+            { recipient_name: "functions.builtin.net_ping", parameters: { host: "8.8.8.8" } },
           ],
         },
       },
@@ -43,8 +43,8 @@ describe("expandMultiToolUse", () => {
     });
     expect(result[1]).toEqual({
       id: "tc_multi_1",
-      name: "builtin.alexa_announce",
-      arguments: { message: "hi" },
+      name: "builtin.net_ping",
+      arguments: { host: "8.8.8.8" },
     });
   });
 
@@ -75,8 +75,8 @@ describe("expandMultiToolUse", () => {
         name: "multi_tool_use.parallel",
         arguments: {
           tool_uses: [
-            { recipient_name: "functions.builtin.alexa_announce", parameters: { msg: "a" } },
-            { recipient_name: "functions.builtin.alexa_announce", parameters: { msg: "b" } },
+            { recipient_name: "functions.builtin.net_ping", parameters: { host: "1.1.1.1" } },
+            { recipient_name: "functions.builtin.net_ping", parameters: { host: "8.8.8.8" } },
           ],
         },
       },
@@ -86,8 +86,8 @@ describe("expandMultiToolUse", () => {
     const result = expandMultiToolUse(calls);
     expect(result).toHaveLength(4);
     expect(result[0].name).toBe("builtin.web_search");
-    expect(result[1].name).toBe("builtin.alexa_announce");
-    expect(result[2].name).toBe("builtin.alexa_announce");
+    expect(result[1].name).toBe("builtin.net_ping");
+    expect(result[2].name).toBe("builtin.net_ping");
     expect(result[3].name).toBe("builtin.net_ping");
   });
 

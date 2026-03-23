@@ -83,10 +83,9 @@ describe("GET /api/mcp/tools", () => {
     const toolMgmt = data.filter((t: any) => t.group === "Tool Management");
     expect(toolMgmt.length).toBeGreaterThan(0);
 
-    // Alexa Smart Home tools should be grouped
+    // Alexa Smart Home group should no longer exist
     const alexaTools = data.filter((t: any) => t.group === "Alexa Smart Home");
-    expect(alexaTools.length).toBe(14);
-    expect(alexaTools[0].source).toBe("builtin");
+    expect(alexaTools.length).toBe(0);
   });
 });
 

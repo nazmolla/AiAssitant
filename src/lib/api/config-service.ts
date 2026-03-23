@@ -41,10 +41,6 @@ export const configService = {
   updateAuthProvider: (provider: unknown) => apiClient.put("/api/config/auth", provider),
   deleteAuthProvider: (id: string) => apiClient.delete(`/api/config/auth?id=${encodeURIComponent(id)}`),
 
-  // Alexa
-  getAlexa: () => apiClient.get<unknown>("/api/config/alexa"),
-  saveAlexa: (config: unknown) => apiClient.put("/api/config/alexa", config),
-
   // Whisper / STT
   getWhisper: () => apiClient.get<unknown>("/api/config/whisper"),
   saveWhisper: (config: unknown) => apiClient.put("/api/config/whisper", config),

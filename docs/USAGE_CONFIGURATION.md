@@ -4,7 +4,7 @@
 
 ---
 
-> **Summary:** Runtime configuration for LLM providers, MCP servers, tool policies, channels, Alexa, Whisper, and voice mode — all managed through the Settings UI.
+> **Summary:** Runtime configuration for LLM providers, MCP servers, tool policies, channels, Whisper, and voice mode — all managed through the Settings UI.
 
 ---
 
@@ -66,16 +66,6 @@ Configure inbound/outbound messaging integrations.
 | Email | Two-way SMTP + IMAP |
 | Phone Call | Voice webhook flow using conversation capability |
 | Webhook | Generic inbound API endpoint |
-
----
-
-## Alexa Smart Home
-
-Native integration with 14 built-in tools for announcements, lights, volume, sensors, and DND.
-
-![Alexa settings](images/usage-settings-alexa.png)
-
-Setup: Settings → Alexa → enter `UBID_MAIN` and `AT_MAIN` cookies → Save.
 
 ---
 

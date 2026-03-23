@@ -89,7 +89,7 @@
 - Receiving "disaster"-level emails for routine smart home device events (fans, lights, thermostats, etc.)
 
 ### Resolution
-- Smart home/IoT tools (Alexa, Hue, Nest, Ring) are now automatically capped at `high` severity — they can never produce `disaster`-level events
+- Smart home/IoT tools (Hue, Nest, Ring) are now automatically capped at `high` severity — they can never produce `disaster`-level events
 - If the issue persists, check `Dashboard → Logs` and filter by `source: scheduler` to review the actual severity assessment and whether it was capped
 
 ---

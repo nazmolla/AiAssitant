@@ -19,13 +19,11 @@ jest.mock("@/lib/mcp", () => ({
 
 describe("normalizeToolName", () => {
   it("returns qualified tool names unchanged", () => {
-    expect(normalizeToolName("builtin.alexa_announce")).toBe("builtin.alexa_announce");
     expect(normalizeToolName("builtin.browser_navigate")).toBe("builtin.browser_navigate");
     expect(normalizeToolName("builtin.web_search")).toBe("builtin.web_search");
   });
 
   it("restores builtin prefix for known short names", () => {
-    expect(normalizeToolName("alexa_announce")).toBe("builtin.alexa_announce");
     expect(normalizeToolName("browser_navigate")).toBe("builtin.browser_navigate");
     expect(normalizeToolName("web_search")).toBe("builtin.web_search");
     expect(normalizeToolName("fs_read_file")).toBe("builtin.fs_read_file");

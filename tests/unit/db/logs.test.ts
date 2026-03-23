@@ -199,7 +199,7 @@ describe("Agent Logs", () => {
     const fakeApproval = {
       id: "test-approval-1",
       thread_id: null,
-      tool_name: "alexa_control",
+      tool_name: "builtin.web_fetch",
       args: JSON.stringify({ action: "turn_on", name: "bedroom_light" }),
       reasoning: "scheduled routine",
       nl_request: null,
@@ -211,7 +211,7 @@ describe("Agent Logs", () => {
     // List should return the preference
     let prefs = listApprovalPreferences(userId);
     expect(prefs.length).toBeGreaterThanOrEqual(1);
-    const pref = prefs.find((p) => p.tool_name === "alexa_control");
+    const pref = prefs.find((p) => p.tool_name === "builtin.web_fetch");
     expect(pref).toBeDefined();
     expect(pref!.decision).toBe("approved");
 

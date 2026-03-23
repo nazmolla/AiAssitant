@@ -26,11 +26,10 @@ const GROUP_ICONS: Record<string, string> = {
   "Email Tools": "📧",
   "File Generation": "📝",
   "Tool Management": "🛠️",
-  "Alexa Smart Home": "🔊",
   "Custom Tools": "🔧",
 };
 
-const BUILTIN_ORDER = ["Web Tools", "Browser Tools", "File System", "File Generation", "Network Tools", "Email Tools", "Alexa Smart Home", "Tool Management", "Custom Tools"];
+const BUILTIN_ORDER = ["Web Tools", "Browser Tools", "File System", "File Generation", "Network Tools", "Email Tools", "Tool Management", "Custom Tools"];
 
 export function ToolPolicies() {
   const [tools, setTools] = useState<ToolDef[]>([]);

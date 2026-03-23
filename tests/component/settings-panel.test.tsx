@@ -92,7 +92,6 @@ jest.mock("@/components/auth-config", () => ({ AuthConfig: () => <div data-testi
 jest.mock("@/components/tool-policies", () => ({ ToolPolicies: () => <div data-testid="policies">Tool Policies</div> }));
 jest.mock("@/components/custom-tools-config", () => ({ CustomToolsConfig: () => <div data-testid="custom-tools">Custom Tools</div> }));
 jest.mock("@/components/logging-config", () => ({ LoggingConfig: () => <div data-testid="logging">Logging Config</div> }));
-jest.mock("@/components/alexa-config", () => ({ AlexaConfig: () => <div data-testid="alexa">Alexa Config</div> }));
 jest.mock("@/components/whisper-config", () => ({ WhisperConfig: () => <div data-testid="whisper">Whisper Config</div> }));
 jest.mock("@/components/scheduler-config", () => ({ SchedulerConfig: () => <div data-testid="scheduler">Scheduler Config</div> }));
 
@@ -150,7 +149,6 @@ describe("SettingsPanel — chip navigation rendering", () => {
     "🔧 Custom Tools",
     "🔐 Authentication",
     "👥 Users",
-    "🔊 Alexa",
     "⏱️ Batch Scheduler",
   ];
 

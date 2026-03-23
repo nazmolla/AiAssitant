@@ -112,7 +112,7 @@ export function inferOutcome(logs: LogEntry[]): "resolved" | "escalated" | "aban
 export function inferTopic(logs: LogEntry[]): string {
   const text = logs.map((log) => `${log.message} ${log.metadata ?? ""}`.toLowerCase()).join(" ");
   if (/payment|billing|invoice|refund/.test(text)) return "Payment";
-  if (/device|alexa|smarthome|light|volume/.test(text)) return "Device";
+  if (/device|smarthome|light|volume/.test(text)) return "Device";
   if (/network|connection|socket|dns|latency/.test(text)) return "Connectivity";
   if (/auth|token|login|credential|permission/.test(text)) return "Authentication";
   if (/mcp|tool|plugin/.test(text)) return "Tooling";

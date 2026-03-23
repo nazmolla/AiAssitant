@@ -48,47 +48,23 @@ describe("Quiet hours", () => {
   });
 
   describe("isNoisyTool", () => {
-    test("announce is noisy", () => {
-      expect(isNoisyTool("builtin.alexa_announce")).toBe(true);
-    });
-
-    test("set_device_volume is noisy when increasing", () => {
-      expect(isNoisyTool("builtin.alexa_set_device_volume", { volume: 50 })).toBe(true);
-    });
-
-    test("set_device_volume is not noisy when muting", () => {
-      expect(isNoisyTool("builtin.alexa_set_device_volume", { volume: 0 })).toBe(false);
-    });
-
-    test("adjust_device_volume is noisy when positive", () => {
-      expect(isNoisyTool("builtin.alexa_adjust_device_volume", { amount: 10 })).toBe(true);
-    });
-
-    test("adjust_device_volume is not noisy when negative", () => {
-      expect(isNoisyTool("builtin.alexa_adjust_device_volume", { amount: -10 })).toBe(false);
-    });
-
-    test("pattern-matched MCP tools are noisy", () => {
-      expect(isNoisyTool("mcp_spotify.play_media")).toBe(true);
-      expect(isNoisyTool("mcp_home.play_music")).toBe(true);
-      expect(isNoisyTool("mcp_tts.speak")).toBe(true);
+    test("pattern-matched announce tools are noisy", () => {
       expect(isNoisyTool("custom.announce")).toBe(true);
+      expect(isNoisyTool("mcp_tts.speak")).toBe(true);
       expect(isNoisyTool("mcp_audio.text_to_speech")).toBe(true);
     });
 
-    test("read-only tools are not noisy", () => {
-      expect(isNoisyTool("builtin.alexa_get_music_status")).toBe(false);
-      expect(isNoisyTool("builtin.alexa_get_device_volumes")).toBe(false);
-      expect(isNoisyTool("builtin.alexa_get_bedroom_state")).toBe(false);
-      expect(isNoisyTool("builtin.alexa_list_lights")).toBe(false);
-      expect(isNoisyTool("builtin.alexa_get_dnd_status")).toBe(false);
+    test("pattern-matched media tools are noisy", () => {
+      expect(isNoisyTool("mcp_spotify.play_media")).toBe(true);
+      expect(isNoisyTool("mcp_home.play_music")).toBe(true);
+      expect(isNoisyTool("mcp_audio.media_play")).toBe(true);
     });
 
     test("non-audio tools are not noisy", () => {
-      expect(isNoisyTool("builtin.alexa_set_light_power")).toBe(false);
-      expect(isNoisyTool("builtin.alexa_set_light_brightness")).toBe(false);
       expect(isNoisyTool("builtin.web_search")).toBe(false);
+      expect(isNoisyTool("builtin.fs_read_file")).toBe(false);
       expect(isNoisyTool("builtin.nexus_create_tool")).toBe(false);
+      expect(isNoisyTool("builtin.net_ping")).toBe(false);
     });
   });
 });

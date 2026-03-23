@@ -370,7 +370,7 @@ describe("GET /api/approvals — proactive approvals (thread_id=null)", () => {
   beforeEach(() => {
     const approval = createApprovalRequest({
       thread_id: null,
-      tool_name: "builtin.alexa_set_fan_speed",
+      tool_name: "builtin.web_fetch",
       args: JSON.stringify({ speed: 3 }),
       reasoning: "Fan is running at unexpected speed",
       source: "proactive",
@@ -414,7 +414,7 @@ describe("POST /api/approvals — proactive approve", () => {
   beforeEach(() => {
     const approval = createApprovalRequest({
       thread_id: null,
-      tool_name: "builtin.alexa_set_fan_speed",
+      tool_name: "builtin.web_fetch",
       args: JSON.stringify({ speed: 3 }),
       reasoning: "Fan running at unexpected speed — adjust",
       source: "proactive",
@@ -437,7 +437,7 @@ describe("POST /api/approvals — proactive approve", () => {
     expect(data.status).toBe("approved");
     expect(data.result.status).toBe("executed");
     expect(executeProactiveApprovedTool).toHaveBeenCalledWith(
-      "builtin.alexa_set_fan_speed",
+      "builtin.web_fetch",
       { speed: 3 }
     );
   });
@@ -478,7 +478,7 @@ describe("POST /api/approvals — proactive reject", () => {
   beforeEach(() => {
     const approval = createApprovalRequest({
       thread_id: null,
-      tool_name: "builtin.alexa_set_fan_speed",
+      tool_name: "builtin.web_fetch",
       args: JSON.stringify({ speed: 3 }),
       reasoning: "Fan running at unexpected speed",
       source: "proactive",

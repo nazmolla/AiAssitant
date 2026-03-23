@@ -21,7 +21,6 @@ describe("Scheduler severity classification", () => {
   // we'll re-implement the same logic here as unit tests for the rules.
 
   const LOW_RISK_TOOL_PREFIXES = [
-    "builtin.alexa_",
     "builtin.smart_home_",
     "builtin.iot_",
     "builtin.hue_",
@@ -51,12 +50,6 @@ describe("Scheduler severity classification", () => {
   }
 
   describe("isLowRiskTool", () => {
-    test("identifies Alexa tools as low-risk", () => {
-      expect(isLowRiskTool("builtin.alexa_get_bedroom_state")).toBe(true);
-      expect(isLowRiskTool("builtin.alexa_announce")).toBe(true);
-      expect(isLowRiskTool("builtin.alexa_set_fan_speed")).toBe(true);
-    });
-
     test("identifies smart home tools as low-risk", () => {
       expect(isLowRiskTool("builtin.smart_home_toggle_light")).toBe(true);
       expect(isLowRiskTool("builtin.iot_sensor_read")).toBe(true);
@@ -74,7 +67,7 @@ describe("Scheduler severity classification", () => {
     });
 
     test("is case-insensitive", () => {
-      expect(isLowRiskTool("BUILTIN.ALEXA_ANNOUNCE")).toBe(true);
+      expect(isLowRiskTool("BUILTIN.SMART_HOME_TOGGLE")).toBe(true);
       expect(isLowRiskTool("Builtin.Hue_Set_Color")).toBe(true);
     });
   });
@@ -87,12 +80,7 @@ describe("Scheduler severity classification", () => {
       expect(normalizeAssessmentLevel({ severity: "low" }, "mcp_tool")).toBe("low");
     });
 
-    test("caps disaster to high for Alexa tools", () => {
-      expect(normalizeAssessmentLevel({ severity: "disaster" }, "builtin.alexa_get_bedroom_state")).toBe("high");
-      expect(normalizeAssessmentLevel({ severity: "disaster" }, "builtin.alexa_set_fan_speed")).toBe("high");
-    });
-
-    test("caps disaster to high for other smart home tools", () => {
+    test("caps disaster to high for smart home tools", () => {
       expect(normalizeAssessmentLevel({ severity: "disaster" }, "builtin.smart_home_toggle")).toBe("high");
       expect(normalizeAssessmentLevel({ severity: "disaster" }, "builtin.iot_sensor_read")).toBe("high");
       expect(normalizeAssessmentLevel({ severity: "disaster" }, "builtin.hue_set_color")).toBe("high");
@@ -101,14 +89,14 @@ describe("Scheduler severity classification", () => {
     });
 
     test("does NOT cap non-disaster severity for low-risk tools", () => {
-      expect(normalizeAssessmentLevel({ severity: "high" }, "builtin.alexa_announce")).toBe("high");
-      expect(normalizeAssessmentLevel({ severity: "medium" }, "builtin.alexa_announce")).toBe("medium");
-      expect(normalizeAssessmentLevel({ severity: "low" }, "builtin.alexa_announce")).toBe("low");
+      expect(normalizeAssessmentLevel({ severity: "high" }, "builtin.smart_home_toggle")).toBe("high");
+      expect(normalizeAssessmentLevel({ severity: "medium" }, "builtin.smart_home_toggle")).toBe("medium");
+      expect(normalizeAssessmentLevel({ severity: "low" }, "builtin.smart_home_toggle")).toBe("low");
     });
 
     test("defaults to high when severity is undefined", () => {
       expect(normalizeAssessmentLevel({}, "builtin.web_search")).toBe("high");
-      expect(normalizeAssessmentLevel({}, "builtin.alexa_announce")).toBe("high");
+      expect(normalizeAssessmentLevel({}, "builtin.smart_home_toggle")).toBe("high");
     });
 
     test("returns severity as-is when no toolName provided", () => {

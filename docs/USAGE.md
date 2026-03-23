@@ -14,7 +14,7 @@ All screenshots are captured from a **local test environment** with sample data.
 
 1. **Start here:** [Getting Started](USAGE_GETTING_STARTED.md) — sign-in, navigation, first flow
 2. **Daily tasks:** [Daily Workflows](USAGE_DAILY_WORKFLOWS.md) — chat, approvals, knowledge, voice
-3. **Configuration:** [Configuration](USAGE_CONFIGURATION.md) — LLM providers, MCP, channels, Alexa
+3. **Configuration:** [Configuration](USAGE_CONFIGURATION.md) — LLM providers, MCP, channels, Whisper
 4. **Admin ops:** [Admin Operations](USAGE_ADMIN.md) — users, auth providers, governance
 5. **Issues:** [Troubleshooting](USAGE_TROUBLESHOOTING.md) — common problems and fixes
 
@@ -22,7 +22,7 @@ All screenshots are captured from a **local test environment** with sample data.
 |------|----------|-------|
 | [Getting Started](USAGE_GETTING_STARTED.md) | Everyone | Sign-in, navigation, first successful flow |
 | [Daily Workflows](USAGE_DAILY_WORKFLOWS.md) | End users | Chat, approvals, knowledge, voice, scheduling |
-| [Configuration](USAGE_CONFIGURATION.md) | Operators | LLM, MCP, tool policies, channels, Alexa, Whisper |
+| [Configuration](USAGE_CONFIGURATION.md) | Operators | LLM, MCP, tool policies, channels, Whisper |
 | [Admin Operations](USAGE_ADMIN.md) | Admins | Users, auth providers, custom tools, scheduler, DB management |
 | [Troubleshooting](USAGE_TROUBLESHOOTING.md) | Everyone | Common issues, diagnostics, recovery |
 

@@ -105,7 +105,6 @@ jest.mock("@/components/auth-config", () => ({ AuthConfig: () => <div data-testi
 jest.mock("@/components/tool-policies", () => ({ ToolPolicies: () => <div data-testid="tool-policies">ToolPolicies Stub</div> }));
 jest.mock("@/components/custom-tools-config", () => ({ CustomToolsConfig: () => <div data-testid="custom-tools-config">CustomTools Stub</div> }));
 jest.mock("@/components/logging-config", () => ({ LoggingConfig: () => <div data-testid="logging-config">LoggingConfig Stub</div> }));
-jest.mock("@/components/alexa-config", () => ({ AlexaConfig: () => <div data-testid="alexa-config">AlexaConfig Stub</div> }));
 jest.mock("@/components/whisper-config", () => ({ WhisperConfig: () => <div data-testid="whisper-config">WhisperConfig Stub</div> }));
 jest.mock("@/components/scheduler-config", () => ({ SchedulerConfig: () => <div data-testid="scheduler-config"><h3>Batch Scheduling</h3></div> }));
 jest.mock("@/components/scheduler-console", () => ({ SchedulerConsole: () => <div data-testid="scheduler-console">SchedulerConsole Stub</div> }));
@@ -283,13 +282,6 @@ describe("Settings Sub-Pages — open every page via chip click", () => {
     expect(screen.getByRole("heading", { name: "Tool Policies" })).toBeInTheDocument();
   });
 
-  test("Alexa page renders AlexaConfig", async () => {
-    await navigateToSettings();
-    await clickSettingsChip("🔊 Alexa");
-    expect(screen.getByTestId("alexa-config")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Alexa Smart Home" })).toBeInTheDocument();
-  });
-
   test("Local Whisper page renders WhisperConfig (admin only)", async () => {
     await navigateToSettings();
     await clickSettingsChip("🎤 Local Whisper");
@@ -373,13 +365,6 @@ describe("Settings URL-Based Routing — open every settings page directly via U
     await renderAndWait("/settings/policies");
     await waitFor(() => {
       expect(screen.getByTestId("tool-policies")).toBeInTheDocument();
-    }, { timeout: 2000 });
-  });
-
-  test("URL /settings/alexa loads Alexa page", async () => {
-    await renderAndWait("/settings/alexa");
-    await waitFor(() => {
-      expect(screen.getByTestId("alexa-config")).toBeInTheDocument();
     }, { timeout: 2000 });
   });
 
@@ -679,7 +664,7 @@ describe("Permission-Gated Settings Pages", () => {
 
     const allChips = [
       "🤖 Providers", "📡 Channels", "🔌 MCP Servers",
-      "🛡️ Tool Policies", "🔊 Alexa", "🎤 Local Whisper", "🧾 Logging",
+      "🛡️ Tool Policies", "🎤 Local Whisper", "🧾 Logging",
       "🔧 Custom Tools", "🔐 Authentication", "👥 Users", "⏱️ Batch Scheduler",
     ];
     for (const chipLabel of allChips) {
@@ -847,7 +832,6 @@ describe("Settings Page Headers", () => {
     { chip: "📡 Channels", title: "Communication Channels", subtitle: "Connect messaging" },
     { chip: "🔌 MCP Servers", title: "MCP Servers", subtitle: "Manage Model Context" },
     { chip: "🛡️ Tool Policies", title: "Tool Policies", subtitle: "Configure approval" },
-    { chip: "🔊 Alexa", title: "Alexa Smart Home", subtitle: "Connect your Amazon" },
     { chip: "🎤 Local Whisper", title: "Local Whisper", subtitle: "Deploy and configure" },
     { chip: "🧾 Logging", title: "Logging", subtitle: "Server-wide log levels" },
     { chip: "🔧 Custom Tools", title: "Custom Tools", subtitle: "Agent-created tools" },
