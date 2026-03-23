@@ -1,5 +1,5 @@
 /**
- * Unit tests — dbMessagesToChat (message-converter.ts)
+ * Unit tests — dbMessagesToChat + compactHistory (message-converter.ts)
  *
  * Validates:
  * - Normal message conversion (user, assistant, tool)
@@ -7,6 +7,7 @@
  * - Orphaned assistant tool_calls (missing tool results) are stripped
  * - Partial tool results (some present, some missing) — entire batch stripped
  * - System messages are excluded
+ * - compactHistory trims by character budget, lands on user boundary, returns summary
  */
 import type { Message } from "@/lib/db/thread-queries";
 
@@ -18,7 +19,8 @@ jest.mock("@/lib/agent/system-prompt", () => ({
   isUntrustedToolOutput: () => false,
 }));
 
-import { dbMessagesToChat } from "@/lib/agent/message-converter";
+import { dbMessagesToChat, compactHistory } from "@/lib/agent/message-converter";
+import type { ChatMessage } from "@/lib/llm";
 
 function makeDbMsg(
   id: number,
@@ -140,5 +142,81 @@ describe("dbMessagesToChat", () => {
     expect(result[3]).toMatchObject({ role: "assistant", content: "Here is the answer" });
     expect(result[4]).toMatchObject({ role: "user", content: "Second question" });
     expect(result[5]).toMatchObject({ role: "user", content: "Still waiting" });
+  });
+});
+
+// ── compactHistory ────────────────────────────────────────────────────────────
+
+function makeChat(role: "user" | "assistant" | "tool", content: string): ChatMessage {
+  return { role, content };
+}
+
+describe("compactHistory", () => {
+  test("returns null when total chars are within budget", () => {
+    const msgs: ChatMessage[] = [
+      makeChat("user", "Hello"),
+      makeChat("assistant", "Hi"),
+      makeChat("user", "How are you?"),
+      makeChat("assistant", "Fine"),
+    ];
+    const result = compactHistory(msgs, 10_000);
+    expect(result).toBeNull();
+    expect(msgs).toHaveLength(4); // untouched
+  });
+
+  test("trims messages exceeding the character budget and returns a summary", () => {
+    // Each message is 100 chars; budget is 250 → keep last 2 full messages + partial
+    const long = "A".repeat(100);
+    const msgs: ChatMessage[] = [
+      makeChat("user", long),       // 100 chars — should be trimmed
+      makeChat("assistant", long),  // 100 chars — should be trimmed
+      makeChat("user", long),       // 100 chars — kept (first user boundary after cut)
+      makeChat("assistant", long),  // 100 chars — kept
+    ];
+    const summary = compactHistory(msgs, 250);
+    expect(summary).not.toBeNull();
+    expect(summary).toContain("compacted");
+    // The first two messages should be removed
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0].role).toBe("user");
+  });
+
+  test("cut always lands on a user-message boundary (never splits mid-turn)", () => {
+    const long = "B".repeat(200);
+    // layout: user(200) assistant(200) tool(200) user(200) assistant(200)
+    // budget 400 → raw keepFrom would be at index 3 (last 2*200=400 chars)
+    // but index 3 is already a user message — cut lands there cleanly
+    const msgs: ChatMessage[] = [
+      makeChat("user", long),
+      makeChat("assistant", long),
+      makeChat("tool", long),
+      makeChat("user", long),
+      makeChat("assistant", long),
+    ];
+    compactHistory(msgs, 400);
+    // First kept message must be a user message
+    expect(msgs[0].role).toBe("user");
+  });
+
+  test("summary includes truncated previews of removed user and assistant messages", () => {
+    const msgs: ChatMessage[] = [
+      makeChat("user", "What is the weather today?"),
+      makeChat("assistant", "It is sunny and 25 degrees."),
+      makeChat("user", "Thanks!"),
+      makeChat("assistant", "You're welcome."),
+      makeChat("user", "One more question"),
+      makeChat("assistant", "Sure"),
+    ];
+    // Budget of 30 chars forces trimming of early messages
+    const summary = compactHistory(msgs, 30);
+    expect(summary).toContain("User:");
+    expect(summary).toContain("Assistant:");
+  });
+
+  test("does not trim when all content fits in budget", () => {
+    const msgs: ChatMessage[] = [makeChat("user", "hi"), makeChat("assistant", "hello")];
+    const result = compactHistory(msgs, 1_000_000);
+    expect(result).toBeNull();
+    expect(msgs).toHaveLength(2);
   });
 });

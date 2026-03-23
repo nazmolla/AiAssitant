@@ -41,7 +41,7 @@ import { newTrace } from "@/lib/logging/logger";
 import crypto from "crypto";
 import { SYSTEM_PROMPT, MAX_TOOL_ITERATIONS, isUntrustedToolOutput } from "./system-prompt";
 import { buildKnowledgeContext, buildProfileContext, buildMcpContext } from "./context-builder";
-import { dbMessagesToChat } from "./message-converter";
+import { dbMessagesToChat, compactHistory } from "./message-converter";
 import { executeToolWithPolicy } from "./tool-executor";
 import { maybeUpdateThreadTitle } from "./title-generator";
 import { persistKnowledgeFromTurn } from "./knowledge-persistence";
@@ -207,6 +207,7 @@ export async function runAgentLoop(
   const profileContext = buildProfileContext(userId);
   const mcpContext = buildMcpContext();
   const chatMessages = dbMessagesToChat(dbMessages, continuation ? undefined : contentParts);
+  const compactedSummary = compactHistory(chatMessages);
 
   const toolsUsed: string[] = [];
   const pendingApprovals: string[] = [];
@@ -238,7 +239,7 @@ export async function runAgentLoop(
       response = await provider.chat(
         chatMessages,
         tools.length > 0 ? tools : undefined,
-        SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext,
+        SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext + (compactedSummary ? `\n\n${compactedSummary}` : ""),
         onToken
       );
     } catch (primaryErr) {
@@ -257,7 +258,7 @@ export async function runAgentLoop(
         response = await provider.chat(
           chatMessages,
           tools.length > 0 ? tools : undefined,
-          SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext,
+          SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext + (compactedSummary ? `\n\n${compactedSummary}` : ""),
           onToken
         );
       } else {
@@ -432,6 +433,6 @@ export async function continueAgentLoop(threadId: string): Promise<AgentResponse
 
 // Re-export for backward compatibility (loop-worker.ts, tests import from "./loop")
 export { SYSTEM_PROMPT } from "./system-prompt";
-export { dbMessagesToChat } from "./message-converter";
+export { dbMessagesToChat, compactHistory, MAX_HISTORY_CHARS } from "./message-converter";
 export { maybeUpdateThreadTitle } from "./title-generator";
 export { persistKnowledgeFromTurn } from "./knowledge-persistence";

@@ -7,6 +7,74 @@ import type { ChatMessage, ToolCall, ContentPart } from "@/lib/llm";
 import { addLog, type Message } from "@/lib/db";
 import { isUntrustedToolOutput } from "./system-prompt";
 
+/**
+ * Maximum total character length of chat history to send to the LLM per turn.
+ * Roughly equivalent to ~15 000 tokens (at ~4 chars/token), leaving ample room
+ * for the system prompt, knowledge context, and the current response.
+ * Older messages beyond this budget are summarised and appended to the system
+ * prompt instead of being re-sent verbatim, reducing token usage on long threads.
+ */
+export const MAX_HISTORY_CHARS = 60_000;
+
+/** Return the character footprint of a single chat message. */
+function msgChars(m: ChatMessage): number {
+  return (typeof m.content === "string" ? m.content.length : 0) +
+    (m.tool_calls ? JSON.stringify(m.tool_calls).length : 0);
+}
+
+/**
+ * Trim `msgs` in-place so the total character length stays within `maxChars`,
+ * keeping the most-recent messages.  The cut always falls on a user-message
+ * boundary so tool_call/tool-result pairs are never split.
+ * Returns a compact plain-text summary of the removed messages (suitable for
+ * injection into the system prompt), or `null` when no trimming was needed.
+ */
+export function compactHistory(msgs: ChatMessage[], maxChars = MAX_HISTORY_CHARS): string | null {
+  // Walk backward summing chars; find where we exceed the budget.
+  let total = 0;
+  let keepFrom = msgs.length; // index of first message to keep
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    total += msgChars(msgs[i]);
+    if (total > maxChars) {
+      keepFrom = i + 1;
+      break;
+    }
+  }
+  if (keepFrom === 0) return null; // everything fits — nothing to trim
+
+  // Advance keepFrom to the next user-message boundary so we never split a
+  // tool_call / tool-result pair.
+  while (keepFrom < msgs.length && msgs[keepFrom].role !== "user") keepFrom++;
+
+  if (keepFrom >= msgs.length) {
+    // Pathological: no user boundary found after cut — leave array untouched.
+    return null;
+  }
+
+  const removed = msgs.splice(0, keepFrom);
+
+  // Build a brief summary of the removed exchanges.
+  const lines: string[] = [];
+  let userCount = 0;
+  let assistantCount = 0;
+  for (const m of removed) {
+    if (m.role === "user") {
+      userCount++;
+      const text = typeof m.content === "string" ? m.content.trim() : "";
+      if (text) lines.push(`User: ${text.slice(0, 120)}${text.length > 120 ? "…" : ""}`);
+    } else if (m.role === "assistant") {
+      assistantCount++;
+      const text = typeof m.content === "string" ? m.content.trim() : "";
+      if (text) lines.push(`Assistant: ${text.slice(0, 120)}${text.length > 120 ? "…" : ""}`);
+    }
+  }
+
+  const header = `[Earlier conversation compacted — ${userCount} user message(s) and ${assistantCount} assistant response(s) omitted from context to reduce token usage.]`;
+  return lines.length > 0
+    ? `${header}\nSummary of omitted exchanges:\n${lines.join("\n")}`
+    : header;
+}
+
 export function dbMessagesToChat(
   messages: Message[],
   latestContentParts?: ContentPart[]
