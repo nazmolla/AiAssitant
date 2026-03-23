@@ -80,7 +80,7 @@ function maskSecrets(configJson: string): string {
   }
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const t0 = Date.now();
   log.enter("GET /api/config/channels");
   const auth = await requireUser();
@@ -96,7 +96,7 @@ export async function GET() {
   return NextResponse.json(channels);
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   const t0 = Date.now();
   log.enter("POST /api/config/channels");
   const auth = await requireUser();
@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
   );
 }
 
-export async function PATCH(req: NextRequest) {
+export async function PATCH(req: NextRequest): Promise<NextResponse> {
   const t0 = Date.now();
   log.enter("PATCH /api/config/channels");
   const auth = await requireUser();
@@ -233,7 +233,7 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ...updated, config_json: maskSecrets(updated.config_json) });
 }
 
-export async function DELETE(req: NextRequest) {
+export async function DELETE(req: NextRequest): Promise<NextResponse> {
   const t0 = Date.now();
   log.enter("DELETE /api/config/channels");
   const auth = await requireUser();

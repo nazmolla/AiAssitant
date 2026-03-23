@@ -15,7 +15,7 @@ const log = createLogger("api.admin.users");
 /**
  * GET /api/admin/users — List all users with permissions (admin only)
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const t0 = Date.now();
   log.enter("GET /api/admin/users");
   const guard = await requireAdmin();
@@ -34,7 +34,7 @@ export async function GET() {
  *
  * Body: { userId, role?, enabled?, permissions?: { chat?, knowledge?, ... } }
  */
-export async function PUT(req: NextRequest) {
+export async function PUT(req: NextRequest): Promise<NextResponse> {
   const t0 = Date.now();
   log.enter("PUT /api/admin/users");
   const guard = await requireAdmin();
@@ -94,7 +94,7 @@ export async function PUT(req: NextRequest) {
  *
  * Body: { userId }
  */
-export async function DELETE(req: NextRequest) {
+export async function DELETE(req: NextRequest): Promise<NextResponse> {
   const t0 = Date.now();
   log.enter("DELETE /api/admin/users");
   const guard = await requireAdmin();

@@ -213,6 +213,7 @@ CREATE TABLE IF NOT EXISTS approval_queue (
     nl_request TEXT,
     source TEXT DEFAULT 'chat',
     status TEXT DEFAULT 'pending',
+    expires_at TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

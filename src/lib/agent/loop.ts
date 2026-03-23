@@ -245,7 +245,12 @@ export async function runAgentLoop(
       // Attempt fallback to another provider
       const fallback = deps.selectFallbackProvider(userMessage || "continuation", [orchestration.providerLabel], hasImages);
       if (fallback) {
-        console.warn(`[agent] Primary provider ${orchestration.providerLabel} failed (${primaryErr instanceof Error ? primaryErr.message : primaryErr}), falling back to ${fallback.providerLabel}`);
+        deps.addLog({
+          level: "warn",
+          source: "agent",
+          message: `Primary provider ${orchestration.providerLabel} failed — falling back to ${fallback.providerLabel}`,
+          metadata: JSON.stringify({ error: primaryErr instanceof Error ? primaryErr.message : String(primaryErr) }),
+        });
         onStatus?.({ step: "Falling back", detail: `${orchestration.providerLabel} failed — trying ${fallback.providerLabel}` });
         orchestration = fallback;
         provider = fallback.provider;

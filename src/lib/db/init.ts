@@ -716,6 +716,21 @@ function ensureApprovalQueueNlRequestColumn(): void {
   addColumnIfMissing("approval_queue", "source", "TEXT DEFAULT 'chat'");
 }
 
+function ensureApprovalQueueExpiresAt(): void {
+  if (!tableExists("approval_queue")) return;
+  addColumnIfMissing("approval_queue", "expires_at", "TEXT");
+}
+
+export function purgeExpiredApprovals(): void {
+  try {
+    getDb()
+      .prepare(
+        "DELETE FROM approval_queue WHERE expires_at IS NOT NULL AND expires_at < datetime('now')"
+      )
+      .run();
+  } catch { /* non-critical */ }
+}
+
 function ensureApprovalPreferencesTable(): void {
   const db = getDb();
   db.exec(`
@@ -974,6 +989,8 @@ export function initializeDatabase(): void {
   ensureChannelUserId();
   ensureChannelImapUidColumns();
   ensureApprovalQueueNlRequestColumn();
+  ensureApprovalQueueExpiresAt();
+  purgeExpiredApprovals();
   ensureApprovalPreferencesTable();
   ensureMcpServerUsersTable();
   ensureSystemUnifiedSchedules();
@@ -987,6 +1004,8 @@ export function initializeDatabase(): void {
   encryptExistingSecrets();
   revokeExpiredKeys();
   warnIfDbShrunk();
+  // Run periodic optimizer — updates query planner stats; no-op on first call if stats are fresh
+  try { db.exec("PRAGMA optimize;"); } catch { /* non-critical */ }
   _dbInitialized = true;
   console.log("[Nexus DB] Schema initialized successfully.");
 }

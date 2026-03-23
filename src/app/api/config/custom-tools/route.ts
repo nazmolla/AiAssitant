@@ -16,10 +16,11 @@ import {
   upsertToolPolicy,
 } from "@/lib/db/queries";
 import { loadCustomToolsFromDb, validateImplementation } from "@/lib/tools/custom-tools";
+import { invalidateToolCache } from "@/lib/agent/loop-worker";
 import { discoverAllTools } from "@/lib/agent/discovery";
 import { findDuplicateToolMatch } from "@/lib/tools/tool-duplicate-gate";
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -27,7 +28,7 @@ export async function GET() {
   return NextResponse.json(tools);
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -101,11 +102,12 @@ export async function POST(req: NextRequest) {
 
   // Reload cache
   loadCustomToolsFromDb();
+  invalidateToolCache();
 
   return NextResponse.json(record, { status: 201 });
 }
 
-export async function PUT(req: NextRequest) {
+export async function PUT(req: NextRequest): Promise<NextResponse> {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -130,6 +132,7 @@ export async function PUT(req: NextRequest) {
   if (typeof enabled === "boolean" && !description && !inputSchema && !implementation) {
     updateCustomToolEnabled(name, enabled);
     loadCustomToolsFromDb();
+  invalidateToolCache();
     return NextResponse.json({ ok: true });
   }
 
@@ -160,10 +163,11 @@ export async function PUT(req: NextRequest) {
   }
 
   loadCustomToolsFromDb();
+  invalidateToolCache();
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req: NextRequest) {
+export async function DELETE(req: NextRequest): Promise<NextResponse> {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -193,6 +197,7 @@ export async function DELETE(req: NextRequest) {
   } catch { /* policy may not exist */ }
 
   loadCustomToolsFromDb();
+  invalidateToolCache();
 
   return NextResponse.json({ ok: true });
 }

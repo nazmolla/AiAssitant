@@ -325,6 +325,7 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
       .catch(console.error);
   }, [threads.length]);
 
+  const handleCloseSidebar = useCallback(() => setShowSidebar(false), []);
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -343,7 +344,7 @@ export function ChatPanel({ openThreadDrawerRef, navItems, activeNavTab, onNavig
         onCreateThread={createThread}
         onDeleteThread={handleDeleteThread}
         onLoadMore={handleLoadMore}
-        onClose={() => setShowSidebar(false)}
+        onClose={handleCloseSidebar}
         navItems={navItems}
         activeNavTab={activeNavTab}
         onNavigate={onNavigate}

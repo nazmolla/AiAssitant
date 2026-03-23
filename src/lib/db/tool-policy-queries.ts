@@ -51,18 +51,34 @@ export interface ApprovalRequest {
   nl_request: string | null;
   source: string;
   status: string;
+  expires_at: string | null;
   created_at: string;
 }
 
-export function createApprovalRequest(req: Omit<ApprovalRequest, "id" | "status" | "created_at" | "nl_request" | "source"> & { nl_request?: string | null; source?: string }): ApprovalRequest {
+export function createApprovalRequest(
+  req: Omit<ApprovalRequest, "id" | "status" | "created_at" | "nl_request" | "source" | "expires_at"> & {
+    nl_request?: string | null;
+    source?: string;
+    expiresAt?: string;
+  }
+): ApprovalRequest {
   const id = uuid();
   return getDb()
     .prepare(
-      `INSERT INTO approval_queue (id, thread_id, tool_name, args, reasoning, nl_request, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO approval_queue (id, thread_id, tool_name, args, reasoning, nl_request, source, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
-    .get(id, req.thread_id, req.tool_name, req.args, req.reasoning, req.nl_request ?? null, req.source ?? "chat") as ApprovalRequest;
+    .get(
+      id,
+      req.thread_id,
+      req.tool_name,
+      req.args,
+      req.reasoning,
+      req.nl_request ?? null,
+      req.source ?? "chat",
+      req.expiresAt ?? null
+    ) as ApprovalRequest;
 }
 
 export function getApprovalById(id: string): ApprovalRequest | undefined {

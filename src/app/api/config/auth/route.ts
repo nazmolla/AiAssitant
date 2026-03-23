@@ -10,7 +10,7 @@ import {
 
 const VALID_TYPES = new Set<AuthProviderType>(["azure-ad", "google", "discord"]);
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -18,7 +18,7 @@ export async function GET() {
   return NextResponse.json(providers);
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(sanitize(record), { status: 201 });
 }
 
-export async function PATCH(req: NextRequest) {
+export async function PATCH(req: NextRequest): Promise<NextResponse> {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -113,7 +113,7 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json(sanitize(record));
 }
 
-export async function DELETE(req: NextRequest) {
+export async function DELETE(req: NextRequest): Promise<NextResponse> {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 

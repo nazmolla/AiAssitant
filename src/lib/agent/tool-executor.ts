@@ -13,6 +13,19 @@ import { createLogger } from "@/lib/logging/logger";
 const log = createLogger("agent.tool-executor");
 
 /**
+ * Resolve the effective userId: prefer the caller-supplied value but fall back to the
+ * thread's owner when an empty string is passed (e.g. from the proactive scheduler).
+ * Uses `||` (not `??`) so that empty strings trigger the fallback just like undefined.
+ */
+export function resolveUserId(
+  userId: string | undefined,
+  threadId: string,
+  getThread: (id: string) => { user_id?: string | null } | undefined | null,
+): string | undefined {
+  return userId || (getThread(threadId)?.user_id ?? undefined) || undefined;
+}
+
+/**
  * All tools (built-in + custom + MCP) now have policy entries in the DB,
  * so the same flow applies everywhere.
  */
@@ -146,6 +159,11 @@ export async function executeToolWithPolicy(
         metadata: JSON.stringify({ threadId, args: toolCall.arguments, requester, source }),
       });
 
+      const isProactiveSource = source !== "chat";
+      const expiresAt = isProactiveSource
+        ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        : undefined;
+
       const approval = deps.createApprovalRequest({
         thread_id: threadId,
         tool_name: toolCall.name,
@@ -153,6 +171,7 @@ export async function executeToolWithPolicy(
         reasoning: reason,
         nl_request: nlRequest,
         source,
+        expiresAt,
       });
 
       const approvalMeta = JSON.stringify({
@@ -198,9 +217,7 @@ export async function executeToolWithPolicy(
   }
 
   // No approval needed — route to the correct executor
-  // Prefer the userId passed by the caller (e.g. from runAgentLoop), fall back to DB lookup.
-  // Use || (not ??) so that an empty string is treated the same as undefined and triggers the fallback.
-  const resolvedUserId = userId || (deps.getThread(threadId)?.user_id ?? undefined);
+  const resolvedUserId = resolveUserId(userId, threadId, deps.getThread);
   try {
     const result = await getToolRegistry().dispatch(
       toolCall.name,

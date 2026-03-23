@@ -53,6 +53,18 @@ import { processExecutedToolResult, processFailedToolResult } from "./tool-resul
 /* ── Re-export for convenience ──────────────────────────────────── */
 export type { AgentResponse } from "./loop";
 
+/* ── Per-process tool-list cache (invalidated when custom tools change) ── */
+type ToolList = ReturnType<typeof buildCappedToolList>;
+let _cachedAllTools: ToolList | null = null;
+/** Call this whenever custom tools are created/updated/deleted. */
+export function invalidateToolCache(): void { _cachedAllTools = null; }
+
+/* ── Per-process provider-config cache ──────────────────────────── */
+type ProviderOrchestration = ReturnType<typeof selectProviderForWorker>;
+let _cachedOrchestration: ProviderOrchestration | null = null;
+let _orchestrationCachedAt = 0;
+const PROVIDER_CACHE_TTL_MS = 60_000; // re-select at most once per minute
+
 /* ── Main entry point ───────────────────────────────────────────── */
 
 /**
@@ -128,19 +140,27 @@ async function _runViaWorker(
   onStatus: ((status: { step: string; detail?: string }) => void) | undefined,
   onToken: ((token: string) => void | Promise<void>) | undefined
 ): Promise<AgentResponse> {
-  /* ── 1. Select provider (returns raw config for worker) ─────── */
+  /* ── 1. Select provider (cached per process, refreshed every minute) ── */
   onStatus?.({ step: "Selecting model", detail: "Classifying task complexity\u2026" });
   const hasImages = contentParts?.some((p) => p.type === "image_url") ?? false;
-  const orchestration = selectProviderForWorker(userMessage || "continuation", hasImages);
+  const now = Date.now();
+  if (!_cachedOrchestration || now - _orchestrationCachedAt > PROVIDER_CACHE_TTL_MS) {
+    _cachedOrchestration = selectProviderForWorker(userMessage || "continuation", hasImages);
+    _orchestrationCachedAt = now;
+  }
+  const orchestration = _cachedOrchestration;
   onStatus?.({ step: "Selecting model", detail: `Task: ${orchestration.taskType} \u2192 ${orchestration.providerLabel} (worker)` });
 
-  /* ── 2. Load tools (in-memory, fast) ────────────────────────── */
-  const mcpManager = getMcpManager();
-  const mcpTools = mcpManager.getAllTools();
-  const { getCustomToolDefinitions } = await import("@/lib/tools/custom-tools");
-  const customTools = getCustomToolDefinitions();
-  const builtinTools = ALL_TOOL_CATEGORIES.flatMap((category) => category.tools);
-  const allTools = buildCappedToolList(builtinTools, customTools, mcpTools);
+  /* ── 2. Load tools (cached per process, invalidated on custom-tool change) ── */
+  if (!_cachedAllTools) {
+    const mcpManager = getMcpManager();
+    const mcpTools = mcpManager.getAllTools();
+    const { getCustomToolDefinitions } = await import("@/lib/tools/custom-tools");
+    const customTools = getCustomToolDefinitions();
+    const builtinTools = ALL_TOOL_CATEGORIES.flatMap((category) => category.tools);
+    _cachedAllTools = buildCappedToolList(builtinTools, customTools, mcpTools);
+  }
+  const allTools = _cachedAllTools;
 
   const isAdmin = userId ? (getUserById(userId)?.role === "admin") : true;
   const tools = isAdmin

@@ -157,13 +157,14 @@ export function listRunnableSchedulerRuns(limit = 10): SchedulerRunRecord[] {
   ).all(limit) as SchedulerRunRecord[];
 }
 
-export function getSchedulerTasksForSchedule(scheduleId: string): SchedulerTaskRecord[] {
+export function getSchedulerTasksForSchedule(scheduleId: string, limit = 200): SchedulerTaskRecord[] {
   return stmt(
     `SELECT *
      FROM scheduler_tasks
      WHERE schedule_id = ? AND enabled = 1
-     ORDER BY sequence_no ASC, created_at ASC`
-  ).all(scheduleId) as SchedulerTaskRecord[];
+     ORDER BY sequence_no ASC, created_at ASC
+     LIMIT ?`
+  ).all(scheduleId, limit) as SchedulerTaskRecord[];
 }
 
 export function getSchedulerTaskRunsForRun(runId: string): SchedulerTaskRunRecord[] {

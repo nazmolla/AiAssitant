@@ -365,6 +365,19 @@ Tool categories self-register at module load time — no hardcoded array to main
 
 **Deduplication**: `registerToolCategory()` silently ignores duplicate registrations (same `name`).
 
+## Worker Thread Offload
+
+`runAgentLoopWithWorker()` in `src/lib/agent/loop-worker.ts` offloads the LLM HTTP calls and token streaming to a Node.js worker thread (`scripts/agent-worker.js`), preventing the main event loop from blocking during long multi-tool conversations.
+
+- **Main thread**: tool execution, DB operations, SSE streaming, knowledge retrieval, and approval gating all remain on the main thread.
+- **Worker thread**: LLM HTTP round-trips, token accumulation, and `multi_tool_use.parallel` expansion run in the worker. Tool requests are posted back to the main thread via `MessageChannel` for execution.
+- **Tool list and provider config caching**: the worker script receives a snapshot of the tool list and provider config at spawn time; `invalidateToolCache()` clears the in-process cache so the next call rebuilds it.
+- **Fallback chain**:
+  1. Continuation messages (post-approval) → main thread `runAgentLoop()`.
+  2. Threads in `awaiting_user_confirmation` state → main thread.
+  3. Worker script missing from disk or fails to spawn → main thread.
+  4. Worker throws during execution → logged as warning, then falls back to main thread.
+
 ### Workflow Tools Architecture
 
 Workflow tools (`builtin.workflow_*`) provide the tool-layer abstraction for scheduler batch jobs. The design follows two patterns:

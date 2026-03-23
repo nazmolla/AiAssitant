@@ -302,3 +302,85 @@ describe("Tool policy seeding", () => {
     expect(getDnd?.requires_approval).toBe(0);
   });
 });
+
+describe("Tool policy preference decisions — via real DB", () => {
+  let threadId: string;
+
+  beforeEach(() => {
+    const thread = createThread("Preference Decision Test Thread", userId);
+    threadId = thread.id;
+  });
+
+  test("auto-approved by preference executes tool without creating approval request", async () => {
+    upsertToolPolicy({
+      tool_name: "pref_approved_tool",
+      mcp_id: null,
+      requires_approval: 1,
+      scope: "global",
+    });
+
+    const deps = makeDeps(threadId, {
+      findApprovalPreferenceDecision: jest.fn(() => "approved"),
+    });
+
+    const result = await executeToolWithPolicy(
+      { id: "tc-pref-1", name: "pref_approved_tool", arguments: {} },
+      threadId,
+      "test reasoning",
+      userId,
+      deps,
+    );
+
+    expect(result.status).toBe("executed");
+    expect(deps.createApprovalRequest).not.toHaveBeenCalled();
+  });
+
+  test("auto-rejected by preference returns error without creating approval request", async () => {
+    upsertToolPolicy({
+      tool_name: "pref_rejected_tool",
+      mcp_id: null,
+      requires_approval: 1,
+      scope: "global",
+    });
+
+    const deps = makeDeps(threadId, {
+      findApprovalPreferenceDecision: jest.fn(() => "rejected"),
+    });
+
+    const result = await executeToolWithPolicy(
+      { id: "tc-pref-2", name: "pref_rejected_tool", arguments: {} },
+      threadId,
+      "test reasoning",
+      userId,
+      deps,
+    );
+
+    expect(result.status).toBe("error");
+    expect(result.error).toContain("Auto-rejected");
+    expect(deps.createApprovalRequest).not.toHaveBeenCalled();
+  });
+
+  test("auto-ignored by preference returns executed with ignored result", async () => {
+    upsertToolPolicy({
+      tool_name: "pref_ignored_tool",
+      mcp_id: null,
+      requires_approval: 1,
+      scope: "global",
+    });
+
+    const deps = makeDeps(threadId, {
+      findApprovalPreferenceDecision: jest.fn(() => "ignored"),
+    });
+
+    const result = await executeToolWithPolicy(
+      { id: "tc-pref-3", name: "pref_ignored_tool", arguments: {} },
+      threadId,
+      "test reasoning",
+      userId,
+      deps,
+    );
+
+    expect(result.status).toBe("executed");
+    expect((result as { status: "executed"; result: { status: string } }).result.status).toBe("ignored");
+  });
+});

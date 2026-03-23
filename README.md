@@ -10,6 +10,8 @@
 |----------|-----------|
 | **AI & LLM** | Multi-provider orchestrator (Azure OpenAI, OpenAI, Anthropic, LiteLLM), intelligent task routing, worker-thread isolation, self-extending tools |
 | **Knowledge** | Autonomous fact capture from conversations, semantic search, nightly dedup/maintenance |
+| **Knowledge Vault** | Per-user knowledge extraction from chat and proactive scans; semantic vector retrieval via embeddings for context-aware responses |
+| **Multi-Agent Scheduling** | Proactive background agents driven by the unified scheduler; supports interval, cron, and one-shot triggers with retry/misfire policies |
 | **Voice** | Speech-to-text (Whisper), text-to-speech (9 voices), hands-free conversation mode with VAD and interrupt support, local Whisper fallback, ESP32 Atom Echo hardware |
 | **Channels** | Web chat, WhatsApp, Discord, email (SMTP+IMAP), custom webhooks |
 | **Automation** | Playwright browser tools, file system tools, Alexa Smart Home (14 tools), background scheduler with proactive intelligence |
