@@ -29,13 +29,12 @@ export interface AgentLogInput {
   userId?: string;
 }
 
-/** Raw log levels that warrant an in-app notification (excludes noisy internal levels). */
-const NOTIFICATION_RAW_LEVELS = new Set(["info", "warning", "warn", "error", "err", "critical", "fatal", "panic"]);
+/** Normalized log levels that warrant an in-app notification (excludes verbose/thought). */
+const NOTIFICATION_LEVELS = new Set(["warning", "error", "critical"]);
 
-function rawLevelToNotificationType(rawLevel: string): NotificationType {
-  if (rawLevel === "warning" || rawLevel === "warn") return "warning";
-  if (rawLevel === "error" || rawLevel === "err") return "system_error";
-  if (rawLevel === "critical" || rawLevel === "fatal" || rawLevel === "panic") return "system_error";
+function normalizedLevelToNotificationType(level: string): NotificationType {
+  if (level === "warning") return "warning";
+  if (level === "error" || level === "critical") return "system_error";
   return "info";
 }
 
@@ -77,18 +76,14 @@ function getConfiguredMinLogLevel(): UnifiedLogLevel {
 }
 
 export function addLog(log: AgentLogInput): void {
-  const rawLevel = String(log.level || "").toLowerCase().trim();
   const normalizedLevel = normalizeLogLevel(log.level);
   const minLevel = getConfiguredMinLogLevel();
-  // Thought-level logs always bypass the server min-log-level filter.
-  // They are important diagnostic observations (not verbose noise) and must
-  // always be persisted so the dashboard Thoughts view is never silently empty.
-  if (rawLevel !== "thought" && !shouldKeepLog(normalizedLevel, minLevel)) {
+  if (!shouldKeepLog(normalizedLevel, minLevel)) {
     return;
   }
 
   const normalizedSource =
-    rawLevel === "thought" && !log.source
+    normalizedLevel === "thought" && !log.source
       ? "thought"
       : log.source;
 
@@ -98,11 +93,11 @@ export function addLog(log: AgentLogInput): void {
   let notifyType: NotificationType | null = null;
   let notifyUserId: string | null = null;
   let notifyBody: string | null = null;
-  if (NOTIFICATION_RAW_LEVELS.has(rawLevel)) {
+  if (NOTIFICATION_LEVELS.has(normalizedLevel)) {
     const uid = log.userId || getAdminUserId();
     if (uid) {
       notify = 1;
-      notifyType = rawLevelToNotificationType(rawLevel);
+      notifyType = normalizedLevelToNotificationType(normalizedLevel);
       notifyUserId = uid;
       notifyBody = log.message.length > 100 ? log.message : null;
     }

@@ -132,11 +132,11 @@ describe("Agent Logs", () => {
     expect(nullSourceLog!.source).toBeNull();
   });
 
-  test("thought logs are treated as verbose and tagged as thought source", () => {
+  test("thought logs are stored with level=thought and source=thought", () => {
     addLog({ level: "thought", source: null, message: "Agent chain-of-thought summary", metadata: null });
     const thoughtLog = getRecentLogs().find((l) => l.message === "Agent chain-of-thought summary");
     expect(thoughtLog).toBeDefined();
-    expect(thoughtLog!.level).toBe("verbose");
+    expect(thoughtLog!.level).toBe("thought");
     expect(thoughtLog!.source).toBe("thought");
   });
 
@@ -149,6 +149,22 @@ describe("Agent Logs", () => {
     expect(logs.some((l) => l.message === "Should be dropped")).toBe(false);
     expect(logs.some((l) => l.message === "Should remain")).toBe(true);
 
+    setServerMinLogLevel("verbose");
+  });
+
+  test("thought logs are filtered when minLevel is warning", () => {
+    setServerMinLogLevel("warning");
+    addLog({ level: "thought", source: "thought", message: "Thought filtered out", metadata: null });
+    const logs = getRecentLogs(Number.NaN);
+    expect(logs.some((l) => l.message === "Thought filtered out")).toBe(false);
+    setServerMinLogLevel("verbose");
+  });
+
+  test("thought logs are kept when minLevel is thought", () => {
+    setServerMinLogLevel("thought");
+    addLog({ level: "thought", source: "thought", message: "Thought kept in", metadata: null });
+    const logs = getRecentLogs(Number.NaN);
+    expect(logs.some((l) => l.message === "Thought kept in")).toBe(true);
     setServerMinLogLevel("verbose");
   });
 
@@ -266,14 +282,10 @@ describe("addLog → notification bell wiring", () => {
     adminId = seedTestUser({ role: "admin" });
   });
 
-  test("info level creates an in-app notification of type 'info'", () => {
+  test("info level (verbose) does NOT create a notification", () => {
     const before = listNotifications(adminId).length;
     addLog({ level: "info", source: "scheduler", message: "Proactive scan started", metadata: null, userId: adminId });
-    const after = listNotifications(adminId);
-    expect(after.length).toBe(before + 1);
-    const notif = after.find((n) => n.title === "Proactive scan started");
-    expect(notif).toBeDefined();
-    expect(notif!.type).toBe("info");
+    expect(listNotifications(adminId).length).toBe(before);
   });
 
   test("warning level creates a notification of type 'warning'", () => {

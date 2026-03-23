@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { configService } from "@/lib/api";
 import { ApiError } from "@/lib/api/client";
 
-type UnifiedLogLevel = "verbose" | "warning" | "error" | "critical";
+type UnifiedLogLevel = "verbose" | "thought" | "warning" | "error" | "critical";
 
-const LOG_LEVELS: UnifiedLogLevel[] = ["verbose", "warning", "error", "critical"];
+const LOG_LEVELS: UnifiedLogLevel[] = ["verbose", "thought", "warning", "error", "critical"];
 
 export function LoggingConfig() {
-  const [minLevel, setMinLevel] = useState<UnifiedLogLevel>("verbose");
+  const [minLevel, setMinLevel] = useState<UnifiedLogLevel>("thought");
   const [cleanupLevel, setCleanupLevel] = useState<UnifiedLogLevel>("warning");
   const [days, setDays] = useState("30");
   const [saving, setSaving] = useState(false);
@@ -96,6 +96,7 @@ export function LoggingConfig() {
               className="w-full rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
             >
               <option value="verbose">Verbose (keep all)</option>
+              <option value="thought">Thoughts + Warning + Error + Critical</option>
               <option value="warning">Warning + Error + Critical</option>
               <option value="error">Error + Critical</option>
               <option value="critical">Critical only</option>

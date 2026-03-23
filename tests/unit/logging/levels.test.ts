@@ -18,11 +18,11 @@ describe("normalizeLogLevel", () => {
     ["err", "error"],
     ["warning", "warning"],
     ["warn", "warning"],
+    ["thought", "thought"],
     ["verbose", "verbose"],
     ["info", "verbose"],
     ["debug", "verbose"],
     ["trace", "verbose"],
-    ["thought", "verbose"],
   ])("maps %s → %s", (input, expected) => {
     expect(normalizeLogLevel(input)).toBe(expected);
   });
@@ -44,6 +44,7 @@ describe("normalizeLogLevel", () => {
 describe("isUnifiedLogLevel", () => {
   test("returns true for valid unified levels", () => {
     expect(isUnifiedLogLevel("verbose")).toBe(true);
+    expect(isUnifiedLogLevel("thought")).toBe(true);
     expect(isUnifiedLogLevel("warning")).toBe(true);
     expect(isUnifiedLogLevel("error")).toBe(true);
     expect(isUnifiedLogLevel("critical")).toBe(true);
@@ -65,13 +66,28 @@ describe("shouldKeepLog", () => {
     expect(shouldKeepLog("critical", "verbose")).toBe(true);
     expect(shouldKeepLog("error", "verbose")).toBe(true);
     expect(shouldKeepLog("warning", "verbose")).toBe(true);
+    expect(shouldKeepLog("thought", "verbose")).toBe(true);
     expect(shouldKeepLog("verbose", "verbose")).toBe(true);
   });
 
+  test("thought is kept when minLevel is thought", () => {
+    expect(shouldKeepLog("thought", "thought")).toBe(true);
+    expect(shouldKeepLog("warning", "thought")).toBe(true);
+    expect(shouldKeepLog("critical", "thought")).toBe(true);
+  });
+
+  test("thought is filtered when minLevel is warning or above", () => {
+    expect(shouldKeepLog("thought", "warning")).toBe(false);
+    expect(shouldKeepLog("thought", "error")).toBe(false);
+    expect(shouldKeepLog("thought", "critical")).toBe(false);
+  });
+
   test("discards logs below the minimum level", () => {
+    expect(shouldKeepLog("verbose", "thought")).toBe(false);
     expect(shouldKeepLog("verbose", "warning")).toBe(false);
     expect(shouldKeepLog("verbose", "error")).toBe(false);
     expect(shouldKeepLog("verbose", "critical")).toBe(false);
+    expect(shouldKeepLog("thought", "warning")).toBe(false);
     expect(shouldKeepLog("warning", "error")).toBe(false);
     expect(shouldKeepLog("warning", "critical")).toBe(false);
     expect(shouldKeepLog("error", "critical")).toBe(false);
@@ -81,6 +97,7 @@ describe("shouldKeepLog", () => {
     expect(shouldKeepLog("critical", "critical")).toBe(true);
     expect(shouldKeepLog("error", "error")).toBe(true);
     expect(shouldKeepLog("warning", "warning")).toBe(true);
+    expect(shouldKeepLog("thought", "thought")).toBe(true);
     expect(shouldKeepLog("verbose", "verbose")).toBe(true);
   });
 });

@@ -17,6 +17,7 @@ import {
   DELETE as DELETE_THREAD,
 } from "@/app/api/threads/[threadId]/route";
 import { getRecentLogs } from "@/lib/db/queries";
+import { setServerMinLogLevel } from "@/lib/db/log-queries";
 
 let userId: string;
 let adminId: string;
@@ -180,6 +181,7 @@ describe("GET /api/threads — logging", () => {
   });
 
   test("POST still writes log entries", async () => {
+    setServerMinLogLevel("verbose"); // ensure verbose logs are retained for this test
     setMockUser({ id: userId, email: "threads@example.com", role: "user" });
     const logsBefore = getRecentLogs(10000);
     const countBefore = logsBefore.filter(

@@ -30,7 +30,7 @@ describe("/api/config/logging", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(["verbose", "warning", "error", "critical"]).toContain(data.min_level);
+    expect(["verbose", "thought", "warning", "error", "critical"]).toContain(data.min_level);
   });
 
   test("updates minimum level for admin", async () => {

@@ -605,6 +605,7 @@ function normalizeAgentLogLevels(): void {
        WHEN lower(coalesce(level, '')) IN ('critical', 'fatal', 'panic') THEN 'critical'
        WHEN lower(coalesce(level, '')) IN ('error', 'err') THEN 'error'
        WHEN lower(coalesce(level, '')) IN ('warning', 'warn') THEN 'warning'
+       WHEN lower(coalesce(level, '')) = 'thought' THEN 'thought'
        ELSE 'verbose'
      END`
   ).run();
@@ -616,7 +617,7 @@ function ensureServerLoggingDefaults(): void {
 
   db.prepare(
     `INSERT OR IGNORE INTO app_config (key, value, updated_at)
-     VALUES ('log_level_min', 'verbose', CURRENT_TIMESTAMP)`
+     VALUES ('log_level_min', 'thought', CURRENT_TIMESTAMP)`
   ).run();
 }
 
