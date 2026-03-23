@@ -28,6 +28,7 @@ import {
   type ChatResponse,
   type ContentPart,
 } from "@/lib/llm";
+import { isAuthError } from "@/lib/errors";
 import {
   addMessage,
   getThreadMessages,
@@ -243,27 +244,44 @@ export async function runAgentLoop(
         onToken
       );
     } catch (primaryErr) {
-      // Attempt fallback to another provider
-      const fallback = deps.selectFallbackProvider(userMessage || "continuation", [orchestration.providerLabel], hasImages);
-      if (fallback) {
+      // Auth errors (401/403) mean the credentials are wrong — no point trying other providers.
+      if (isAuthError(primaryErr)) throw primaryErr;
+
+      // Exhaust all remaining providers in score order before giving up.
+      const triedLabels: string[] = [orchestration.providerLabel];
+      let lastErr: unknown = primaryErr;
+      let succeeded = false;
+
+      while (!succeeded) {
+        const fallback = deps.selectFallbackProvider(userMessage || "continuation", triedLabels, hasImages);
+        if (!fallback) break;
+
+        triedLabels.push(fallback.providerLabel);
         deps.addLog({
           level: "warn",
           source: "agent",
-          message: `Primary provider ${orchestration.providerLabel} failed — falling back to ${fallback.providerLabel}`,
-          metadata: JSON.stringify({ error: primaryErr instanceof Error ? primaryErr.message : String(primaryErr) }),
+          message: `Provider ${triedLabels[triedLabels.length - 2]} failed — falling back to ${fallback.providerLabel}`,
+          metadata: JSON.stringify({ error: lastErr instanceof Error ? lastErr.message : String(lastErr) }),
         });
-        onStatus?.({ step: "Falling back", detail: `${orchestration.providerLabel} failed — trying ${fallback.providerLabel}` });
+        onStatus?.({ step: "Falling back", detail: `${triedLabels[triedLabels.length - 2]} failed — trying ${fallback.providerLabel}` });
         orchestration = fallback;
         provider = fallback.provider;
-        response = await provider.chat(
-          chatMessages,
-          tools.length > 0 ? tools : undefined,
-          SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext + (compactedSummary ? `\n\n${compactedSummary}` : ""),
-          onToken
-        );
-      } else {
-        throw primaryErr;
+
+        try {
+          response = await provider.chat(
+            chatMessages,
+            tools.length > 0 ? tools : undefined,
+            SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext + (compactedSummary ? `\n\n${compactedSummary}` : ""),
+            onToken
+          );
+          succeeded = true;
+        } catch (fallbackErr) {
+          if (isAuthError(fallbackErr)) throw fallbackErr;
+          lastErr = fallbackErr;
+        }
       }
+
+      if (!succeeded) throw lastErr;
     }
 
     if (response.content) {

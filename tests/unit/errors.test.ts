@@ -7,6 +7,8 @@ import {
   IntegrationError,
   getHttpStatusFromError,
   isNexusError,
+  isRateLimitError,
+  isAuthError,
 } from "@/lib/errors";
 
 describe("NexusError hierarchy", () => {
@@ -86,6 +88,55 @@ describe("NexusError hierarchy", () => {
       expect(isNexusError(new Error("x"))).toBe(false);
       expect(isNexusError("string")).toBe(false);
       expect(isNexusError(undefined)).toBe(false);
+    });
+  });
+
+  describe("isRateLimitError", () => {
+    it("detects HTTP 429 via status property (OpenAI/Anthropic SDK style)", () => {
+      expect(isRateLimitError(Object.assign(new Error("Too Many Requests"), { status: 429 }))).toBe(true);
+    });
+
+    it("detects rate limit via message keywords", () => {
+      expect(isRateLimitError(new Error("rate limit exceeded"))).toBe(true);
+      expect(isRateLimitError(new Error("rate_limit_error"))).toBe(true);
+      expect(isRateLimitError(new Error("Too Many Requests"))).toBe(true);
+    });
+
+    it("returns false for non-rate-limit errors", () => {
+      expect(isRateLimitError(new Error("Internal Server Error"))).toBe(false);
+      expect(isRateLimitError(Object.assign(new Error("Bad Request"), { status: 400 }))).toBe(false);
+    });
+
+    it("returns false for null / undefined", () => {
+      expect(isRateLimitError(null)).toBe(false);
+      expect(isRateLimitError(undefined)).toBe(false);
+    });
+  });
+
+  describe("isAuthError", () => {
+    it("detects HTTP 401 via status property", () => {
+      expect(isAuthError(Object.assign(new Error("Unauthorized"), { status: 401 }))).toBe(true);
+    });
+
+    it("detects HTTP 403 via status property", () => {
+      expect(isAuthError(Object.assign(new Error("Forbidden"), { status: 403 }))).toBe(true);
+    });
+
+    it("detects auth error via message keywords", () => {
+      expect(isAuthError(new Error("Invalid API key provided"))).toBe(true);
+      expect(isAuthError(new Error("authentication failed"))).toBe(true);
+      expect(isAuthError(new Error("Unauthorized access"))).toBe(true);
+      expect(isAuthError(new Error("Forbidden resource"))).toBe(true);
+    });
+
+    it("returns false for non-auth errors", () => {
+      expect(isAuthError(new Error("rate limit exceeded"))).toBe(false);
+      expect(isAuthError(Object.assign(new Error("Not Found"), { status: 404 }))).toBe(false);
+    });
+
+    it("returns false for null / undefined", () => {
+      expect(isAuthError(null)).toBe(false);
+      expect(isAuthError(undefined)).toBe(false);
     });
   });
 });

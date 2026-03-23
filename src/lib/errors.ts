@@ -86,3 +86,40 @@ export function getHttpStatusFromError(err: unknown): number {
 export function isNexusError(err: unknown): err is NexusError {
   return err instanceof NexusError;
 }
+
+/**
+ * Returns true if the error is an HTTP 429 rate-limit response from either
+ * the OpenAI SDK (openai.RateLimitError) or the Anthropic SDK
+ * (Anthropic.RateLimitError), or any error whose message clearly indicates
+ * rate limiting.
+ */
+export function isRateLimitError(err: unknown): boolean {
+  if (err == null) return false;
+  // Both SDKs expose a numeric `status` property on API errors
+  if (typeof (err as Record<string, unknown>).status === "number") {
+    return (err as { status: number }).status === 429;
+  }
+  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return msg.includes("rate limit") || msg.includes("rate_limit") || msg.includes("too many requests");
+}
+
+/**
+ * Returns true if the error is an authentication/authorization failure (HTTP
+ * 401 or 403) from either the OpenAI or Anthropic SDK.  Auth errors should
+ * short-circuit the provider fallback loop — trying other providers with the
+ * same credentials is unlikely to succeed.
+ */
+export function isAuthError(err: unknown): boolean {
+  if (err == null) return false;
+  if (typeof (err as Record<string, unknown>).status === "number") {
+    const s = (err as { status: number }).status;
+    return s === 401 || s === 403;
+  }
+  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return (
+    msg.includes("invalid api key") ||
+    msg.includes("authentication") ||
+    msg.includes("unauthorized") ||
+    msg.includes("forbidden")
+  );
+}
