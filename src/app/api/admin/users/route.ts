@@ -40,7 +40,7 @@ export async function PUT(req: NextRequest) {
   const guard = await requireAdmin();
   if ("error" in guard) return guard.error;
 
-  let body: Record<string, unknown>;
+  let body: Record<string, any>;
   try {
     body = await req.json();
   } catch {
@@ -100,7 +100,7 @@ export async function DELETE(req: NextRequest) {
   const guard = await requireAdmin();
   if ("error" in guard) return guard.error;
 
-  let body: Record<string, unknown>;
+  let body: Record<string, any>;
   try {
     body = await req.json();
   } catch {

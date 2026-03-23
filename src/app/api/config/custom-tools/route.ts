@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
-  let body: Record<string, unknown>;
+  let body: Record<string, any>;
   try {
     body = await req.json();
   } catch {
@@ -109,7 +109,7 @@ export async function PUT(req: NextRequest) {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
-  let body: Record<string, unknown>;
+  let body: Record<string, any>;
   try {
     body = await req.json();
   } catch {
@@ -167,7 +167,7 @@ export async function DELETE(req: NextRequest) {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
-  let body: Record<string, unknown>;
+  let body: Record<string, any>;
   try {
     body = await req.json();
   } catch {

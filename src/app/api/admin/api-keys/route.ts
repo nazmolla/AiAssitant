@@ -27,13 +27,13 @@ export async function DELETE(req: NextRequest) {
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
-  let body: Record<string, unknown>;
+  let body: Record<string, any>;
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const keyId = body.id;
+  const keyId = typeof body.id === "string" ? body.id : "";
   if (!keyId) {
     return NextResponse.json({ error: "Key ID is required." }, { status: 400 });
   }
