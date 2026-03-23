@@ -235,7 +235,10 @@ export async function runAgentLoop(
     await yieldLoop(); // yield event loop between iterations so other requests can be served
 
     onStatus?.({ step: "Generating response", detail: `Sending to ${orchestration.providerLabel} with ${tools.length} tool(s)${iterations > 1 ? ` (iteration ${iterations})` : ""}` });
-    let response: ChatResponse;
+    // Definite assignment assertion: response is always assigned before use —
+    // either by the primary try block, or by the fallback exhaustion loop
+    // (which throws if no provider succeeds, so we never reach the code below).
+    let response!: ChatResponse;
     try {
       response = await provider.chat(
         chatMessages,
