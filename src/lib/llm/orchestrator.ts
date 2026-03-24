@@ -431,15 +431,30 @@ export function selectBackgroundProvider(): OrchestratorResult {
 /**
  * Select a fallback provider, excluding specified labels.
  * Returns null if no alternative provider is available.
+ *
+ * @param estimatedTokens  Rough token count of the current payload.
+ *   Providers whose `maxContextTokens` is set and smaller than this value
+ *   are skipped — prevents sending oversized requests to small free-tier
+ *   models that would reject them with 413/TPM errors.
  */
 export function selectFallbackProvider(
   message: string,
   excludeLabels: string[],
-  hasImages?: boolean
+  hasImages?: boolean,
+  estimatedTokens?: number
 ): OrchestratorResult | null {
   const taskType = classifyTask(message, hasImages);
   const allProviders = listLlmProviders()
-    .filter((p) => p.purpose === "chat" && !excludeLabels.includes(p.label));
+    .filter((p) => {
+      if (p.purpose !== "chat") return false;
+      if (excludeLabels.includes(p.label)) return false;
+      // Skip providers too small for the current payload
+      if (estimatedTokens) {
+        const { capabilities } = parseProviderConfig(p);
+        if (capabilities.maxContextTokens && capabilities.maxContextTokens < estimatedTokens) return false;
+      }
+      return true;
+    });
 
   if (allProviders.length === 0) return null;
 

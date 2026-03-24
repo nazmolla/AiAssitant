@@ -75,6 +75,19 @@ export function compactHistory(msgs: ChatMessage[], maxChars = MAX_HISTORY_CHARS
     : header;
 }
 
+/**
+ * Rough token-count estimate for the full LLM payload (chat history + system prompt).
+ * Uses the ~4 chars/token heuristic — sufficient for provider routing decisions.
+ */
+export function estimateChatTokens(messages: ChatMessage[], systemPrompt: string): number {
+  const historyChars = messages.reduce((sum, m) => {
+    const contentChars = typeof m.content === "string" ? m.content.length : JSON.stringify(m.content ?? "").length;
+    const toolChars = m.tool_calls ? JSON.stringify(m.tool_calls).length : 0;
+    return sum + contentChars + toolChars;
+  }, 0);
+  return Math.ceil((historyChars + systemPrompt.length) / 4);
+}
+
 export function dbMessagesToChat(
   messages: Message[],
   latestContentParts?: ContentPart[]

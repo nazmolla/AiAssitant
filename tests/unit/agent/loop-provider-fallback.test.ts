@@ -1,11 +1,13 @@
 /**
- * Unit tests — Agent loop provider fallback exhaustion (closes #252)
+ * Unit tests — Agent loop provider fallback exhaustion (closes #252, #254)
  *
  * Validates:
  * - Primary fails → first fallback succeeds → response is returned
  * - Primary + first fallback fail → second fallback succeeds → response returned
  * - All providers fail → throws the last error received
- * - Auth error (401/403) short-circuits the fallback loop immediately
+ * - Auth error (401/403) from primary → logged as warning, fallbacks are still tried
+ * - Auth error (401/403) from fallback → logged as warning, next fallback is tried
+ * - Token-filtered fallback → providers with maxContextTokens < estimatedTokens are skipped
  */
 
 import type { AgentLoopDependencies } from "@/lib/agent/loop";
@@ -45,6 +47,7 @@ jest.mock("@/lib/agent/context-builder", () => ({
 jest.mock("@/lib/agent/message-converter", () => ({
   dbMessagesToChat: jest.fn().mockReturnValue([]),
   compactHistory: jest.fn().mockReturnValue(null),
+  estimateChatTokens: jest.fn().mockReturnValue(1000),
 }));
 
 jest.mock("@/lib/agent/title-generator", () => ({
@@ -215,17 +218,20 @@ describe("Agent loop — provider fallback exhaustion (#252)", () => {
     ).rejects.toThrow("Fallback also failed");
   });
 
-  test("auth error from primary → throws immediately without trying fallback", async () => {
+  test("auth error from primary → logs warning and tries fallbacks (401 on one provider does not block others)", async () => {
     const authErr = Object.assign(new Error("Unauthorized"), { status: 401 });
     const primaryProvider = makeProvider(authErr);
     const fallbackProvider = makeProvider("ok");
-    const selectFallbackProvider = jest.fn().mockReturnValue({
-      provider: fallbackProvider,
-      providerLabel: "Fallback",
-      taskType: "simple",
-      tier: "secondary",
-      reason: "fallback",
-    });
+    const addLog = jest.fn();
+    const selectFallbackProvider = jest.fn()
+      .mockReturnValueOnce({
+        provider: fallbackProvider,
+        providerLabel: "Fallback",
+        taskType: "simple",
+        tier: "secondary",
+        reason: "fallback",
+      })
+      .mockReturnValue(null);
 
     const deps = makeDeps({
       selectProvider: jest.fn().mockReturnValue({
@@ -236,24 +242,29 @@ describe("Agent loop — provider fallback exhaustion (#252)", () => {
         reason: "test",
       }),
       selectFallbackProvider,
+      addLog,
     });
 
-    await expect(
-      runAgentLoop(THREAD_ID, "hello", undefined, undefined, false, USER_ID,
-        undefined, undefined, undefined, deps)
-    ).rejects.toThrow("Unauthorized");
+    const result = await runAgentLoop(THREAD_ID, "hello", undefined, undefined, false, USER_ID,
+      undefined, undefined, undefined, deps);
 
-    // selectFallbackProvider should never have been called
-    expect(selectFallbackProvider).not.toHaveBeenCalled();
-    expect(fallbackProvider.chat).not.toHaveBeenCalled();
+    // Fallback should succeed
+    expect(result.content).toBe("Hello!");
+    expect(fallbackProvider.chat).toHaveBeenCalledTimes(1);
+    // Auth warning should have been logged
+    const authWarning = addLog.mock.calls.find((c) =>
+      c[0]?.message?.includes("auth failed") && c[0]?.message?.includes("Primary")
+    );
+    expect(authWarning).toBeDefined();
   });
 
-  test("auth error from fallback → throws immediately without trying next fallback", async () => {
+  test("auth error from fallback → skips that provider and tries next fallback", async () => {
     const primaryErr = new Error("Rate limit");
     const authErr = Object.assign(new Error("Forbidden"), { status: 403 });
     const primaryProvider = makeProvider(primaryErr);
     const fallbackProvider = makeProvider(authErr);
     const fallback2Provider = makeProvider("ok");
+    const addLog = jest.fn();
 
     const selectFallbackProvider = jest.fn()
       .mockReturnValueOnce({
@@ -269,7 +280,54 @@ describe("Agent loop — provider fallback exhaustion (#252)", () => {
         taskType: "simple",
         tier: "local",
         reason: "fallback2",
-      });
+      })
+      .mockReturnValue(null);
+
+    const deps = makeDeps({
+      selectProvider: jest.fn().mockReturnValue({
+        provider: primaryProvider,
+        providerLabel: "Primary",
+        taskType: "simple",
+        tier: "primary",
+        reason: "test",
+      }),
+      selectFallbackProvider,
+      addLog,
+    });
+
+    const result = await runAgentLoop(THREAD_ID, "hello", undefined, undefined, false, USER_ID,
+      undefined, undefined, undefined, deps);
+
+    // Second fallback should succeed
+    expect(result.content).toBe("Hello!");
+    expect(fallbackProvider.chat).toHaveBeenCalledTimes(1);
+    expect(fallback2Provider.chat).toHaveBeenCalledTimes(1);
+    // Auth skip warning should have been logged
+    const authSkipWarning = addLog.mock.calls.find((c) =>
+      c[0]?.message?.includes("auth failed") && c[0]?.message?.includes("Fallback")
+    );
+    expect(authSkipWarning).toBeDefined();
+  });
+});
+
+describe("Agent loop — context-aware fallback (token filtering, #254)", () => {
+  const THREAD_ID = "thread-token-filter";
+  const USER_ID = "user-1";
+
+  test("selectFallbackProvider receives estimatedTokens so small providers are filtered upstream", async () => {
+    // The loop passes estimatedTokens; we verify selectFallbackProvider is called with a 4th argument
+    const primaryErr = new Error("Rate limit");
+    const primaryProvider = makeProvider(primaryErr);
+    const fallbackProvider = makeProvider("ok");
+    const selectFallbackProvider = jest.fn()
+      .mockReturnValueOnce({
+        provider: fallbackProvider,
+        providerLabel: "Fallback",
+        taskType: "simple",
+        tier: "secondary",
+        reason: "fallback",
+      })
+      .mockReturnValue(null);
 
     const deps = makeDeps({
       selectProvider: jest.fn().mockReturnValue({
@@ -282,12 +340,13 @@ describe("Agent loop — provider fallback exhaustion (#252)", () => {
       selectFallbackProvider,
     });
 
-    await expect(
-      runAgentLoop(THREAD_ID, "hello", undefined, undefined, false, USER_ID,
-        undefined, undefined, undefined, deps)
-    ).rejects.toThrow("Forbidden");
+    await runAgentLoop(THREAD_ID, "hello", undefined, undefined, false, USER_ID,
+      undefined, undefined, undefined, deps);
 
-    // Only first fallback was tried; second fallback never reached
-    expect(fallback2Provider.chat).not.toHaveBeenCalled();
+    // 4th argument (estimatedTokens) should be a positive number
+    const callArgs = selectFallbackProvider.mock.calls[0];
+    expect(callArgs).toHaveLength(4);
+    expect(typeof callArgs[3]).toBe("number");
+    expect(callArgs[3]).toBeGreaterThan(0);
   });
 });

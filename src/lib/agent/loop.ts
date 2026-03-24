@@ -42,7 +42,7 @@ import { newTrace } from "@/lib/logging/logger";
 import crypto from "crypto";
 import { SYSTEM_PROMPT, MAX_TOOL_ITERATIONS, isUntrustedToolOutput } from "./system-prompt";
 import { buildKnowledgeContext, buildProfileContext, buildMcpContext } from "./context-builder";
-import { dbMessagesToChat, compactHistory } from "./message-converter";
+import { dbMessagesToChat, compactHistory, estimateChatTokens } from "./message-converter";
 import { executeToolWithPolicy } from "./tool-executor";
 import { maybeUpdateThreadTitle } from "./title-generator";
 import { persistKnowledgeFromTurn } from "./knowledge-persistence";
@@ -235,6 +235,13 @@ export async function runAgentLoop(
     await yieldLoop(); // yield event loop between iterations so other requests can be served
 
     onStatus?.({ step: "Generating response", detail: `Sending to ${orchestration.providerLabel} with ${tools.length} tool(s)${iterations > 1 ? ` (iteration ${iterations})` : ""}` });
+
+    // Build the full system prompt once per iteration (used for both primary and fallback attempts).
+    const systemPromptFull = SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext + (compactedSummary ? `\n\n${compactedSummary}` : "");
+    // Estimate payload size so context-aware fallback selection can skip providers
+    // whose maxContextTokens is smaller than the current request.
+    const estimatedTokens = estimateChatTokens(chatMessages, systemPromptFull);
+
     // Definite assignment assertion: response is always assigned before use —
     // either by the primary try block, or by the fallback exhaustion loop
     // (which throws if no provider succeeds, so we never reach the code below).
@@ -243,20 +250,30 @@ export async function runAgentLoop(
       response = await provider.chat(
         chatMessages,
         tools.length > 0 ? tools : undefined,
-        SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext + (compactedSummary ? `\n\n${compactedSummary}` : ""),
+        systemPromptFull,
         onToken
       );
     } catch (primaryErr) {
-      // Auth errors (401/403) mean the credentials are wrong — no point trying other providers.
-      if (isAuthError(primaryErr)) throw primaryErr;
+      // Log auth errors from the primary provider prominently so ops can identify
+      // misconfigured keys, but continue to fallbacks — each provider has its own
+      // credentials, so one 401 does not mean all providers will fail.
+      if (isAuthError(primaryErr)) {
+        deps.addLog({
+          level: "warn",
+          source: "agent",
+          message: `Provider ${orchestration.providerLabel} auth failed (401/403) — trying fallbacks`,
+          metadata: JSON.stringify({ error: primaryErr instanceof Error ? primaryErr.message : String(primaryErr) }),
+        });
+      }
 
       // Exhaust all remaining providers in score order before giving up.
+      // estimatedTokens filters out providers too small for the current payload.
       const triedLabels: string[] = [orchestration.providerLabel];
       let lastErr: unknown = primaryErr;
       let succeeded = false;
 
       while (!succeeded) {
-        const fallback = deps.selectFallbackProvider(userMessage || "continuation", triedLabels, hasImages);
+        const fallback = deps.selectFallbackProvider(userMessage || "continuation", triedLabels, hasImages, estimatedTokens);
         if (!fallback) break;
 
         triedLabels.push(fallback.providerLabel);
@@ -274,12 +291,21 @@ export async function runAgentLoop(
           response = await provider.chat(
             chatMessages,
             tools.length > 0 ? tools : undefined,
-            SYSTEM_PROMPT + profileContext + mcpContext + knowledgeContext + (compactedSummary ? `\n\n${compactedSummary}` : ""),
+            systemPromptFull,
             onToken
           );
           succeeded = true;
         } catch (fallbackErr) {
-          if (isAuthError(fallbackErr)) throw fallbackErr;
+          // Log auth failures from fallback providers for ops visibility, then skip
+          // to the next candidate — a bad key on one provider should not block others.
+          if (isAuthError(fallbackErr)) {
+            deps.addLog({
+              level: "warn",
+              source: "agent",
+              message: `Provider ${fallback.providerLabel} auth failed (401/403) — skipping`,
+              metadata: JSON.stringify({ error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr) }),
+            });
+          }
           lastErr = fallbackErr;
         }
       }

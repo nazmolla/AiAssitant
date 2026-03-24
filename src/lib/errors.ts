@@ -104,10 +104,23 @@ export function isRateLimitError(err: unknown): boolean {
 }
 
 /**
+ * Returns true if the error is an HTTP 413 "payload too large" response,
+ * indicating the request body exceeded the provider's size or TPM limit.
+ * These errors should cause the fallback loop to skip providers that are
+ * too small for the current payload (see selectFallbackProvider estimatedTokens).
+ */
+export function isPayloadTooLargeError(err: unknown): boolean {
+  if (err == null) return false;
+  if (typeof (err as Record<string, unknown>).status === "number") {
+    return (err as { status: number }).status === 413;
+  }
+  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return msg.includes("request too large") || msg.includes("413") || msg.includes("tpm limit");
+}
+
+/**
  * Returns true if the error is an authentication/authorization failure (HTTP
- * 401 or 403) from either the OpenAI or Anthropic SDK.  Auth errors should
- * short-circuit the provider fallback loop — trying other providers with the
- * same credentials is unlikely to succeed.
+ * 401 or 403) from either the OpenAI or Anthropic SDK.
  */
 export function isAuthError(err: unknown): boolean {
   if (err == null) return false;
