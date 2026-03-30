@@ -56,6 +56,8 @@ const WhisperConfig = dynamic(() => import("@/components/whisper-config").then(m
 const SchedulerConfig = dynamic(() => import("@/components/scheduler-config").then(m => ({ default: m.SchedulerConfig })), { ssr: false });
 const DbManagementConfig = dynamic(() => import("@/components/db-management-config").then(m => ({ default: m.DbManagementConfig })), { ssr: false });
 const StandingOrdersConfig = dynamic(() => import("@/components/standing-orders-config").then(m => ({ default: m.StandingOrdersConfig })), { ssr: false });
+const DevicesConfig = dynamic(() => import("@/components/devices-config").then(m => ({ default: m.DevicesConfig })), { ssr: false });
+const VoiceProfileConfig = dynamic(() => import("@/components/voice-profile-config").then(m => ({ default: m.VoiceProfileConfig })), { ssr: false });
 
 /* ── URL ↔ tab mapping (module-level for stable references) ── */
 const TAB_FROM_PATH: Record<string, string> = {
@@ -428,6 +430,8 @@ const SETTINGS_PAGES: SettingsPage[] = [
   { key: "mcp", label: "MCP Servers", icon: "🔌", permKey: "mcp_servers" },
   { key: "policies", label: "Tool Policies", icon: "🛡️", permKey: "mcp_servers" },
   { key: "standing-orders", label: "Standing Orders", icon: "📋" },
+  { key: "devices", label: "Devices", icon: "📟" },
+  { key: "voice-profile", label: "Voice Profile", icon: "🎙️" },
   { key: "whisper", label: "Local Whisper", icon: "🎤", adminOnly: true },
   { key: "logging", label: "Logging", icon: "🧾" },
   { key: "search-providers", label: "Search Providers", icon: "🔎", adminOnly: true },
@@ -446,6 +450,8 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
   mcp: { title: "MCP Servers", subtitle: "Manage Model Context Protocol server connections." },
   policies: { title: "Tool Policies", subtitle: "Configure approval requirements and proactive scanning for each discovered tool." },
   "standing-orders": { title: "Standing Orders", subtitle: "View, edit, or revoke your saved approval decisions (Always Allow, Always Ignore, Always Reject)." },
+  devices: { title: "Devices", subtitle: "Register ESP32 and other hardware voice clients. Each device gets a one-time API key to connect." },
+  "voice-profile": { title: "Voice Profile", subtitle: "Enroll your voice so a shared device can identify you and route conversations to your account." },
   whisper: { title: "Local Whisper", subtitle: "Deploy and configure a local Whisper server as a fallback for cloud Speech-to-Text." },
   logging: { title: "Logging", subtitle: "Server-wide log levels, retention boundary, and cleanup tools." },
   "search-providers": { title: "Search Providers", subtitle: "Configure DB-backed web search providers and fallback order for builtin web_search." },
@@ -566,6 +572,8 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
           {active === "mcp" && <McpConfig />}
           {active === "policies" && <ToolPolicies />}
           {active === "standing-orders" && <StandingOrdersConfig />}
+          {active === "devices" && <DevicesConfig />}
+          {active === "voice-profile" && <VoiceProfileConfig />}
           {active === "whisper" && userRole === "admin" && <WhisperConfig />}
           {active === "logging" && <LoggingConfig />}
           {active === "search-providers" && userRole === "admin" && <SearchProvidersConfig />}

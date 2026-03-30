@@ -27,7 +27,7 @@ const ALLOWED_TABLES = new Set([
   "approval_queue", "approval_preferences",
   "scheduler_schedules", "scheduler_tasks", "scheduler_runs",
   "scheduler_task_runs", "scheduler_claims", "scheduler_events",
-  "knowledge_embeddings",
+  "knowledge_embeddings", "devices", "voice_profiles",
 ]);
 
 // ─── Helper: get column names for a table ─────────────────────

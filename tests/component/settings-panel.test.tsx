@@ -94,6 +94,8 @@ jest.mock("@/components/custom-tools-config", () => ({ CustomToolsConfig: () => 
 jest.mock("@/components/logging-config", () => ({ LoggingConfig: () => <div data-testid="logging">Logging Config</div> }));
 jest.mock("@/components/whisper-config", () => ({ WhisperConfig: () => <div data-testid="whisper">Whisper Config</div> }));
 jest.mock("@/components/scheduler-config", () => ({ SchedulerConfig: () => <div data-testid="scheduler">Scheduler Config</div> }));
+jest.mock("@/components/devices-config", () => ({ DevicesConfig: () => <div data-testid="devices">Devices Config</div> }));
+jest.mock("@/components/voice-profile-config", () => ({ VoiceProfileConfig: () => <div data-testid="voice-profile">Voice Profile Config</div> }));
 
 import HomePage from "@/app/[[...path]]/page";
 

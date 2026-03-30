@@ -466,6 +466,28 @@ CREATE TABLE IF NOT EXISTS api_keys (
 CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
 
+-- ═══ Devices (ESP32 hardware voice clients) ═══
+-- Device keys are stored in the api_keys table with scopes = ["device"].
+-- This table holds additional device metadata linked to the api_key id.
+
+CREATE TABLE IF NOT EXISTS devices (
+    api_key_id TEXT PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
+
+-- ═══ Voice Speaker Profiles ═══
+
+CREATE TABLE IF NOT EXISTS voice_profiles (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    embedding BLOB NOT NULL,
+    enrolled_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_profiles_user ON voice_profiles(user_id);
+
 -- ═══ Performance Indexes ═══
 
 CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads(user_id);

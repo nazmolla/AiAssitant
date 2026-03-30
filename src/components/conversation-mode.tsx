@@ -83,13 +83,15 @@ export function ConversationMode() {
   const streamRef = useRef<MediaStream | null>(null);
   const silenceStartRef = useRef<number | null>(null);
   const speechDetectedRef = useRef(false);
+  /** Persisted thread ID — set after first LLM response, cleared on new conversation */
+  const threadIdRef = useRef<string | null>(null);
   const speechStartRef = useRef<number | null>(null);
   const vadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const autoListenRef = useRef(true);
-  const conversationHistoryRef = useRef<Array<{ role: string; content: string }>>([]); // in-memory LLM history
+  // conversationHistoryRef removed — history is now persisted in the DB via threadIdRef
   const voicePreviewRef = useRef<HTMLAudioElement | null>(null);
 
   // Interrupt (barge-in) refs
@@ -489,13 +491,13 @@ export function ConversationMode() {
       const abort = new AbortController();
       abortRef.current = abort;
 
-      // Build history from in-memory ref (no thread/DB needed)
-      const history = conversationHistoryRef.current;
-
       const chatRes = await fetch("/api/conversation/respond", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText, history }),
+        body: JSON.stringify({
+          message: userText,
+          ...(threadIdRef.current ? { threadId: threadIdRef.current } : {}),
+        }),
         signal: abort.signal,
       });
 
@@ -541,6 +543,9 @@ export function ConversationMode() {
                 if (data.content && !fullResponse) {
                   fullResponse = data.content;
                 }
+                if (data.threadId && !threadIdRef.current) {
+                  threadIdRef.current = data.threadId;
+                }
               } else if (currentEvent === "error") {
                 throw new Error(data.error || "LLM error");
               }
@@ -559,13 +564,6 @@ export function ConversationMode() {
       if (!fullResponse.trim()) {
         throw new Error("Empty response from LLM");
       }
-
-      // Update in-memory conversation history
-      conversationHistoryRef.current = [
-        ...history,
-        { role: "user", content: userText },
-        { role: "assistant", content: fullResponse },
-      ].slice(-30); // cap at 30 messages
 
       // Add assistant response to transcript
       setTranscript((prev) => [...prev, { role: "assistant", text: fullResponse, timestamp: Date.now() }]);
@@ -1097,7 +1095,7 @@ export function ConversationMode() {
             color="inherit"
             onClick={() => {
               setTranscript([]);
-              conversationHistoryRef.current = [];
+              threadIdRef.current = null;
             }}
             sx={{ fontSize: "0.7rem", opacity: 0.6 }}
           >

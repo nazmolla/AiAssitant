@@ -18,7 +18,7 @@ export interface ApiKeyRecord {
 }
 
 /** All valid scopes a key can be granted */
-export const API_KEY_SCOPES = ["chat", "knowledge", "approvals", "threads", "logs"] as const;
+export const API_KEY_SCOPES = ["chat", "knowledge", "approvals", "threads", "logs", "device"] as const;
 export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
 
 /**

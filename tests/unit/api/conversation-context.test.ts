@@ -1,24 +1,37 @@
 /**
- * Unit tests for POST /api/conversation/respond — context enrichment (#210).
+ * Unit tests for POST /api/conversation/respond — routing and thread lifecycle (#210, #271).
  *
- * Verifies that the conversation endpoint builds and injects:
- *  - Knowledge context (from buildKnowledgeContext)
- *  - User profile context (from buildProfileContext)
- *  - MCP server context (from buildMcpContext)
- * into the system prompt sent to the LLM.
+ * The conversation route now uses runAgentLoopWithWorker (full loop with context
+ * enrichment, persistence, tools) rather than a bespoke lightweight loop.
+ * Context enrichment (knowledge, profile, MCP) happens inside the agent loop.
+ *
+ * These tests verify:
+ *  - The route creates a new thread when no threadId is provided
+ *  - The route resumes an existing thread when threadId is provided
+ *  - threadId is returned in the SSE done event
+ *  - runAgentLoopWithWorker is called with the correct arguments
  *
  * @jest-environment node
  */
 
-// ── Context builder mocks ───────────────────────────────────────────────────
+// ── DB mocks — must be before imports ────────────────────────────────────────
 
-jest.mock("@/lib/agent/context-builder", () => ({
-  buildKnowledgeContext: jest.fn().mockResolvedValue("<knowledge_context>test facts</knowledge_context>"),
-  buildProfileContext: jest.fn().mockReturnValue("<user_profile>Name: Test User</user_profile>"),
-  buildMcpContext: jest.fn().mockReturnValue("<mcp_servers>HomeAssistant</mcp_servers>"),
+const MOCK_THREAD_ID = "test-thread-uuid-001";
+const MOCK_THREAD = {
+  id: MOCK_THREAD_ID,
+  user_id: "user-1",
+  title: "Voice Conversation",
+  thread_type: "interactive",
+  is_interactive: 1,
+  status: "active",
+};
+
+jest.mock("@/lib/db/thread-queries", () => ({
+  createThread: jest.fn().mockReturnValue(MOCK_THREAD),
+  getThread: jest.fn().mockReturnValue(MOCK_THREAD),
 }));
 
-// ── Auth / DB / LLM mocks ───────────────────────────────────────────────────
+// ── Auth mock ─────────────────────────────────────────────────────────────────
 
 jest.mock("@/lib/auth/guard", () => ({
   requireUser: jest.fn().mockResolvedValue({
@@ -26,132 +39,129 @@ jest.mock("@/lib/auth/guard", () => ({
   }),
 }));
 
-jest.mock("@/lib/db", () => ({
-  addLog: jest.fn(),
-  getUserById: jest.fn().mockReturnValue({ id: "user-1", role: "user" }),
-  listToolPolicies: jest.fn().mockReturnValue([]),
-}));
+// ── Agent loop mock ───────────────────────────────────────────────────────────
 
-jest.mock("@/lib/mcp", () => ({
-  getMcpManager: () => ({
-    getAllTools: () => [],
-    getConnectedServers: () => [],
-  }),
-}));
-
-jest.mock("@/lib/tools/custom-tools", () => ({
-  getCustomToolDefinitions: jest.fn().mockReturnValue([]),
-}));
-
-jest.mock("@/lib/tools", () => ({
-  ALL_TOOL_CATEGORIES: [],
-  buildCappedToolList: jest.fn().mockReturnValue([]),
-}));
-
-jest.mock("@/lib/tools/tool-cap", () => ({
-  buildCappedToolList: jest.fn().mockReturnValue([]),
-  MAX_TOOLS_PER_REQUEST: 50,
-}));
+const mockRunAgentLoopWithWorker = jest.fn().mockResolvedValue({
+  content: "Hello from agent",
+  toolsUsed: [],
+  pendingApprovals: [],
+  attachments: [],
+});
 
 jest.mock("@/lib/agent", () => ({
-  isWorkerAvailable: jest.fn().mockReturnValue(false),
-  ALL_TOOL_CATEGORIES: [],
-  getCustomToolDefinitions: jest.fn().mockReturnValue([]),
+  runAgentLoopWithWorker: (...args: unknown[]) => mockRunAgentLoopWithWorker(...args),
 }));
 
-jest.mock("@/lib/agent/worker-manager", () => ({
-  isWorkerAvailable: jest.fn().mockReturnValue(false),
-  runLlmInWorker: jest.fn(),
-}));
+// ── SSE mock ──────────────────────────────────────────────────────────────────
 
-// Capture the system prompt passed to the LLM
-let capturedSystemPrompt = "";
-jest.mock("@/lib/llm/orchestrator", () => ({
-  selectProvider: jest.fn().mockReturnValue({
-    providerLabel: "TestProvider",
-    provider: {
-      chat: jest.fn().mockImplementation(
-        (_messages: unknown, _tools: unknown, systemPrompt?: string) => {
-          capturedSystemPrompt = systemPrompt ?? "";
-          return Promise.resolve({ content: "Hello!", toolCalls: [] });
-        }
-      ),
-    },
-    taskType: "chat",
-    reason: "test",
-  }),
-  selectProviderForWorker: jest.fn(),
-}));
-
+const sentEvents: string[] = [];
 jest.mock("@/lib/sse", () => ({
   createSSEStream: jest.fn().mockReturnValue({
-    send: jest.fn(),
+    send: jest.fn().mockImplementation((ev: string) => sentEvents.push(ev)),
     close: jest.fn(),
-    response: new Response(),
   }),
-  sseResponse: jest.fn(),
-  sseEvent: jest.fn().mockImplementation((type: string, data: unknown) => `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`),
+  sseResponse: jest.fn().mockReturnValue(new Response()),
+  sseEvent: jest.fn().mockImplementation((type: string, data: unknown) => {
+    return `event:${type}|data:${JSON.stringify(data)}`;
+  }),
 }));
 
-jest.mock("@/lib/prompts", () => ({
-  CONVERSATION_SYSTEM_PROMPT: "BASE_SYSTEM_PROMPT",
-}));
+// ── Import route after all mocks ─────────────────────────────────────────────
 
-jest.mock("@/lib/constants", () => ({
-  VOICE_MAX_HISTORY_MESSAGES: 10,
-  VOICE_MAX_TOOL_ITERATIONS: 5,
-  VOICE_TURN_TIMEOUT_MS: 30000,
-}));
+import { NextRequest } from "next/server";
+import { createThread, getThread } from "@/lib/db/thread-queries";
 
-// ── Import after all mocks ───────────────────────────────────────────────────
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
-import { buildKnowledgeContext, buildProfileContext, buildMcpContext } from "@/lib/agent/context-builder";
-
-// ── Tests ────────────────────────────────────────────────────────────────────
-
-describe("POST /api/conversation/respond — context enrichment", () => {
+describe("POST /api/conversation/respond — routing and thread lifecycle", () => {
   beforeEach(() => {
-    capturedSystemPrompt = "";
+    sentEvents.length = 0;
     jest.clearAllMocks();
-    // Re-apply stable mock implementations after clearAllMocks
-    (buildKnowledgeContext as jest.Mock).mockResolvedValue("<knowledge_context>test facts</knowledge_context>");
-    (buildProfileContext as jest.Mock).mockReturnValue("<user_profile>Name: Test User</user_profile>");
-    (buildMcpContext as jest.Mock).mockReturnValue("<mcp_servers>HomeAssistant</mcp_servers>");
+    (createThread as jest.Mock).mockReturnValue(MOCK_THREAD);
+    (getThread as jest.Mock).mockReturnValue(MOCK_THREAD);
+    mockRunAgentLoopWithWorker.mockResolvedValue({
+      content: "Hello from agent",
+      toolsUsed: [],
+      pendingApprovals: [],
+      attachments: [],
+    });
   });
 
-  test("buildKnowledgeContext is called with user message and userId", async () => {
+  test("creates a new thread when no threadId provided", async () => {
     const { POST } = await import("@/app/api/conversation/respond/route");
-    const req = new Request("http://localhost/api/conversation/respond", {
+    const req = new NextRequest("http://localhost/api/conversation/respond", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: "What lights are on?" }),
+      headers: { "Content-Type": "application/json" },
     });
-    await POST(req as never);
+    await POST(req);
 
-    expect(buildKnowledgeContext).toHaveBeenCalledWith("What lights are on?", "user-1");
+    expect(createThread).toHaveBeenCalledWith("Voice Conversation", "user-1");
   });
 
-  test("buildProfileContext is called with userId", async () => {
+  test("resumes existing thread when threadId is provided", async () => {
     const { POST } = await import("@/app/api/conversation/respond/route");
-    const req = new Request("http://localhost/api/conversation/respond", {
+    const req = new NextRequest("http://localhost/api/conversation/respond", {
       method: "POST",
+      body: JSON.stringify({ message: "Hello", threadId: MOCK_THREAD_ID }),
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: "Hello" }),
     });
-    await POST(req as never);
+    await POST(req);
 
-    expect(buildProfileContext).toHaveBeenCalledWith("user-1");
+    expect(getThread).toHaveBeenCalledWith(MOCK_THREAD_ID);
+    expect(createThread).not.toHaveBeenCalled();
   });
 
-  test("buildMcpContext is called", async () => {
+  test("calls runAgentLoopWithWorker with correct threadId, message, and userId", async () => {
     const { POST } = await import("@/app/api/conversation/respond/route");
-    const req = new Request("http://localhost/api/conversation/respond", {
+    const req = new NextRequest("http://localhost/api/conversation/respond", {
       method: "POST",
+      body: JSON.stringify({ message: "Test message" }),
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: "Hello" }),
     });
-    await POST(req as never);
+    await POST(req);
 
-    expect(buildMcpContext).toHaveBeenCalled();
+    // Allow fire-and-forget async loop to complete
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockRunAgentLoopWithWorker).toHaveBeenCalledWith(
+      MOCK_THREAD_ID,
+      "Test message",
+      undefined,
+      undefined,
+      undefined,
+      "user-1",
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function)
+    );
+  });
+
+  test("done event includes threadId", async () => {
+    const { POST } = await import("@/app/api/conversation/respond/route");
+    const req = new NextRequest("http://localhost/api/conversation/respond", {
+      method: "POST",
+      body: JSON.stringify({ message: "Hello" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    await POST(req);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const doneEvent = sentEvents.find((e) => e.startsWith("event:done"));
+    expect(doneEvent).toBeDefined();
+    expect(doneEvent).toContain(MOCK_THREAD_ID);
+  });
+
+  test("returns 403 when threadId belongs to another user", async () => {
+    (getThread as jest.Mock).mockReturnValue({ ...MOCK_THREAD, user_id: "other-user" });
+    const { POST } = await import("@/app/api/conversation/respond/route");
+    const req = new NextRequest("http://localhost/api/conversation/respond", {
+      method: "POST",
+      body: JSON.stringify({ message: "Hello", threadId: MOCK_THREAD_ID }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(403);
   });
 });
