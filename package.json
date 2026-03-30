@@ -23,7 +23,7 @@
     "deploy:dev": "npm install && npx playwright install chromium && npm run dev"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
+    "@anthropic-ai/sdk": "^0.80.0",
     "@azure/openai": "^2.0.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
