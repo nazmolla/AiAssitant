@@ -77,7 +77,7 @@ async function getAzureEmbedding(audioBuffer: Buffer): Promise<Float32Array | nu
             "Ocp-Apim-Subscription-Key": key,
             "Content-Type": "audio/wav",
           },
-          body: audioBuffer,
+          body: audioBuffer as unknown as BodyInit,
         }
       );
       if (!enrollRes.ok) return null;
