@@ -52,7 +52,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cron": "^3.1.7",
-    "discord.js": "^14.25.1",
+    "discord.js": "^14.26.0",
     "docx": "^9.6.1",
     "exceljs": "^4.4.0",
     "imapflow": "^1.2.10",
