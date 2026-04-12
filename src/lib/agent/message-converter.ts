@@ -213,5 +213,20 @@ export function dbMessagesToChat(
     }
   }
 
+  // Merge consecutive user messages so the payload always alternates roles.
+  // Consecutive user messages arise when an orphaned assistant tool_calls block
+  // (e.g. a pending dispatch_agent call in a multi-agent thread) is stripped,
+  // leaving the prior user message immediately adjacent to the inner-agent task
+  // message.  Strict providers like Azure OpenAI reject such sequences with a
+  // misleading "tool_calls must be followed by tool messages" 400 error.
+  for (let i = result.length - 1; i > 0; i--) {
+    if (result[i].role === "user" && result[i - 1].role === "user") {
+      const prev = typeof result[i - 1].content === "string" ? (result[i - 1].content as string) : "";
+      const curr = typeof result[i].content === "string" ? (result[i].content as string) : "";
+      result[i - 1] = { ...result[i - 1], content: prev ? `${prev}\n\n${curr}` : curr };
+      result.splice(i, 1);
+    }
+  }
+
   return result;
 }

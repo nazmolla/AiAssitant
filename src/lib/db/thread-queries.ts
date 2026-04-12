@@ -182,9 +182,21 @@ export function getMessageAttachments(messageId: number): AttachmentRecord[] {
   return stmt("SELECT * FROM attachments WHERE message_id = ? ORDER BY created_at ASC").all(messageId) as AttachmentRecord[];
 }
 
+/**
+ * Maximum number of messages loaded from the DB per agent turn.
+ * Loading an unbounded history caused an OOM crash (Apr 9 2026) when a large
+ * thread was fetched via Statement::JS_all.  500 messages covers ~100+ turns
+ * of conversation; compactHistory() provides a second trim to MAX_HISTORY_CHARS.
+ */
+export const MAX_THREAD_MESSAGES_LOADED = 500;
+
 export function getThreadMessages(threadId: string): Message[] {
+  // Load only the most recent MAX_THREAD_MESSAGES_LOADED messages to prevent
+  // unbounded memory allocation on very long threads.
   return stmt(
-    "SELECT * FROM messages WHERE thread_id = ? ORDER BY id ASC"
+    `SELECT * FROM (
+       SELECT * FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT ${MAX_THREAD_MESSAGES_LOADED}
+     ) ORDER BY id ASC`
   ).all(threadId) as Message[];
 }
 

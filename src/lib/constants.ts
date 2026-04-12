@@ -118,8 +118,13 @@ export const LLM_MAX_RESPONSE_TOKENS = 4_096;
 /** OpenAI client HTTP timeout (ms) — 120 s to accommodate multi-agent orchestrator runs */
 export const LLM_CLIENT_TIMEOUT_MS = 120_000;
 
-/** Max retry attempts for LLM API calls */
-export const LLM_MAX_RETRIES = 1;
+/**
+ * Max retry attempts for LLM API calls.
+ * Set to 0 because the agent loop's provider fallback chain already handles
+ * transient failures across providers. SDK-level retries accumulate AbortSignal
+ * listeners (OpenAI SDK v6) and cause a memory leak under sustained load.
+ */
+export const LLM_MAX_RETRIES = 0;
 
 /** Max entries in the embedding vector cache */
 export const EMBEDDING_CACHE_MAX_SIZE = 500;

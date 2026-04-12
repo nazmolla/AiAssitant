@@ -7,6 +7,7 @@
  * - Orphaned assistant tool_calls (missing tool results) are stripped
  * - Partial tool results (some present, some missing) — entire batch stripped
  * - System messages are excluded
+ * - Consecutive user messages are merged (prevents Azure 400 after orphan strip)
  * - compactHistory trims by character budget, lands on user boundary, returns summary
  */
 import type { Message } from "@/lib/db/thread-queries";
@@ -90,10 +91,34 @@ describe("dbMessagesToChat", () => {
       makeDbMsg(3, "user", "What happened?"),
     ];
     const result = dbMessagesToChat(messages);
-    // The orphaned assistant message should be stripped
-    expect(result).toHaveLength(2);
-    expect(result[0]).toMatchObject({ role: "user", content: "Fetch this" });
-    expect(result[1]).toMatchObject({ role: "user", content: "What happened?" });
+    // The orphaned assistant message is stripped, leaving two consecutive user
+    // messages that are then merged to prevent strict-provider 400 errors.
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("user");
+    expect(result[0].content).toContain("Fetch this");
+    expect(result[0].content).toContain("What happened?");
+  });
+
+  test("merges consecutive user messages that arise after orphan strip (multi-agent scenario)", () => {
+    // Simulates the multi-agent pattern: orchestrator dispatches an inner agent
+    // as its first and only tool call in a turn.  The dispatch_agent tool call
+    // is orphaned (inner loop runs during execution, result not yet in DB).
+    // After stripping the orphaned assistant message the outer user message and
+    // the inner agent's injected task message would be adjacent.
+    const dispatchToolCalls = JSON.stringify([
+      { id: "call_dispatch", name: "dispatch_agent", arguments: { agent: "web_researcher", task: "Find X" } },
+    ]);
+    const messages = [
+      makeDbMsg(1, "user", "Proactive trigger"),
+      makeDbMsg(2, "assistant", null, { tool_calls: dispatchToolCalls }), // orphaned — no tool result
+      makeDbMsg(3, "user", "## Your role\nWeb Researcher\n\n## Task\nFind X"),
+    ];
+    const result = dbMessagesToChat(messages);
+    // Orphaned assistant stripped → two consecutive user messages → merged into one
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("user");
+    expect(result[0].content).toContain("Proactive trigger");
+    expect(result[0].content).toContain("## Your role");
   });
 
   test("strips entire batch when only some tool results are present (partial)", () => {
@@ -111,13 +136,15 @@ describe("dbMessagesToChat", () => {
       makeDbMsg(4, "user", "Next question"),
     ];
     const result = dbMessagesToChat(messages);
-    // Both the assistant tool_calls message and the partial tool result should be stripped
-    expect(result).toHaveLength(2);
-    expect(result[0]).toMatchObject({ role: "user", content: "Do two things" });
-    expect(result[1]).toMatchObject({ role: "user", content: "Next question" });
+    // The assistant tool_calls and orphaned partial tool result are stripped.
+    // The two remaining consecutive user messages are merged into one.
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("user");
+    expect(result[0].content).toContain("Do two things");
+    expect(result[0].content).toContain("Next question");
   });
 
-  test("preserves messages before and after an orphaned batch", () => {
+  test("preserves messages before and after an orphaned batch, merging adjacent user messages", () => {
     const goodToolCalls = JSON.stringify([{ id: "call_good", name: "web_search", arguments: {} }]);
     const goodToolResults = JSON.stringify({ tool_call_id: "call_good", name: "web_search" });
     const orphanedToolCalls = JSON.stringify([{ id: "call_bad", name: "file_read", arguments: {} }]);
@@ -133,15 +160,17 @@ describe("dbMessagesToChat", () => {
       makeDbMsg(7, "user", "Still waiting"),
     ];
     const result = dbMessagesToChat(messages);
-    // Good sequence preserved, orphaned batch stripped, surrounding messages kept
-    expect(result).toHaveLength(6);
+    // Good sequence preserved; orphaned batch stripped; "Second question" and
+    // "Still waiting" are consecutive user messages after the strip → merged.
+    expect(result).toHaveLength(5);
     expect(result[0]).toMatchObject({ role: "user", content: "First question" });
     expect(result[1].role).toBe("assistant");
     expect(result[1].tool_calls).toHaveLength(1);
     expect(result[2]).toMatchObject({ role: "tool", tool_call_id: "call_good" });
     expect(result[3]).toMatchObject({ role: "assistant", content: "Here is the answer" });
-    expect(result[4]).toMatchObject({ role: "user", content: "Second question" });
-    expect(result[5]).toMatchObject({ role: "user", content: "Still waiting" });
+    expect(result[4].role).toBe("user");
+    expect(result[4].content).toContain("Second question");
+    expect(result[4].content).toContain("Still waiting");
   });
 });
 

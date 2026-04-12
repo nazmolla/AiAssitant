@@ -27,7 +27,7 @@ describe("OpenAIChatProvider — SDK configuration", () => {
     constructorCalls.length = 0;
   });
 
-  test("standard OpenAI client uses 120s timeout and 1 retry", () => {
+  test("standard OpenAI client uses 120s timeout and 0 retries (AbortSignal leak fix)", () => {
     new OpenAIChatProvider({
       variant: "openai",
       apiKey: "sk-test",
@@ -36,10 +36,10 @@ describe("OpenAIChatProvider — SDK configuration", () => {
 
     expect(constructorCalls).toHaveLength(1);
     expect(constructorCalls[0].timeout).toBe(120_000);
-    expect(constructorCalls[0].maxRetries).toBe(1);
+    expect(constructorCalls[0].maxRetries).toBe(0);
   });
 
-  test("Azure OpenAI client uses 120s timeout and 1 retry", () => {
+  test("Azure OpenAI client uses 120s timeout and 0 retries (AbortSignal leak fix)", () => {
     new OpenAIChatProvider({
       variant: "azure",
       apiKey: "azure-key-test",
@@ -49,7 +49,7 @@ describe("OpenAIChatProvider — SDK configuration", () => {
 
     expect(constructorCalls).toHaveLength(1);
     expect(constructorCalls[0].timeout).toBe(120_000);
-    expect(constructorCalls[0].maxRetries).toBe(1);
+    expect(constructorCalls[0].maxRetries).toBe(0);
   });
 
   test("timeout is not the old 15s or 60s value", () => {

@@ -183,8 +183,8 @@ describe("constants", () => {
       expect(LLM_CLIENT_TIMEOUT_MS).toBe(120_000);
     });
 
-    test("LLM_MAX_RETRIES is 1", () => {
-      expect(LLM_MAX_RETRIES).toBe(1);
+    test("LLM_MAX_RETRIES is 0 (SDK retries disabled; fallback chain handles errors)", () => {
+      expect(LLM_MAX_RETRIES).toBe(0);
     });
 
     test("EMBEDDING_CACHE_MAX_SIZE is 500", () => {
