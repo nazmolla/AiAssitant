@@ -18,6 +18,8 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import NotificationsIcon from "@mui/icons-material/Notifications";
+import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
+import TaskAltIcon from "@mui/icons-material/TaskAlt";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
 import InfoIcon from "@mui/icons-material/Info";
@@ -499,7 +501,7 @@ export function NotificationBell() {
               ))}
               {approvals.length === 0 && notifications.length === 0 && (
                 <Box sx={{ py: 6, textAlign: "center" }}>
-                  <Typography sx={{ fontSize: "1.5rem", mb: 0.5, opacity: 0.3 }}>🔔</Typography>
+                  <NotificationsNoneIcon sx={{ fontSize: "1.75rem", mb: 0.5, opacity: 0.3 }} />
                   <Typography variant="body2" color="text.secondary">No notifications</Typography>
                 </Box>
               )}
@@ -538,7 +540,7 @@ export function NotificationBell() {
               ))}
               {approvals.length === 0 && (
                 <Box sx={{ py: 6, textAlign: "center" }}>
-                  <Typography sx={{ fontSize: "1.5rem", mb: 0.5, opacity: 0.3 }}>✅</Typography>
+                  <TaskAltIcon sx={{ fontSize: "1.75rem", mb: 0.5, opacity: 0.3 }} />
                   <Typography variant="body2" color="text.secondary">No pending approvals</Typography>
                 </Box>
               )}
@@ -594,7 +596,7 @@ export function NotificationBell() {
               ))}
               {notifications.length === 0 && (
                 <Box sx={{ py: 8, textAlign: "center" }}>
-                  <Typography sx={{ fontSize: "1.5rem", mb: 0.5, opacity: 0.3 }}>🔔</Typography>
+                  <NotificationsNoneIcon sx={{ fontSize: "1.75rem", mb: 0.5, opacity: 0.3 }} />
                   <Typography variant="body1" color="text.secondary">No notifications</Typography>
                 </Box>
               )}
@@ -641,7 +643,7 @@ export function NotificationBell() {
               ))}
               {groupedApprovals.length === 0 && (
                 <Box sx={{ py: 8, textAlign: "center" }}>
-                  <Typography sx={{ fontSize: "1.5rem", mb: 0.5, opacity: 0.3 }}>✅</Typography>
+                  <TaskAltIcon sx={{ fontSize: "1.75rem", mb: 0.5, opacity: 0.3 }} />
                   <Typography variant="body1" color="text.secondary">No pending approvals</Typography>
                 </Box>
               )}

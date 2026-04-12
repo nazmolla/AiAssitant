@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "@/hooks/use-confirm";
+import { BotMessageSquare } from "lucide-react";
 
 type LlmProviderType = "azure-openai" | "openai" | "anthropic" | "litellm";
 type LlmProviderPurpose = "chat" | "embedding" | "tts" | "stt";
@@ -423,7 +424,7 @@ export function LlmConfig() {
         {providers.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
-              <div className="text-3xl mb-3 opacity-30">🤖</div>
+              <BotMessageSquare className="h-8 w-8 mb-3 opacity-30 mx-auto" />
               <p className="text-sm text-muted-foreground/60 font-light">
                 No providers configured. Add one to unlock the agent loop.
               </p>

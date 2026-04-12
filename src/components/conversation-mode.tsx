@@ -534,7 +534,7 @@ export function ConversationMode() {
                 setCurrentText((prev) => prev + token);
               } else if (currentEvent === "tool_call") {
                 // Tool is being called — show it as a status
-                setCurrentText((prev) => prev + (prev ? "\n" : "") + `⚙️ Using ${data.name}...`);
+                setCurrentText((prev) => prev + (prev ? "\n" : "") + `Using ${data.name}...`);
               } else if (currentEvent === "tool_result") {
                 // Clear tool call indicator — LLM will process next
                 setCurrentText("");

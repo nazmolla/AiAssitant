@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { CheckCircle, XCircle, Loader2, Globe, Monitor, KeyRound, Lock } from "lucide-react";
 
 interface McpServer {
   id: string;
@@ -326,10 +327,10 @@ export function McpConfig() {
             : "bg-blue-500/5 text-blue-400 border border-blue-500/15"
         }`}>
           {(addingStatus === "saving" || addingStatus === "connecting") && (
-            <span className="inline-block mr-2 animate-spin">⏳</span>
+            <Loader2 className="inline-block mr-2 h-4 w-4 animate-spin align-text-bottom" />
           )}
-          {addingStatus === "done" && <span className="mr-2">✅</span>}
-          {addingStatus === "error" && <span className="mr-2">❌</span>}
+          {addingStatus === "done" && <CheckCircle className="inline-block mr-2 h-4 w-4 align-text-bottom" />}
+          {addingStatus === "error" && <XCircle className="inline-block mr-2 h-4 w-4 align-text-bottom" />}
           {statusMessage}
           {addingStatus === "error" && (
             <Button size="sm" variant="ghost" className="ml-3 h-6 text-xs" onClick={() => { setAddingStatus("idle"); setStatusMessage(""); }}>
@@ -360,16 +361,18 @@ export function McpConfig() {
                 size="sm"
                 variant={newConnectionType === "remote" ? "default" : "outline"}
                 onClick={() => setNewConnectionType("remote")}
+                className="gap-1.5"
               >
-                🌐 Remote Server (URL)
+                <Globe className="h-3.5 w-3.5" /> Remote Server (URL)
               </Button>
               <Button
                 type="button"
                 size="sm"
                 variant={newConnectionType === "local" ? "default" : "outline"}
                 onClick={() => setNewConnectionType("local")}
+                className="gap-1.5"
               >
-                💻 Local Command
+                <Monitor className="h-3.5 w-3.5" /> Local Command
               </Button>
             </div>
 
@@ -394,11 +397,11 @@ export function McpConfig() {
                     <Button type="button" size="sm" variant={newAuthType === "none" ? "default" : "outline"} onClick={() => setNewAuthType("none")}>
                       None
                     </Button>
-                    <Button type="button" size="sm" variant={newAuthType === "bearer" ? "default" : "outline"} onClick={() => setNewAuthType("bearer")}>
-                      🔑 Access Token
+                    <Button type="button" size="sm" variant={newAuthType === "bearer" ? "default" : "outline"} onClick={() => setNewAuthType("bearer")} className="gap-1.5">
+                      <KeyRound className="h-3.5 w-3.5" /> Access Token
                     </Button>
-                    <Button type="button" size="sm" variant={newAuthType === "oauth" ? "default" : "outline"} onClick={() => setNewAuthType("oauth")}>
-                      🔐 OAuth
+                    <Button type="button" size="sm" variant={newAuthType === "oauth" ? "default" : "outline"} onClick={() => setNewAuthType("oauth")} className="gap-1.5">
+                      <Lock className="h-3.5 w-3.5" /> OAuth
                     </Button>
                   </div>
                 </div>

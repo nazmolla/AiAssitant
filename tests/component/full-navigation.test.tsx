@@ -242,7 +242,7 @@ describe("Settings Sub-Pages — open every page via chip click", () => {
     await renderAndWait("/settings");
     // Wait for permissions to load and chips to appear
     await waitFor(() => {
-      expect(screen.getByText("🤖 Providers")).toBeInTheDocument();
+      expect(screen.getByText("Providers")).toBeInTheDocument();
     }, { timeout: 2000 });
   }
 
@@ -256,70 +256,70 @@ describe("Settings Sub-Pages — open every page via chip click", () => {
 
   test("Providers (LLM) page renders LlmConfig", async () => {
     await navigateToSettings();
-    await clickSettingsChip("🤖 Providers");
+    await clickSettingsChip("Providers");
     expect(screen.getByTestId("llm-config")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "LLM Providers" })).toBeInTheDocument();
   });
 
   test("Channels page renders ChannelsConfig", async () => {
     await navigateToSettings();
-    await clickSettingsChip("📡 Channels");
+    await clickSettingsChip("Channels");
     expect(screen.getByTestId("channels-config")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Communication Channels" })).toBeInTheDocument();
   });
 
   test("MCP Servers page renders McpConfig", async () => {
     await navigateToSettings();
-    await clickSettingsChip("🔌 MCP Servers");
+    await clickSettingsChip("MCP Servers");
     expect(screen.getByTestId("mcp-config")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "MCP Servers" })).toBeInTheDocument();
   });
 
   test("Tool Policies page renders ToolPolicies", async () => {
     await navigateToSettings();
-    await clickSettingsChip("🛡️ Tool Policies");
+    await clickSettingsChip("Tool Policies");
     expect(screen.getByTestId("tool-policies")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Tool Policies" })).toBeInTheDocument();
   });
 
   test("Local Whisper page renders WhisperConfig (admin only)", async () => {
     await navigateToSettings();
-    await clickSettingsChip("🎤 Local Whisper");
+    await clickSettingsChip("Local Whisper");
     expect(screen.getByTestId("whisper-config")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Local Whisper" })).toBeInTheDocument();
   });
 
   test("Logging page renders LoggingConfig", async () => {
     await navigateToSettings();
-    await clickSettingsChip("🧾 Logging");
+    await clickSettingsChip("Logging");
     expect(screen.getByTestId("logging-config")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Logging" })).toBeInTheDocument();
   });
 
   test("Custom Tools page renders CustomToolsConfig (admin only)", async () => {
     await navigateToSettings();
-    await clickSettingsChip("🔧 Custom Tools");
+    await clickSettingsChip("Custom Tools");
     expect(screen.getByTestId("custom-tools-config")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Custom Tools" })).toBeInTheDocument();
   });
 
   test("Authentication page renders AuthConfig (admin only)", async () => {
     await navigateToSettings();
-    await clickSettingsChip("🔐 Authentication");
+    await clickSettingsChip("Authentication");
     expect(screen.getByTestId("auth-config")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Authentication" })).toBeInTheDocument();
   });
 
   test("Users page renders UserManagement (admin only)", async () => {
     await navigateToSettings();
-    await clickSettingsChip("👥 Users");
+    await clickSettingsChip("Users");
     expect(screen.getByTestId("user-management")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "User Management" })).toBeInTheDocument();
   });
 
   test("Scheduler page renders SchedulerConfig (admin only)", async () => {
     await navigateToSettings();
-    await clickSettingsChip("⏱️ Batch Scheduler");
+    await clickSettingsChip("Batch Scheduler");
     expect(screen.getByTestId("scheduler-config")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Batch Scheduling" })).toBeInTheDocument();
   });
@@ -570,14 +570,14 @@ describe("Permission-Gated Settings Pages", () => {
     await renderAndWait("/settings");
 
     // Admin-only chips should NOT be visible
-    expect(screen.queryByText("🔧 Custom Tools")).not.toBeInTheDocument();
-    expect(screen.queryByText("🔐 Authentication")).not.toBeInTheDocument();
-    expect(screen.queryByText("👥 Users")).not.toBeInTheDocument();
-    expect(screen.queryByText("🎤 Local Whisper")).not.toBeInTheDocument();
+    expect(screen.queryByText("Custom Tools")).not.toBeInTheDocument();
+    expect(screen.queryByText("Authentication")).not.toBeInTheDocument();
+    expect(screen.queryByText("Users")).not.toBeInTheDocument();
+    expect(screen.queryByText("Local Whisper")).not.toBeInTheDocument();
 
     // Non-admin pages SHOULD be visible
-    expect(screen.getByText("🤖 Providers")).toBeInTheDocument();
-    expect(screen.getByText("📡 Channels")).toBeInTheDocument();
+    expect(screen.getByText("Providers")).toBeInTheDocument();
+    expect(screen.getByText("Channels")).toBeInTheDocument();
   });
 
   test("user without llm_config permission cannot see Providers page", async () => {
@@ -603,7 +603,7 @@ describe("Permission-Gated Settings Pages", () => {
     global.fetch = limitedFetch;
 
     await renderAndWait("/settings");
-    expect(screen.queryByText("🤖 Providers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Providers")).not.toBeInTheDocument();
   });
 
   test("user without channels permission cannot see Channels page", async () => {
@@ -629,7 +629,7 @@ describe("Permission-Gated Settings Pages", () => {
     global.fetch = limitedFetch;
 
     await renderAndWait("/settings");
-    expect(screen.queryByText("📡 Channels")).not.toBeInTheDocument();
+    expect(screen.queryByText("Channels")).not.toBeInTheDocument();
   });
 
   test("user without mcp_servers permission cannot see MCP Servers or Tool Policies", async () => {
@@ -655,17 +655,17 @@ describe("Permission-Gated Settings Pages", () => {
     global.fetch = limitedFetch;
 
     await renderAndWait("/settings");
-    expect(screen.queryByText("🔌 MCP Servers")).not.toBeInTheDocument();
-    expect(screen.queryByText("🛡️ Tool Policies")).not.toBeInTheDocument();
+    expect(screen.queryByText("MCP Servers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tool Policies")).not.toBeInTheDocument();
   });
 
   test("admin user can see ALL settings pages", async () => {
     await renderAndWait("/settings");
 
     const allChips = [
-      "🤖 Providers", "📡 Channels", "🔌 MCP Servers",
-      "🛡️ Tool Policies", "🎤 Local Whisper", "🧾 Logging",
-      "🔧 Custom Tools", "🔐 Authentication", "👥 Users", "⏱️ Batch Scheduler",
+      "Providers", "Channels", "MCP Servers",
+      "Tool Policies", "Local Whisper", "Logging",
+      "Custom Tools", "Authentication", "Users", "Batch Scheduler",
     ];
     for (const chipLabel of allChips) {
       await waitFor(() => {
@@ -828,16 +828,16 @@ describe("URL Redirects", () => {
 
 describe("Settings Page Headers", () => {
   const headersToCheck = [
-    { chip: "🤖 Providers", title: "LLM Providers", subtitle: "Centralize Azure OpenAI" },
-    { chip: "📡 Channels", title: "Communication Channels", subtitle: "Connect messaging" },
-    { chip: "🔌 MCP Servers", title: "MCP Servers", subtitle: "Manage Model Context" },
-    { chip: "🛡️ Tool Policies", title: "Tool Policies", subtitle: "Configure approval" },
-    { chip: "🎤 Local Whisper", title: "Local Whisper", subtitle: "Deploy and configure" },
-    { chip: "🧾 Logging", title: "Logging", subtitle: "Server-wide log levels" },
-    { chip: "🔧 Custom Tools", title: "Custom Tools", subtitle: "Agent-created tools" },
-    { chip: "🔐 Authentication", title: "Authentication", subtitle: "Configure OAuth" },
-    { chip: "👥 Users", title: "User Management", subtitle: "Manage user access" },
-    { chip: "⏱️ Batch Scheduler", title: "Batch Scheduler", subtitle: "Configure batch job scheduling" },
+    { chip: "Providers", title: "LLM Providers", subtitle: "Centralize Azure OpenAI" },
+    { chip: "Channels", title: "Communication Channels", subtitle: "Connect messaging" },
+    { chip: "MCP Servers", title: "MCP Servers", subtitle: "Manage Model Context" },
+    { chip: "Tool Policies", title: "Tool Policies", subtitle: "Configure approval" },
+    { chip: "Local Whisper", title: "Local Whisper", subtitle: "Deploy and configure" },
+    { chip: "Logging", title: "Logging", subtitle: "Server-wide log levels" },
+    { chip: "Custom Tools", title: "Custom Tools", subtitle: "Agent-created tools" },
+    { chip: "Authentication", title: "Authentication", subtitle: "Configure OAuth" },
+    { chip: "Users", title: "User Management", subtitle: "Manage user access" },
+    { chip: "Batch Scheduler", title: "Batch Scheduler", subtitle: "Configure batch job scheduling" },
   ];
 
   test.each(headersToCheck)(

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "@/components/theme-provider";
 import { useToast } from "@/hooks/use-toast";
+import { CheckCircle } from "lucide-react";
 
 const ALL_SCOPES = ["chat", "knowledge", "approvals", "threads", "logs"] as const;
 
@@ -144,8 +145,8 @@ export function ApiKeysConfig() {
         <Card className="glass-card border-green-500/30 bg-green-500/5">
           <CardContent className="pt-4 pb-4">
             <div className="space-y-2">
-              <p className="text-sm font-medium text-green-400">
-                ✅ API key created — copy it now, it won&apos;t be shown again!
+              <p className="text-sm font-medium text-green-400 flex items-center gap-1.5">
+                <CheckCircle className="h-4 w-4 shrink-0" /> API key created — copy it now, it won&apos;t be shown again!
               </p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 bg-background/50 border border-border rounded px-3 py-2 text-xs font-mono break-all select-all">

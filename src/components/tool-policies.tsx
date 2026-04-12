@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { Globe, Monitor, Folder, Network, Mail, FileText, Wrench, Settings, Package, Link } from "lucide-react";
 
 interface ToolPolicy {
   tool_name: string;
@@ -18,15 +19,15 @@ interface ToolDef {
   group?: string;
 }
 
-const GROUP_ICONS: Record<string, string> = {
-  "Web Tools": "🌐",
-  "Browser Tools": "🖥️",
-  "File System": "📁",
-  "Network Tools": "🔌",
-  "Email Tools": "📧",
-  "File Generation": "📝",
-  "Tool Management": "🛠️",
-  "Custom Tools": "🔧",
+const GROUP_ICONS: Record<string, React.ElementType> = {
+  "Web Tools": Globe,
+  "Browser Tools": Monitor,
+  "File System": Folder,
+  "Network Tools": Network,
+  "Email Tools": Mail,
+  "File Generation": FileText,
+  "Tool Management": Wrench,
+  "Custom Tools": Settings,
 };
 
 const BUILTIN_ORDER = ["Web Tools", "Browser Tools", "File System", "File Generation", "Network Tools", "Email Tools", "Tool Management", "Custom Tools"];
@@ -91,7 +92,7 @@ export function ToolPolicies() {
   }, [policies]);
 
   const grouped = useMemo(() => {
-    const nextGrouped: Record<string, { tools: ToolDef[]; label: string; icon: string }> = {};
+    const nextGrouped: Record<string, { tools: ToolDef[]; label: string; Icon: React.ElementType }> = {};
 
     for (const tool of tools) {
       if (tool.source === "builtin" || tool.source === "custom") {
@@ -100,7 +101,7 @@ export function ToolPolicies() {
           nextGrouped[groupKey] = {
             tools: [],
             label: groupKey,
-            icon: GROUP_ICONS[groupKey] || "📦",
+            Icon: GROUP_ICONS[groupKey] || Package,
           };
         }
         nextGrouped[groupKey].tools.push(tool);
@@ -112,7 +113,7 @@ export function ToolPolicies() {
           nextGrouped[groupKey] = {
             tools: [],
             label: serverNames[serverId] || serverId,
-            icon: "🔗",
+            Icon: Link,
           };
         }
         nextGrouped[groupKey].tools.push(tool);
@@ -272,7 +273,7 @@ export function ToolPolicies() {
                   className="flex items-center gap-2 text-left group min-w-0"
                 >
                   <span className={`text-[10px] text-muted-foreground/40 transition-transform duration-200 ${isCollapsed ? "" : "rotate-90"}`}>▶</span>
-                  <span className="text-sm mr-1">{group.icon}</span>
+                  <group.Icon className="h-3.5 w-3.5 mr-1.5 text-muted-foreground/60 shrink-0" />
                   <CardTitle className="text-sm font-display font-semibold text-primary/90 group-hover:text-primary transition-colors truncate">
                     {group.label}
                     <span className="ml-2 text-[11px] font-normal text-muted-foreground/50">

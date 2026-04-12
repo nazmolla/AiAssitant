@@ -8,6 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/use-confirm";
+import {
+  MessageCircle, Hash, Mail, Send, Gamepad2, Users, Phone,
+  Radio, Bot, ClipboardCopy, Check, X,
+} from "lucide-react";
 
 type ChannelType = "whatsapp" | "slack" | "email" | "telegram" | "discord" | "teams" | "phone";
 
@@ -21,14 +25,14 @@ interface Channel {
   created_at: string;
 }
 
-const CHANNEL_OPTIONS: { value: ChannelType; label: string; icon: string; description: string }[] = [
-  { value: "whatsapp", label: "WhatsApp", icon: "💬", description: "WhatsApp Business Cloud API" },
-  { value: "slack", label: "Slack", icon: "💼", description: "Slack Events API" },
-  { value: "email", label: "Email", icon: "📧", description: "Shared SMTP/IMAP inbox" },
-  { value: "telegram", label: "Telegram", icon: "✈️", description: "Telegram Bot API" },
-  { value: "discord", label: "Discord", icon: "🎮", description: "Discord Bot interaction" },
-  { value: "teams", label: "Teams", icon: "👥", description: "Microsoft Teams Bot Framework" },
-  { value: "phone", label: "Phone Call", icon: "📞", description: "Voice phone calls via webhook" },
+const CHANNEL_OPTIONS: { value: ChannelType; label: string; Icon: React.ElementType; description: string }[] = [
+  { value: "whatsapp", label: "WhatsApp", Icon: MessageCircle, description: "WhatsApp Business Cloud API" },
+  { value: "slack", label: "Slack", Icon: Hash, description: "Slack Events API" },
+  { value: "email", label: "Email", Icon: Mail, description: "Shared SMTP/IMAP inbox" },
+  { value: "telegram", label: "Telegram", Icon: Send, description: "Telegram Bot API" },
+  { value: "discord", label: "Discord", Icon: Gamepad2, description: "Discord Bot interaction" },
+  { value: "teams", label: "Teams", Icon: Users, description: "Microsoft Teams Bot Framework" },
+  { value: "phone", label: "Phone Call", Icon: Phone, description: "Voice phone calls via webhook" },
 ];
 
 const CONFIG_FIELDS: Record<ChannelType, { key: string; label: string; type: "text" | "password" }[]> = {
@@ -171,7 +175,7 @@ export function ChannelsConfig() {
       {channels.length === 0 && !showForm && (
         <Card className="border-dashed border-white/[0.08]">
           <CardContent className="py-12 text-center">
-            <div className="text-3xl mb-3 opacity-30">📡</div>
+            <Radio className="h-8 w-8 opacity-30 mx-auto mb-3" />
             <p className="text-sm font-medium text-foreground/60 mb-1">No channels connected</p>
             <p className="text-xs text-muted-foreground/50 font-light">Connect a messaging platform to chat with Nexus from anywhere.</p>
           </CardContent>
@@ -186,7 +190,9 @@ export function ChannelsConfig() {
               <CardContent className="py-4">
                 <div className="md:hidden space-y-3">
                   <div className="flex items-start gap-3">
-                    <span className="text-2xl shrink-0">{opt?.icon || "📡"}</span>
+                    <span className="shrink-0 flex items-center justify-center h-9 w-9 rounded-lg bg-white/[0.04] border border-white/[0.06]">
+                      {opt ? <opt.Icon className="h-4 w-4 text-muted-foreground" /> : <Radio className="h-4 w-4 text-muted-foreground" />}
+                    </span>
                     <div className="min-w-0 flex-1">
                       <div className="font-medium break-words">{ch.label}</div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -197,8 +203,8 @@ export function ChannelsConfig() {
                           {ch.enabled ? "Active" : "Disabled"}
                         </Badge>
                         {ch.channel_type === "discord" && (ch as any).discord_bot_active && (
-                          <Badge variant="success" className="text-xs">
-                            🤖 Bot Online
+                          <Badge variant="success" className="text-xs flex items-center gap-1">
+                            <Bot className="h-3 w-3" /> Bot Online
                           </Badge>
                         )}
                       </div>
@@ -214,11 +220,11 @@ export function ChannelsConfig() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="flex-1"
+                        className="flex-1 gap-1.5"
                         onClick={() => copyWebhookUrl(ch)}
                         title="Copy webhook URL"
                       >
-                        {copiedId === ch.id ? "✓ Copied" : "📋 Copy URL"}
+                        {copiedId === ch.id ? <><Check className="h-3 w-3" /> Copied</> : <><ClipboardCopy className="h-3 w-3" /> Copy URL</>}
                       </Button>
                     )}
                     <div className="flex items-center justify-center rounded-lg border border-white/[0.08] px-2.5 py-1.5">
@@ -230,16 +236,19 @@ export function ChannelsConfig() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      aria-label="Remove channel"
                       className="text-destructive hover:text-destructive"
                       onClick={() => handleDelete(ch.id)}
                     >
-                      ✕
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
 
                 <div className="hidden md:flex items-center gap-4">
-                  <span className="text-2xl">{opt?.icon || "📡"}</span>
+                  <span className="flex items-center justify-center h-10 w-10 rounded-lg bg-white/[0.04] border border-white/[0.06] shrink-0">
+                    {opt ? <opt.Icon className="h-5 w-5 text-muted-foreground" /> : <Radio className="h-5 w-5 text-muted-foreground" />}
+                  </span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{ch.label}</span>
@@ -250,8 +259,8 @@ export function ChannelsConfig() {
                         {ch.enabled ? "Active" : "Disabled"}
                       </Badge>
                       {ch.channel_type === "discord" && (ch as any).discord_bot_active && (
-                        <Badge variant="success" className="text-xs">
-                          🤖 Bot Online
+                        <Badge variant="success" className="text-xs flex items-center gap-1">
+                          <Bot className="h-3 w-3" /> Bot Online
                         </Badge>
                       )}
                     </div>
@@ -266,10 +275,11 @@ export function ChannelsConfig() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="gap-1.5"
                         onClick={() => copyWebhookUrl(ch)}
                         title="Copy webhook URL"
                       >
-                        {copiedId === ch.id ? "✓ Copied" : "📋 Copy URL"}
+                        {copiedId === ch.id ? <><Check className="h-3 w-3" /> Copied</> : <><ClipboardCopy className="h-3 w-3" /> Copy URL</>}
                       </Button>
                     )}
                     <Switch
@@ -279,10 +289,11 @@ export function ChannelsConfig() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      aria-label="Remove channel"
                       className="text-destructive hover:text-destructive"
                       onClick={() => handleDelete(ch.id)}
                     >
-                      ✕
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
@@ -306,9 +317,10 @@ export function ChannelsConfig() {
                   <button
                     key={opt.value}
                     onClick={() => setSelectedType(opt.value)}
-                    className="flex flex-col items-center gap-2 p-5 rounded-xl border border-white/[0.06] hover:bg-white/[0.04] hover:border-primary/20 transition-all duration-300 text-center"
+                    className="flex flex-col items-center gap-3 p-5 rounded-xl border border-white/[0.06] hover:bg-white/[0.04] hover:border-primary/20 transition-all duration-300 text-center"
                   >
-                    <span className="font-medium text-sm">{opt.icon} {opt.label}</span>
+                    <opt.Icon className="h-5 w-5 text-muted-foreground" />
+                    <span className="font-medium text-sm">{opt.label}</span>
                     <span className="text-xs text-muted-foreground/60 font-light">{opt.description}</span>
                   </button>
                 ))}
@@ -320,10 +332,15 @@ export function ChannelsConfig() {
                   <Button variant="ghost" size="sm" onClick={() => setSelectedType(null)}>
                     ← Back
                   </Button>
-                  <span className="text-lg">
-                    {CHANNEL_OPTIONS.find((o) => o.value === selectedType)?.icon}{" "}
-                    {CHANNEL_OPTIONS.find((o) => o.value === selectedType)?.label}
-                  </span>
+                  {(() => {
+                    const selectedOpt = CHANNEL_OPTIONS.find((o) => o.value === selectedType);
+                    return selectedOpt ? (
+                      <span className="flex items-center gap-2 text-base font-medium">
+                        <selectedOpt.Icon className="h-4 w-4 text-muted-foreground" />
+                        {selectedOpt.label}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
 
                 <div className="space-y-3">

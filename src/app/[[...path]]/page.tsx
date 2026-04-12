@@ -30,6 +30,20 @@ import ScheduleIcon from "@mui/icons-material/Schedule";
 import HeadsetMicIcon from "@mui/icons-material/HeadsetMic";
 import Avatar from "@mui/material/Avatar";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
+import HubIcon from "@mui/icons-material/Hub";
+import ExtensionIcon from "@mui/icons-material/Extension";
+import GavelIcon from "@mui/icons-material/Gavel";
+import AssignmentIcon from "@mui/icons-material/Assignment";
+import DevicesIcon from "@mui/icons-material/Devices";
+import RecordVoiceOverIcon from "@mui/icons-material/RecordVoiceOver";
+import MicIcon from "@mui/icons-material/Mic";
+import ArticleIcon from "@mui/icons-material/Article";
+import ManageSearchIcon from "@mui/icons-material/ManageSearch";
+import StorageIcon from "@mui/icons-material/Storage";
+import BuildIcon from "@mui/icons-material/Build";
+import LockIcon from "@mui/icons-material/Lock";
+import GroupIcon from "@mui/icons-material/Group";
 import { useTheme, THEMES } from "@/components/theme-provider";
 import { AppPageBackbone } from "@/components/app-page-backbone";
 
@@ -419,27 +433,27 @@ export default function HomePage() {
 interface SettingsPage {
   key: string;
   label: string;
-  icon: string;
+  Icon: React.ElementType;
   adminOnly?: boolean;
   permKey?: string;
 }
 
 const SETTINGS_PAGES: SettingsPage[] = [
-  { key: "llm", label: "Providers", icon: "🤖", permKey: "llm_config" },
-  { key: "channels", label: "Channels", icon: "📡", permKey: "channels" },
-  { key: "mcp", label: "MCP Servers", icon: "🔌", permKey: "mcp_servers" },
-  { key: "policies", label: "Tool Policies", icon: "🛡️", permKey: "mcp_servers" },
-  { key: "standing-orders", label: "Standing Orders", icon: "📋" },
-  { key: "devices", label: "Devices", icon: "📟" },
-  { key: "voice-profile", label: "Voice Profile", icon: "🎙️" },
-  { key: "whisper", label: "Local Whisper", icon: "🎤", adminOnly: true },
-  { key: "logging", label: "Logging", icon: "🧾" },
-  { key: "search-providers", label: "Search Providers", icon: "🔎", adminOnly: true },
-  { key: "db-management", label: "DB Management", icon: "🗄️", adminOnly: true },
-  { key: "custom-tools", label: "Custom Tools", icon: "🔧", adminOnly: true },
-  { key: "auth", label: "Authentication", icon: "🔐", adminOnly: true },
-  { key: "users", label: "Users", icon: "👥", adminOnly: true },
-  { key: "scheduler", label: "Batch Scheduler", icon: "⏱️", adminOnly: true },
+  { key: "llm", label: "Providers", Icon: SmartToyIcon, permKey: "llm_config" },
+  { key: "channels", label: "Channels", Icon: HubIcon, permKey: "channels" },
+  { key: "mcp", label: "MCP Servers", Icon: ExtensionIcon, permKey: "mcp_servers" },
+  { key: "policies", label: "Tool Policies", Icon: GavelIcon, permKey: "mcp_servers" },
+  { key: "standing-orders", label: "Standing Orders", Icon: AssignmentIcon },
+  { key: "devices", label: "Devices", Icon: DevicesIcon },
+  { key: "voice-profile", label: "Voice Profile", Icon: RecordVoiceOverIcon },
+  { key: "whisper", label: "Local Whisper", Icon: MicIcon, adminOnly: true },
+  { key: "logging", label: "Logging", Icon: ArticleIcon },
+  { key: "search-providers", label: "Search Providers", Icon: ManageSearchIcon, adminOnly: true },
+  { key: "db-management", label: "DB Management", Icon: StorageIcon, adminOnly: true },
+  { key: "custom-tools", label: "Custom Tools", Icon: BuildIcon, adminOnly: true },
+  { key: "auth", label: "Authentication", Icon: LockIcon, adminOnly: true },
+  { key: "users", label: "Users", Icon: GroupIcon, adminOnly: true },
+  { key: "scheduler", label: "Batch Scheduler", Icon: ScheduleIcon, adminOnly: true },
 ];
 
 const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
@@ -532,7 +546,8 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
             {visiblePages.map((page) => (
               <Chip
                 key={page.key}
-                label={`${page.icon} ${page.label}`}
+                icon={<page.Icon sx={{ fontSize: "0.85rem !important" }} />}
+                label={page.label}
                 size="small"
                 variant={active === page.key ? "filled" : "outlined"}
                 color={active === page.key ? "primary" : "default"}

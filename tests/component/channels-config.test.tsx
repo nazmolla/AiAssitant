@@ -169,7 +169,7 @@ describe("ChannelsConfig — interactions", () => {
       expect(screen.getAllByText("Support Bot").length).toBeGreaterThanOrEqual(1);
     });
 
-    const deleteBtns = screen.getAllByRole("button", { name: /✕/i });
+    const deleteBtns = screen.getAllByRole("button", { name: /remove channel/i });
     expect(deleteBtns.length).toBeGreaterThanOrEqual(1);
     await act(async () => { fireEvent.click(deleteBtns[0]); });
 
@@ -192,7 +192,7 @@ describe("ChannelsConfig — interactions", () => {
       expect(screen.getAllByText("Support Bot").length).toBeGreaterThanOrEqual(1);
     });
 
-    const deleteBtns = screen.getAllByRole("button", { name: /✕/i });
+    const deleteBtns = screen.getAllByRole("button", { name: /remove channel/i });
     await act(async () => { fireEvent.click(deleteBtns[0]); });
 
     await new Promise((r) => setTimeout(r, 50));
