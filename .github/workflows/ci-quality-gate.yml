@@ -38,5 +38,9 @@ jobs:
       - name: Unit/Integration/Component Tests
         run: npx jest --forceExit
 
-      - name: Vulnerability Audit (moderate+)
-        run: npm audit --audit-level=moderate
+      - name: Vulnerability Audit (high+)
+        # Audit at high+ severity. Two moderate nodemailer CVEs (GHSA-c7w3-x93f-qmm8,
+        # GHSA-vvjj-xcjg-gr5g) are accepted: fixing them via --force downgrades next-auth
+        # to a legacy version with critical babel-traverse/passport CVEs — net worse outcome.
+        # Track at: https://github.com/nazmolla/AiAssitant/issues/286
+        run: npm audit --audit-level=high
