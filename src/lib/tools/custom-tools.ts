@@ -73,10 +73,14 @@ export const BUILTIN_TOOLMAKER_TOOLS: ToolDefinition[] = [
         implementation: {
           type: "string",
           description:
-            "TypeScript/JavaScript implementation code. Must be an async function body " +
-            "that receives `args` (the input parameters) and returns a result. " +
+            "JavaScript implementation code. Must be a plain function body (CommonJS context) " +
+            "that receives `args` (the input parameters) and ends with 'return <value>;'. " +
+            "IMPORTANT: ES module syntax (import / export) is NOT supported — do not use " +
+            "'export default', 'export const', 'import x from', etc. " +
+            "Write the body directly without any module wrapper. " +
             "Example: 'const result = args.a + args.b; return { sum: result };' " +
-            "Available globals: fetch, JSON, Math, Date, RegExp, URL, URLSearchParams, Buffer, console, setTimeout, clearTimeout.",
+            "Available globals: fetch, JSON, Math, Date, RegExp, URL, URLSearchParams, Buffer, " +
+            "console, setTimeout, clearTimeout.",
         },
       },
       required: ["toolName", "description", "inputSchema", "implementation"],
@@ -110,6 +114,8 @@ export const BUILTIN_TOOLMAKER_TOOLS: ToolDefinition[] = [
           type: "string",
           description:
             "New implementation code (optional — omit to keep current). " +
+            "Must be a plain CommonJS function body ending with 'return <value>;'. " +
+            "ES module syntax (import / export) is NOT supported. " +
             "Will be validated via sandbox dry-run before saving.",
         },
       },
@@ -486,6 +492,25 @@ class CustomToolRuntime {
   }
 
   static validateImplementation(code: string): string | null {
+    // Detect ES module syntax before attempting to compile.
+    // The sandbox runs the code as a CommonJS function body, so import/export
+    // statements cause "Unexpected token" errors with no actionable guidance.
+    const ES_MODULE_RE = /^\s*(export\s+(default\b|const\b|function\b|class\b|let\b|var\b|async\b|\{)|import\s+(type\s+)?(\{|\w|\*|"[^"]*"|'[^']*'))/m;
+    if (ES_MODULE_RE.test(code)) {
+      return (
+        "Implementation code uses ES module syntax (import / export) which is not supported. " +
+        "The sandbox executes the code as a plain JavaScript function body in a CommonJS context — " +
+        "there are no module boundaries. " +
+        "Write the implementation as a self-contained function body that ends with 'return <value>;'. " +
+        "Example — instead of 'export default async function(args) { return args.x * 2; }', write: " +
+        "'return args.x * 2;'. " +
+        "HTTP requests: use the built-in fetch() instead of any import. " +
+        "Supported globals: fetch, JSON, Math, Date, RegExp, URL, URLSearchParams, Buffer, console, " +
+        "setTimeout, clearTimeout, parseInt, parseFloat, isNaN, isFinite, " +
+        "encodeURIComponent, decodeURIComponent, encodeURI, decodeURI, atob, btoa."
+      );
+    }
+
     const forbiddenMatch = code.match(FORBIDDEN_GLOBAL_PATTERN);
     if (forbiddenMatch) {
       return (

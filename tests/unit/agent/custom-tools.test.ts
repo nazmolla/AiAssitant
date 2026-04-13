@@ -232,4 +232,30 @@ describe("validateImplementation", () => {
     expect(error).not.toBeNull();
     expect(error).toMatch(/not available in the sandbox/);
   });
+
+  // #293 — ES module syntax guard
+  test("returns actionable error for 'export default function' (ES module syntax)", () => {
+    const error = validateImplementation("export default async function(args) { return args.x * 2; }");
+    expect(error).not.toBeNull();
+    expect(error).toMatch(/ES module/i);
+    expect(error).toMatch(/import.*export|export.*import/i);
+    expect(error).toMatch(/CommonJS/i);
+  });
+
+  test("returns actionable error for 'export const' (ES module syntax)", () => {
+    const error = validateImplementation("export const run = async (args) => args.x;");
+    expect(error).not.toBeNull();
+    expect(error).toMatch(/ES module/i);
+  });
+
+  test("returns actionable error for 'import ... from' (ES module syntax)", () => {
+    const error = validateImplementation("import { something } from 'some-module'; return something(args);");
+    expect(error).not.toBeNull();
+    expect(error).toMatch(/ES module/i);
+  });
+
+  test("returns null for valid CommonJS-style implementation (module.exports is not used — function body only)", () => {
+    // Accepted pattern: plain function body, no import/export
+    expect(validateImplementation("const result = args.a + args.b; return { sum: result };")).toBeNull();
+  });
 });
