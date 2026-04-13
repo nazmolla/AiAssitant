@@ -116,6 +116,12 @@ async function handleStart(config) {
   let isAnthropic = false;
   const effectiveModel = model || deployment || 'gpt-4o';
 
+  // Mirror the main-thread provider settings exactly:
+  // maxRetries:0 prevents the OpenAI SDK from accumulating AbortSignal listeners
+  // on its internal timeout controller across retries (see LLM_MAX_RETRIES in constants.ts).
+  const LLM_CLIENT_TIMEOUT_MS = 120_000;
+  const LLM_MAX_RETRIES = 0;
+
   if (providerType === 'anthropic') {
     const Anthropic = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk');
     client = new Anthropic({ apiKey });
@@ -128,6 +134,8 @@ async function handleStart(config) {
       baseURL: `${ep}/openai/deployments/${deployment}`,
       defaultQuery: { 'api-version': apiVersion || '2024-08-01-preview' },
       defaultHeaders: { 'api-key': apiKey },
+      timeout: LLM_CLIENT_TIMEOUT_MS,
+      maxRetries: LLM_MAX_RETRIES,
     });
     isAnthropic = false;
   } else {
@@ -141,6 +149,8 @@ async function handleStart(config) {
     client = new OpenAI({
       apiKey: apiKey || 'no-key-required',
       baseURL: effectiveBaseURL,
+      timeout: LLM_CLIENT_TIMEOUT_MS,
+      maxRetries: LLM_MAX_RETRIES,
     });
     isAnthropic = false;
   }
@@ -335,32 +345,47 @@ async function callOpenAI(client, model, systemPrompt, messages, tools, disableT
   const toolCallsMap = new Map();
   let finishReason = 'stop';
 
-  for await (const chunk of stream) {
-    if (aborted) throw new Error('Aborted');
+  try {
+    for await (const chunk of stream) {
+      if (aborted) {
+        // Abort the SDK's internal controller so it releases its abort listeners
+        // before we throw. Without this, the listeners on the per-request
+        // AbortController accumulate across aborted iterations.
+        if (stream.controller) stream.controller.abort();
+        throw new Error('Aborted');
+      }
 
-    const delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
-    if (!delta) continue;
+      const delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
+      if (!delta) continue;
 
-    if (delta.content) {
-      content += delta.content;
-      parentPort.postMessage({ type: 'token', data: delta.content });
-    }
+      if (delta.content) {
+        content += delta.content;
+        parentPort.postMessage({ type: 'token', data: delta.content });
+      }
 
-    if (delta.tool_calls) {
-      for (const tc of delta.tool_calls) {
-        if (!toolCallsMap.has(tc.index)) {
-          toolCallsMap.set(tc.index, { id: '', name: '', arguments: '' });
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          if (!toolCallsMap.has(tc.index)) {
+            toolCallsMap.set(tc.index, { id: '', name: '', arguments: '' });
+          }
+          const existing = toolCallsMap.get(tc.index);
+          if (tc.id) existing.id = tc.id;
+          if (tc.function && tc.function.name) existing.name = tc.function.name;
+          if (tc.function && tc.function.arguments)
+            existing.arguments += tc.function.arguments;
         }
-        const existing = toolCallsMap.get(tc.index);
-        if (tc.id) existing.id = tc.id;
-        if (tc.function && tc.function.name) existing.name = tc.function.name;
-        if (tc.function && tc.function.arguments)
-          existing.arguments += tc.function.arguments;
+      }
+
+      if (chunk.choices[0] && chunk.choices[0].finish_reason) {
+        finishReason = chunk.choices[0].finish_reason;
       }
     }
-
-    if (chunk.choices[0] && chunk.choices[0].finish_reason) {
-      finishReason = chunk.choices[0].finish_reason;
+  } finally {
+    // Ensure the stream's internal AbortController is always aborted on exit,
+    // whether normal completion, error, or break. This triggers the SDK's
+    // cleanup path and removes any pending abort listeners from the signal.
+    if (stream.controller && !stream.controller.signal.aborted) {
+      stream.controller.abort();
     }
   }
 
@@ -455,16 +480,25 @@ async function callAnthropic(client, model, systemPrompt, messages, tools) {
   const stream = client.messages.stream(params);
   let content = '';
 
-  for await (const event of stream) {
-    if (aborted) throw new Error('Aborted');
-    if (
-      event.type === 'content_block_delta' &&
-      event.delta &&
-      event.delta.type === 'text_delta'
-    ) {
-      content += event.delta.text;
-      parentPort.postMessage({ type: 'token', data: event.delta.text });
+  try {
+    for await (const event of stream) {
+      if (aborted) {
+        // Abort the SDK stream to release its internal abort listeners
+        stream.abort();
+        throw new Error('Aborted');
+      }
+      if (
+        event.type === 'content_block_delta' &&
+        event.delta &&
+        event.delta.type === 'text_delta'
+      ) {
+        content += event.delta.text;
+        parentPort.postMessage({ type: 'token', data: event.delta.text });
+      }
     }
+  } finally {
+    // Ensure stream is aborted on any exit path so the SDK cleans up listeners
+    stream.abort();
   }
 
   const finalMessage = await stream.finalMessage();

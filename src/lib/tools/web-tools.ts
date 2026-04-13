@@ -539,6 +539,10 @@ export class WebTools extends BaseTool {
 
         if ([301, 302, 303, 307, 308].includes(response.status)) {
           const location = response.headers.get("location");
+          // Cancel the redirect response body so undici removes its abort listener
+          // from the shared controller.signal. Without this, each redirect hop
+          // leaves a dangling listener that accumulates across many fetch calls.
+          await response.body?.cancel().catch(() => {});
           if (!location) break;
           currentUrl = new URL(location, currentUrl).href;
           if (i === MAX_REDIRECTS) {

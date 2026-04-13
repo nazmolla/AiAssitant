@@ -391,6 +391,53 @@ describe("builtin.web_fetch runtime behavior", () => {
       executeBuiltinWebTool("builtin.web_fetch", { url: "https://example.com/missing" })
     ).rejects.toThrow("Fetch failed: 404");
   });
+
+  test("cancels redirect response bodies before following to avoid abort listener leaks", async () => {
+    const cancelMock = jest.fn().mockResolvedValue(undefined);
+
+    let callCount = 0;
+    global.fetch = jest.fn(async () => {
+      callCount++;
+      if (callCount === 1) {
+        // First call: return a redirect
+        return {
+          ok: false,
+          status: 301,
+          statusText: "Moved Permanently",
+          headers: new Headers({ location: "https://example.com/final" }),
+          body: { cancel: cancelMock },
+        } as unknown as Response;
+      }
+      // Second call: final destination
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({ "content-type": "text/html" }),
+        body: {
+          getReader: () => {
+            const enc = new TextEncoder().encode("<html><body><p>Final page</p></body></html>");
+            let done = false;
+            return {
+              read: async () => {
+                if (done) return { done: true, value: undefined };
+                done = true;
+                return { done: false, value: enc };
+              },
+              cancel: jest.fn(),
+            };
+          },
+        },
+      } as unknown as Response;
+    }) as typeof fetch;
+
+    const result = await executeBuiltinWebTool("builtin.web_fetch", {
+      url: "https://example.com/page",
+    }) as { content: string };
+
+    expect(cancelMock).toHaveBeenCalledTimes(1);
+    expect(result.content).toContain("Final page");
+  });
 });
 
 describe("builtin.web_extract runtime behavior", () => {
