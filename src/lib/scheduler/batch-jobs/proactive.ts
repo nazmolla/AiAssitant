@@ -18,7 +18,13 @@ import {
   createThread,
   getAppConfig,
   setAppConfig,
+  getDb,
 } from "@/lib/db";
+import {
+  updateSchedulerScheduleById,
+  getSchedulerScheduleById,
+} from "@/lib/db/scheduler-queries";
+import { createNotification } from "@/lib/db/notification-queries";
 import {
   type SchedulerBatchExecutionContext,
   getDefaultAdminUserId,
@@ -41,6 +47,84 @@ import {
 import { createLogger } from "@/lib/logging/logger";
 
 const slog = createLogger("scheduler.batch-jobs.proactive");
+
+// ── Circuit-breaker for repeated auth failures ────────────────────
+
+const AUTH_FAILURE_KEY = "proactive_scan_consecutive_auth_failures";
+const AUTH_FAILURE_THRESHOLD = 3;
+/** Pattern that identifies a web_fetch 401/403 error in agent_logs messages. */
+const AUTH_FAILURE_RE = /fetch failed:\s*(401|403)/i;
+
+/**
+ * After a scan completes, inspect tool-result messages for its threads.
+ * Returns true if at least one 401/403 web_fetch error was recorded.
+ * Tool errors are stored as role='tool' messages whose content contains
+ * the error string returned by the tool executor.
+ */
+function scanHadAuthFailure(threadIds: string[]): boolean {
+  if (threadIds.length === 0) return false;
+  try {
+    const db = getDb();
+    const placeholders = threadIds.map(() => "?").join(",");
+    const rows = db.prepare(
+      `SELECT content FROM messages
+       WHERE role = 'tool'
+         AND thread_id IN (${placeholders})
+         AND content IS NOT NULL
+       LIMIT 100`
+    ).all(...threadIds) as Array<{ content: string }>;
+    return rows.some((r) => AUTH_FAILURE_RE.test(r.content));
+  } catch {
+    return false;
+  }
+}
+
+function getConsecutiveAuthFailures(): number {
+  return parseInt(getAppConfig(AUTH_FAILURE_KEY) || "0", 10);
+}
+
+function setConsecutiveAuthFailures(n: number): void {
+  setAppConfig(AUTH_FAILURE_KEY, String(n));
+}
+
+/**
+ * Disable the proactive scan schedule and notify the owning user.
+ * Called when the circuit-breaker threshold is reached.
+ */
+function disableScheduleDueToAuthFailure(scheduleId: string, failures: number): void {
+  try {
+    updateSchedulerScheduleById(scheduleId, { status: "paused" });
+  } catch { /* non-critical if schedule no longer exists */ }
+
+  const schedule = (() => {
+    try { return getSchedulerScheduleById(scheduleId); } catch { return null; }
+  })();
+  const ownerId = schedule?.owner_id;
+
+  const warningMsg =
+    `Proactive scan auto-paused after ${failures} consecutive 401/403 ` +
+    "auth failures from builtin.web_fetch. Update credentials or " +
+    "remove the failing URL, then re-enable the schedule.";
+
+  addLog({
+    level: "warning",
+    source: "scheduler",
+    message: warningMsg,
+    metadata: JSON.stringify({ scheduleId, consecutiveFailures: failures }),
+  });
+
+  if (ownerId) {
+    try {
+      createNotification({
+        userId: ownerId,
+        type: "warning",
+        title: "Proactive scan auto-paused (auth failure)",
+        body: warningMsg,
+        metadata: JSON.stringify({ scheduleId }),
+      });
+    } catch { /* non-critical */ }
+  }
+}
 
 // ── Proactive Scan Types & State ──────────────────────────────────
 
@@ -396,6 +480,17 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
       }
     } catch { /* use default */ }
 
+    // Circuit-breaker: if the schedule has been auto-paused due to consecutive
+    // auth failures, skip execution and remind the operator.
+    const currentFailures = getConsecutiveAuthFailures();
+    if (currentFailures >= AUTH_FAILURE_THRESHOLD) {
+      log("warning",
+        `Proactive scan skipped — circuit-breaker open after ${currentFailures} consecutive auth failures. ` +
+        "Fix credentials and re-enable the schedule to resume.",
+        logCtx);
+      return { outputJson: { kind: "proactive_scan", skipped: true, circuitBreakerOpen: true } };
+    }
+
     const scanResult = await ProactiveBatchJob.runProactiveScan({
       scheduleId: ctx.scheduleId,
       runId: ctx.runId,
@@ -406,6 +501,25 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
     if (!scanResult) {
       log("info", "Proactive scan skipped — previous scan still running.", logCtx);
       return { outputJson: { kind: "proactive_scan", skipped: true } };
+    }
+
+    // Circuit-breaker: check if any iteration had 401/403 web_fetch errors.
+    const allThreadIds = scanResult.iterations.map((it) => it.threadId);
+    if (scanHadAuthFailure(allThreadIds)) {
+      const newFailures = currentFailures + 1;
+      setConsecutiveAuthFailures(newFailures);
+      log("warning",
+        `Proactive scan detected auth failure (${newFailures}/${AUTH_FAILURE_THRESHOLD}).` +
+        (newFailures >= AUTH_FAILURE_THRESHOLD
+          ? " Threshold reached — pausing schedule."
+          : " Will auto-pause if it reaches the threshold."),
+        logCtx, { consecutiveFailures: newFailures });
+      if (newFailures >= AUTH_FAILURE_THRESHOLD) {
+        disableScheduleDueToAuthFailure(ctx.scheduleId, newFailures);
+      }
+    } else {
+      // Successful scan with no auth errors — reset the counter.
+      if (currentFailures > 0) setConsecutiveAuthFailures(0);
     }
 
     log("info", "Proactive scan task completed.", logCtx, {
