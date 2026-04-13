@@ -2,13 +2,25 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Box from "@mui/material/Box";
-import MuiButton from "@mui/material/Button";
-import MuiCard from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
+import Button from "@mui/material/Button";
+import Card from "@mui/material/Card";
+import Chip from "@mui/material/Chip";
+import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
-import Typography from "@mui/material/Typography";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import Typography from "@mui/material/Typography";
+import ClearIcon from "@mui/icons-material/Clear";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import SearchIcon from "@mui/icons-material/Search";
 import { useTheme } from "@/components/theme-provider";
 import { knowledgeService } from "@/lib/api";
 
@@ -30,6 +42,12 @@ function getSourceLabel(sourceType: "manual" | "chat" | "proactive"): string {
   return "Manual";
 }
 
+function getSourceColor(sourceType: "manual" | "chat" | "proactive"): "default" | "primary" | "secondary" {
+  if (sourceType === "proactive") return "secondary";
+  if (sourceType === "chat") return "primary";
+  return "default";
+}
+
 export function KnowledgeVault() {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [knowledgeTotal, setKnowledgeTotal] = useState(0);
@@ -37,8 +55,8 @@ export function KnowledgeVault() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [search, setSearch] = useState("");
   const [renderCount, setRenderCount] = useState(120);
-  const [isMobile, setIsMobile] = useState(false);
   const { formatDate } = useTheme();
 
   const fetchKnowledge = () => {
@@ -81,212 +99,199 @@ export function KnowledgeVault() {
   }
 
   const filteredEntries = useMemo(() => {
-    if (sourceFilter === "all") return entries;
+    let result = entries;
     if (sourceFilter === "proactive") {
-      return entries.filter((entry) => entry.source_type === "proactive");
+      result = result.filter((e) => e.source_type === "proactive");
+    } else if (sourceFilter === "manual") {
+      result = result.filter((e) => e.source_type !== "proactive");
     }
-    return entries.filter((entry) => entry.source_type !== "proactive");
-  }, [entries, sourceFilter]);
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter(
+        (e) =>
+          e.entity.toLowerCase().includes(q) ||
+          e.attribute.toLowerCase().includes(q) ||
+          e.value.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [entries, sourceFilter, search]);
 
   useEffect(() => {
     setRenderCount(120);
-  }, [sourceFilter]);
-
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 767px)");
-    const update = () => setIsMobile(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
+  }, [sourceFilter, search]);
 
   const visibleEntries = useMemo(() => filteredEntries.slice(0, renderCount), [filteredEntries, renderCount]);
 
   return (
-    <div className="space-y-6">
-      <div>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
+      <Box>
         <Typography variant="h5" sx={{ fontWeight: 700, color: "primary.main" }}>Knowledge Vault</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           Nexus continuously captures durable facts from every chat turn. Review and curate them here.
         </Typography>
-      </div>
+      </Box>
 
-      <ToggleButtonGroup
-        value={sourceFilter}
-        exclusive
-        onChange={(_, v) => { if (v) setSourceFilter(v); }}
-        size="small"
-      >
-        <ToggleButton value="all">All</ToggleButton>
-        <ToggleButton value="proactive">Proactive</ToggleButton>
-        <ToggleButton value="manual">Manual</ToggleButton>
-      </ToggleButtonGroup>
+      {/* Toolbar */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+        <TextField
+          size="small"
+          placeholder="Search entity, attribute, or value…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ flex: 1, minWidth: 200, maxWidth: 360 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ fontSize: "1rem", color: "text.disabled" }} />
+                </InputAdornment>
+              ),
+              endAdornment: search ? (
+                <InputAdornment position="end">
+                  <IconButton size="small" onClick={() => setSearch("")} edge="end">
+                    <ClearIcon sx={{ fontSize: "0.9rem" }} />
+                  </IconButton>
+                </InputAdornment>
+              ) : undefined,
+            },
+          }}
+        />
+        <ToggleButtonGroup
+          value={sourceFilter}
+          exclusive
+          onChange={(_, v) => { if (v) setSourceFilter(v); }}
+          size="small"
+        >
+          <ToggleButton value="all">All</ToggleButton>
+          <ToggleButton value="proactive">Proactive</ToggleButton>
+          <ToggleButton value="manual">Manual</ToggleButton>
+        </ToggleButtonGroup>
+        <Typography variant="caption" color="text.disabled" sx={{ ml: "auto" }}>
+          {filteredEntries.length} / {knowledgeTotal} entries
+        </Typography>
+      </Box>
 
-      <MuiCard variant="outlined">
-        <CardContent sx={{ p: 0 }}>
-          {isMobile ? (
-          <div className="p-3 space-y-2">
-            {visibleEntries.map((entry) => (
-              <div key={entry.id} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{entry.entity}</div>
-                    <div className="text-xs text-muted-foreground/70 truncate">{entry.attribute}</div>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground/60 shrink-0">{getSourceLabel(entry.source_type)}</div>
-                </div>
-                {editingId === entry.id ? (
-                  <div className="space-y-2">
-                    <TextField
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      size="small"
-                    />
-                    <div className="flex gap-2">
-                      <MuiButton size="small" variant="contained" onClick={() => updateEntry(entry.id)}>Save</MuiButton>
-                      <MuiButton size="small" variant="text" onClick={() => setEditingId(null)}>Cancel</MuiButton>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-sm text-foreground/80 break-words">{entry.value}</div>
-                )}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] text-muted-foreground/60">
-                    {formatDate(entry.last_updated, { year: "numeric", month: "short", day: "numeric" })}
-                  </div>
-                  <div className="flex gap-1">
-                    <MuiButton
-                      size="small"
-                      variant="text"
-                      onClick={() => {
-                        setEditingId(entry.id);
-                        setEditValue(entry.value);
-                      }}
-                    >
-                      Edit
-                    </MuiButton>
-                    <MuiButton size="small" variant="text" color="error" onClick={() => deleteEntry(entry.id)}>
-                      Delete
-                    </MuiButton>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          ) : (
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px]">
-              <thead>
-                <tr className="border-b border-white/[0.06] text-left text-[11px] text-muted-foreground/50 uppercase tracking-wider">
-                  <th className="p-4 font-medium">Entity</th>
-                  <th className="p-4 font-medium">Attribute</th>
-                  <th className="p-4 font-medium">Value</th>
-                  <th className="p-4 font-medium">Source</th>
-                  <th className="p-4 font-medium">Updated</th>
-                  <th className="p-4 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleEntries.map((entry) => (
-                  <tr key={entry.id} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors duration-200">
-                    <td className="p-4 text-sm font-medium">{entry.entity}</td>
-                    <td className="p-4 text-sm text-foreground/80">{entry.attribute}</td>
-                    <td className="p-4 text-sm">
+      {/* Table */}
+      <Card variant="outlined" sx={{ overflow: "hidden" }}>
+        <TableContainer sx={{ maxHeight: "calc(100vh - 320px)", overflowY: "auto" }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1 }}>Entity</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1 }}>Attribute</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1 }}>Value</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1 }}>Source</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1 }}>Updated</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1, width: 88 }} align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {visibleEntries.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 6, color: "text.disabled" }}>
+                    <Typography variant="body2" color="text.disabled">
+                      {search
+                        ? `No entries match "${search}"`
+                        : sourceFilter === "all"
+                        ? "No knowledge captured yet. Start chatting or connect proactive MCP sources."
+                        : sourceFilter === "proactive"
+                        ? "No proactive knowledge facts found yet."
+                        : "No manual/chat knowledge facts found yet."}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                visibleEntries.map((entry) => (
+                  <TableRow
+                    key={entry.id}
+                    hover
+                    sx={{ "&:last-child td": { borderBottom: 0 } }}
+                  >
+                    <TableCell sx={{ fontSize: "0.82rem", fontWeight: 500, maxWidth: 140 }}>
+                      <Typography noWrap variant="body2" sx={{ fontWeight: 500, fontSize: "inherit" }}>{entry.entity}</Typography>
+                    </TableCell>
+                    <TableCell sx={{ fontSize: "0.82rem", color: "text.secondary", maxWidth: 140 }}>
+                      <Typography noWrap variant="body2" sx={{ color: "inherit", fontSize: "inherit" }}>{entry.attribute}</Typography>
+                    </TableCell>
+                    <TableCell sx={{ fontSize: "0.82rem", maxWidth: 280 }}>
                       {editingId === entry.id ? (
-                        <div className="flex gap-1">
+                        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
                           <TextField
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             size="small"
+                            autoFocus
+                            sx={{ flex: 1 }}
                           />
-                          <MuiButton size="small" variant="contained" onClick={() => updateEntry(entry.id)}>
-                            Save
-                          </MuiButton>
-                          <MuiButton
-                            size="small"
-                            variant="text"
-                            onClick={() => setEditingId(null)}
-                          >
-                            Cancel
-                          </MuiButton>
-                        </div>
+                          <Button size="small" variant="contained" onClick={() => updateEntry(entry.id)}>Save</Button>
+                          <Button size="small" variant="text" onClick={() => setEditingId(null)}>Cancel</Button>
+                        </Box>
                       ) : (
-                        entry.value
+                        <Typography variant="body2" sx={{ fontSize: "inherit", wordBreak: "break-word" }}>{entry.value}</Typography>
                       )}
-                    </td>
-                    <td className="p-4 text-xs text-muted-foreground/70">
-                      {getSourceLabel(entry.source_type)}
-                    </td>
-                    <td className="p-4 text-xs text-muted-foreground/50">
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={getSourceLabel(entry.source_type)}
+                        size="small"
+                        color={getSourceColor(entry.source_type)}
+                        variant="outlined"
+                        sx={{ height: 20, fontSize: "0.65rem" }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ fontSize: "0.75rem", color: "text.disabled", whiteSpace: "nowrap" }}>
                       {formatDate(entry.last_updated, { year: "numeric", month: "short", day: "numeric" })}
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex justify-end gap-1">
-                        <MuiButton
-                          size="small"
-                          variant="text"
-                          onClick={() => {
-                            setEditingId(entry.id);
-                            setEditValue(entry.value);
-                          }}
-                        >
-                          Edit
-                        </MuiButton>
-                        <MuiButton
-                          size="small"
-                          variant="text"
-                          color="error"
-                          onClick={() => deleteEntry(entry.id)}
-                        >
-                          Delete
-                        </MuiButton>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          )}
+                    </TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                      <IconButton
+                        size="small"
+                        title="Edit"
+                        onClick={() => { setEditingId(entry.id); setEditValue(entry.value); }}
+                        sx={{ color: "text.secondary", "&:hover": { color: "primary.main" } }}
+                      >
+                        <EditIcon sx={{ fontSize: "0.95rem" }} />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        title="Delete"
+                        onClick={() => deleteEntry(entry.id)}
+                        sx={{ color: "text.secondary", "&:hover": { color: "error.main" } }}
+                      >
+                        <DeleteOutlineIcon sx={{ fontSize: "0.95rem" }} />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
 
-          {filteredEntries.length === 0 && (
-            <Box sx={{ p: 6, textAlign: "center" }}>
-              <Typography sx={{ fontSize: "2rem", mb: 1, opacity: 0.3 }}>🧠</Typography>
-              <Typography variant="body2" color="text.secondary">
-                {sourceFilter === "all"
-                  ? "No knowledge captured yet. Start chatting or connect proactive MCP sources."
-                  : sourceFilter === "proactive"
-                    ? "No proactive knowledge facts found yet."
-                    : "No manual/chat knowledge facts found yet."}
-              </Typography>
-            </Box>
-          )}
-
-          {filteredEntries.length > visibleEntries.length && (
-            <Box sx={{ p: 1.5, display: "flex", justifyContent: "center" }}>
-              <MuiButton
-                size="small"
-                variant="outlined"
-                onClick={() => setRenderCount((prev) => prev + 120)}
-              >
-                Load more ({filteredEntries.length - visibleEntries.length} remaining)
-              </MuiButton>
-            </Box>
-          )}
-          {knowledgeHasMore && filteredEntries.length <= visibleEntries.length && (
-            <Box sx={{ p: 1.5, display: "flex", justifyContent: "center" }}>
-              <MuiButton
-                size="small"
-                variant="outlined"
-                onClick={loadMoreKnowledge}
-              >
-                Load more from server ({knowledgeTotal - entries.length} remaining)
-              </MuiButton>
-            </Box>
-          )}
-        </CardContent>
-      </MuiCard>
-    </div>
+        {/* Load more controls */}
+        {filteredEntries.length > visibleEntries.length && (
+          <Box sx={{ p: 1.5, display: "flex", justifyContent: "center", borderTop: 1, borderColor: "divider" }}>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setRenderCount((prev) => prev + 120)}
+            >
+              Show more ({filteredEntries.length - visibleEntries.length} remaining)
+            </Button>
+          </Box>
+        )}
+        {knowledgeHasMore && filteredEntries.length <= visibleEntries.length && (
+          <Box sx={{ p: 1.5, display: "flex", justifyContent: "center", borderTop: 1, borderColor: "divider" }}>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={loadMoreKnowledge}
+            >
+              Load more from server ({knowledgeTotal - entries.length} remaining)
+            </Button>
+          </Box>
+        )}
+      </Card>
+    </Box>
   );
 }

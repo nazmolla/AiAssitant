@@ -12,10 +12,23 @@ import Chip from "@mui/material/Chip";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import Divider from "@mui/material/Divider";
+import Tooltip from "@mui/material/Tooltip";
 import AddIcon from "@mui/icons-material/Add";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import type { Thread } from "./chat-panel-types";
+
+function formatRelativeTime(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(isoString).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 export interface ThreadSidebarProps {
   threads: Thread[];
@@ -118,7 +131,7 @@ export const ThreadSidebar = memo(function ThreadSidebar({
                   <Typography variant="body2" noWrap sx={{ fontWeight: 500, fontSize: "0.875rem" }}>
                     {thread.title}
                   </Typography>
-                  <Box sx={{ mt: 0.5 }}>
+                  <Box sx={{ mt: 0.5, display: "flex", alignItems: "center", gap: 0.75 }}>
                     <Chip
                       label={thread.status}
                       size="small"
@@ -131,24 +144,29 @@ export const ThreadSidebar = memo(function ThreadSidebar({
                       }
                       sx={{ height: 18, fontSize: "0.65rem" }}
                     />
+                    {thread.last_message_at && (
+                      <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.65rem" }}>
+                        {formatRelativeTime(thread.last_message_at)}
+                      </Typography>
+                    )}
                   </Box>
                 </Box>
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteThread(thread.id);
-                  }}
-                  sx={{
-                    mt: 0.5,
-                    opacity: 0,
-                    ".MuiListItemButton-root:hover &": { opacity: 1 },
-                    color: "text.secondary",
-                    "&:hover": { color: "error.main" },
-                  }}
-                >
-                  <DeleteOutlineIcon fontSize="small" />
-                </IconButton>
+                <Tooltip title="Delete conversation" placement="right">
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteThread(thread.id);
+                    }}
+                    sx={{
+                      mt: 0.5,
+                      color: "text.disabled",
+                      "&:hover": { color: "error.main" },
+                    }}
+                  >
+                    <DeleteOutlineIcon sx={{ fontSize: "0.9rem" }} />
+                  </IconButton>
+                </Tooltip>
               </ListItemButton>
             ))}
           </List>

@@ -320,10 +320,7 @@ export default function HomePage() {
             borderColor: "divider",
           }}
         >
-          {/* Spacer — pushes nav items to the bottom */}
-          <Box sx={{ flex: 1 }} />
-
-          {/* Nav items anchored at bottom-left */}
+          {/* Nav items anchored at top */}
           <List disablePadding sx={{ py: 0.5, px: 0.5 }}>
             {tabItems.map((t) => (
               <ListItemButton
@@ -456,6 +453,18 @@ const SETTINGS_PAGES: SettingsPage[] = [
   { key: "scheduler", label: "Batch Scheduler", Icon: ScheduleIcon, adminOnly: true },
 ];
 
+interface SettingsGroup {
+  label: string;
+  keys: string[];
+}
+
+const SETTINGS_GROUPS: SettingsGroup[] = [
+  { label: "Integrations", keys: ["llm", "channels", "mcp"] },
+  { label: "Agent Behavior", keys: ["policies", "standing-orders", "custom-tools", "scheduler"] },
+  { label: "Voice & Hardware", keys: ["devices", "voice-profile", "whisper"] },
+  { label: "System", keys: ["logging", "search-providers", "db-management", "auth", "users"] },
+];
+
 const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
   profile: { title: "Owner Profile", subtitle: "Your identity, skills, and contact info. Nexus uses this to personalize responses." },
   scheduler: { title: "Batch Scheduler", subtitle: "Configure batch job scheduling for proactive scans, knowledge maintenance, cleanup, and email reading." },
@@ -478,9 +487,10 @@ const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
 const DRAWER_WIDTH = 200;
 const DRAWER_MINI_WIDTH = 52;
 
+const SETTINGS_NAV_WIDTH = 200;
+
 function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavigate }: { userRole: string; perms: Record<string, number>; isUserMetaLoading: boolean; activePage?: string; onNavigate: (page: string) => void }) {
   const visiblePages = useMemo(() => {
-    // While loading, show all pages to prevent premature redirects
     if (isUserMetaLoading) return SETTINGS_PAGES;
     return SETTINGS_PAGES.filter((p) => {
       if (p.adminOnly && userRole !== "admin") return false;
@@ -489,16 +499,12 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
     });
   }, [userRole, perms, isUserMetaLoading]);
 
-  /* State for immediate UI, synced from URL prop */
   const defaultPage = visiblePages[0]?.key || "llm";
-  /* Allow "profile" even though it's not in the chip list (accessible via account menu) */
   const validPage = activePage === "profile" || (activePage && visiblePages.some((p) => p.key === activePage)) ? activePage : defaultPage;
   const [active, setActive] = useState(validPage);
 
-  /* Sync with URL changes */
   useEffect(() => { setActive(validPage); }, [validPage]);
 
-  /* Redirect to valid page if needed — skip while permissions are loading */
   useEffect(() => {
     if (isUserMetaLoading) return;
     if (visiblePages.length === 0) return;
@@ -514,93 +520,127 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
 
   const header = SETTINGS_HEADERS[active];
 
+  const visibleKeys = new Set(visiblePages.map((p) => p.key));
+  const pageMap = Object.fromEntries(SETTINGS_PAGES.map((p) => [p.key, p]));
+
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Horizontal scrollable chip strip */}
+    <Box sx={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      {/* Vertical grouped settings nav */}
       <Box
         sx={{
-          display: "flex",
-          alignItems: "center",
-          gap: 0.75,
-          px: 1.5,
-          py: 0.75,
-          borderBottom: 1,
+          width: SETTINGS_NAV_WIDTH,
+          flexShrink: 0,
+          borderRight: 1,
           borderColor: "divider",
           bgcolor: "background.paper",
-          overflowX: "auto",
-          overflowY: "hidden",
-          whiteSpace: "nowrap",
-          scrollbarWidth: "none",
-          "&::-webkit-scrollbar": { display: "none" },
+          overflowY: "auto",
+          py: 1,
+          scrollbarWidth: "thin",
         }}
       >
         {isUserMetaLoading ? (
-          <Chip
-            label="Loading settings..."
-            size="small"
-            variant="outlined"
-            sx={{ flexShrink: 0, fontSize: "0.75rem", height: 28 }}
-          />
+          <Box sx={{ px: 2, py: 4, display: "flex", justifyContent: "center" }}>
+            <CircularProgress size={20} />
+          </Box>
         ) : (
-          <>
-            {visiblePages.map((page) => (
-              <Chip
-                key={page.key}
-                icon={<page.Icon sx={{ fontSize: "0.85rem !important" }} />}
-                label={page.label}
-                size="small"
-                variant={active === page.key ? "filled" : "outlined"}
-                color={active === page.key ? "primary" : "default"}
-                onClick={() => handleNavigate(page.key)}
-                sx={{
-                  flexShrink: 0,
-                  fontSize: "0.75rem",
-                  height: 28,
-                  fontWeight: active === page.key ? 600 : 400,
-                  cursor: "pointer",
-                }}
-              />
-            ))}
-          </>
+          SETTINGS_GROUPS.map((group) => {
+            const groupPages = group.keys
+              .filter((k) => visibleKeys.has(k))
+              .map((k) => pageMap[k])
+              .filter(Boolean);
+            if (groupPages.length === 0) return null;
+            return (
+              <Box key={group.label} sx={{ mb: 0.5 }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    px: 2,
+                    py: 0.75,
+                    display: "block",
+                    fontWeight: 600,
+                    fontSize: "0.65rem",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    color: "text.disabled",
+                  }}
+                >
+                  {group.label}
+                </Typography>
+                <List disablePadding sx={{ px: 0.5 }}>
+                  {groupPages.map((page) => (
+                    <ListItemButton
+                      key={page.key}
+                      selected={active === page.key}
+                      onClick={() => handleNavigate(page.key)}
+                      sx={{
+                        borderRadius: 1.5,
+                        minHeight: 34,
+                        py: 0.5,
+                        px: 1.25,
+                        mb: 0.25,
+                        gap: 1,
+                        "&.Mui-selected": {
+                          bgcolor: "primary.main",
+                          color: "primary.contrastText",
+                          "& .MuiListItemIcon-root": { color: "inherit" },
+                          "&:hover": { bgcolor: "primary.dark" },
+                        },
+                      }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 0, color: "text.secondary" }}>
+                        <page.Icon sx={{ fontSize: "1rem" }} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={page.label}
+                        primaryTypographyProps={{ fontSize: "0.8rem", fontWeight: 500, noWrap: true }}
+                      />
+                    </ListItemButton>
+                  ))}
+                </List>
+                <Divider sx={{ mx: 1, mt: 0.5 }} />
+              </Box>
+            );
+          })
         )}
       </Box>
 
       {/* Content */}
-      <AppPageBackbone>
-        <Box sx={{ width: "100%" }}>
-          {isUserMetaLoading ? (
-            <Box sx={{ py: 8, display: "flex", justifyContent: "center" }}>
-              <CircularProgress size={28} />
-            </Box>
-          ) : (
-            <>
-          {header && (
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="h5" color="primary" fontWeight={700}>{header.title}</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{header.subtitle}</Typography>
-            </Box>
-          )}
-
-          {active === "profile" && <ProfileConfig />}
-          {active === "llm" && <LlmConfig />}
-          {active === "channels" && <ChannelsConfig />}
-          {active === "mcp" && <McpConfig />}
-          {active === "policies" && <ToolPolicies />}
-          {active === "standing-orders" && <StandingOrdersConfig />}
-          {active === "devices" && <DevicesConfig />}
-          {active === "voice-profile" && <VoiceProfileConfig />}
-          {active === "whisper" && userRole === "admin" && <WhisperConfig />}
-          {active === "logging" && <LoggingConfig />}
-          {active === "search-providers" && userRole === "admin" && <SearchProvidersConfig />}
-          {active === "db-management" && userRole === "admin" && <DbManagementConfig />}
-          {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
-          {active === "auth" && userRole === "admin" && <AuthConfig />}
-          {active === "users" && userRole === "admin" && <UserManagement />}
-          {active === "scheduler" && userRole === "admin" && <SchedulerConfig />}
-            </>
-          )}
-        </Box>
-      </AppPageBackbone>
+      <Box sx={{ flex: 1, overflow: "hidden" }}>
+        <AppPageBackbone>
+          <Box sx={{ width: "100%" }}>
+            {isUserMetaLoading ? (
+              <Box sx={{ py: 8, display: "flex", justifyContent: "center" }}>
+                <CircularProgress size={28} />
+              </Box>
+            ) : (
+              <>
+                {header && (
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="h5" color="primary" fontWeight={700}>{header.title}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{header.subtitle}</Typography>
+                  </Box>
+                )}
+                {active === "profile" && <ProfileConfig />}
+                {active === "llm" && <LlmConfig />}
+                {active === "channels" && <ChannelsConfig />}
+                {active === "mcp" && <McpConfig />}
+                {active === "policies" && <ToolPolicies />}
+                {active === "standing-orders" && <StandingOrdersConfig />}
+                {active === "devices" && <DevicesConfig />}
+                {active === "voice-profile" && <VoiceProfileConfig />}
+                {active === "whisper" && userRole === "admin" && <WhisperConfig />}
+                {active === "logging" && <LoggingConfig />}
+                {active === "search-providers" && userRole === "admin" && <SearchProvidersConfig />}
+                {active === "db-management" && userRole === "admin" && <DbManagementConfig />}
+                {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
+                {active === "auth" && userRole === "admin" && <AuthConfig />}
+                {active === "users" && userRole === "admin" && <UserManagement />}
+                {active === "scheduler" && userRole === "admin" && <SchedulerConfig />}
+              </>
+            )}
+          </Box>
+        </AppPageBackbone>
+      </Box>
     </Box>
   );
 }
