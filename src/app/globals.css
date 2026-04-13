@@ -233,6 +233,58 @@
     --glow: 270 70% 62%;
   }
 
+  /* Apple — monochrome luxury, zero-saturation accent */
+  [data-theme="apple"] {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+    --primary: 0 0% 12%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 94%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 94%;
+    --muted-foreground: 0 0% 42%;
+    --accent: 0 0% 94%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 86%;
+    --input: 0 0% 86%;
+    --ring: 0 0% 12%;
+    --radius: 0.75rem;
+    --sidebar: 0 0% 96%;
+    --glow: 0 0% 50%;
+  }
+
+  /* Apple Dark */
+  [data-theme="apple"].dark {
+    --background: 0 0% 7%;
+    --foreground: 0 0% 94%;
+    --card: 0 0% 11%;
+    --card-foreground: 0 0% 94%;
+    --popover: 0 0% 11%;
+    --popover-foreground: 0 0% 94%;
+    --primary: 0 0% 85%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 16%;
+    --secondary-foreground: 0 0% 94%;
+    --muted: 0 0% 16%;
+    --muted-foreground: 0 0% 48%;
+    --accent: 0 0% 16%;
+    --accent-foreground: 0 0% 94%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 22%;
+    --input: 0 0% 22%;
+    --ring: 0 0% 85%;
+    --radius: 0.75rem;
+    --sidebar: 0 0% 9%;
+    --glow: 0 0% 50%;
+  }
+
   /* Obsidian — pure dark with warm rose accents */
   [data-theme="obsidian"] {
     --background: 0 0% 2%;
@@ -325,14 +377,14 @@
 
   .glow-sm {
     box-shadow:
-      0 0 15px -3px hsl(var(--glow) / 0.15),
-      0 0 6px -4px hsl(var(--glow) / 0.2);
+      0 0 15px -3px hsl(var(--glow) / 0.08),
+      0 0 6px -4px hsl(var(--glow) / 0.12);
   }
 
   .glow-md {
     box-shadow:
-      0 0 30px -5px hsl(var(--glow) / 0.2),
-      0 0 10px -5px hsl(var(--glow) / 0.3);
+      0 0 30px -5px hsl(var(--glow) / 0.12),
+      0 0 10px -5px hsl(var(--glow) / 0.18);
   }
 
   .gradient-text {
@@ -342,6 +394,7 @@
     background-clip: text;
   }
 
+  /* gradient-border kept for focal CTA use only */
   .gradient-border {
     position: relative;
     border: 1px solid transparent;
@@ -352,12 +405,17 @@
     position: absolute;
     inset: -1px;
     border-radius: inherit;
-    background: linear-gradient(135deg, hsl(var(--primary) / 0.3), hsl(var(--border) / 0.3), hsl(var(--primary) / 0.1));
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.2), hsl(var(--border) / 0.2), hsl(var(--primary) / 0.08));
     z-index: -1;
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask-composite: exclude;
     -webkit-mask-composite: xor;
     padding: 1px;
+  }
+
+  /* hairline-border — Apple-style thin separator for non-focal UI */
+  .hairline-border {
+    border: 1px solid hsl(var(--border) / 0.6);
   }
 
   .noise {
@@ -375,6 +433,13 @@
 }
 
 /* ── Font overrides ──────────────────────────────────── */
+
+[data-font="inter"],
+[data-font="inter"] * {
+  --font-sans: 'Inter', system-ui, sans-serif !important;
+  --font-display: 'Inter', system-ui, sans-serif !important;
+  font-family: 'Inter', system-ui, sans-serif !important;
+}
 
 [data-font="calibri"],
 [data-font="calibri"] * {

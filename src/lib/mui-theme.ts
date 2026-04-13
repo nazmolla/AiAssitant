@@ -37,6 +37,16 @@ interface ThemeTokens {
 }
 
 const THEME_TOKENS: Record<ThemeId, ThemeTokens> = {
+  apple: {
+    primary: hslToHex(0, 0, 85),
+    background: hslToHex(0, 0, 7),
+    paper: hslToHex(0, 0, 11),
+    textPrimary: hslToHex(0, 0, 94),
+    textSecondary: hslToHex(0, 0, 48),
+    divider: hslToHex(0, 0, 22),
+    error: hslToHex(0, 72, 51),
+    mode: "dark",
+  },
   ember: {
     primary: hslToHex(0, 85, 60),
     background: hslToHex(0, 0, 4),

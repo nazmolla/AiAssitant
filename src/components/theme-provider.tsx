@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 
-export type ThemeId = "ember" | "midnight" | "frost" | "sunrise" | "forest" | "amethyst" | "obsidian";
+export type ThemeId = "ember" | "midnight" | "frost" | "sunrise" | "forest" | "amethyst" | "obsidian" | "apple";
 
 export interface ThemeOption {
   id: ThemeId;
@@ -15,6 +15,7 @@ export interface ThemeOption {
 }
 
 export const THEMES: ThemeOption[] = [
+  { id: "apple", label: "Apple", description: "Monochrome luxury, SF Pro" , swatch: "hsl(0 0% 12%)" },
   { id: "ember", label: "Ember", description: "Bold red, the original", swatch: "hsl(0 85% 60%)" },
   { id: "midnight", label: "Midnight", description: "Deep blue cinema", swatch: "hsl(230 80% 62%)", darkOnly: true },
   { id: "frost", label: "Frost", description: "Cool teal, minimal", swatch: "hsl(198 70% 50%)" },
@@ -53,9 +54,9 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: "ember",
+  theme: "apple",
   setTheme: () => {},
-  font: "inter",
+  font: "apple",
   setFont: () => {},
   timezone: "",
   setTimezone: () => {},
@@ -70,8 +71,8 @@ const STORAGE_KEY = "nexus-theme";
 const FONT_STORAGE_KEY = "nexus-font";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeId>("ember");
-  const [font, setFontState] = useState<FontId>("inter");
+  const [theme, setThemeState] = useState<ThemeId>("apple");
+  const [font, setFontState] = useState<FontId>("apple");
   // Auto-detect browser timezone as default so times are always localized
   const [timezone, setTimezoneState] = useState<string>(() => {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; }
@@ -177,9 +178,6 @@ function applyTheme(id: ThemeId) {
 }
 
 function applyFont(id: FontId) {
-  const html = document.documentElement;
-  html.removeAttribute("data-font");
-  if (id !== "inter") {
-    html.setAttribute("data-font", id);
-  }
+  // Always write data-font so the CSS [data-font="..."] rule always fires.
+  document.documentElement.setAttribute("data-font", id);
 }
