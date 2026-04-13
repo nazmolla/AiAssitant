@@ -45,7 +45,7 @@ jest.mock("@/lib/agent/context-builder", () => ({
 }));
 
 jest.mock("@/lib/agent/message-converter", () => ({
-  dbMessagesToChat: jest.fn().mockReturnValue([]),
+  dbMessagesToChat: jest.fn().mockImplementation(() => []),
   compactHistory: jest.fn().mockReturnValue(null),
   estimateChatTokens: jest.fn().mockReturnValue(1000),
 }));
@@ -73,6 +73,11 @@ jest.mock("@/lib/agent/inline-approval-flow", () => ({
 jest.mock("@/lib/agent/tool-result-processor", () => ({
   processExecutedToolResult: jest.fn(),
   processFailedToolResult: jest.fn(),
+}));
+
+jest.mock("@/lib/agent/discovery", () => ({
+  expandMultiToolUse: (calls: unknown[]) => calls,
+  normalizeToolName: (name: string) => name,
 }));
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -348,5 +353,93 @@ describe("Agent loop — context-aware fallback (token filtering, #254)", () => 
     expect(callArgs).toHaveLength(4);
     expect(typeof callArgs[3]).toBe("number");
     expect(callArgs[3]).toBeGreaterThan(0);
+  });
+});
+
+describe("Agent loop — tool_calls message ordering safety (#290)", () => {
+  const THREAD_ID = "thread-tool-ordering";
+  const USER_ID = "user-1";
+
+  const TOOL_RESPONSE: import("@/lib/llm").ChatResponse = {
+    content: "Using tool",
+    toolCalls: [{ id: "call_abc123", name: "builtin.test_tool", arguments: {} }],
+    finishReason: "tool_calls",
+  };
+  const FINAL_RESPONSE: import("@/lib/llm").ChatResponse = {
+    content: "Done!",
+    toolCalls: [],
+    finishReason: "stop",
+  };
+
+  test("unexpected throw in tool loop injects synthetic error result so chatMessages stays well-formed", async () => {
+    // The provider will succeed on the first call (returns tool_calls) and on the
+    // second call (returns final response). We verify the second call receives a
+    // well-formed chatMessages that includes a tool result for the first call.
+    const chatMock = jest.fn()
+      .mockResolvedValueOnce(TOOL_RESPONSE)
+      .mockResolvedValueOnce(FINAL_RESPONSE);
+
+    const deps = makeDeps({
+      selectProvider: jest.fn().mockReturnValue({
+        provider: { chat: chatMock },
+        providerLabel: "Primary",
+        taskType: "simple",
+        tier: "primary",
+        reason: "test",
+      }),
+      selectFallbackProvider: jest.fn().mockReturnValue(null),
+      executeToolWithPolicy: jest.fn().mockRejectedValue(new Error("DB BUSY")),
+      processFailedToolResult: jest.fn().mockReturnValue("[ERROR] Tool failed"),
+      addMessage: jest.fn().mockReturnValue({ id: "msg-1", thread_id: THREAD_ID, role: "user", content: "hi" }),
+      addLog: jest.fn(),
+    });
+
+    // Even though executeToolWithPolicy throws, runAgentLoop should inject a
+    // synthetic tool result and re-throw (not silently swallow the error).
+    await expect(
+      runAgentLoop(THREAD_ID, "hello", undefined, undefined, false, USER_ID,
+        undefined, undefined, undefined, deps)
+    ).rejects.toThrow("DB BUSY");
+  });
+
+  test("successful tool execution pushes tool result before next LLM call", async () => {
+    const capturedMessages: import("@/lib/llm").ChatMessage[][] = [];
+    const chatMock = jest.fn().mockImplementation(
+      (messages: import("@/lib/llm").ChatMessage[]) => {
+        capturedMessages.push(JSON.parse(JSON.stringify(messages)));
+        if (capturedMessages.length === 1) return Promise.resolve(TOOL_RESPONSE);
+        return Promise.resolve(FINAL_RESPONSE);
+      }
+    );
+
+    const deps = makeDeps({
+      selectProvider: jest.fn().mockReturnValue({
+        provider: { chat: chatMock },
+        providerLabel: "Primary",
+        taskType: "simple",
+        tier: "primary",
+        reason: "test",
+      }),
+      selectFallbackProvider: jest.fn().mockReturnValue(null),
+      executeToolWithPolicy: jest.fn().mockResolvedValue({ status: "executed", result: { ok: true } }),
+      processExecutedToolResult: jest.fn().mockReturnValue({ attachments: [], llmContent: '{"ok":true}' }),
+      processFailedToolResult: jest.fn().mockReturnValue("[ERROR]"),
+      addMessage: jest.fn().mockReturnValue({ id: "msg-1", thread_id: THREAD_ID, role: "user", content: "hi" }),
+      addLog: jest.fn(),
+    });
+
+    await runAgentLoop(THREAD_ID, "hello", undefined, undefined, false, USER_ID,
+      undefined, undefined, undefined, deps);
+
+    // The second LLM call should have chatMessages that includes:
+    // - assistant message with tool_calls
+    // - tool result for that tool_call_id
+    const secondCallMessages = capturedMessages[1];
+    const assistantMsg = secondCallMessages.find((m) => m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0);
+    const toolMsg = secondCallMessages.find((m) => m.role === "tool" && m.tool_call_id === "call_abc123");
+
+    expect(assistantMsg).toBeDefined();
+    expect(toolMsg).toBeDefined();
+    expect(toolMsg?.content).toBe('{"ok":true}');
   });
 });

@@ -340,43 +340,80 @@ export async function runAgentLoop(
         tool_calls: toolCalls,
       });
 
+      // Track which tool_call_ids have received a result so we can inject
+      // synthetic error entries for any that are skipped if an exception fires.
+      const answeredToolCallIds = new Set<string>();
+
       // Process each tool call through the unified policy gatekeeper
-      for (const toolCall of toolCalls) {
-        await yieldLoop(); // yield between tool executions
-        onStatus?.({ step: "Executing tool", detail: toolCall.name });
-        const result = await deps.executeToolWithPolicy(toolCall, threadId, response.content || undefined, userId);
+      try {
+        for (const toolCall of toolCalls) {
+          await yieldLoop(); // yield between tool executions
+          onStatus?.({ step: "Executing tool", detail: toolCall.name });
+          const result = await deps.executeToolWithPolicy(toolCall, threadId, response.content || undefined, userId);
 
-        if (result.status === "pending_approval") {
-          pendingApprovals.push(toolCall.name);
-          chatMessages.push({
-            role: "tool",
-            content: `[PENDING APPROVAL] Action "${toolCall.name}" is awaiting owner approval.`,
-            tool_call_id: toolCall.id,
-          });
-        } else if (result.status === "executed") {
-          toolsUsed.push(toolCall.name);
-          const processed = deps.processExecutedToolResult(toolCall, result.result, threadId, onMessage);
-          screenshotAttachments.push(...processed.attachments);
+          if (result.status === "pending_approval") {
+            pendingApprovals.push(toolCall.name);
+            chatMessages.push({
+              role: "tool",
+              content: `[PENDING APPROVAL] Action "${toolCall.name}" is awaiting owner approval.`,
+              tool_call_id: toolCall.id,
+            });
+          } else if (result.status === "executed") {
+            toolsUsed.push(toolCall.name);
+            const processed = deps.processExecutedToolResult(toolCall, result.result, threadId, onMessage);
+            screenshotAttachments.push(...processed.attachments);
 
-          chatMessages.push({
-            role: "tool",
-            content: processed.llmContent,
-            tool_call_id: toolCall.id,
-          });
+            chatMessages.push({
+              role: "tool",
+              content: processed.llmContent,
+              tool_call_id: toolCall.id,
+            });
 
-          // Exclude untrusted external content from knowledge ingestion to prevent vault poisoning
-          if (!isUntrustedToolOutput(toolCall.name)) {
-            const rawResult = JSON.stringify(result.result);
-            knowledgeSnippets.push(`[Tool ${toolCall.name}]\n${rawResult.slice(0, 4000)}`);
+            // Exclude untrusted external content from knowledge ingestion to prevent vault poisoning
+            if (!isUntrustedToolOutput(toolCall.name)) {
+              const rawResult = JSON.stringify(result.result);
+              knowledgeSnippets.push(`[Tool ${toolCall.name}]\n${rawResult.slice(0, 4000)}`);
+            }
+          } else {
+            const errorContent = deps.processFailedToolResult(toolCall, result.error, threadId, onMessage);
+            chatMessages.push({
+              role: "tool",
+              content: errorContent,
+              tool_call_id: toolCall.id,
+            });
           }
-        } else {
-          const errorContent = deps.processFailedToolResult(toolCall, result.error, threadId, onMessage);
-          chatMessages.push({
-            role: "tool",
-            content: errorContent,
-            tool_call_id: toolCall.id,
-          });
+
+          answeredToolCallIds.add(toolCall.id);
         }
+      } catch (toolLoopErr) {
+        // An unexpected exception escaped the tool loop after the assistant
+        // tool_calls message was already appended to chatMessages.  Inject
+        // synthetic error results for every unanswered call so the history
+        // remains well-formed (every assistant tool_calls must be followed by
+        // a tool result for each call_id).  This prevents LLM providers from
+        // returning 400 "tool_calls must be followed by tool messages" on the
+        // next iteration or after a provider fallback.
+        for (const toolCall of toolCalls) {
+          if (!answeredToolCallIds.has(toolCall.id)) {
+            const syntheticError = `[ERROR] Tool "${toolCall.name}" could not be executed due to an internal error.`;
+            chatMessages.push({
+              role: "tool",
+              content: syntheticError,
+              tool_call_id: toolCall.id,
+            });
+            deps.addLog({
+              level: "error",
+              source: "agent",
+              message: "Tool execution failed",
+              metadata: JSON.stringify({
+                threadId,
+                toolName: toolCall.name,
+                error: toolLoopErr instanceof Error ? toolLoopErr.message : String(toolLoopErr),
+              }),
+            });
+          }
+        }
+        throw toolLoopErr;
       }
 
       // If there are pending approvals, stop the loop

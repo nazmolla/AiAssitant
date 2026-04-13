@@ -281,37 +281,64 @@ async function _runViaWorker(
       }
 
       const results: WorkerToolResult[] = [];
+      const answeredIds = new Set<string>();
 
-      for (const toolCall of calls) {
-        onStatus?.({ step: "Executing tool", detail: toolCall.name });
-        const gkResult = await executeToolWithPolicy(toolCall, threadId, assistantContent || undefined, userId);
+      try {
+        for (const toolCall of calls) {
+          onStatus?.({ step: "Executing tool", detail: toolCall.name });
+          const gkResult = await executeToolWithPolicy(toolCall, threadId, assistantContent || undefined, userId);
 
-        if (gkResult.status === "pending_approval") {
-          pendingApprovals.push(toolCall.name);
-          results.push({
-            toolCallId: toolCall.id,
-            toolName: toolCall.name,
-            content: `[PENDING APPROVAL] Action "${toolCall.name}" is awaiting owner approval.`,
-          });
-        } else if (gkResult.status === "executed") {
-          toolsUsed.push(toolCall.name);
-          const processed = processExecutedToolResult(toolCall, gkResult.result, threadId, onMessage);
-          collectedAttachments.push(...processed.attachments);
+          if (gkResult.status === "pending_approval") {
+            pendingApprovals.push(toolCall.name);
+            results.push({
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              content: `[PENDING APPROVAL] Action "${toolCall.name}" is awaiting owner approval.`,
+            });
+          } else if (gkResult.status === "executed") {
+            toolsUsed.push(toolCall.name);
+            const processed = processExecutedToolResult(toolCall, gkResult.result, threadId, onMessage);
+            collectedAttachments.push(...processed.attachments);
 
-          results.push({
-            toolCallId: toolCall.id,
-            toolName: toolCall.name,
-            content: processed.llmContent,
-          });
-        } else {
-          const errorContent = processFailedToolResult(toolCall, gkResult.error, threadId, onMessage);
+            results.push({
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              content: processed.llmContent,
+            });
+          } else {
+            const errorContent = processFailedToolResult(toolCall, gkResult.error, threadId, onMessage);
 
-          results.push({
-            toolCallId: toolCall.id,
-            toolName: toolCall.name,
-            content: errorContent,
-          });
+            results.push({
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              content: errorContent,
+            });
+          }
+
+          answeredIds.add(toolCall.id);
         }
+      } catch (toolLoopErr) {
+        // Inject synthetic error results for any tool_calls that didn't get
+        // a result before the exception.  The worker script pushes these as
+        // tool messages so the LLM history stays well-formed.
+        for (const toolCall of calls) {
+          if (!answeredIds.has(toolCall.id)) {
+            results.push({
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              content: `[ERROR] Tool "${toolCall.name}" could not be executed due to an internal error.`,
+            });
+          }
+        }
+        addLog({
+          level: "error",
+          source: "agent",
+          message: "Tool execution failed",
+          metadata: JSON.stringify({
+            threadId,
+            error: toolLoopErr instanceof Error ? (toolLoopErr as Error).message : String(toolLoopErr),
+          }),
+        });
       }
 
       return results;
