@@ -71,10 +71,36 @@ describe("executeCustomTool", () => {
     expect(result.count).toBeGreaterThanOrEqual(1);
   });
 
-  test("create tool validates missing fields", async () => {
-    await expect(
-      executeCustomTool("builtin.nexus_create_tool", { toolName: "bad" })
-    ).rejects.toThrow(/Missing required fields/);
+  test("create tool validates missing fields — empty call lists all 4 fields", async () => {
+    let err: Error | undefined;
+    try {
+      await executeCustomTool("builtin.nexus_create_tool", {});
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err).toBeDefined();
+    expect(err!.message).toMatch(/Missing required fields/i);
+    expect(err!.message).toMatch(/toolName/);
+    expect(err!.message).toMatch(/description/);
+    expect(err!.message).toMatch(/inputSchema/);
+    expect(err!.message).toMatch(/implementation/);
+  });
+
+  test("create tool validates missing fields — partial call lists only missing fields", async () => {
+    let err: Error | undefined;
+    try {
+      await executeCustomTool("builtin.nexus_create_tool", { toolName: "bad" });
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err).toBeDefined();
+    expect(err!.message).toMatch(/Missing required fields/i);
+    // description, inputSchema, implementation are missing; toolName is present
+    expect(err!.message).toMatch(/description/);
+    expect(err!.message).toMatch(/inputSchema/);
+    expect(err!.message).toMatch(/implementation/);
+    // toolName should NOT appear in the missing list since it was provided
+    expect(err!.message).not.toMatch(/toolName.*snake_case/);
   });
 
   test("create tool validates inputSchema type", async () => {
@@ -119,14 +145,23 @@ describe("executeCustomTool", () => {
   });
 
   test("create tool rejects duplicates with guidance to use update", async () => {
-    await expect(
-      executeCustomTool("builtin.nexus_create_tool", {
+    let err: Error | undefined;
+    try {
+      await executeCustomTool("builtin.nexus_create_tool", {
         toolName: "my_adder",
         description: "Another adder",
         inputSchema: { type: "object", properties: {} },
         implementation: "return {};",
-      })
-    ).rejects.toThrow(/already exists.*nexus_update_tool/);
+      });
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err).toBeDefined();
+    // Error must mention the existing tool name
+    expect(err!.message).toMatch(/custom\.my_adder/);
+    // Error must suggest using nexus_update_tool with the exact tool name
+    expect(err!.message).toMatch(/nexus_update_tool/);
+    expect(err!.message).toMatch(/toolName="custom\.my_adder"/);
   });
 
   test("execute custom tool runs sandboxed code", async () => {

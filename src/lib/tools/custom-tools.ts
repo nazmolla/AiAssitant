@@ -269,8 +269,18 @@ class CustomToolRuntime {
     const inputSchema = args.inputSchema as Record<string, unknown>;
     const implementation = args.implementation as string;
 
-    if (!rawName || !description || !inputSchema || !implementation) {
-      throw new ValidationError("Missing required fields: toolName, description, inputSchema, implementation");
+    const missingFields: string[] = [];
+    if (!rawName) missingFields.push("toolName — a short snake_case name for the tool (e.g. 'calculate_bmi')");
+    if (!description) missingFields.push("description — a clear explanation of what the tool does and when to use it");
+    if (!inputSchema) missingFields.push("inputSchema — a JSON Schema object with { type: 'object', properties: { ... } }");
+    if (!implementation) missingFields.push("implementation — a plain JS function body ending with 'return <value>;' (no import/export)");
+
+    if (missingFields.length > 0) {
+      throw new ValidationError(
+        `Missing required fields (${missingFields.length} of 4):\n` +
+        missingFields.map((f) => `  - ${f}`).join("\n") + "\n" +
+        `All four fields are required. Provide all of them in a single call to ${TOOL_CREATOR_NAME}.`
+      );
     }
 
     const safeName = rawName
@@ -286,7 +296,7 @@ class CustomToolRuntime {
     if (customToolsCache.some((t) => t.name === fullName)) {
       throw new ValidationError(
         `Custom tool "${fullName}" already exists. ` +
-        `Use builtin.nexus_update_tool to modify its implementation, description, or schema.`
+        `Use builtin.nexus_update_tool with toolName="${fullName}" to modify its implementation, description, or schema.`
       );
     }
 
@@ -300,9 +310,15 @@ class CustomToolRuntime {
       architectureTools,
     );
     if (duplicate) {
+      const existingEntry = customToolsCache.find((t) => t.name === duplicate.toolName);
+      const implSnippet = existingEntry
+        ? `\nExisting implementation (first 400 chars):\n${existingEntry.implementation.slice(0, 400)}${existingEntry.implementation.length > 400 ? "\n..." : ""}`
+        : "";
+      const existingDesc = existingEntry ? `\nExisting description: "${existingEntry.description}"` : "";
       throw new ValidationError(
-        `Custom tool is too similar to existing tool "${duplicate.toolName}" (score: ${duplicate.score.toFixed(2)}). ` +
-        `Use builtin.nexus_update_tool to evolve the existing tool instead of creating a duplicate.`
+        `A similar tool already exists: "${duplicate.toolName}" (similarity score: ${duplicate.score.toFixed(2)}).${existingDesc}` +
+        `\nUse builtin.nexus_update_tool with toolName="${duplicate.toolName}" to evolve or extend it instead of creating a duplicate.` +
+        implSnippet
       );
     }
 
