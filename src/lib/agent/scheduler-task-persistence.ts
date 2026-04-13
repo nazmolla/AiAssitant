@@ -41,6 +41,17 @@ export function persistScheduledTasksFromMessage(
     return;
   }
 
+  // Scheduler-generated prompts always start with "Scheduled task: " — this is
+  // the internal format written by this very function.  If we see it, we are
+  // being called from a scheduled task execution (the engine re-uses the
+  // interactive thread to write the response), NOT from a new user request.
+  // Processing it would create another scheduled task on every run, causing
+  // exponential task accumulation in the DB.
+  if (/^\s*scheduled task:\s/i.test(userMessage)) {
+    log.exit("persistScheduledTasksFromMessage", { skipped: "scheduler-generated prompt" }, Date.now() - t0);
+    return;
+  }
+
   const parsedTasks = parseScheduledTasksFromUserMessage(userMessage);
   for (const task of parsedTasks) {
     try {

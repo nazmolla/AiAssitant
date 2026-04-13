@@ -230,6 +230,10 @@ async function executeTaskRun(
         throw new Error("Missing prompt in scheduler task config for agent.prompt handler.");
       }
 
+      // Guard against "Scheduled task: Scheduled task: ..." accumulation in
+      // existing DB records — collapse any repeated prefix to exactly one.
+      prompt = prompt.replace(/^(Scheduled task:\s*){2,}/i, "Scheduled task: ");
+
       if (!userId) {
         const schedule = getSchedulerScheduleById(scheduleId);
         userId = schedule?.owner_id || "";

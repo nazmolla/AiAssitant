@@ -965,6 +965,42 @@ function ensureSystemUnifiedSchedules(): void {
   tx();
 }
 
+/**
+ * One-time cleanup: fix scheduler tasks whose config_json.prompt accumulated
+ * the "Scheduled task: " prefix multiple times due to recursive task creation
+ * (fixed in #291). Reads all agent.prompt tasks, detects duplicated prefix,
+ * and rewrites config_json with exactly one prefix.
+ */
+function cleanupDuplicatedSchedulerPromptPrefixes(): void {
+  const db = getDb();
+  try {
+    const rows = db.prepare(
+      "SELECT id, config_json FROM scheduler_tasks WHERE handler_name = 'agent.prompt' AND config_json IS NOT NULL"
+    ).all() as Array<{ id: string; config_json: string }>;
+
+    const update = db.prepare("UPDATE scheduler_tasks SET config_json = ? WHERE id = ?");
+    let fixed = 0;
+    for (const row of rows) {
+      try {
+        const parsed = JSON.parse(row.config_json) as Record<string, unknown>;
+        if (typeof parsed.prompt !== "string") continue;
+        // Detect more than one "Scheduled task: " prefix
+        if (!/^(Scheduled task:\s*){2,}/i.test(parsed.prompt)) continue;
+        parsed.prompt = parsed.prompt.replace(/^(Scheduled task:\s*){2,}/i, "Scheduled task: ");
+        update.run(JSON.stringify(parsed), row.id);
+        fixed++;
+      } catch {
+        // Malformed JSON — skip
+      }
+    }
+    if (fixed > 0) {
+      console.log(`[Nexus DB] Cleaned up duplicated "Scheduled task: " prefix in ${fixed} scheduler task(s).`);
+    }
+  } catch {
+    // Table may not exist yet on fresh install
+  }
+}
+
 let _dbInitialized = false;
 
 export function initializeDatabase(): void {
@@ -1004,6 +1040,7 @@ export function initializeDatabase(): void {
   ensureCommunicationToolPolicyDefaults();
   encryptExistingSecrets();
   revokeExpiredKeys();
+  cleanupDuplicatedSchedulerPromptPrefixes();
   // Migration: remove deprecated Alexa config keys and tool policies
   try { db.prepare("DELETE FROM config WHERE key IN ('alexa.ubid_main', 'alexa.at_main')").run(); } catch { /* table may not exist */ }
   try { db.prepare("DELETE FROM tool_policies WHERE tool_name LIKE 'builtin.alexa_%'").run(); } catch { /* table may not exist */ }
