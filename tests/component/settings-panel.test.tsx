@@ -157,10 +157,11 @@ describe("SettingsPanel — chip navigation rendering", () => {
   test("renders all settings chips without throwing (React #310 regression)", async () => {
     await renderSettingsPanel();
 
-    // All settings chip labels should be present (admin sees all)
+    // Both mobile chip strip and desktop sidebar render in jsdom (CSS breakpoints not
+    // evaluated); use getAllByText to avoid "multiple elements" error
     for (const label of SETTINGS_LABELS) {
       await waitFor(() => {
-        expect(screen.getByText(label)).toBeInTheDocument();
+        expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
       }, { timeout: 2000 });
     }
   });
@@ -194,13 +195,13 @@ describe("SettingsPanel — chip navigation rendering", () => {
   test("clicking a settings chip switches the active sub-page", async () => {
     await renderSettingsPanel();
 
-    // Wait for chips to render
+    // Both mobile chip strip and desktop sidebar render in jsdom
     await waitFor(() => {
-      expect(screen.getByText("Logging")).toBeInTheDocument();
+      expect(screen.getAllByText("Logging").length).toBeGreaterThanOrEqual(1);
     }, { timeout: 2000 });
 
-    // Click "Logging" chip
-    fireEvent.click(screen.getByText("Logging"));
+    // Click the first "Logging" element (the chip in the mobile strip)
+    fireEvent.click(screen.getAllByText("Logging")[0]);
 
     // The Logging section header should appear
     await waitFor(() => {

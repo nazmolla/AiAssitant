@@ -174,16 +174,16 @@ export function KnowledgeVault() {
 
       {/* Table */}
       <Card variant="outlined" sx={{ overflow: "hidden" }}>
-        <TableContainer sx={{ maxHeight: "calc(100vh - 320px)", overflowY: "auto" }}>
-          <Table size="small" stickyHeader>
+        <TableContainer sx={{ maxHeight: "calc(100vh - 320px)", overflowY: "auto", overflowX: "auto" }}>
+          <Table size="small" stickyHeader sx={{ minWidth: 480 }}>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1 }}>Entity</TableCell>
-                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1 }}>Attribute</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1, display: { xs: "none", sm: "table-cell" } }}>Attribute</TableCell>
                 <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1 }}>Value</TableCell>
-                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1 }}>Source</TableCell>
-                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1 }}>Updated</TableCell>
-                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1, width: 88 }} align="right">Actions</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1, display: { xs: "none", md: "table-cell" } }}>Source</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1, display: { xs: "none", md: "table-cell" } }}>Updated</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "text.disabled", py: 1, width: 72 }} align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -211,7 +211,7 @@ export function KnowledgeVault() {
                     <TableCell sx={{ fontSize: "0.82rem", fontWeight: 500, maxWidth: 140 }}>
                       <Typography noWrap variant="body2" sx={{ fontWeight: 500, fontSize: "inherit" }}>{entry.entity}</Typography>
                     </TableCell>
-                    <TableCell sx={{ fontSize: "0.82rem", color: "text.secondary", maxWidth: 140 }}>
+                    <TableCell sx={{ fontSize: "0.82rem", color: "text.secondary", maxWidth: 140, display: { xs: "none", sm: "table-cell" } }}>
                       <Typography noWrap variant="body2" sx={{ color: "inherit", fontSize: "inherit" }}>{entry.attribute}</Typography>
                     </TableCell>
                     <TableCell sx={{ fontSize: "0.82rem", maxWidth: 280 }}>
@@ -231,7 +231,7 @@ export function KnowledgeVault() {
                         <Typography variant="body2" sx={{ fontSize: "inherit", wordBreak: "break-word" }}>{entry.value}</Typography>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                       <Chip
                         label={getSourceLabel(entry.source_type)}
                         size="small"
@@ -240,7 +240,7 @@ export function KnowledgeVault() {
                         sx={{ height: 20, fontSize: "0.65rem" }}
                       />
                     </TableCell>
-                    <TableCell sx={{ fontSize: "0.75rem", color: "text.disabled", whiteSpace: "nowrap" }}>
+                    <TableCell sx={{ fontSize: "0.75rem", color: "text.disabled", whiteSpace: "nowrap", display: { xs: "none", md: "table-cell" } }}>
                       {formatDate(entry.last_updated, { year: "numeric", month: "short", day: "numeric" })}
                     </TableCell>
                     <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>

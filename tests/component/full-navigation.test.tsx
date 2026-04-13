@@ -139,10 +139,12 @@ async function clickDrawerItem(label: string) {
 }
 
 async function clickSettingsChip(chipLabel: string) {
+  // Both the mobile chip strip and desktop sidebar render in jsdom (CSS breakpoints are
+  // not evaluated). Use getAllByText and click the first match (the chip).
   await waitFor(() => {
-    expect(screen.getByText(chipLabel)).toBeInTheDocument();
+    expect(screen.getAllByText(chipLabel).length).toBeGreaterThanOrEqual(1);
   }, { timeout: 2000 });
-  fireEvent.click(screen.getByText(chipLabel));
+  fireEvent.click(screen.getAllByText(chipLabel)[0]);
   await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 }
 
@@ -240,9 +242,10 @@ describe("URL-Based Routing — main tabs via URL path", () => {
 describe("Settings Sub-Pages — open every page via chip click", () => {
   async function navigateToSettings() {
     await renderAndWait("/settings");
-    // Wait for permissions to load and chips to appear
+    // Wait for permissions to load and nav items to appear (both mobile chips and desktop
+    // sidebar render in jsdom — use getAllByText to avoid "multiple elements" error)
     await waitFor(() => {
-      expect(screen.getByText("Providers")).toBeInTheDocument();
+      expect(screen.getAllByText("Providers").length).toBeGreaterThanOrEqual(1);
     }, { timeout: 2000 });
   }
 
@@ -575,9 +578,9 @@ describe("Permission-Gated Settings Pages", () => {
     expect(screen.queryByText("Users")).not.toBeInTheDocument();
     expect(screen.queryByText("Local Whisper")).not.toBeInTheDocument();
 
-    // Non-admin pages SHOULD be visible
-    expect(screen.getByText("Providers")).toBeInTheDocument();
-    expect(screen.getByText("Channels")).toBeInTheDocument();
+    // Non-admin pages SHOULD be visible (both mobile chip and desktop sidebar render in jsdom)
+    expect(screen.getAllByText("Providers").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Channels").length).toBeGreaterThanOrEqual(1);
   });
 
   test("user without llm_config permission cannot see Providers page", async () => {
@@ -669,7 +672,8 @@ describe("Permission-Gated Settings Pages", () => {
     ];
     for (const chipLabel of allChips) {
       await waitFor(() => {
-        expect(screen.getByText(chipLabel)).toBeInTheDocument();
+        // Both mobile chip strip and desktop sidebar render in jsdom
+        expect(screen.getAllByText(chipLabel).length).toBeGreaterThanOrEqual(1);
       }, { timeout: 2000 });
     }
   });
@@ -844,10 +848,11 @@ describe("Settings Page Headers", () => {
     "$chip shows header '$title'",
     async ({ chip, title, subtitle }) => {
       await renderAndWait("/settings");
+      // Both mobile chip strip and desktop sidebar render in jsdom
       await waitFor(() => {
-        expect(screen.getByText(chip)).toBeInTheDocument();
+        expect(screen.getAllByText(chip).length).toBeGreaterThanOrEqual(1);
       }, { timeout: 2000 });
-      fireEvent.click(screen.getByText(chip));
+      fireEvent.click(screen.getAllByText(chip)[0]);
       await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
       expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
       expect(screen.getByText(new RegExp(subtitle))).toBeInTheDocument();

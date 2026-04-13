@@ -524,122 +524,170 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
   const pageMap = Object.fromEntries(SETTINGS_PAGES.map((p) => [p.key, p]));
 
   return (
-    <Box sx={{ display: "flex", height: "100%", overflow: "hidden" }}>
-      {/* Vertical grouped settings nav */}
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+
+      {/* ── Mobile: horizontal scrollable chip strip (xs / sm) ── */}
       <Box
         sx={{
-          width: SETTINGS_NAV_WIDTH,
-          flexShrink: 0,
-          borderRight: 1,
+          display: { xs: "flex", md: "none" },
+          alignItems: "center",
+          gap: 0.75,
+          px: 1.5,
+          py: 0.75,
+          borderBottom: 1,
           borderColor: "divider",
           bgcolor: "background.paper",
-          overflowY: "auto",
-          py: 1,
-          scrollbarWidth: "thin",
+          overflowX: "auto",
+          overflowY: "hidden",
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+          scrollbarWidth: "none",
+          "&::-webkit-scrollbar": { display: "none" },
         }}
       >
         {isUserMetaLoading ? (
-          <Box sx={{ px: 2, py: 4, display: "flex", justifyContent: "center" }}>
-            <CircularProgress size={20} />
-          </Box>
+          <CircularProgress size={16} />
         ) : (
-          SETTINGS_GROUPS.map((group) => {
-            const groupPages = group.keys
-              .filter((k) => visibleKeys.has(k))
-              .map((k) => pageMap[k])
-              .filter(Boolean);
-            if (groupPages.length === 0) return null;
-            return (
-              <Box key={group.label} sx={{ mb: 0.5 }}>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    px: 2,
-                    py: 0.75,
-                    display: "block",
-                    fontWeight: 600,
-                    fontSize: "0.65rem",
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    color: "text.disabled",
-                  }}
-                >
-                  {group.label}
-                </Typography>
-                <List disablePadding sx={{ px: 0.5 }}>
-                  {groupPages.map((page) => (
-                    <ListItemButton
-                      key={page.key}
-                      selected={active === page.key}
-                      onClick={() => handleNavigate(page.key)}
-                      sx={{
-                        borderRadius: 1.5,
-                        minHeight: 34,
-                        py: 0.5,
-                        px: 1.25,
-                        mb: 0.25,
-                        gap: 1,
-                        "&.Mui-selected": {
-                          bgcolor: "primary.main",
-                          color: "primary.contrastText",
-                          "& .MuiListItemIcon-root": { color: "inherit" },
-                          "&:hover": { bgcolor: "primary.dark" },
-                        },
-                      }}
-                    >
-                      <ListItemIcon sx={{ minWidth: 0, color: "text.secondary" }}>
-                        <page.Icon sx={{ fontSize: "1rem" }} />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={page.label}
-                        primaryTypographyProps={{ fontSize: "0.8rem", fontWeight: 500, noWrap: true }}
-                      />
-                    </ListItemButton>
-                  ))}
-                </List>
-                <Divider sx={{ mx: 1, mt: 0.5 }} />
-              </Box>
-            );
-          })
+          visiblePages.map((page) => (
+            <Chip
+              key={page.key}
+              icon={<page.Icon sx={{ fontSize: "0.85rem !important" }} />}
+              label={page.label}
+              size="small"
+              variant={active === page.key ? "filled" : "outlined"}
+              color={active === page.key ? "primary" : "default"}
+              onClick={() => handleNavigate(page.key)}
+              sx={{
+                flexShrink: 0,
+                fontSize: "0.75rem",
+                height: 28,
+                fontWeight: active === page.key ? 600 : 400,
+                cursor: "pointer",
+              }}
+            />
+          ))
         )}
       </Box>
 
-      {/* Content */}
-      <Box sx={{ flex: 1, overflow: "hidden" }}>
-        <AppPageBackbone>
-          <Box sx={{ width: "100%" }}>
-            {isUserMetaLoading ? (
-              <Box sx={{ py: 8, display: "flex", justifyContent: "center" }}>
-                <CircularProgress size={28} />
-              </Box>
-            ) : (
-              <>
-                {header && (
-                  <Box sx={{ mb: 3 }}>
-                    <Typography variant="h5" color="primary" fontWeight={700}>{header.title}</Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{header.subtitle}</Typography>
-                  </Box>
-                )}
-                {active === "profile" && <ProfileConfig />}
-                {active === "llm" && <LlmConfig />}
-                {active === "channels" && <ChannelsConfig />}
-                {active === "mcp" && <McpConfig />}
-                {active === "policies" && <ToolPolicies />}
-                {active === "standing-orders" && <StandingOrdersConfig />}
-                {active === "devices" && <DevicesConfig />}
-                {active === "voice-profile" && <VoiceProfileConfig />}
-                {active === "whisper" && userRole === "admin" && <WhisperConfig />}
-                {active === "logging" && <LoggingConfig />}
-                {active === "search-providers" && userRole === "admin" && <SearchProvidersConfig />}
-                {active === "db-management" && userRole === "admin" && <DbManagementConfig />}
-                {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
-                {active === "auth" && userRole === "admin" && <AuthConfig />}
-                {active === "users" && userRole === "admin" && <UserManagement />}
-                {active === "scheduler" && userRole === "admin" && <SchedulerConfig />}
-              </>
-            )}
-          </Box>
-        </AppPageBackbone>
+      {/* ── Desktop: vertical grouped sidebar + content (md+) ── */}
+      <Box sx={{ flex: 1, overflow: "hidden", display: "flex" }}>
+        {/* Sidebar — hidden on mobile */}
+        <Box
+          sx={{
+            display: { xs: "none", md: "block" },
+            width: SETTINGS_NAV_WIDTH,
+            flexShrink: 0,
+            borderRight: 1,
+            borderColor: "divider",
+            bgcolor: "background.paper",
+            overflowY: "auto",
+            py: 1,
+            scrollbarWidth: "thin",
+          }}
+        >
+          {isUserMetaLoading ? (
+            <Box sx={{ px: 2, py: 4, display: "flex", justifyContent: "center" }}>
+              <CircularProgress size={20} />
+            </Box>
+          ) : (
+            SETTINGS_GROUPS.map((group) => {
+              const groupPages = group.keys
+                .filter((k) => visibleKeys.has(k))
+                .map((k) => pageMap[k])
+                .filter(Boolean);
+              if (groupPages.length === 0) return null;
+              return (
+                <Box key={group.label} sx={{ mb: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      px: 2,
+                      py: 0.75,
+                      display: "block",
+                      fontWeight: 600,
+                      fontSize: "0.65rem",
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      color: "text.disabled",
+                    }}
+                  >
+                    {group.label}
+                  </Typography>
+                  <List disablePadding sx={{ px: 0.5 }}>
+                    {groupPages.map((page) => (
+                      <ListItemButton
+                        key={page.key}
+                        selected={active === page.key}
+                        onClick={() => handleNavigate(page.key)}
+                        sx={{
+                          borderRadius: 1.5,
+                          minHeight: 34,
+                          py: 0.5,
+                          px: 1.25,
+                          mb: 0.25,
+                          gap: 1,
+                          "&.Mui-selected": {
+                            bgcolor: "primary.main",
+                            color: "primary.contrastText",
+                            "& .MuiListItemIcon-root": { color: "inherit" },
+                            "&:hover": { bgcolor: "primary.dark" },
+                          },
+                        }}
+                      >
+                        <ListItemIcon sx={{ minWidth: 0, color: "text.secondary" }}>
+                          <page.Icon sx={{ fontSize: "1rem" }} />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={page.label}
+                          primaryTypographyProps={{ fontSize: "0.8rem", fontWeight: 500, noWrap: true }}
+                        />
+                      </ListItemButton>
+                    ))}
+                  </List>
+                  <Divider sx={{ mx: 1, mt: 0.5 }} />
+                </Box>
+              );
+            })
+          )}
+        </Box>
+
+        {/* Content — full width on mobile, sidebar-constrained on desktop */}
+        <Box sx={{ flex: 1, overflow: "hidden" }}>
+          <AppPageBackbone>
+            <Box sx={{ width: "100%" }}>
+              {isUserMetaLoading ? (
+                <Box sx={{ py: 8, display: "flex", justifyContent: "center" }}>
+                  <CircularProgress size={28} />
+                </Box>
+              ) : (
+                <>
+                  {header && (
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="h5" color="primary" fontWeight={700}>{header.title}</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{header.subtitle}</Typography>
+                    </Box>
+                  )}
+                  {active === "profile" && <ProfileConfig />}
+                  {active === "llm" && <LlmConfig />}
+                  {active === "channels" && <ChannelsConfig />}
+                  {active === "mcp" && <McpConfig />}
+                  {active === "policies" && <ToolPolicies />}
+                  {active === "standing-orders" && <StandingOrdersConfig />}
+                  {active === "devices" && <DevicesConfig />}
+                  {active === "voice-profile" && <VoiceProfileConfig />}
+                  {active === "whisper" && userRole === "admin" && <WhisperConfig />}
+                  {active === "logging" && <LoggingConfig />}
+                  {active === "search-providers" && userRole === "admin" && <SearchProvidersConfig />}
+                  {active === "db-management" && userRole === "admin" && <DbManagementConfig />}
+                  {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
+                  {active === "auth" && userRole === "admin" && <AuthConfig />}
+                  {active === "users" && userRole === "admin" && <UserManagement />}
+                  {active === "scheduler" && userRole === "admin" && <SchedulerConfig />}
+                </>
+              )}
+            </Box>
+          </AppPageBackbone>
+        </Box>
       </Box>
     </Box>
   );
