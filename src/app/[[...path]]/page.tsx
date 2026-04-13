@@ -19,6 +19,7 @@ import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
+import Drawer from "@mui/material/Drawer";
 import LogoutIcon from "@mui/icons-material/Logout";
 import MenuIcon from "@mui/icons-material/Menu";
 import PaletteIcon from "@mui/icons-material/Palette";
@@ -303,24 +304,93 @@ export default function HomePage() {
         </Toolbar>
       </AppBar>
 
-      {/* Body: persistent mini-rail sidebar + content */}
+      {/* Body: nav sidebar + content */}
       <Box sx={{ flex: 1, overflow: "hidden", display: "flex" }}>
 
-        {/* Persistent nav sidebar — always visible on all pages */}
+        {/* ── Mobile nav: full-screen Drawer overlay (hidden on md+) ── */}
+        <Drawer
+          open={navDrawerOpen}
+          onClose={() => setNavDrawerOpen(false)}
+          anchor="left"
+          sx={{ display: { xs: "block", md: "none" } }}
+          PaperProps={{
+            sx: {
+              width: DRAWER_WIDTH,
+              display: "flex",
+              flexDirection: "column",
+              bgcolor: "background.default",
+            },
+          }}
+        >
+          <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
+            <Box sx={{ flex: 1 }} />
+            <List disablePadding sx={{ py: 0.5, px: 0.5 }}>
+              {tabItems.map((t) => (
+                <ListItemButton
+                  key={t.value}
+                  selected={activeTab === t.value}
+                  onClick={() => {
+                    if (t.value === "chat" && activeTab === "chat" && openChatThreadsRef.current) {
+                      openChatThreadsRef.current();
+                    } else {
+                      navigateTo(t.value);
+                    }
+                    setNavDrawerOpen(false);
+                  }}
+                  sx={{
+                    borderRadius: 1.5,
+                    minHeight: 44,
+                    py: 0.75,
+                    px: 1.5,
+                    mb: 0.25,
+                    "&.Mui-selected": {
+                      bgcolor: "primary.main",
+                      color: "primary.contrastText",
+                      "& .MuiListItemIcon-root": { color: "inherit" },
+                      "&:hover": { bgcolor: "primary.dark" },
+                    },
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: 32, color: "text.secondary", justifyContent: "center" }}>
+                    {t.icon}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={t.label}
+                    primaryTypographyProps={{ fontSize: "0.9rem", fontWeight: 500 }}
+                  />
+                </ListItemButton>
+              ))}
+            </List>
+            <Divider />
+            <Box sx={{ px: 2, py: 1.25 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                <FiberManualRecordIcon sx={{ fontSize: 8, color: "success.main", flexShrink: 0 }} />
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.75rem" }} noWrap>
+                  {displayName || session.user?.email}
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+        </Drawer>
+
+        {/* ── Desktop nav: persistent mini-rail sidebar (hidden on xs/sm) ── */}
         <Box
           sx={{
+            display: { xs: "none", md: "flex" },
             width: navDrawerOpen ? DRAWER_WIDTH : DRAWER_MINI_WIDTH,
             flexShrink: 0,
             transition: "width 0.2s ease",
             overflow: "hidden",
-            display: "flex",
             flexDirection: "column",
             bgcolor: "background.paper",
             borderRight: 1,
             borderColor: "divider",
           }}
         >
-          {/* Nav items anchored at top */}
+          {/* Spacer — pushes nav items to bottom */}
+          <Box sx={{ flex: 1 }} />
+
+          {/* Nav items anchored at bottom-left */}
           <List disablePadding sx={{ py: 0.5, px: 0.5 }}>
             {tabItems.map((t) => (
               <ListItemButton
@@ -328,7 +398,6 @@ export default function HomePage() {
                 selected={activeTab === t.value}
                 onClick={() => {
                   if (t.value === "chat" && activeTab === "chat" && openChatThreadsRef.current) {
-                    // Already on chat — open the thread history drawer instead
                     openChatThreadsRef.current();
                   } else {
                     navigateTo(t.value);
@@ -542,6 +611,7 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
           whiteSpace: "nowrap",
           flexShrink: 0,
           scrollbarWidth: "none",
+          WebkitOverflowScrolling: "touch",
           "&::-webkit-scrollbar": { display: "none" },
         }}
       >
