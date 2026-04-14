@@ -722,7 +722,7 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
         </Box>
 
         {/* Content — full width on mobile, sidebar-constrained on desktop */}
-        <Box sx={{ flex: 1, overflow: "hidden" }}>
+        <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <AppPageBackbone>
             <Box sx={{ width: "100%" }}>
               {isUserMetaLoading ? (
