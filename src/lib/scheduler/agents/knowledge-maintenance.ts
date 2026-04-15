@@ -40,8 +40,8 @@ export function registerKnowledgeMaintenanceAgent(): void {
       const result = runKnowledgeMaintenanceIfDue();
 
       const ran = result !== null;
-      const updated = (result as Record<string, unknown> | null)?.updated as number ?? 0;
-      const skipped = (result as Record<string, unknown> | null)?.skipped as number ?? 0;
+      const updated = (result as unknown as Record<string, unknown> | null)?.updated as number ?? 0;
+      const skipped = (result as unknown as Record<string, unknown> | null)?.skipped as number ?? 0;
 
       slog.info("knowledge-maintenance completed", { ran, updated, skipped });
       slog.exit("knowledge-maintenance", { scheduleId: ctx.scheduleId });

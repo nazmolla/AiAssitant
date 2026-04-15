@@ -60,7 +60,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         task_type: taskType,
         prompt: prompt || (typeof providedConfig.prompt === "string" ? providedConfig.prompt : undefined),
       }),
-      task_type: isDeterministic ? taskType : null,
+      task_type: isDeterministic ? (taskType as "agent.call" | "orchestrator.call" | "system.call") : null,
       agent_name: agentName,
       input_schema: inputSchema,
       output_schema: outputSchema,
