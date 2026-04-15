@@ -1252,6 +1252,27 @@ export function SchedulerConsole() {
                                                 <pre className="whitespace-pre-wrap break-words rounded border border-white/[0.08] bg-muted/30 p-2 max-h-60 overflow-y-auto">{String(output.response)}</pre>
                                               </div>
                                             )}
+                                            {/* Deterministic agent output (issue #297) */}
+                                            {output.kind === "agent_call" && output.agentName && (
+                                              <div className="mt-1">
+                                                <p className="text-muted-foreground mb-1">
+                                                  Agent: <span className="font-mono text-primary">{String(output.agentName)}</span>
+                                                </p>
+                                                <div className="rounded border border-white/[0.08] bg-muted/20 p-2 space-y-0.5">
+                                                  {Object.entries(output as Record<string, unknown>)
+                                                    .filter(([k]) => !["kind", "agentName", "threadId", "toolsUsed"].includes(k))
+                                                    .map(([k, v]) => (
+                                                      <div key={k} className="flex gap-2">
+                                                        <span className="text-muted-foreground min-w-[6rem]">{k}:</span>
+                                                        <span className="font-mono break-all">
+                                                          {Array.isArray(v) ? (v as unknown[]).join(", ") || "—" : typeof v === "object" ? JSON.stringify(v) : String(v ?? "—")}
+                                                        </span>
+                                                      </div>
+                                                    ))
+                                                  }
+                                                </div>
+                                              </div>
+                                            )}
                                             {/* Error */}
                                             {output.error && (
                                               <p className="text-red-400"><span className="text-muted-foreground">Error:</span> {String(output.error)}</p>

@@ -88,20 +88,28 @@ export async function POST(req: NextRequest) {
 
   updateSchedulerTaskGraph(
     schedule.id,
-    built.tasks.map((task, index) => ({
-      task_key: task.task_key,
-      name: task.name,
-      handler_name: task.handler_name,
-      execution_mode: task.execution_mode,
-      sequence_no: Number.isFinite(task.sequence_no) ? task.sequence_no : index,
-      depends_on_task_key: task.depends_on_task_key || null,
-      enabled: task.enabled === 0 ? 0 : 1,
-      config_json: JSON.stringify({
-        ...(task.config_json || {}),
-        task_type: task.task_type || "handler",
-        prompt: task.prompt || (task.config_json && typeof task.config_json.prompt === "string" ? task.config_json.prompt : undefined),
-      }),
-    })),
+    built.tasks.map((task, index) => {
+      const isDeterministic = task.task_type === "agent.call" || task.task_type === "orchestrator.call" || task.task_type === "system.call";
+      return {
+        task_key: task.task_key,
+        name: task.name,
+        handler_name: task.handler_name,
+        execution_mode: task.execution_mode,
+        sequence_no: Number.isFinite(task.sequence_no) ? task.sequence_no : index,
+        depends_on_task_key: task.depends_on_task_key || null,
+        enabled: task.enabled === 0 ? 0 : 1,
+        config_json: isDeterministic ? JSON.stringify(task.config_json || {}) : JSON.stringify({
+          ...(task.config_json || {}),
+          task_type: task.task_type || "handler",
+          prompt: task.prompt || (task.config_json && typeof task.config_json.prompt === "string" ? task.config_json.prompt : undefined),
+        }),
+        task_type: isDeterministic ? (task.task_type as "agent.call" | "orchestrator.call" | "system.call") : null,
+        agent_name: task.agent_name ?? null,
+        input_schema: task.input_schema ? JSON.stringify(task.input_schema) : null,
+        output_schema: task.output_schema ? JSON.stringify(task.output_schema) : null,
+        input_values: task.input_values ? JSON.stringify(task.input_values) : null,
+      };
+    }),
     true,
   );
 

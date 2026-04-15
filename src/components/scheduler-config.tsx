@@ -109,13 +109,21 @@ interface SchedulerTaskRecord {
   enabled: number;
 }
 
-function parseTaskConfig(configJson?: string | null): { task_type: "handler" | "prompt"; prompt?: string } {
+type TaskType = "handler" | "prompt" | "agent.call" | "orchestrator.call" | "system.call";
+const DETERMINISTIC_TYPES = new Set<string>(["agent.call", "orchestrator.call", "system.call"]);
+
+function parseTaskConfig(configJson?: string | null): { task_type: TaskType; prompt?: string; agent_name?: string; input_values?: string } {
   if (!configJson) return { task_type: "handler" };
   try {
-    const parsed = JSON.parse(configJson) as { task_type?: unknown; prompt?: unknown };
+    const parsed = JSON.parse(configJson) as { task_type?: unknown; prompt?: unknown; agent_name?: unknown; input_values?: unknown };
+    const rawType = String(parsed.task_type ?? "handler");
+    const task_type: TaskType = DETERMINISTIC_TYPES.has(rawType) ? rawType as TaskType
+      : rawType === "prompt" ? "prompt" : "handler";
     return {
-      task_type: parsed.task_type === "prompt" ? "prompt" : "handler",
+      task_type,
       prompt: typeof parsed.prompt === "string" ? parsed.prompt : undefined,
+      agent_name: typeof parsed.agent_name === "string" ? parsed.agent_name : undefined,
+      input_values: typeof parsed.input_values === "object" && parsed.input_values ? JSON.stringify(parsed.input_values) : undefined,
     };
   } catch {
     return { task_type: "handler" };
@@ -153,8 +161,10 @@ export function SchedulerConfig() {
     task_key: string;
     name: string;
     handler_name: string;
-    task_type?: "handler" | "prompt";
+    task_type?: "handler" | "prompt" | "agent.call" | "orchestrator.call" | "system.call";
     prompt?: string;
+    agent_name?: string | null;
+    input_values?: string;
     depends_on_task_key?: string | null;
     execution_mode: "sync" | "async" | "fanout";
     sequence_no: number;
@@ -196,17 +206,26 @@ export function SchedulerConfig() {
           trigger_expr: normalizedTriggerExpr,
           batch_type: batchModalType,
           parameters: batchParameters,
-          tasks: detailTasks.map((t, index) => ({
-            task_key: t.task_key.trim(),
-            name: t.name.trim(),
-            handler_name: t.handler_name.trim(),
-            task_type: t.task_type === "prompt" ? "prompt" : "handler",
-            prompt: t.task_type === "prompt" ? (t.prompt || "") : undefined,
-            depends_on_task_key: t.depends_on_task_key || null,
-            execution_mode: t.execution_mode,
-            sequence_no: Number.isFinite(t.sequence_no) ? t.sequence_no : index,
-            enabled: t.enabled === 0 ? 0 : 1,
-          })),
+          tasks: detailTasks.map((t, index) => {
+            const isDeterministic = t.task_type === "agent.call" || t.task_type === "orchestrator.call" || t.task_type === "system.call";
+            let parsedInputValues: Record<string, unknown> | undefined;
+            if (isDeterministic && t.input_values) {
+              try { parsedInputValues = JSON.parse(t.input_values) as Record<string, unknown>; } catch { /* ignore */ }
+            }
+            return {
+              task_key: t.task_key.trim(),
+              name: t.name.trim(),
+              handler_name: t.handler_name.trim() || t.agent_name || t.task_key,
+              task_type: t.task_type || "handler",
+              prompt: t.task_type === "prompt" ? (t.prompt || "") : undefined,
+              agent_name: isDeterministic ? (t.agent_name || null) : undefined,
+              input_values: isDeterministic ? parsedInputValues : undefined,
+              depends_on_task_key: t.depends_on_task_key || null,
+              execution_mode: t.execution_mode,
+              sequence_no: Number.isFinite(t.sequence_no) ? t.sequence_no : index,
+              enabled: t.enabled === 0 ? 0 : 1,
+            };
+          }),
         }),
       });
 
@@ -386,88 +405,147 @@ export function SchedulerConfig() {
                         <th className="px-2 py-2 text-left">#</th>
                         <th className="px-2 py-2 text-left">Task Key</th>
                         <th className="px-2 py-2 text-left">Name</th>
-                        <th className="px-2 py-2 text-left">Handler</th>
+                        <th className="px-2 py-2 text-left">Type</th>
+                        <th className="px-2 py-2 text-left">Agent / Handler</th>
+                        <th className="px-2 py-2 text-left">Inputs (JSON)</th>
                         <th className="px-2 py-2 text-left">Mode</th>
                         <th className="px-2 py-2 text-left">Remove</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {detailTasks.map((task, idx) => (
-                        <tr key={`${task.task_key}-${idx}`} className="border-t border-white/[0.06]">
-                          <td className="px-2 py-2">
-                            <input
-                              className="w-8 rounded border border-white/[0.08] bg-background px-1 py-1"
-                              type="number"
-                              value={task.sequence_no}
-                              onChange={(e) => {
-                                const next = [...detailTasks];
-                                next[idx] = { ...next[idx], sequence_no: Number(e.target.value) || 0 };
-                                setDetailTasks(next);
-                              }}
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              className="w-full rounded border border-white/[0.08] bg-background px-1 py-1"
-                              value={task.task_key}
-                              onChange={(e) => {
-                                const next = [...detailTasks];
-                                next[idx] = { ...next[idx], task_key: e.target.value };
-                                setDetailTasks(next);
-                              }}
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              className="w-full rounded border border-white/[0.08] bg-background px-1 py-1"
-                              value={task.name}
-                              onChange={(e) => {
-                                const next = [...detailTasks];
-                                next[idx] = { ...next[idx], name: e.target.value };
-                                setDetailTasks(next);
-                              }}
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              className="w-full rounded border border-white/[0.08] bg-background px-1 py-1"
-                              value={task.handler_name}
-                              onChange={(e) => {
-                                const next = [...detailTasks];
-                                next[idx] = { ...next[idx], handler_name: e.target.value };
-                                setDetailTasks(next);
-                              }}
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <select
-                              className="rounded border border-white/[0.08] bg-background px-1 py-1"
-                              value={task.execution_mode}
-                              onChange={(e) => {
-                                const next = [...detailTasks];
-                                next[idx] = { ...next[idx], execution_mode: e.target.value as "sync" | "async" | "fanout" };
-                                setDetailTasks(next);
-                              }}
-                            >
-                              <option value="sync">sync</option>
-                              <option value="async">async</option>
-                              <option value="fanout">fanout</option>
-                            </select>
-                          </td>
-                          <td className="px-2 py-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setDetailTasks(detailTasks.filter((_, i) => i !== idx))}
-                            >
-                              Remove
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
+                      {detailTasks.map((task, idx) => {
+                        const isDeterministic = task.task_type === "agent.call" || task.task_type === "orchestrator.call" || task.task_type === "system.call";
+                        return (
+                          <tr key={`${task.task_key}-${idx}`} className="border-t border-white/[0.06]">
+                            <td className="px-2 py-2">
+                              <input
+                                className="w-8 rounded border border-white/[0.08] bg-background px-1 py-1"
+                                type="number"
+                                value={task.sequence_no}
+                                onChange={(e) => {
+                                  const next = [...detailTasks];
+                                  next[idx] = { ...next[idx], sequence_no: Number(e.target.value) || 0 };
+                                  setDetailTasks(next);
+                                }}
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                className="w-full rounded border border-white/[0.08] bg-background px-1 py-1"
+                                value={task.task_key}
+                                onChange={(e) => {
+                                  const next = [...detailTasks];
+                                  next[idx] = { ...next[idx], task_key: e.target.value };
+                                  setDetailTasks(next);
+                                }}
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                className="w-full rounded border border-white/[0.08] bg-background px-1 py-1"
+                                value={task.name}
+                                onChange={(e) => {
+                                  const next = [...detailTasks];
+                                  next[idx] = { ...next[idx], name: e.target.value };
+                                  setDetailTasks(next);
+                                }}
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <select
+                                className="rounded border border-white/[0.08] bg-background px-1 py-1"
+                                value={task.task_type || "handler"}
+                                onChange={(e) => {
+                                  const next = [...detailTasks];
+                                  next[idx] = { ...next[idx], task_type: e.target.value as typeof task.task_type };
+                                  setDetailTasks(next);
+                                }}
+                              >
+                                <option value="handler">handler</option>
+                                <option value="prompt">prompt</option>
+                                <option value="agent.call">agent.call</option>
+                                <option value="orchestrator.call">orchestrator.call</option>
+                                <option value="system.call">system.call</option>
+                              </select>
+                            </td>
+                            <td className="px-2 py-2">
+                              {isDeterministic ? (
+                                <select
+                                  className="w-full rounded border border-white/[0.08] bg-background px-1 py-1"
+                                  value={task.agent_name || ""}
+                                  onChange={(e) => {
+                                    const next = [...detailTasks];
+                                    next[idx] = { ...next[idx], agent_name: e.target.value || null };
+                                    setDetailTasks(next);
+                                  }}
+                                >
+                                  <option value="">— select agent —</option>
+                                  <option value="email-ingest">email-ingest</option>
+                                  <option value="knowledge-maintenance">knowledge-maintenance</option>
+                                  <option value="db-maintenance">db-maintenance</option>
+                                  <option value="proactive-scan">proactive-scan</option>
+                                  <option value="job-scout">job-scout</option>
+                                </select>
+                              ) : (
+                                <input
+                                  className="w-full rounded border border-white/[0.08] bg-background px-1 py-1"
+                                  value={task.handler_name}
+                                  placeholder="handler name"
+                                  onChange={(e) => {
+                                    const next = [...detailTasks];
+                                    next[idx] = { ...next[idx], handler_name: e.target.value };
+                                    setDetailTasks(next);
+                                  }}
+                                />
+                              )}
+                            </td>
+                            <td className="px-2 py-2">
+                              {isDeterministic ? (
+                                <textarea
+                                  className="w-32 rounded border border-white/[0.08] bg-background px-1 py-1 font-mono text-xs resize-none"
+                                  rows={2}
+                                  value={task.input_values ?? "{}"}
+                                  placeholder="{}"
+                                  onChange={(e) => {
+                                    const next = [...detailTasks];
+                                    next[idx] = { ...next[idx], input_values: e.target.value };
+                                    setDetailTasks(next);
+                                  }}
+                                />
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-2">
+                              <select
+                                className="rounded border border-white/[0.08] bg-background px-1 py-1"
+                                value={task.execution_mode}
+                                onChange={(e) => {
+                                  const next = [...detailTasks];
+                                  next[idx] = { ...next[idx], execution_mode: e.target.value as "sync" | "async" | "fanout" };
+                                  setDetailTasks(next);
+                                }}
+                              >
+                                <option value="sync">sync</option>
+                                <option value="async">async</option>
+                                <option value="fanout">fanout</option>
+                              </select>
+                            </td>
+                            <td className="px-2 py-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setDetailTasks(detailTasks.filter((_, i) => i !== idx))}
+                              >
+                                Remove
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                       {detailTasks.length === 0 && (
                         <tr>
-                          <td className="px-2 py-3 text-muted-foreground" colSpan={6}>No subtasks added.</td>
+                          <td className="px-2 py-3 text-muted-foreground" colSpan={8}>No subtasks added.</td>
                         </tr>
                       )}
                     </tbody>
@@ -482,8 +560,9 @@ export function SchedulerConfig() {
                       task_key: `task_${detailTasks.length + 1}`,
                       name: `Task ${detailTasks.length + 1}`,
                       handler_name: "",
-                      task_type: "handler",
-                      prompt: "",
+                      task_type: "agent.call",
+                      agent_name: null,
+                      input_values: "{}",
                       depends_on_task_key: null,
                       execution_mode: "sync",
                       sequence_no: detailTasks.length,

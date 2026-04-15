@@ -21,9 +21,19 @@ export interface BatchJobSubTaskTemplate {
   sequence_no: number;
   enabled: number;
   depends_on_task_key?: string | null;
-  task_type?: "handler" | "prompt";
+  /** Legacy free-form handler type — kept for backward compat. */
+  task_type?: "handler" | "prompt" | "agent.call" | "orchestrator.call" | "system.call";
+  /** Legacy prompt field for agent.prompt handler. */
   prompt?: string;
   config_json?: Record<string, unknown>;
+  /** Deterministic fields (issue #297). When set, task_type must be agent.call | orchestrator.call | system.call. */
+  agent_name?: string | null;
+  /** JSONSchema object for declared inputs. */
+  input_schema?: Record<string, unknown> | null;
+  /** JSONSchema object for required outputs. */
+  output_schema?: Record<string, unknown> | null;
+  /** Concrete input values; "$tasks.task_key.field" refs resolved at runtime. */
+  input_values?: Record<string, unknown> | null;
 }
 
 export interface BatchJobBuildInput {

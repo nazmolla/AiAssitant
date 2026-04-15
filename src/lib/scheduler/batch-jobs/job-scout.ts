@@ -132,6 +132,26 @@ export class JobScoutBatchJob extends BatchJob {
         sequence_no: 0,
         enabled: 1,
         config_json: { maxIterations },
+        task_type: "orchestrator.call",
+        agent_name: "job-scout",
+        input_schema: {
+          type: "object",
+          properties: {
+            maxIterations: { type: "number" },
+            userId: { type: "string" },
+          },
+          required: [],
+        },
+        output_schema: {
+          type: "object",
+          properties: {
+            jobsFound: { type: "number" },
+            jobsApplied: { type: "number" },
+            threadId: { type: "string" },
+          },
+          required: ["jobsFound", "jobsApplied", "threadId"],
+        },
+        input_values: { maxIterations },
       },
     ];
   }

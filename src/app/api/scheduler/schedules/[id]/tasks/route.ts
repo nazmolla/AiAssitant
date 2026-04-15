@@ -29,29 +29,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const normalized = tasks.map((task, index) => {
     const task_key = String(task.task_key || `task_${index + 1}`).trim();
     const name = String(task.name || task_key).trim();
-    const taskType = task.task_type === "prompt" ? "prompt" : "handler";
+    const deterministicTypes = new Set(["agent.call", "orchestrator.call", "system.call"]);
+    const isDeterministic = deterministicTypes.has(String(task.task_type));
+    const taskType = isDeterministic ? String(task.task_type) as "agent.call" | "orchestrator.call" | "system.call"
+      : task.task_type === "prompt" ? "prompt" : "handler";
     const handler_name = String(task.handler_name || "").trim();
-    if (taskType !== "prompt" && !handler_name) throw new Error(`Task ${task_key} missing handler_name`);
+    if (!isDeterministic && taskType !== "prompt" && !handler_name) throw new Error(`Task ${task_key} missing handler_name`);
 
     const providedConfig = (task.config_json && typeof task.config_json === "object") ? task.config_json as Record<string, unknown> : {};
     const prompt = typeof task.prompt === "string" ? task.prompt.trim() : undefined;
+
+    const agentName = typeof task.agent_name === "string" ? task.agent_name : null;
+    const inputSchema = (task.input_schema && typeof task.input_schema === "object") ? JSON.stringify(task.input_schema) : null;
+    const outputSchema = (task.output_schema && typeof task.output_schema === "object") ? JSON.stringify(task.output_schema) : null;
+    const inputValues = (task.input_values && typeof task.input_values === "object") ? JSON.stringify(task.input_values) : null;
 
     return {
       id: typeof task.id === "string" ? task.id : undefined,
       task_key,
       name,
-      handler_name: taskType === "prompt" ? "agent.prompt" : handler_name,
+      handler_name: isDeterministic ? (handler_name || agentName || task_key) : (taskType === "prompt" ? "agent.prompt" : handler_name),
       execution_mode: (task.execution_mode as "sync" | "async" | "fanout") || "sync",
       sequence_no: Number.isFinite(task.sequence_no as number) ? Number(task.sequence_no) : index,
       depends_on_task_key: typeof task.depends_on_task_key === "string" ? task.depends_on_task_key : null,
       timeout_sec: task.timeout_sec as number | null | undefined,
       retry_policy_json: task.retry_policy_json ? JSON.stringify(task.retry_policy_json) : null,
       enabled: task.enabled === 0 ? 0 : 1,
-      config_json: JSON.stringify({
+      config_json: isDeterministic ? JSON.stringify(providedConfig) : JSON.stringify({
         ...providedConfig,
         task_type: taskType,
         prompt: prompt || (typeof providedConfig.prompt === "string" ? providedConfig.prompt : undefined),
       }),
+      task_type: isDeterministic ? taskType : null,
+      agent_name: agentName,
+      input_schema: inputSchema,
+      output_schema: outputSchema,
+      input_values: inputValues,
     };
   });
 

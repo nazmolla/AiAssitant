@@ -21,6 +21,7 @@ import {
   tryClaimSchedulerRun,
   updateSchedulerScheduleAfterDispatch,
   listEnabledSchedulerTaskHandlers,
+  type SchedulerTaskRecord,
 } from "@/lib/db/scheduler-queries";
 import {
   SCHEDULER_POLL_MS,
@@ -32,6 +33,7 @@ import {
 import { computeSchedulerNextRunAt } from "@/lib/scheduler/next-run";
 import { findBatchJobForHandler } from "@/lib/scheduler/batch-jobs";
 import { getAllHandlerNames } from "@/lib/scheduler/batch-jobs";
+import { getSchedulerAgent, validateAgentSchema } from "@/lib/scheduler/agent-registry";
 
 interface SchedulerLogContext {
   scheduleId?: string;
@@ -118,7 +120,11 @@ const WORKER_ID = `scheduler-worker-${process.pid}`;
 
 function validateRegisteredHandlers(): void {
   const handlers = schedulerEngineDependencies.listEnabledSchedulerTaskHandlers();
-  const unknown = handlers.filter((h) => !handlerRegistry.has(h.handler_name));
+  // Deterministic task types are dispatched via the agent registry, not handler_name.
+  const deterministicHandlerPrefixes = ["agent.call", "orchestrator.call", "system.call"];
+  const unknown = handlers.filter(
+    (h) => !handlerRegistry.has(h.handler_name) && !deterministicHandlerPrefixes.some((p) => h.handler_name === p)
+  );
   if (unknown.length === 0) return;
 
   schedulerEngineDependencies.addLog({
@@ -197,14 +203,41 @@ function logSchedulerExecution(level: "verbose" | "info" | "warning" | "error", 
   });
 }
 
+/**
+ * Resolve "$tasks.task_key.field" references in input_values using prior task outputs.
+ * @param inputValues  Raw input_values object (may contain ref strings)
+ * @param priorOutputs Map of task_key → parsed output_json for completed tasks
+ */
+function resolveInputRefs(
+  inputValues: Record<string, unknown>,
+  priorOutputs: Map<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  const resolved: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(inputValues)) {
+    if (typeof value === "string" && value.startsWith("$tasks.")) {
+      // Format: $tasks.task_key.field
+      const parts = value.slice("$tasks.".length).split(".");
+      const taskKey = parts[0];
+      const field = parts.slice(1).join(".");
+      const priorOutput = priorOutputs.get(taskKey);
+      resolved[key] = priorOutput ? priorOutput[field] : undefined;
+    } else {
+      resolved[key] = value;
+    }
+  }
+  return resolved;
+}
+
 async function executeTaskRun(
   taskRunId: string,
   runId: string,
-  handlerName: string,
-  configJson: string | null,
+  task: SchedulerTaskRecord,
   scheduleId: string,
   pipelineThreadId?: string | null,
+  priorTaskOutputs?: Map<string, Record<string, unknown>>,
 ): Promise<{ pipelineThreadId?: string }> {
+  const handlerName = task.handler_name;
+  const configJson = task.config_json;
   const t0 = Date.now();
   log.enter("executeTaskRun", { taskRunId, runId, handlerName, scheduleId });
   const context: SchedulerLogContext = { scheduleId, runId, taskRunId, handlerName };
@@ -213,6 +246,49 @@ async function executeTaskRun(
   setSchedulerTaskRunStatus(taskRunId, "running");
 
   try {
+    // ── Deterministic agent.call / orchestrator.call / system.call path ──
+    const deterministicTypes = new Set(["agent.call", "orchestrator.call", "system.call"]);
+    if (task.task_type && deterministicTypes.has(task.task_type) && task.agent_name) {
+      const agentName = task.agent_name;
+      const agentDef = getSchedulerAgent(agentName);
+      if (!agentDef) {
+        throw new Error(`Scheduler agent "${agentName}" not found in registry. Register it before use.`);
+      }
+
+      // Resolve input refs from prior task outputs.
+      let rawInputValues: Record<string, unknown> = {};
+      if (task.input_values) {
+        try { rawInputValues = JSON.parse(task.input_values) as Record<string, unknown>; } catch { /* use empty */ }
+      }
+      const inputs = resolveInputRefs(rawInputValues, priorTaskOutputs ?? new Map());
+
+      // Validate inputs against declared schema.
+      if (agentDef.input_schema) {
+        const inputValidation = validateAgentSchema(agentDef.input_schema, inputs);
+        if (!inputValidation.valid) {
+          throw new Error(`Agent "${agentName}" input validation failed — missing required fields: ${inputValidation.missing.join(", ")}`);
+        }
+      }
+
+      logSchedulerExecution("info", `Executing deterministic agent "${agentName}".`, context, { agentName, inputs });
+
+      const output = await agentDef.fn(inputs, { scheduleId, runId, taskRunId, agentName });
+
+      // Validate outputs against declared schema.
+      if (agentDef.output_schema) {
+        const outputValidation = validateAgentSchema(agentDef.output_schema, output);
+        if (!outputValidation.valid) {
+          throw new Error(`Agent "${agentName}" output validation failed — missing required fields: ${outputValidation.missing.join(", ")}. Got: ${JSON.stringify(Object.keys(output))}`);
+        }
+      }
+
+      logSchedulerExecution("info", `Deterministic agent "${agentName}" completed.`, context, { output });
+      setSchedulerTaskRunStatus(taskRunId, "success", JSON.stringify({ kind: "agent_call", agentName, ...output }));
+      log.exit("executeTaskRun", { handlerName, agentName, status: "success" }, Date.now() - t0);
+      // Surface threadId as pipelineThreadId if present.
+      return { pipelineThreadId: typeof output.threadId === "string" ? output.threadId : undefined };
+    }
+
     // ── Generic agent.prompt handler (used by any batch type) ──
     if (handlerName === "agent.prompt") {
       let prompt = "";
@@ -323,6 +399,8 @@ async function executeRunnableRun(): Promise<void> {
     let failures = 0;
     // Shared pipeline thread — created by the first job scout step and reused by all.
     let pipelineThreadId: string | null = null;
+    // Accumulate parsed output_json per task_key for $tasks.key.field ref resolution.
+    const priorTaskOutputs = new Map<string, Record<string, unknown>>();
 
     for (const taskRun of taskRuns) {
       const runCtx: SchedulerLogContext = { scheduleId: claimed.schedule_id, runId: claimed.id, taskRunId: taskRun.id };
@@ -370,9 +448,20 @@ async function executeRunnableRun(): Promise<void> {
 
       try {
         const result = await executeTaskRun(
-          taskRun.id, claimed.id, task.handler_name, task.config_json, claimed.schedule_id, pipelineThreadId
+          taskRun.id, claimed.id, task, claimed.schedule_id, pipelineThreadId, priorTaskOutputs
         );
         if (result.pipelineThreadId) pipelineThreadId = result.pipelineThreadId;
+        // Store task output for downstream $tasks.key.field ref resolution.
+        // Re-read from DB to get the validated output_json written by executeTaskRun.
+        try {
+          const { getSchedulerTaskRunsForRun: getRuns } = await import("@/lib/db/scheduler-queries");
+          const updatedRuns = getRuns(claimed.id);
+          const thisRun = updatedRuns.find((tr) => tr.id === taskRun.id);
+          if (thisRun?.output_json) {
+            const parsed = JSON.parse(thisRun.output_json) as Record<string, unknown>;
+            priorTaskOutputs.set(task.task_key, parsed);
+          }
+        } catch { /* non-critical — ref resolution will just return undefined */ }
         // Update in-memory map so subsequent dependency checks see the real outcome.
         taskRunStatusById.set(taskRun.schedule_task_id, "success");
         addSchedulerEvent(claimed.id, "task_completed", `Completed "${task.name}" (${task.task_key})`, taskRun.id);

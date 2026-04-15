@@ -70,7 +70,7 @@ export class MaintenanceBatchJob extends BatchJob {
     return [];
   }
 
-  protected createDefaultTasks(parameters: Record<string, string>): BatchJobSubTaskTemplate[] {
+  protected createDefaultTasks(_parameters: Record<string, string>): BatchJobSubTaskTemplate[] {
     return [
       {
         task_key: "knowledge_maintenance",
@@ -80,6 +80,11 @@ export class MaintenanceBatchJob extends BatchJob {
         sequence_no: 0,
         enabled: 1,
         config_json: {},
+        task_type: "system.call",
+        agent_name: "knowledge-maintenance",
+        input_schema: { type: "object", properties: {}, required: [] },
+        output_schema: { type: "object", properties: { ran: { type: "boolean" }, updated: { type: "number" }, skipped: { type: "number" } }, required: ["ran", "updated", "skipped"] },
+        input_values: {},
       },
       {
         task_key: "db_maintenance",
@@ -89,6 +94,11 @@ export class MaintenanceBatchJob extends BatchJob {
         sequence_no: 1,
         enabled: 1,
         config_json: {},
+        task_type: "system.call",
+        agent_name: "db-maintenance",
+        input_schema: { type: "object", properties: {}, required: [] },
+        output_schema: { type: "object", properties: { ran: { type: "boolean" }, vacuumed: { type: "boolean" }, pruned: { type: "number" } }, required: ["ran", "vacuumed", "pruned"] },
+        input_values: {},
       },
     ];
   }

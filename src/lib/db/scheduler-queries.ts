@@ -110,6 +110,16 @@ export interface SchedulerTaskRecord {
   retry_policy_json: string | null;
   enabled: number;
   config_json: string | null;
+  /** Deterministic task type — takes priority over handler_name dispatch when set. */
+  task_type: "agent.call" | "orchestrator.call" | "system.call" | null;
+  /** Name of the registered agent/orchestrator to invoke. */
+  agent_name: string | null;
+  /** JSONSchema string for declared inputs. */
+  input_schema: string | null;
+  /** JSONSchema string for required outputs — engine validates after execution. */
+  output_schema: string | null;
+  /** JSON object of concrete input values; "$tasks.task_key.field" refs resolved at runtime. */
+  input_values: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -678,13 +688,19 @@ export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
   retry_policy_json?: string | null;
   enabled?: number;
   config_json?: string | null;
+  task_type?: "agent.call" | "orchestrator.call" | "system.call" | null;
+  agent_name?: string | null;
+  input_schema?: string | null;
+  output_schema?: string | null;
+  input_values?: string | null;
 }>, replace = false): void {
   const db = getDb();
   const insert = db.prepare(
     `INSERT INTO scheduler_tasks (
       id, schedule_id, task_key, name, handler_name, execution_mode,
-      sequence_no, depends_on_task_id, timeout_sec, retry_policy_json, enabled, config_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      sequence_no, depends_on_task_id, timeout_sec, retry_policy_json, enabled, config_json,
+      task_type, agent_name, input_schema, output_schema, input_values
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const update = db.prepare(
     `UPDATE scheduler_tasks
@@ -698,6 +714,11 @@ export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
          retry_policy_json = ?,
          enabled = ?,
          config_json = ?,
+         task_type = ?,
+         agent_name = ?,
+         input_schema = ?,
+         output_schema = ?,
+         input_values = ?,
          updated_at = CURRENT_TIMESTAMP
      WHERE id = ? AND schedule_id = ?`
   );
@@ -720,12 +741,17 @@ export function updateSchedulerTaskGraph(scheduleId: string, tasks: Array<{
       const retry = task.retry_policy_json ?? null;
       const config = task.config_json ?? null;
       const dependsId = task.depends_on_task_id ?? (task.depends_on_task_key ? keyToId.get(task.depends_on_task_key) ?? null : null);
+      const taskType = task.task_type ?? null;
+      const agentName = task.agent_name ?? null;
+      const inputSchema = task.input_schema ?? null;
+      const outputSchema = task.output_schema ?? null;
+      const inputValues = task.input_values ?? null;
 
       const existing = db.prepare("SELECT id FROM scheduler_tasks WHERE id = ? AND schedule_id = ?").get(id, scheduleId) as { id: string } | undefined;
       if (existing) {
-        update.run(task.task_key, task.name, task.handler_name, mode, seq, dependsId, timeout, retry, enabled, config, id, scheduleId);
+        update.run(task.task_key, task.name, task.handler_name, mode, seq, dependsId, timeout, retry, enabled, config, taskType, agentName, inputSchema, outputSchema, inputValues, id, scheduleId);
       } else {
-        insert.run(id, scheduleId, task.task_key, task.name, task.handler_name, mode, seq, dependsId, timeout, retry, enabled, config);
+        insert.run(id, scheduleId, task.task_key, task.name, task.handler_name, mode, seq, dependsId, timeout, retry, enabled, config, taskType, agentName, inputSchema, outputSchema, inputValues);
       }
     }
 

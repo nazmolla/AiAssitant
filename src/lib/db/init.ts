@@ -1001,6 +1001,16 @@ function cleanupDuplicatedSchedulerPromptPrefixes(): void {
   }
 }
 
+/** Migration #297: add deterministic task definition columns to scheduler_tasks. */
+function ensureSchedulerTaskDeterministicColumns(): void {
+  if (!tableExists("scheduler_tasks")) return;
+  addColumnIfMissing("scheduler_tasks", "task_type", "TEXT CHECK(task_type IN ('agent.call', 'orchestrator.call', 'system.call'))");
+  addColumnIfMissing("scheduler_tasks", "agent_name", "TEXT");
+  addColumnIfMissing("scheduler_tasks", "input_schema", "TEXT");
+  addColumnIfMissing("scheduler_tasks", "output_schema", "TEXT");
+  addColumnIfMissing("scheduler_tasks", "input_values", "TEXT");
+}
+
 let _dbInitialized = false;
 
 export function initializeDatabase(): void {
@@ -1041,6 +1051,7 @@ export function initializeDatabase(): void {
   encryptExistingSecrets();
   revokeExpiredKeys();
   cleanupDuplicatedSchedulerPromptPrefixes();
+  ensureSchedulerTaskDeterministicColumns();
   // Migration: remove deprecated Alexa config keys and tool policies
   try { db.prepare("DELETE FROM config WHERE key IN ('alexa.ubid_main', 'alexa.at_main')").run(); } catch { /* table may not exist */ }
   try { db.prepare("DELETE FROM tool_policies WHERE tool_name LIKE 'builtin.alexa_%'").run(); } catch { /* table may not exist */ }

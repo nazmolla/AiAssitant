@@ -546,7 +546,11 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
 
   protected createDefaultTasks(parameters: Record<string, string> = {}): BatchJobSubTaskTemplate[] {
     const maxIterations = parameters.maxIterations ? Number(parameters.maxIterations) : 25;
-    const scanIterations = parameters.scanIterations ? Number(parameters.scanIterations) : 3;
+    const staticPrompt =
+      "You are a proactive home-automation and network-monitoring agent. " +
+      "Using the tools listed in your input, discover the current state of connected devices, " +
+      "check for anomalies, and store any new findings in the knowledge vault. " +
+      "Call each listed tool at least once. Report a concise summary of what you found.";
     return [
       {
         task_key: "scan",
@@ -555,7 +559,32 @@ Focus on coverage gaps not addressed in prior iterations: network/camera/occupan
         execution_mode: "sync",
         sequence_no: 0,
         enabled: 1,
-        config_json: { maxIterations, scanIterations },
+        config_json: { maxIterations },
+        task_type: "agent.call",
+        agent_name: "proactive-scan",
+        input_schema: {
+          type: "object",
+          properties: {
+            toolNames: { type: "array", items: { type: "string" } },
+            prompt: { type: "string" },
+            maxIterations: { type: "number" },
+          },
+          required: ["toolNames", "prompt"],
+        },
+        output_schema: {
+          type: "object",
+          properties: {
+            toolsUsed: { type: "array", items: { type: "string" } },
+            summary: { type: "string" },
+            threadId: { type: "string" },
+          },
+          required: ["toolsUsed", "summary", "threadId"],
+        },
+        input_values: {
+          toolNames: [],
+          prompt: staticPrompt,
+          maxIterations,
+        },
       },
     ];
   }

@@ -284,6 +284,12 @@ CREATE TABLE IF NOT EXISTS scheduler_tasks (
     retry_policy_json TEXT,
     enabled INTEGER NOT NULL DEFAULT 1,
     config_json TEXT,
+    -- Deterministic task definition (issue #297)
+    task_type TEXT CHECK(task_type IN ('agent.call', 'orchestrator.call', 'system.call')),
+    agent_name TEXT,
+    input_schema TEXT,   -- JSONSchema for declared inputs
+    output_schema TEXT,  -- JSONSchema for required outputs
+    input_values TEXT,   -- JSON object with optional $tasks.task_key.field refs
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(schedule_id, task_key)

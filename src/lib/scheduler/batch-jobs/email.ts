@@ -112,7 +112,7 @@ export class EmailBatchJob extends BatchJob {
     };
   }
 
-  protected createDefaultTasks(): BatchJobSubTaskTemplate[] {
+  protected createDefaultTasks(_parameters: Record<string, string> = {}): BatchJobSubTaskTemplate[] {
     return [
       {
         task_key: "run",
@@ -121,6 +121,11 @@ export class EmailBatchJob extends BatchJob {
         execution_mode: "sync",
         sequence_no: 0,
         enabled: 1,
+        task_type: "orchestrator.call",
+        agent_name: "email-ingest",
+        input_schema: { type: "object", properties: { maxMessages: { type: "number" }, sinceTimestamp: { type: "string" } }, required: [] },
+        output_schema: { type: "object", properties: { processed: { type: "number" }, errors: { type: "array", items: { type: "string" } }, threadId: { type: "string" } }, required: ["processed", "errors", "threadId"] },
+        input_values: {},
       },
     ];
   }
