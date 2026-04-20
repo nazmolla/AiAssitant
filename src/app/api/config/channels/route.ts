@@ -108,7 +108,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { label, channelType, config } = body;
+  const { label, channelType, config, isShared } = body;
 
   if (!label || !channelType || !config) {
     return NextResponse.json(
@@ -148,11 +148,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // Only admins can create shared channels
+  const wantShared = Boolean(isShared) && auth.user.role === "admin";
+
   const record = createChannel({
     label,
     channelType,
     configJson: JSON.stringify(config),
     userId: auth.user.id,
+    isShared: wantShared,
   });
 
   // Auto-start Discord bot when channel is created
@@ -184,16 +188,20 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { id, label, channelType, config, enabled } = body;
+  const { id, label, channelType, config, enabled, isShared } = body;
 
   if (!id) {
     return NextResponse.json({ error: "id is required." }, { status: 400 });
   }
 
-  // Ensure user owns this channel
+  // Ensure user owns this channel (shared channel visible to all but only owner/admin can edit)
   const existing = getChannel(id);
-  if (!existing || existing.user_id !== auth.user.id) {
+  if (!existing) {
     return NextResponse.json({ error: "Channel not found." }, { status: 404 });
+  }
+  const isOwnerOrAdmin = existing.user_id === auth.user.id || auth.user.role === "admin";
+  if (!isOwnerOrAdmin) {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
   if (channelType && !VALID_CHANNEL_TYPES.includes(channelType)) {
     return NextResponse.json(
@@ -202,12 +210,18 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Only admin or owner can toggle shared status
+  const updatedIsShared = isShared !== undefined && isOwnerOrAdmin
+    ? Boolean(isShared)
+    : undefined;
+
   const updated = updateChannel({
     id,
     label,
     channelType,
     configJson: config ? JSON.stringify(config) : undefined,
     enabled,
+    isShared: updatedIsShared,
   });
 
   if (!updated) {
@@ -246,10 +260,13 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "id query param is required." }, { status: 400 });
   }
 
-  // Ensure user owns this channel
+  // Only owner or admin can delete (shared channels still owned by creator)
   const channel = getChannel(id);
-  if (!channel || channel.user_id !== auth.user.id) {
+  if (!channel) {
     return NextResponse.json({ error: "Channel not found." }, { status: 404 });
+  }
+  if (channel.user_id !== auth.user.id && auth.user.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
   // Stop Discord bot before deleting channel

@@ -168,7 +168,7 @@ export interface AttachmentRecord {
 export function addAttachment(att: Omit<AttachmentRecord, "created_at">): void {
   getDb()
     .prepare(
-      `INSERT INTO attachments (id, thread_id, message_id, filename, mime_type, size_bytes, storage_path)
+      `INSERT OR IGNORE INTO attachments (id, thread_id, message_id, filename, mime_type, size_bytes, storage_path)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     .run(att.id, att.thread_id, att.message_id, att.filename, att.mime_type, att.size_bytes, att.storage_path);

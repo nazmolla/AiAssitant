@@ -33,6 +33,20 @@ const mockChannel = {
   enabled: 1,
   config_json: '{"botToken":"***","botUsername":"nexus_bot"}',
   webhook_secret: "sec123",
+  is_shared: 0,
+  user_id: "admin-1",
+  created_at: "2025-01-01T00:00:00Z",
+};
+
+const mockSharedChannel = {
+  id: "ch-2",
+  channel_type: "email",
+  label: "Shared Email",
+  enabled: 1,
+  config_json: '{"smtpHost":"smtp.example.com"}',
+  webhook_secret: "sec456",
+  is_shared: 1,
+  user_id: "admin-1",
   created_at: "2025-01-01T00:00:00Z",
 };
 
@@ -227,6 +241,41 @@ describe("ChannelsConfig — interactions", () => {
     await waitFor(() => {
       expect(screen.getByText("No channels connected")).toBeInTheDocument();
     });
+  });
+
+  test("shared channel shows Shared badge", async () => {
+    setupFetch([mockSharedChannel]);
+    const { ChannelsConfig } = await import("@/components/channels-config");
+    await act(async () => { render(<ChannelsConfig />); });
+    await waitFor(() => {
+      expect(screen.getAllByText("Shared Email").length).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.getAllByText("Shared").length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("non-shared channel does not show Shared badge", async () => {
+    setupFetch([mockChannel]);
+    const { ChannelsConfig } = await import("@/components/channels-config");
+    await act(async () => { render(<ChannelsConfig />); });
+    await waitFor(() => {
+      expect(screen.getAllByText("Support Bot").length).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.queryByText("Shared")).toBeNull();
+  });
+
+  test("admin sees Shared toggle in create form", async () => {
+    setupFetch([]);
+    const { ChannelsConfig } = await import("@/components/channels-config");
+    await act(async () => { render(<ChannelsConfig />); });
+    await waitFor(() => {
+      expect(screen.getByText("No channels connected")).toBeInTheDocument();
+    });
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /connect channel/i })); });
+    const telegramBtns = screen.getAllByText(/Telegram/);
+    await act(async () => { fireEvent.click(telegramBtns[0]); });
+
+    expect(screen.getByText("Shared channel")).toBeInTheDocument();
   });
 
   test("copy webhook URL button copies to clipboard", async () => {

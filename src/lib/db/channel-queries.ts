@@ -19,6 +19,7 @@ export interface ChannelRecord {
   config_json: string;
   webhook_secret: string | null;
   user_id: string | null;
+  is_shared: number;
   created_at: string;
 }
 
@@ -36,7 +37,7 @@ export function listChannels(userId?: string): ChannelRecord[] {
   const cacheKey = `${CACHE_KEYS.CHANNELS_PREFIX}${userId ?? "_all"}`;
   return appCache.get(cacheKey, () => {
     const rows = userId
-      ? getDb().prepare("SELECT * FROM channels WHERE user_id = ? ORDER BY created_at ASC").all(userId) as ChannelRecord[]
+      ? getDb().prepare("SELECT * FROM channels WHERE user_id = ? OR is_shared = 1 ORDER BY created_at ASC").all(userId) as ChannelRecord[]
       : getDb().prepare("SELECT * FROM channels ORDER BY created_at ASC").all() as ChannelRecord[];
     return rows.map((r) => decryptChannel(r)!);
   });
@@ -52,15 +53,16 @@ export function createChannel(args: {
   channelType: ChannelType;
   configJson: string;
   userId: string;
+  isShared?: boolean;
 }): ChannelRecord {
   const id = uuid();
   const webhookSecret = crypto.randomBytes(24).toString("hex");
   getDb()
     .prepare(
-      `INSERT INTO channels (id, channel_type, label, enabled, config_json, webhook_secret, user_id)
-       VALUES (?, ?, ?, 1, ?, ?, ?)`
+      `INSERT INTO channels (id, channel_type, label, enabled, config_json, webhook_secret, user_id, is_shared)
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?)`
     )
-    .run(id, args.channelType, args.label, encryptField(args.configJson), encryptField(webhookSecret), args.userId);
+    .run(id, args.channelType, args.label, encryptField(args.configJson), encryptField(webhookSecret), args.userId, args.isShared ? 1 : 0);
   appCache.invalidatePrefix(CACHE_KEYS.CHANNELS_PREFIX);
   return getDb().prepare("SELECT * FROM channels WHERE id = ?").get(id) as ChannelRecord;
 }
@@ -71,6 +73,7 @@ export function updateChannel(args: {
   channelType?: ChannelType;
   configJson?: string;
   enabled?: boolean;
+  isShared?: boolean;
 }): ChannelRecord | undefined {
   const existing = getChannel(args.id);
   if (!existing) return undefined;
@@ -78,11 +81,12 @@ export function updateChannel(args: {
   const channelType = args.channelType ?? existing.channel_type;
   const configJson = args.configJson ?? existing.config_json;
   const enabled = args.enabled !== undefined ? (args.enabled ? 1 : 0) : existing.enabled;
+  const isShared = args.isShared !== undefined ? (args.isShared ? 1 : 0) : existing.is_shared;
   getDb()
     .prepare(
-      `UPDATE channels SET label = ?, channel_type = ?, config_json = ?, enabled = ? WHERE id = ?`
+      `UPDATE channels SET label = ?, channel_type = ?, config_json = ?, enabled = ?, is_shared = ? WHERE id = ?`
     )
-    .run(label, channelType, encryptField(configJson), enabled, args.id);
+    .run(label, channelType, encryptField(configJson), enabled, isShared, args.id);
   appCache.invalidatePrefix(CACHE_KEYS.CHANNELS_PREFIX);
   return getDb().prepare("SELECT * FROM channels WHERE id = ?").get(args.id) as ChannelRecord;
 }

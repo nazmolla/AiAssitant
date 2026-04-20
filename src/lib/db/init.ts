@@ -711,6 +711,11 @@ function ensureChannelImapUidColumns(): void {
   addColumnIfMissing("channels", "last_imap_uidvalidity", "INTEGER DEFAULT 0");
 }
 
+function ensureChannelIsShared(): void {
+  if (!tableExists("channels")) return;
+  addColumnIfMissing("channels", "is_shared", "INTEGER NOT NULL DEFAULT 0");
+}
+
 function ensureApprovalQueueNlRequestColumn(): void {
   if (!tableExists("approval_queue")) return;
   addColumnIfMissing("approval_queue", "nl_request", "TEXT");
@@ -1035,6 +1040,7 @@ export function initializeDatabase(): void {
   migrateToMultiUser();
   ensureChannelUserId();
   ensureChannelImapUidColumns();
+  ensureChannelIsShared();
   ensureApprovalQueueNlRequestColumn();
   ensureApprovalQueueExpiresAt();
   purgeExpiredApprovals();

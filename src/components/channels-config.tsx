@@ -1,16 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/use-confirm";
 import {
   MessageCircle, Hash, Mail, Send, Gamepad2, Users, Phone,
-  Radio, Bot, ClipboardCopy, Check, X,
+  Radio, Bot, ClipboardCopy, Check, X, Globe,
 } from "lucide-react";
 
 type ChannelType = "whatsapp" | "slack" | "email" | "telegram" | "discord" | "teams" | "phone";
@@ -22,6 +22,8 @@ interface Channel {
   enabled: number;
   config_json: string;
   webhook_secret: string | null;
+  is_shared: number;
+  user_id: string | null;
   created_at: string;
 }
 
@@ -79,11 +81,16 @@ const CONFIG_FIELDS: Record<ChannelType, { key: string; label: string; type: "te
 };
 
 export function ChannelsConfig() {
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "admin";
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id;
+
   const [channels, setChannels] = useState<Channel[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [selectedType, setSelectedType] = useState<ChannelType | null>(null);
   const [label, setLabel] = useState("");
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
+  const [isShared, setIsShared] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -103,6 +110,7 @@ export function ChannelsConfig() {
     setSelectedType(null);
     setLabel("");
     setConfigValues({});
+    setIsShared(false);
     setError(null);
   }
 
@@ -128,6 +136,7 @@ export function ChannelsConfig() {
           label: label.trim(),
           channelType: selectedType,
           config: configValues,
+          isShared,
         }),
       });
       if (res.ok) {
@@ -185,6 +194,7 @@ export function ChannelsConfig() {
       <div className="grid gap-3">
         {channels.map((ch) => {
           const opt = CHANNEL_OPTIONS.find((o) => o.value === ch.channel_type);
+          const canEdit = ch.user_id === currentUserId || isAdmin;
           return (
             <Card key={ch.id}>
               <CardContent className="py-4">
@@ -202,6 +212,11 @@ export function ChannelsConfig() {
                         <Badge variant={ch.enabled ? "success" : "secondary"} className="text-xs">
                           {ch.enabled ? "Active" : "Disabled"}
                         </Badge>
+                        {!!ch.is_shared && (
+                          <Badge variant="outline" className="text-xs flex items-center gap-1 border-blue-500/40 text-blue-400">
+                            <Globe className="h-3 w-3" /> Shared
+                          </Badge>
+                        )}
                         {ch.channel_type === "discord" && (ch as any).discord_bot_active && (
                           <Badge variant="success" className="text-xs flex items-center gap-1">
                             <Bot className="h-3 w-3" /> Bot Online
@@ -227,21 +242,25 @@ export function ChannelsConfig() {
                         {copiedId === ch.id ? <><Check className="h-3 w-3" /> Copied</> : <><ClipboardCopy className="h-3 w-3" /> Copy URL</>}
                       </Button>
                     )}
-                    <div className="flex items-center justify-center rounded-lg border border-white/[0.08] px-2.5 py-1.5">
-                      <Switch
-                        checked={!!ch.enabled}
-                        onCheckedChange={() => toggleEnabled(ch)}
-                      />
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label="Remove channel"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => handleDelete(ch.id)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                    {canEdit && (
+                      <div className="flex items-center justify-center rounded-lg border border-white/[0.08] px-2.5 py-1.5">
+                        <Switch
+                          checked={!!ch.enabled}
+                          onCheckedChange={() => toggleEnabled(ch)}
+                        />
+                      </div>
+                    )}
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Remove channel"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleDelete(ch.id)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -258,6 +277,11 @@ export function ChannelsConfig() {
                       <Badge variant={ch.enabled ? "success" : "secondary"} className="text-xs">
                         {ch.enabled ? "Active" : "Disabled"}
                       </Badge>
+                      {!!ch.is_shared && (
+                        <Badge variant="outline" className="text-xs flex items-center gap-1 border-blue-500/40 text-blue-400">
+                          <Globe className="h-3 w-3" /> Shared
+                        </Badge>
+                      )}
                       {ch.channel_type === "discord" && (ch as any).discord_bot_active && (
                         <Badge variant="success" className="text-xs flex items-center gap-1">
                           <Bot className="h-3 w-3" /> Bot Online
@@ -282,19 +306,23 @@ export function ChannelsConfig() {
                         {copiedId === ch.id ? <><Check className="h-3 w-3" /> Copied</> : <><ClipboardCopy className="h-3 w-3" /> Copy URL</>}
                       </Button>
                     )}
-                    <Switch
-                      checked={!!ch.enabled}
-                      onCheckedChange={() => toggleEnabled(ch)}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label="Remove channel"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => handleDelete(ch.id)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                    {canEdit && (
+                      <Switch
+                        checked={!!ch.enabled}
+                        onCheckedChange={() => toggleEnabled(ch)}
+                      />
+                    )}
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Remove channel"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleDelete(ch.id)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -352,6 +380,19 @@ export function ChannelsConfig() {
                       placeholder="e.g., My WhatsApp Bot"
                     />
                   </div>
+
+                  {isAdmin && (
+                    <div className="flex items-center justify-between rounded-lg border border-white/[0.08] px-3 py-2.5">
+                      <div>
+                        <div className="text-sm font-medium flex items-center gap-1.5">
+                          <Globe className="h-3.5 w-3.5 text-blue-400" />
+                          Shared channel
+                        </div>
+                        <div className="text-xs text-muted-foreground">Visible and usable by all users</div>
+                      </div>
+                      <Switch checked={isShared} onCheckedChange={setIsShared} />
+                    </div>
+                  )}
 
                   {fields.map((field) => (
                     <div key={field.key}>

@@ -401,6 +401,7 @@ CREATE TABLE IF NOT EXISTS channels (
     config_json TEXT NOT NULL,
     webhook_secret TEXT,
     user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    is_shared INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
