@@ -112,10 +112,9 @@ export const JOB_SCOUT_TASK_PROMPT =
   "Scout for job opportunities that genuinely match this user's profile, then deliver curated results with tailored resumes by email.\n\n" +
   "IMPORTANT: You are running on behalf of the specific user who scheduled this job. Load their profile first — do NOT use generic defaults.\n\n" +
   "Steps to complete:\n" +
-  "1. Load user profile: Call builtin.knowledge_search with queries like 'career', 'role', 'skills', 'resume', 'experience', 'location', 'salary' to retrieve the user's career data from the knowledge vault. " +
-  "Also read your system context (the <knowledge_context> section) for any pre-injected profile data. " +
-  "Extract: role preferences, skills, experience level, location, work mode (remote/hybrid/onsite), visa/work-authorisation constraints, salary expectations, companies to avoid, and any other career preferences. " +
-  "IMPORTANT: Do NOT declare the profile missing until you have called builtin.knowledge_search and inspected the results. The user's data IS in the knowledge vault — retrieve it.\n" +
+  "1. Load user profile: Read the '## Pre-loaded career profile from knowledge vault' section in your context — it is already injected above. " +
+  "Extract from it: role preferences, skills, experience level, location, work mode (remote/hybrid/onsite), visa/work-authorisation constraints, salary expectations, companies to avoid, and any other career preferences. " +
+  "IMPORTANT: Do NOT declare the profile missing — the data is pre-loaded in your context. If the section is absent or empty, send an in-app notification via builtin.channel_notify asking the user to add career preferences to their profile, then stop.\n" +
   "2. Search jobs: Use builtin.web_search with multiple targeted queries across job boards (LinkedIn Jobs, Indeed, Glassdoor, Google Jobs, Levels.fyi for tech). " +
   "Match queries precisely to the user's role, seniority, location, and constraints. Collect 10-20 raw candidates with direct URLs.\n" +
   "   **Listing pages vs. job postings:** A URL is a *job posting* if the snippet or URL identifies a specific company and role (e.g., linkedin.com/jobs/view/..., indeed.com/jobs?jk=..., simplyhired.ca/job/...). " +
@@ -153,7 +152,7 @@ export const JOB_SCOUT_TASK_PROMPT =
   "This must fire even when zero matches were found and even when the email step failed.\n" +
   "   **If channel_notify fails:** retry once. If both attempts fail, log the failure in your final response text and continue.\n" +
   "7. **Completion checkpoint:** Before ending your turn, confirm all of the following were executed (not just described):\n" +
-  "   - [ ] builtin.knowledge_search called\n" +
+  "   - [ ] User profile read from pre-loaded context section\n" +
   "   - [ ] builtin.web_search called with at least 2 queries\n" +
   "   - [ ] builtin.file_generate called for each shortlisted role\n" +
   "   - [ ] builtin.channel_send called (or retried and fell back to channel_notify on failure)\n" +
@@ -419,32 +418,31 @@ Every resume MUST include ALL of the following sections, populated from the know
 7. **Certifications / Awards** (if present in knowledge) — with issuing body and year.
 
 ## How to work
-1. The pre-loaded career profile is in the ## Pre-loaded career profile section of the task context. Read it fully before writing.
-2. Also call builtin.knowledge_search with queries "career", "experience", "role", "education", "skills", "contact", "achievements" to ensure nothing is missed.
-3. Draft ALL sections. If a specific field is unknown, omit just that field — never omit the entire section.
+1. The pre-loaded career profile is in the '## Pre-loaded career profile from knowledge vault' section of your task context. Read it fully — this is your primary and complete data source.
+2. Extract every field available: identity, contact, all roles with dates/achievements, education, skills, certifications.
+3. Draft ALL sections. If a specific field is not in the profile, omit just that field — never omit the entire section.
 4. Format as markdown that file_generate docx renders correctly:
    - # Name (heading 1), ## section/job titles (heading 2)
    - *italic* for dates, **bold** for emphasis, - for bullets
 5. Call builtin.file_generate with format="docx" and the complete markdown content.
 
-## Phase 1 — Interrogate the knowledge vault (multi-turn tool calls)
+## Phase 1 — Extract from pre-loaded context
 
-Do NOT generate the resume until Phase 1 is complete. Query the vault iteratively like an interviewer building a full picture.
+Do NOT generate the resume until Phase 1 is complete. Systematically extract from the '## Pre-loaded career profile' section:
 
-**Step 1: Identity & contact** — Call builtin.knowledge_search with each of these in sequence: "full name", "email", "phone", "location", "LinkedIn", "GitHub", "contact"
+**Step 1: Identity & contact** — Extract: full name, email, phone, location, LinkedIn, GitHub
 
-**Step 2: Career overview** — Call builtin.knowledge_search with: "current role", "job title", "years of experience", "industry", "career summary"
+**Step 2: Career overview** — Extract: current role, job title, years of experience, industry, career summary
 
-**Step 3: Work history — enumerate all employers** — Call builtin.knowledge_search with: "employer", "company", "worked at", "job history", "previous role"
-For EACH company or role name returned, immediately call builtin.knowledge_search again with the company name to pull all details: title, dates, responsibilities, achievements, team size, technologies.
+**Step 3: Work history** — Extract ALL employers/roles. For each: title, company, start/end dates, responsibilities, achievements, technologies used. List every role separately — never merge them.
 
-**Step 4: Education** — Call builtin.knowledge_search with: "degree", "university", "education", "certification", "bootcamp"
+**Step 4: Education** — Extract: every degree, institution, graduation year, certifications
 
-**Step 5: Skills** — Call builtin.knowledge_search with: "skills", "technologies", "programming languages", "frameworks", "cloud", "tools"
+**Step 5: Skills** — Extract: all listed skills, technologies, programming languages, frameworks, cloud platforms, tools
 
-**Step 6: Achievements** — Call builtin.knowledge_search with: "achievements", "awards", "recognition", "promoted", "led", "built", "impact"
+**Step 6: Achievements** — Extract: awards, recognition, promotions, impact metrics, anything quantifiable
 
-**Step 7: Gap check** — Review what you have. For anything still missing, run one more targeted search before proceeding.
+**Step 7: Gap check** — Review what you have. If any critical field (name, email, at least one role) is missing, note it in the final response and proceed with what is available.
 
 ## Phase 2 — Assemble the resume
 
@@ -470,8 +468,8 @@ Once Phase 1 is complete, produce the resume as a single markdown string. ALL se
 Call builtin.file_generate with format="docx", the filename from the task, and the full markdown from Phase 2.
 
 ## Rules
-- NEVER generate the docx before completing Phase 1 — all knowledge queries come first.
-- NEVER fabricate companies, dates, titles, or achievements — only use what the vault returned.
+- NEVER generate the docx before completing Phase 1 — all extraction from context comes first.
+- NEVER fabricate companies, dates, titles, or achievements — only use what is in the pre-loaded career profile.
 - NEVER leave any section empty or with placeholder text.
 - NEVER merge distinct roles into a single experience entry.
 - Tailor summary and bullets to the specific job description provided in the task.`,
