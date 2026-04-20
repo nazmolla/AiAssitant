@@ -20,8 +20,8 @@ export async function GET(
     if (!thread) {
       return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
-    // Ensure user owns this thread
-    if (thread.user_id !== auth.user.id) {
+    // Admins can view any thread; regular users only their own
+    if (thread.user_id !== auth.user.id && auth.user.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

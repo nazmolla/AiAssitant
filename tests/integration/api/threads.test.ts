@@ -110,11 +110,11 @@ describe("GET /api/threads/[threadId]", () => {
     expect(res.status).toBe(404);
   });
 
-  test("returns 403 when accessing another user's thread", async () => {
+  test("admin can access another user's thread (for scheduler console visibility)", async () => {
     setMockUser({ id: adminId, email: "admin@example.com", role: "admin" });
     const req = new NextRequest(`http://localhost/api/threads/${threadId}`);
     const res = await GET_THREAD(req, { params: { threadId } });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
   });
 });
 
