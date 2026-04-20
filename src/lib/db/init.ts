@@ -723,8 +723,24 @@ function migrateOrphanKnowledgeToAdmin(): void {
   if (orphanCount === 0) return;
   const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1").get() as { id: string } | undefined;
   if (!admin) return;
-  db.prepare("UPDATE user_knowledge SET user_id = ? WHERE user_id IS NULL").run(admin.id);
-  console.log(`[Nexus DB] Migrated ${orphanCount} orphan knowledge entries to admin user ${admin.id}.`);
+  // Delete null-user_id entries that are exact duplicates of existing admin entries
+  // (case/whitespace-insensitive) to avoid UNIQUE constraint violation on UPDATE.
+  const deleteResult = db.prepare(
+    `DELETE FROM user_knowledge
+     WHERE user_id IS NULL
+       AND EXISTS (
+         SELECT 1 FROM user_knowledge uk2
+         WHERE uk2.user_id = ?
+           AND lower(trim(uk2.entity))    = lower(trim(user_knowledge.entity))
+           AND lower(trim(uk2.attribute)) = lower(trim(user_knowledge.attribute))
+           AND lower(trim(uk2.value))     = lower(trim(user_knowledge.value))
+       )`
+  ).run(admin.id);
+  const remaining = (db.prepare("SELECT COUNT(*) as cnt FROM user_knowledge WHERE user_id IS NULL").get() as { cnt: number }).cnt;
+  if (remaining > 0) {
+    db.prepare("UPDATE user_knowledge SET user_id = ? WHERE user_id IS NULL").run(admin.id);
+  }
+  console.log(`[Nexus DB] Migrated orphan knowledge: ${deleteResult.changes} duplicates deleted, ${remaining} assigned to admin ${admin.id}.`);
 }
 
 function ensureApprovalQueueNlRequestColumn(): void {
