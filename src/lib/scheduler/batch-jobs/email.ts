@@ -14,6 +14,7 @@ import {
   getSchedulerScheduleById,
   listSchedulerRunsBySchedule,
 } from "@/lib/db";
+import { retrieveKnowledge } from "@/lib/knowledge/retriever";
 import {
   BatchJob,
   type BatchJobSubTaskTemplate,
@@ -82,9 +83,25 @@ export class EmailBatchJob extends BatchJob {
       log("info", "Created pipeline thread for email batch run.", logCtx, { threadId: runThreadId });
     }
 
+    // Pre-load owner's career knowledge so the agent can evaluate forwarded job listings
+    // without needing a builtin.knowledge_search tool (which doesn't exist).
+    const careerQueries = ["career", "skills", "experience", "role", "resume", "education", "location", "salary", "contact", "achievements"];
+    const knowledgeMap = new Map<number, { entity: string; attribute: string; value: string }>();
+    for (const q of careerQueries) {
+      const entries = await retrieveKnowledge(q, 20, userId);
+      for (const e of entries) {
+        if (!knowledgeMap.has(e.id)) knowledgeMap.set(e.id, { entity: e.entity, attribute: e.attribute, value: e.value });
+      }
+    }
+    const careerKnowledge = Array.from(knowledgeMap.values());
+    const knowledgeContext = careerKnowledge.length > 0
+      ? "\n\n## Pre-loaded career profile from knowledge vault\nUse this if evaluating forwarded job listings. Do NOT fabricate any information not present here.\n" +
+        careerKnowledge.map((k) => `- ${k.entity} / ${k.attribute}: ${k.value}`).join("\n")
+      : "";
+
     const registry = AgentRegistry.getInstance();
     const orchestrator = new OrchestratorAgent(registry);
-    const fullContext = [additionalContext, sinceContext].filter(Boolean).join("\n");
+    const fullContext = [additionalContext, sinceContext, knowledgeContext].filter(Boolean).join("\n");
     const result = await orchestrator.run(
       `${EMAIL_BATCH_TASK_PROMPT}\n\n## System context\n${fullContext}`,
       { userId, threadId: runThreadId },

@@ -500,7 +500,7 @@ SINGLE-TURN EXECUTION: You must complete ALL actions in this one turn. Do not wr
 2. For each email, classify and immediately act — call the tool before moving to the next email:
 
 **Forwarded job listing**: The owner forwarded this for evaluation.
-- Call builtin.knowledge_search with queries like 'career', 'skills', 'role', 'resume' to load the owner's career profile. Do NOT declare data missing until you have searched.
+- Read the '## Pre-loaded career profile from knowledge vault' section in your task context to load the owner's career profile.
 - Compare the job to the profile. Score fit 1-10.
 - [MANDATORY: call the tool now] If fit ≥ 7: call builtin.file_generate to create a tailored resume (docx). From the result, capture the storagePath and filename fields. Then immediately call builtin.channel_send (channelType=email) with fit score, why it's a match, the job link, and the resume attached using attachments: [{ storagePath: '<storagePath from file_generate>', filename: '<filename from file_generate>' }]. **If channel_send fails, retry once. If it fails again, call builtin.channel_notify with the fit score, job details, and note that email delivery failed.**
 - [MANDATORY: call the tool now] If fit < 7: immediately call builtin.channel_notify explaining why it doesn't match (specific reasons: skill gap, location mismatch, seniority, etc.) and the fit score.
