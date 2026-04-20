@@ -116,15 +116,19 @@ export const JOB_SCOUT_TASK_PROMPT =
   "Extract from it: role preferences, skills, experience level, location, work mode (remote/hybrid/onsite), visa/work-authorisation constraints, salary expectations, companies to avoid, and any other career preferences. " +
   "IMPORTANT: Do NOT declare the profile missing — the data is pre-loaded in your context. If the section is absent or empty, send an in-app notification via builtin.channel_notify asking the user to add career preferences to their profile, then stop.\n" +
   "2. Search jobs: Use builtin.web_search with multiple targeted queries across job boards (LinkedIn Jobs, Indeed, Glassdoor, Google Jobs, Levels.fyi for tech). " +
-  "Match queries precisely to the user's role, seniority, location, and constraints. Collect 10-20 raw candidates with direct URLs.\n" +
-  "   **Listing pages vs. job postings:** A URL is a *job posting* if the snippet or URL identifies a specific company and role (e.g., linkedin.com/jobs/view/..., indeed.com/jobs?jk=..., simplyhired.ca/job/...). " +
-  "A URL is a *listing page* if it returns a list of many jobs (e.g., linkedin.com/jobs/search, indeed.com/jobs?q=, glassdoor.com/Job/...-jobs-..., generic category pages). " +
-  "For listing pages: call builtin.web_fetch on the URL to extract individual job titles and companies from the page. If web_fetch fails (403/blocked), skip the URL entirely — do NOT score it. " +
-  "Only score URLs that resolve to a single, identifiable job posting with a company name and role description.\n" +
-  "3. Score and match: For each scoreable candidate (specific posting with company + role + requirements), score fit against the user's profile (0-10) based on: skill match, seniority, location/work-mode, " +
-  "compensation range, company quality/culture signals. Reject poor fits (score < 6). Shortlist the top 3-5 strongest matches (score ≥ 6). " +
-  "For each rejected candidate, record the primary rejection reason: skill_gap | location_mismatch | seniority_mismatch | compensation_mismatch | visa_constraint | company_excluded | other. " +
-  "Do NOT include generic listing pages or inaccessible URLs as rejected candidates in your report — omit them entirely.\n" +
+  "Match queries precisely to the user's role, seniority, location, and constraints. Collect 10-20 raw candidates.\n" +
+  "   **Classifying search result URLs:**\n" +
+  "   - A URL is a *job posting* if it identifies a specific company and role (e.g., linkedin.com/jobs/view/12345, indeed.com/jobs?jk=abc, simplyhired.ca/job/...). Score it directly.\n" +
+  "   - A URL is a *listing page* if it shows many jobs (e.g., linkedin.com/jobs/search, indeed.com/jobs?q=, glassdoor.com/Job/...-jobs-...). For listing pages: call builtin.web_fetch to extract individual job titles, companies, and their direct URLs. Each extracted job becomes a scoreable candidate — treat them as job postings, not listing pages. If web_fetch fails (403/blocked), log 'listing page blocked: [url]' and skip only that listing page URL — do NOT skip the jobs you already found.\n" +
+  "   - Only skip a URL entirely if: (a) it is a listing page AND web_fetch fails, OR (b) it has no identifiable company or role in the snippet AND web_fetch fails.\n" +
+  "3. Score and match: For each candidate (specific posting with company + role), score fit against the user's profile (0-10): skill match, seniority, location/work-mode, compensation range, company quality. " +
+  "Reject poor fits (score < 6). Shortlist candidates scoring ≥ 6.\n" +
+  "   **Verify shortlisted postings are still open:** For each candidate with score ≥ 6, call builtin.web_fetch on its URL to confirm the posting is still accepting applications. " +
+  "If the page says 'no longer accepting', 'position filled', 'job expired', 'application closed', or returns 404, reject it with reason posting_closed and move on. " +
+  "Only keep candidates whose posting is confirmed open (or where web_fetch is blocked but the search snippet is recent — within 30 days).\n" +
+  "   Shortlist the top 3-5 verified open matches. For every rejected candidate (score < 6 OR posting_closed), record: company, title, score, and primary rejection reason: " +
+  "skill_gap | location_mismatch | seniority_mismatch | compensation_mismatch | visa_constraint | company_excluded | posting_closed | other. " +
+  "Do NOT omit rejected candidates from the report — EVERY scored posting (open or closed, matched or not) must appear in the Non-matches section if not shortlisted. Only skip-without-reporting: blocked listing pages that yielded no extractable jobs.\n" +
   "4. Generate tailored resumes: For each shortlisted role, create a tailored resume using builtin.file_generate (format: docx). " +
   "The resume MUST contain ALL of these sections populated from the pre-loaded career profile:\n" +
   "   a) Header: # [Full Name] then ## [Current Title]\n" +
