@@ -243,14 +243,35 @@ describe("ChannelsConfig — interactions", () => {
     });
   });
 
-  test("shared channel shows Shared badge", async () => {
+  test("shared channel shows Shared badge and Shared button", async () => {
     setupFetch([mockSharedChannel]);
     const { ChannelsConfig } = await import("@/components/channels-config");
     await act(async () => { render(<ChannelsConfig />); });
     await waitFor(() => {
       expect(screen.getAllByText("Shared Email").length).toBeGreaterThanOrEqual(1);
     });
+    // Badge in channel header + button text = multiple "Shared" occurrences
     expect(screen.getAllByText("Shared").length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("Share button calls PATCH with isShared toggled", async () => {
+    setupFetch([mockChannel]);
+    const { ChannelsConfig } = await import("@/components/channels-config");
+    await act(async () => { render(<ChannelsConfig />); });
+    await waitFor(() => {
+      expect(screen.getAllByText("Support Bot").length).toBeGreaterThanOrEqual(1);
+    });
+
+    const shareBtn = screen.getAllByTitle("Share with all users")[0];
+    await act(async () => { fireEvent.click(shareBtn); });
+
+    const patchCalls = fetchMock.mock.calls.filter(
+      ([u, o]: [string, RequestInit?]) => u.includes("/api/config/channels") && o?.method === "PATCH"
+    );
+    expect(patchCalls.length).toBe(1);
+    const body = JSON.parse(patchCalls[0][1].body as string);
+    expect(body.id).toBe("ch-1");
+    expect(body.isShared).toBe(true);
   });
 
   test("non-shared channel does not show Shared badge", async () => {

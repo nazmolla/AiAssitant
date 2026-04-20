@@ -162,6 +162,15 @@ export function ChannelsConfig() {
     fetchChannels();
   }
 
+  async function toggleShared(channel: Channel) {
+    await fetch("/api/config/channels", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: channel.id, isShared: !channel.is_shared }),
+    });
+    fetchChannels();
+  }
+
   async function handleDelete(id: string) {
     if (!(await openConfirm("Delete this channel?"))) return;
     await fetch(`/api/config/channels?id=${id}`, { method: "DELETE" });
@@ -242,6 +251,17 @@ export function ChannelsConfig() {
                         {copiedId === ch.id ? <><Check className="h-3 w-3" /> Copied</> : <><ClipboardCopy className="h-3 w-3" /> Copy URL</>}
                       </Button>
                     )}
+                    {canEdit && isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={ch.is_shared ? "text-blue-400" : "text-muted-foreground"}
+                        onClick={() => toggleShared(ch)}
+                        title={ch.is_shared ? "Unshare channel" : "Share with all users"}
+                      >
+                        <Globe className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     {canEdit && (
                       <div className="flex items-center justify-center rounded-lg border border-white/[0.08] px-2.5 py-1.5">
                         <Switch
@@ -304,6 +324,18 @@ export function ChannelsConfig() {
                         title="Copy webhook URL"
                       >
                         {copiedId === ch.id ? <><Check className="h-3 w-3" /> Copied</> : <><ClipboardCopy className="h-3 w-3" /> Copy URL</>}
+                      </Button>
+                    )}
+                    {canEdit && isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={`gap-1.5 ${ch.is_shared ? "text-blue-400" : "text-muted-foreground"}`}
+                        onClick={() => toggleShared(ch)}
+                        title={ch.is_shared ? "Unshare channel" : "Share with all users"}
+                      >
+                        <Globe className="h-3.5 w-3.5" />
+                        {ch.is_shared ? "Shared" : "Share"}
                       </Button>
                     )}
                     {canEdit && (
