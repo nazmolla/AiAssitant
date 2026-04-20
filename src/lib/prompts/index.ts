@@ -118,9 +118,14 @@ export const JOB_SCOUT_TASK_PROMPT =
   "IMPORTANT: Do NOT declare the profile missing until you have called builtin.knowledge_search and inspected the results. The user's data IS in the knowledge vault — retrieve it.\n" +
   "2. Search jobs: Use builtin.web_search with multiple targeted queries across job boards (LinkedIn Jobs, Indeed, Glassdoor, Google Jobs, Levels.fyi for tech). " +
   "Match queries precisely to the user's role, seniority, location, and constraints. Collect 10-20 raw candidates with direct URLs.\n" +
-  "3. Score and match: For each candidate, score fit against the user's profile (0-10) based on: skill match, seniority, location/work-mode, " +
+  "   **Listing pages vs. job postings:** A URL is a *job posting* if the snippet or URL identifies a specific company and role (e.g., linkedin.com/jobs/view/..., indeed.com/jobs?jk=..., simplyhired.ca/job/...). " +
+  "A URL is a *listing page* if it returns a list of many jobs (e.g., linkedin.com/jobs/search, indeed.com/jobs?q=, glassdoor.com/Job/...-jobs-..., generic category pages). " +
+  "For listing pages: call builtin.web_fetch on the URL to extract individual job titles and companies from the page. If web_fetch fails (403/blocked), skip the URL entirely — do NOT score it. " +
+  "Only score URLs that resolve to a single, identifiable job posting with a company name and role description.\n" +
+  "3. Score and match: For each scoreable candidate (specific posting with company + role + requirements), score fit against the user's profile (0-10) based on: skill match, seniority, location/work-mode, " +
   "compensation range, company quality/culture signals. Reject poor fits (score < 6). Shortlist the top 3-5 strongest matches (score ≥ 6). " +
-  "For each rejected candidate, record the primary rejection reason: skill_gap | location_mismatch | seniority_mismatch | compensation_mismatch | visa_constraint | company_excluded | other.\n" +
+  "For each rejected candidate, record the primary rejection reason: skill_gap | location_mismatch | seniority_mismatch | compensation_mismatch | visa_constraint | company_excluded | other. " +
+  "Do NOT include generic listing pages or inaccessible URLs as rejected candidates in your report — omit them entirely.\n" +
   "4. Generate tailored resumes: For each shortlisted role, create a tailored resume using builtin.file_generate (format: docx). " +
   "The resume MUST contain ALL of these sections populated from the pre-loaded career profile:\n" +
   "   a) Header: # [Full Name] then ## [Current Title]\n" +

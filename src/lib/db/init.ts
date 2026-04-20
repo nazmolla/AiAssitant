@@ -716,6 +716,17 @@ function ensureChannelIsShared(): void {
   addColumnIfMissing("channels", "is_shared", "INTEGER NOT NULL DEFAULT 0");
 }
 
+function migrateOrphanKnowledgeToAdmin(): void {
+  if (!tableExists("user_knowledge") || !tableExists("users")) return;
+  const db = getDb();
+  const orphanCount = (db.prepare("SELECT COUNT(*) as cnt FROM user_knowledge WHERE user_id IS NULL").get() as { cnt: number }).cnt;
+  if (orphanCount === 0) return;
+  const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1").get() as { id: string } | undefined;
+  if (!admin) return;
+  db.prepare("UPDATE user_knowledge SET user_id = ? WHERE user_id IS NULL").run(admin.id);
+  console.log(`[Nexus DB] Migrated ${orphanCount} orphan knowledge entries to admin user ${admin.id}.`);
+}
+
 function ensureApprovalQueueNlRequestColumn(): void {
   if (!tableExists("approval_queue")) return;
   addColumnIfMissing("approval_queue", "nl_request", "TEXT");
@@ -1041,6 +1052,7 @@ export function initializeDatabase(): void {
   ensureChannelUserId();
   ensureChannelImapUidColumns();
   ensureChannelIsShared();
+  migrateOrphanKnowledgeToAdmin();
   ensureApprovalQueueNlRequestColumn();
   ensureApprovalQueueExpiresAt();
   purgeExpiredApprovals();

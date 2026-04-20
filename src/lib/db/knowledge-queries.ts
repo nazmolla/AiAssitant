@@ -22,16 +22,16 @@ export interface KnowledgeEntry {
 export function listKnowledge(userId?: string, limit = 500): KnowledgeEntry[] {
   if (!userId) return [];
   return getDb()
-    .prepare("SELECT * FROM user_knowledge WHERE user_id = ? OR user_id IS NULL ORDER BY last_updated DESC LIMIT ?")
+    .prepare("SELECT * FROM user_knowledge WHERE user_id = ? ORDER BY last_updated DESC LIMIT ?")
     .all(userId, limit) as KnowledgeEntry[];
 }
 
 export function listKnowledgePaginated(userId: string, limit = 100, offset = 0): PaginatedResult<KnowledgeEntry> {
   const db = getDb();
-  const total = (db.prepare("SELECT COUNT(*) as cnt FROM user_knowledge WHERE user_id = ? OR user_id IS NULL")
+  const total = (db.prepare("SELECT COUNT(*) as cnt FROM user_knowledge WHERE user_id = ?")
     .get(userId) as { cnt: number }).cnt;
   const data = db.prepare(
-    "SELECT * FROM user_knowledge WHERE user_id = ? OR user_id IS NULL ORDER BY last_updated DESC LIMIT ? OFFSET ?"
+    "SELECT * FROM user_knowledge WHERE user_id = ? ORDER BY last_updated DESC LIMIT ? OFFSET ?"
   ).all(userId, limit, offset) as KnowledgeEntry[];
   return { data, total, limit, offset, hasMore: offset + data.length < total };
 }
@@ -50,17 +50,12 @@ export function searchKnowledge(query: string, userId?: string): KnowledgeEntry[
   // LIMIT 100 caps the result set to prevent runaway scans on large tables.
   return getDb()
     .prepare(
-      `SELECT * FROM (
-         SELECT * FROM user_knowledge
-         WHERE user_id = ? AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
-         UNION ALL
-         SELECT * FROM user_knowledge
-         WHERE user_id IS NULL AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
-       )
+      `SELECT * FROM user_knowledge
+       WHERE user_id = ? AND (entity LIKE ? OR attribute LIKE ? OR value LIKE ?)
        ORDER BY last_updated DESC
        LIMIT 100`
     )
-    .all(userId, pattern, pattern, pattern, pattern, pattern, pattern) as KnowledgeEntry[];
+    .all(userId, pattern, pattern, pattern) as KnowledgeEntry[];
 }
 
 export function upsertKnowledge(
@@ -191,7 +186,7 @@ export function listKnowledgeEmbeddings(userId?: string): ParsedKnowledgeEmbeddi
          ke.is_archived
        FROM knowledge_embeddings ke
        JOIN user_knowledge uk ON ke.knowledge_id = uk.id
-       WHERE (uk.user_id = ? OR uk.user_id IS NULL)
+       WHERE uk.user_id = ?
          AND coalesce(ke.is_archived, 0) = 0`
     )
     .all(userId) as KnowledgeEmbeddingRow[];
