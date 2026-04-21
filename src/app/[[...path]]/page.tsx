@@ -521,9 +521,8 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
           gap: 0.75,
           px: 1.5,
           py: 0.75,
-          borderBottom: 1,
-          borderColor: "divider",
-          bgcolor: "background.paper",
+          borderBottom: "1px solid var(--glass-border)",
+          background: "rgba(255,255,255,0.02)",
           overflowX: "auto",
           overflowY: "hidden",
           whiteSpace: "nowrap",
@@ -565,12 +564,12 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
             display: { xs: "none", md: "block" },
             width: SETTINGS_NAV_WIDTH,
             flexShrink: 0,
-            borderRight: 1,
-            borderColor: "divider",
-            bgcolor: "background.paper",
+            borderRight: "1px solid var(--glass-border)",
+            background: "rgba(255,255,255,0.02)",
             overflowY: "auto",
             py: 1,
-            scrollbarWidth: "thin",
+            "&::-webkit-scrollbar": { width: 6 },
+            "&::-webkit-scrollbar-thumb": { background: "rgba(255,255,255,0.08)", borderRadius: 4 },
           }}
         >
           {isUserMetaLoading ? (
@@ -585,45 +584,47 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
                 .filter(Boolean);
               if (groupPages.length === 0) return null;
               return (
-                <Box key={group.label} sx={{ mb: 0.5 }}>
+                <Box key={group.label} sx={{ mb: 1.5 }}>
                   <Typography
                     variant="caption"
                     sx={{
-                      px: 2,
+                      px: 1.5,
                       py: 0.75,
                       display: "block",
                       fontWeight: 600,
-                      fontSize: "0.65rem",
+                      fontSize: "0.6rem",
                       letterSpacing: "0.08em",
                       textTransform: "uppercase",
-                      color: "text.disabled",
+                      color: "var(--ng-fg-mute)",
                     }}
                   >
                     {group.label}
                   </Typography>
-                  <List disablePadding sx={{ px: 0.5 }}>
+                  <List disablePadding sx={{ px: 0.75 }}>
                     {groupPages.map((page) => (
                       <ListItemButton
                         key={page.key}
                         selected={active === page.key}
                         onClick={() => handleNavigate(page.key)}
                         sx={{
-                          borderRadius: 1.5,
+                          borderRadius: "10px",
                           minHeight: 34,
                           py: 0.5,
                           px: 1.25,
                           mb: 0.25,
                           gap: 1,
+                          color: "var(--ng-fg-dim)",
+                          "&:hover": { background: "rgba(255,255,255,0.04)", color: "var(--ng-fg)" },
                           "&.Mui-selected": {
-                            bgcolor: "primary.main",
-                            color: "primary.contrastText",
-                            "& .MuiListItemIcon-root": { color: "inherit" },
-                            "&:hover": { bgcolor: "primary.dark" },
+                            background: "rgba(91,140,255,0.12)",
+                            color: "var(--ng-fg)",
+                            "& .MuiListItemIcon-root": { color: "var(--ng-accent)" },
+                            "&:hover": { background: "rgba(91,140,255,0.16)" },
                           },
                         }}
                       >
-                        <ListItemIcon sx={{ minWidth: 0, color: "text.secondary" }}>
-                          <page.Icon sx={{ fontSize: "1rem" }} />
+                        <ListItemIcon sx={{ minWidth: 0, color: "inherit" }}>
+                          <page.Icon sx={{ fontSize: "0.95rem" }} />
                         </ListItemIcon>
                         <ListItemText
                           primary={page.label}
@@ -632,7 +633,6 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
                       </ListItemButton>
                     ))}
                   </List>
-                  <Divider sx={{ mx: 1, mt: 0.5 }} />
                 </Box>
               );
             })
@@ -651,8 +651,8 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
                 <>
                   {header && (
                     <Box sx={{ mb: 3 }}>
-                      <Typography variant="h5" color="primary" fontWeight={700}>{header.title}</Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{header.subtitle}</Typography>
+                      <Typography variant="h5" fontWeight={700} sx={{ letterSpacing: "-0.02em", color: "var(--ng-fg)" }}>{header.title}</Typography>
+                      <Typography variant="body2" sx={{ mt: 0.5, color: "var(--ng-fg-dim)", fontSize: "0.875rem" }}>{header.subtitle}</Typography>
                     </Box>
                   )}
                   {active === "profile" && <ProfileConfig />}
