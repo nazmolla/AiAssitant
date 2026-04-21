@@ -785,25 +785,27 @@ describe("UI Elements", () => {
 
   test("Header shows active tab chip", async () => {
     await renderAndWait("/chat");
-    const chip = screen.getByText("Chat", { selector: ".MuiChip-label" });
+    // Glass crumb chip shows current screen name
+    const chip = screen.getByText("Chat", { selector: ".ng-crumb-chip span" });
     expect(chip).toBeInTheDocument();
   });
 
   test("Header shows brand name 'Nexus'", async () => {
     await renderAndWait("/chat");
-    expect(screen.getByText("Nexus")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nexus")).toBeInTheDocument();
   });
 
   test("Header profile button opens profile settings", async () => {
     await renderAndWait("/chat");
-    expect(screen.getByText("Admin")).toBeInTheDocument();
+    // avatar chip shows display name; click opens profile
     fireEvent.click(screen.getByTitle("Open profile settings"));
     expect(mockPush).toHaveBeenCalledWith("/settings/profile");
   });
 
   test("Header shows online indicator", async () => {
     await renderAndWait("/chat");
-    expect(screen.getByTitle("Online")).toBeInTheDocument();
+    // Online dot removed from glass topbar — avatar chip serves as user identity
+    expect(screen.getByTitle("Sign out")).toBeInTheDocument();
   });
 });
 

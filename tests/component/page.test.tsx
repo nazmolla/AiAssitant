@@ -141,7 +141,7 @@ describe("HomePage", () => {
 
   test("shows brand name and version", () => {
     render(<HomePage />);
-    expect(screen.getByText("Nexus")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nexus")).toBeInTheDocument();
   });
 
   test("renders navigation drawer trigger", () => {
@@ -153,8 +153,8 @@ describe("HomePage", () => {
 
   test("shows active tab chip in header", () => {
     render(<HomePage />);
-    // Default tab is "chat" — find the chip specifically (not the mocked panel content)
-    const chip = screen.getByText("Chat", { selector: ".MuiChip-label" });
+    // Default tab is "chat" — find the crumb chip in the glass topbar
+    const chip = screen.getByText("Chat", { selector: ".ng-crumb-chip span" });
     expect(chip).toBeInTheDocument();
   });
 
@@ -194,7 +194,7 @@ describe("HomePage — loading state", () => {
 
   test("renders loading spinner without crashing", () => {
     expect(() => render(<HomePage />)).not.toThrow();
-    expect(screen.getByText("Loading Nexus...")).toBeInTheDocument();
+    expect(screen.getByText(/Loading Nexus/)).toBeInTheDocument();
   });
 });
 
@@ -219,13 +219,13 @@ describe("HomePage — session state transitions (React hooks stability)", () =>
     // 1. First render: loading state (early return with spinner)
     useSession.mockReturnValue({ data: null, status: "loading" });
     const { rerender } = render(<HomePage />);
-    expect(screen.getByText("Loading Nexus...")).toBeInTheDocument();
+    expect(screen.getByText(/Loading Nexus/)).toBeInTheDocument();
 
     // 2. Re-render: session loaded (full UI with hooks like useMemo)
     //    This is where error #310 would fire if hooks are after conditional returns
     useSession.mockReturnValue({ data: mockSession, status: "authenticated" });
     expect(() => rerender(<HomePage />)).not.toThrow();
-    expect(screen.getByText("Nexus")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nexus")).toBeInTheDocument();
   });
 
   test("loading → unauthenticated: no hooks error on re-render", () => {
@@ -234,7 +234,7 @@ describe("HomePage — session state transitions (React hooks stability)", () =>
     // 1. First render: loading state
     useSession.mockReturnValue({ data: null, status: "loading" });
     const { rerender } = render(<HomePage />);
-    expect(screen.getByText("Loading Nexus...")).toBeInTheDocument();
+    expect(screen.getByText(/Loading Nexus/)).toBeInTheDocument();
 
     // 2. Re-render: unauthenticated (sign-in prompt)
     useSession.mockReturnValue({ data: null, status: "unauthenticated" });
@@ -253,7 +253,7 @@ describe("HomePage — session state transitions (React hooks stability)", () =>
     // 2. Re-render: authenticated
     useSession.mockReturnValue({ data: mockSession, status: "authenticated" });
     expect(() => rerender(<HomePage />)).not.toThrow();
-    expect(screen.getByText("Nexus")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nexus")).toBeInTheDocument();
   });
 
   test("authenticated → loading → authenticated: survives full cycle", () => {
@@ -262,7 +262,7 @@ describe("HomePage — session state transitions (React hooks stability)", () =>
     // 1. Start authenticated
     useSession.mockReturnValue({ data: mockSession, status: "authenticated" });
     const { rerender } = render(<HomePage />);
-    expect(screen.getByText("Nexus")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nexus")).toBeInTheDocument();
 
     // 2. Token refresh → loading
     useSession.mockReturnValue({ data: null, status: "loading" });
@@ -271,6 +271,6 @@ describe("HomePage — session state transitions (React hooks stability)", () =>
     // 3. Back to authenticated
     useSession.mockReturnValue({ data: mockSession, status: "authenticated" });
     expect(() => rerender(<HomePage />)).not.toThrow();
-    expect(screen.getByText("Nexus")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nexus")).toBeInTheDocument();
   });
 });

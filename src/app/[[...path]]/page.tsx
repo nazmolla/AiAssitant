@@ -207,190 +207,144 @@ export default function HomePage() {
 
   if (status === "loading") {
     return (
-      <Box sx={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", bgcolor: "background.default" }}>
-        <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-          <CircularProgress size={40} />
-          <Typography variant="body2" color="text.secondary">Loading Nexus...</Typography>
-        </Box>
-      </Box>
+      <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--accent-grad)", animation: "aurora-drift 2s ease-in-out infinite alternate", opacity: 0.8 }} />
+          <span style={{ color: "var(--ng-fg-dim)", fontSize: 14 }}>Loading Nexus…</span>
+        </div>
+      </div>
     );
   }
 
   if (!session) {
     return (
-      <Box sx={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", bgcolor: "background.default" }}>
-        <Box sx={{ textAlign: "center" }}>
-          <Typography variant="h3" fontWeight={700} color="primary" gutterBottom>
-            Nexus
-          </Typography>
-          <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 4 }}>
-            The AI that actually does things.
-          </Typography>
+      <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 42, fontWeight: 700, letterSpacing: "-0.03em", marginBottom: 10, background: "var(--accent-grad)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Nexus</div>
+          <div style={{ color: "var(--ng-fg-dim)", fontSize: 16, marginBottom: 32 }}>The AI that actually does things.</div>
           <Button variant="contained" size="large" sx={{ px: 5, py: 1.5, borderRadius: 3 }} onClick={() => router.push("/auth/signin")}>
             Sign In
           </Button>
-        </Box>
-      </Box>
+        </div>
+      </div>
     );
   }
 
+  const initials = (displayName || session.user?.email || "?").charAt(0).toUpperCase();
+
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100vh", bgcolor: "background.default" }}>
-      {/* Header */}
-      <AppBar position="static" color="default">
-        <Toolbar variant="dense" sx={{ gap: 1, justifyContent: "space-between" }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <IconButton
-              size="small"
-              onClick={() => setNavDrawerOpen((prev) => !prev)}
-              sx={{ color: "text.secondary" }}
-              title={navDrawerOpen ? "Collapse menu" : "Expand menu"}
-            >
-              <MenuIcon fontSize="small" />
-            </IconButton>
-            <Typography
-              variant="h6"
-              color="primary"
-              fontWeight={700}
-              sx={{ letterSpacing: "-0.5px", cursor: "pointer", "&:hover": { opacity: 0.8 } }}
-              onClick={() => navigateTo("chat")}
-            >
-              Nexus
-            </Typography>
-            {activeTabItem && (
-              <Chip
-                icon={activeTabItem.icon}
-                label={activeTabItem.label}
-                size="small"
-                variant="outlined"
-                color="primary"
-                sx={{ fontSize: "0.7rem", height: 24, "& .MuiChip-icon": { fontSize: "0.85rem" } }}
-              />
-            )}
-            <Typography variant="caption" color="text.secondary" sx={{ display: { xs: "none", sm: "inline" }, fontFamily: "monospace", fontSize: "0.65rem" }}>
-              v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}
-            </Typography>
-          </Box>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <NotificationBell />
-            <ThemeSwitcher />
-            <FiberManualRecordIcon sx={{ fontSize: 10, color: "success.main" }} titleAccess="Online" />
-              <Button
-                size="small"
-                variant="text"
-                title="Open profile settings"
-                onClick={openProfileFromMenu}
-                sx={{
-                  textTransform: "none",
-                  minWidth: 0,
-                  px: 1,
-                  color: "text.secondary",
-                  maxWidth: 220,
-                  gap: 0.75,
-                }}
-              >
-                <Avatar
-                  src={avatarUrl || undefined}
-                  sx={{ width: 24, height: 24, fontSize: "0.75rem", bgcolor: "primary.main" }}
-                >
-                  {(displayName || session.user?.email || "?").charAt(0).toUpperCase()}
-                </Avatar>
-                {displayName || session.user?.email}
-              </Button>
-              <IconButton size="small" onClick={signOutFromMenu} sx={{ color: "text.secondary" }} title="Sign out">
-                <LogoutIcon fontSize="small" />
-              </IconButton>
-          </Box>
-        </Toolbar>
-      </AppBar>
-
-      {/* Body: nav sidebar + content */}
-      <Box sx={{ flex: 1, overflow: "hidden", display: "flex" }}>
-
-        {/* ── Mobile nav: full-screen Drawer overlay (hidden on md+) ── */}
-        <Drawer
-          open={navDrawerOpen}
-          onClose={() => setNavDrawerOpen(false)}
-          anchor="left"
-          sx={{ display: { xs: "block", md: "none" } }}
-          PaperProps={{
-            sx: {
-              width: DRAWER_WIDTH,
-              display: "flex",
-              flexDirection: "column",
-              bgcolor: "background.default",
-            },
-          }}
+    <div className="app-shell">
+      {/* ── Sidebar rail ── */}
+      <nav className="ng-glass ng-sidebar">
+        {/* Brand logo tile */}
+        <div
+          className="ng-brand"
+          onClick={() => navigateTo("chat")}
+          title="Nexus — Go to chat"
+          aria-label="Nexus"
+          role="button"
+          tabIndex={0}
         >
-          <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <Box sx={{ flex: 1 }} />
-            <List disablePadding sx={{ py: 0.5, px: 0.5 }}>
-              {tabItems.map((t) => (
-                <ListItemButton
-                  key={t.value}
-                  selected={activeTab === t.value}
-                  onClick={() => {
-                    if (t.value === "chat" && activeTab === "chat" && openChatThreadsRef.current) {
-                      openChatThreadsRef.current();
-                    } else {
-                      navigateTo(t.value);
-                    }
-                    setNavDrawerOpen(false);
-                  }}
-                  sx={{
-                    borderRadius: 1.5,
-                    minHeight: 44,
-                    py: 0.75,
-                    px: 1.5,
-                    mb: 0.25,
-                    "&.Mui-selected": {
-                      bgcolor: "primary.main",
-                      color: "primary.contrastText",
-                      "& .MuiListItemIcon-root": { color: "inherit" },
-                      "&:hover": { bgcolor: "primary.dark" },
-                    },
-                  }}
-                >
-                  <ListItemIcon sx={{ minWidth: 32, color: "text.secondary", justifyContent: "center" }}>
-                    {t.icon}
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={t.label}
-                    primaryTypographyProps={{ fontSize: "0.9rem", fontWeight: 500 }}
-                  />
-                </ListItemButton>
-              ))}
-            </List>
-            <Divider />
-            <Box sx={{ px: 2, py: 1.25 }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
-                <FiberManualRecordIcon sx={{ fontSize: 8, color: "success.main", flexShrink: 0 }} />
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.75rem" }} noWrap>
-                  {displayName || session.user?.email}
-                </Typography>
-              </Box>
-            </Box>
-          </Box>
-        </Drawer>
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <circle cx="11" cy="11" r="3" fill="white" opacity="0.95" />
+            <circle cx="11" cy="11" r="6.5" stroke="white" strokeWidth="1.2" opacity="0.6" fill="none" />
+            <circle cx="11" cy="11" r="10" stroke="white" strokeWidth="0.8" opacity="0.35" fill="none" />
+            <circle cx="11" cy="4.5" r="1.5" fill="white" opacity="0.8" />
+            <circle cx="17.5" cy="14.5" r="1.5" fill="white" opacity="0.8" />
+            <circle cx="4.5" cy="14.5" r="1.5" fill="white" opacity="0.8" />
+          </svg>
+        </div>
 
-        {/* ── Desktop nav: persistent mini-rail sidebar (hidden on xs/sm) ── */}
-        <Box
-          sx={{
-            display: { xs: "none", md: "flex" },
-            width: navDrawerOpen ? DRAWER_WIDTH : DRAWER_MINI_WIDTH,
-            flexShrink: 0,
-            transition: "width 0.2s ease",
-            overflow: "hidden",
+        {/* Nav items */}
+        {tabItems.map((t) => (
+          <button
+            key={t.value}
+            className={`ng-nav-item${activeTab === t.value ? " active" : ""}`}
+            onClick={() => {
+              if (t.value === "chat" && activeTab === "chat" && openChatThreadsRef.current) {
+                openChatThreadsRef.current();
+              } else {
+                navigateTo(t.value);
+              }
+            }}
+            aria-label={t.label}
+          >
+            {t.icon}
+            <span className="ng-tip">{t.label}</span>
+          </button>
+        ))}
+
+        <div className="ng-sidebar-spacer" />
+
+        {/* Avatar at bottom */}
+        <button
+          className="ng-nav-item"
+          onClick={openProfileFromMenu}
+          aria-label="Profile settings"
+          title="Profile"
+        >
+          <div className="ng-avatar" style={{ width: 28, height: 28, fontSize: 12 }}>{initials}</div>
+          <span className="ng-tip">{displayName || session.user?.email}</span>
+        </button>
+      </nav>
+
+      {/* ── Topbar ── */}
+      <header className="ng-glass ng-topbar">
+        <div className="ng-topbar-left">
+          {/* Mobile: hamburger */}
+          <button
+            className="ng-icon-btn ng-mobile-menu-btn"
+            onClick={() => setNavDrawerOpen((prev) => !prev)}
+            aria-label="Open navigation"
+          >
+            <MenuIcon fontSize="small" />
+          </button>
+          {activeTabItem && (
+            <div className="ng-crumb-chip">
+              {activeTabItem.icon}
+              <span>{activeTabItem.label}</span>
+            </div>
+          )}
+          <span className="ng-version-pill">v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}</span>
+        </div>
+        <div className="ng-topbar-right">
+          <NotificationBell />
+          <ThemeSwitcher />
+          <div
+            className="ng-avatar-chip"
+            onClick={openProfileFromMenu}
+            role="button"
+            tabIndex={0}
+            title="Open profile settings"
+          >
+            <div className="ng-avatar">{initials}</div>
+            <span className="ng-avatar-name" style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {displayName || session.user?.email}
+            </span>
+          </div>
+          <button className="ng-icon-btn" onClick={signOutFromMenu} title="Sign out" aria-label="Sign out">
+            <LogoutIcon fontSize="small" />
+          </button>
+        </div>
+      </header>
+
+      {/* ── Mobile nav overlay ── */}
+      <Drawer
+        open={navDrawerOpen}
+        onClose={() => setNavDrawerOpen(false)}
+        anchor="left"
+        sx={{ display: { xs: "block", md: "none" } }}
+        PaperProps={{
+          sx: {
+            width: DRAWER_WIDTH,
+            display: "flex",
             flexDirection: "column",
-            bgcolor: "background.paper",
-            borderRight: 1,
-            borderColor: "divider",
-          }}
-        >
-          {/* Spacer — pushes nav items to bottom */}
+            bgcolor: "background.default",
+          },
+        }}
+      >
+        <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
           <Box sx={{ flex: 1 }} />
-
-          {/* Nav items anchored at bottom-left */}
           <List disablePadding sx={{ py: 0.5, px: 0.5 }}>
             {tabItems.map((t) => (
               <ListItemButton
@@ -404,91 +358,55 @@ export default function HomePage() {
                   }
                   setNavDrawerOpen(false);
                 }}
-                title={!navDrawerOpen ? t.label : undefined}
                 sx={{
-                  borderRadius: 1.5,
-                  minHeight: 40,
-                  py: 0.75,
-                  px: navDrawerOpen ? 1.5 : 0,
-                  mb: 0.25,
-                  justifyContent: navDrawerOpen ? "flex-start" : "center",
+                  borderRadius: 1.5, minHeight: 44, py: 0.75, px: 1.5, mb: 0.25,
                   "&.Mui-selected": {
-                    bgcolor: "primary.main",
-                    color: "primary.contrastText",
+                    bgcolor: "primary.main", color: "primary.contrastText",
                     "& .MuiListItemIcon-root": { color: "inherit" },
                     "&:hover": { bgcolor: "primary.dark" },
                   },
                 }}
               >
-                <ListItemIcon
-                  sx={{
-                    minWidth: navDrawerOpen ? 32 : 0,
-                    color: "text.secondary",
-                    justifyContent: "center",
-                  }}
-                >
+                <ListItemIcon sx={{ minWidth: 32, color: "text.secondary", justifyContent: "center" }}>
                   {t.icon}
                 </ListItemIcon>
-                {navDrawerOpen && (
-                  <ListItemText
-                    primary={t.label}
-                    primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: 500, noWrap: true }}
-                  />
-                )}
+                <ListItemText primary={t.label} primaryTypographyProps={{ fontSize: "0.9rem", fontWeight: 500 }} />
               </ListItemButton>
             ))}
           </List>
-
-          {/* User info footer — only when expanded */}
-          {navDrawerOpen && (
-            <>
-              <Divider />
-              <Box sx={{ px: 2, py: 1.25 }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
-                  <FiberManualRecordIcon sx={{ fontSize: 8, color: "success.main", flexShrink: 0 }} />
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.75rem" }} noWrap>
-                    {displayName || session.user?.email}
-                  </Typography>
-                </Box>
-                <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6rem", display: "block" }}>
-                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"}
-                </Typography>
-              </Box>
-            </>
-          )}
         </Box>
+      </Drawer>
 
-        {/* Content */}
-        <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          {/* ChatPanel kept mounted — hidden via CSS to preserve state & SSE connections */}
-          <Box sx={{ display: activeTab === "chat" ? "flex" : "none", flex: 1, overflow: "hidden", flexDirection: "column" }}>
-            <ChatPanel
-              openThreadDrawerRef={openChatThreadsRef}
-              navItems={tabItems}
-              activeNavTab={activeTab}
-              onNavigate={(tab) => { navigateTo(tab); }}
-            />
-          </Box>
-          {activeTab === "conversation" && <ConversationMode />}
-          {activeTab === "dashboard" && (
-            <AppPageBackbone>
-              <AgentDashboard />
-            </AppPageBackbone>
-          )}
-          {activeTab === "scheduler" && (
-            <AppPageBackbone>
-              <SchedulerConsole />
-            </AppPageBackbone>
-          )}
-          {activeTab === "knowledge" && (
-            <AppPageBackbone>
-              <KnowledgeVault />
-            </AppPageBackbone>
-          )}
-          {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} isUserMetaLoading={isUserMetaLoading} activePage={settingsPage} onNavigate={navigateToSettings} />}
-        </Box>
-      </Box>
-    </Box>
+      {/* ── Main content area ── */}
+      <div className="ng-glass ng-main">
+        {/* ChatPanel kept mounted — hidden via CSS to preserve state & SSE connections */}
+        <div style={{ display: activeTab === "chat" ? "flex" : "none", flex: 1, overflow: "hidden", flexDirection: "column", height: "100%" }}>
+          <ChatPanel
+            openThreadDrawerRef={openChatThreadsRef}
+            navItems={tabItems}
+            activeNavTab={activeTab}
+            onNavigate={(tab) => { navigateTo(tab); }}
+          />
+        </div>
+        {activeTab === "conversation" && <ConversationMode />}
+        {activeTab === "dashboard" && (
+          <AppPageBackbone>
+            <AgentDashboard />
+          </AppPageBackbone>
+        )}
+        {activeTab === "scheduler" && (
+          <AppPageBackbone>
+            <SchedulerConsole />
+          </AppPageBackbone>
+        )}
+        {activeTab === "knowledge" && (
+          <AppPageBackbone>
+            <KnowledgeVault />
+          </AppPageBackbone>
+        )}
+        {activeTab === "config" && <SettingsPanel userRole={userRole} perms={perms} isUserMetaLoading={isUserMetaLoading} activePage={settingsPage} onNavigate={navigateToSettings} />}
+      </div>
+    </div>
   );
 }
 

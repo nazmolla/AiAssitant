@@ -33,8 +33,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark" data-font="apple">
+    <html lang="en" className="dark" data-font="apple" data-glass="balanced">
       <body className={`${inter.variable} ${playfair.variable} font-sans tracking-tight`}>
+        <div className="backdrop" aria-hidden="true" />
         <Providers>{children}</Providers>
       </body>
     </html>
