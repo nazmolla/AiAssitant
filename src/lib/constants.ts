@@ -193,13 +193,13 @@ export const DB_MMAP_SIZE = 268_435_456;
 /* ── Email Transport ──────────────────────────────────────────────── */
 
 /** SMTP connection timeout (ms) */
-export const EMAIL_CONNECTION_TIMEOUT_MS = 10_000;
+export const EMAIL_CONNECTION_TIMEOUT_MS = 30_000;
 
 /** SMTP greeting timeout (ms) */
-export const EMAIL_GREETING_TIMEOUT_MS = 10_000;
+export const EMAIL_GREETING_TIMEOUT_MS = 30_000;
 
 /** SMTP socket read/write timeout (ms) */
-export const EMAIL_SOCKET_TIMEOUT_MS = 15_000;
+export const EMAIL_SOCKET_TIMEOUT_MS = 60_000;
 
 /** IMAP socket timeout (ms) */
 export const EMAIL_IMAP_SOCKET_TIMEOUT_MS = 30_000;

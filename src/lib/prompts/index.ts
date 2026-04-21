@@ -123,9 +123,13 @@ export const JOB_SCOUT_TASK_PROMPT =
   "   - Only skip a URL entirely if: (a) it is a listing page AND web_fetch fails, OR (b) it has no identifiable company or role in the snippet AND web_fetch fails.\n" +
   "3. Score and match: For each candidate (specific posting with company + role), score fit against the user's profile (0-10): skill match, seniority, location/work-mode, compensation range, company quality. " +
   "Reject poor fits (score < 6). Shortlist candidates scoring ≥ 6.\n" +
-  "   **Verify shortlisted postings are still open:** For each candidate with score ≥ 6, call builtin.web_fetch on its URL to confirm the posting is still accepting applications. " +
-  "If the page says 'no longer accepting', 'position filled', 'job expired', 'application closed', or returns 404, reject it with reason posting_closed and move on. " +
-  "Only keep candidates whose posting is confirmed open (or where web_fetch is blocked but the search snippet is recent — within 30 days).\n" +
+  "   **Verify shortlisted postings are still open:** For each candidate with score ≥ 6, call builtin.web_fetch on its direct job URL to confirm the posting is still accepting applications. " +
+  "Mark it posting_closed and reject it if ANY of the following are true:\n" +
+  "   - The page returns 404 or 410.\n" +
+  "   - The fetched content says 'no longer accepting', 'position filled', 'job expired', 'application closed', 'job not found', or similar.\n" +
+  "   - The URL redirects to a listing/search page showing multiple jobs (e.g., fetching a specific job/view URL but receiving a page titled '100+ jobs' or a search results page) — this redirect means the posting was removed.\n" +
+  "   - web_fetch is blocked (403) AND the search snippet does not include a date OR the date is older than 30 days.\n" +
+  "   Only shortlist a candidate if the fetched page clearly shows a single, open, named job posting for a specific company and role.\n" +
   "   Shortlist the top 3-5 verified open matches. For every rejected candidate (score < 6 OR posting_closed), record: company, title, score, and primary rejection reason: " +
   "skill_gap | location_mismatch | seniority_mismatch | compensation_mismatch | visa_constraint | company_excluded | posting_closed | other. " +
   "Do NOT omit rejected candidates from the report — EVERY scored posting (open or closed, matched or not) must appear in the Non-matches section if not shortlisted. Only skip-without-reporting: blocked listing pages that yielded no extractable jobs.\n" +
