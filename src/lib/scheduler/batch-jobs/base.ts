@@ -3,7 +3,7 @@ import { createLogger } from "@/lib/logging/logger";
 
 const slog = createLogger("scheduler.batch-jobs.base");
 
-export type BatchJobType = "proactive" | "maintenance" | "email" | "job_scout";
+export type BatchJobType = "proactive" | "maintenance" | "email" | "job_scout" | "stock_trading";
 
 export interface BatchJobParameterDefinition {
   key: string;

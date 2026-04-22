@@ -495,6 +495,40 @@ CREATE TABLE IF NOT EXISTS voice_profiles (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_profiles_user ON voice_profiles(user_id);
 
+-- ═══ Stock Trading ═══
+
+CREATE TABLE IF NOT EXISTS stock_portfolio (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    symbol TEXT NOT NULL,
+    qty REAL NOT NULL DEFAULT 0,
+    avg_entry_price REAL NOT NULL DEFAULT 0,
+    mode TEXT NOT NULL DEFAULT 'paper',     -- 'paper' | 'live'
+    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, symbol, mode)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_portfolio_user ON stock_portfolio(user_id, mode);
+
+CREATE TABLE IF NOT EXISTS stock_trade_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    schedule_run_id TEXT,
+    alpaca_order_id TEXT,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL CHECK(side IN ('buy', 'sell')),
+    qty REAL,
+    notional REAL,
+    fill_price REAL,
+    status TEXT NOT NULL,                   -- 'filled' | 'cancelled' | 'error' | 'pending'
+    mode TEXT NOT NULL DEFAULT 'paper',     -- 'paper' | 'live'
+    error_message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_trade_log_user ON stock_trade_log(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stock_trade_log_run ON stock_trade_log(schedule_run_id);
+
 -- ═══ Performance Indexes ═══
 
 CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads(user_id);

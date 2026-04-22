@@ -102,4 +102,29 @@ export const DEFAULT_AGENT_CATALOG: AgentTypeDefinition[] = [
     capabilities: ["knowledge_management", "information_extraction", "memory", "organisation"],
     systemPrompt: MULTI_AGENT_SYSTEM_PROMPTS.knowledge_manager,
   },
+  /* ── Stock Trading ───────────────────────────────────── */
+  {
+    id: "stock-market-researcher",
+    name: "Stock Market Researcher",
+    description:
+      "Analyses a list of stock symbols using price bar data and news, then scores each 1–10 for short-term bullish momentum. Returns ranked candidates with rationale. Used by the stock trading pipeline.",
+    capabilities: ["stock_research", "market_analysis", "news_sentiment", "scoring"],
+    systemPrompt: MULTI_AGENT_SYSTEM_PROMPTS.stock_market_researcher,
+  },
+  {
+    id: "stock-risk-manager",
+    name: "Stock Risk Manager",
+    description:
+      "Validates proposed trades against risk parameters: position-size limit, daily-loss cap, and paper-mode guard. Approves or blocks each candidate and flags existing positions for stop-loss close.",
+    capabilities: ["risk_management", "position_sizing", "stop_loss", "trading_policy"],
+    systemPrompt: MULTI_AGENT_SYSTEM_PROMPTS.stock_risk_manager,
+  },
+  {
+    id: "stock-trade-executor",
+    name: "Stock Trade Executor",
+    description:
+      "Places approved buy/sell orders via the Alpaca Markets API, confirms fills, and reports execution results. Only operates on orders pre-approved by the risk manager.",
+    capabilities: ["trade_execution", "order_management", "alpaca_api", "fill_confirmation"],
+    systemPrompt: MULTI_AGENT_SYSTEM_PROMPTS.stock_trade_executor,
+  },
 ];

@@ -61,6 +61,11 @@ export const envSchema = z.object({
   LIVEKIT_API_SECRET: z.string().optional(),
   AZURE_SPEAKER_KEY: z.string().optional(),
   AZURE_SPEAKER_REGION: z.string().optional(),
+  // ─── Alpaca Markets (stock trading batch job) ────────────────────────────
+  ALPACA_API_KEY: z.string().optional(),
+  ALPACA_API_SECRET: z.string().optional(),
+  /** "paper" (default, simulated) | "live" (real money) */
+  ALPACA_MODE: z.enum(["paper", "live"]).default("paper"),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

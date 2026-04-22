@@ -28,6 +28,7 @@ const ALLOWED_TABLES = new Set([
   "scheduler_schedules", "scheduler_tasks", "scheduler_runs",
   "scheduler_task_runs", "scheduler_claims", "scheduler_events",
   "knowledge_embeddings", "devices", "voice_profiles",
+  "stock_portfolio", "stock_trade_log",
 ]);
 
 // ─── Helper: get column names for a table ─────────────────────
@@ -1033,6 +1034,82 @@ function cleanupDuplicatedSchedulerPromptPrefixes(): void {
   }
 }
 
+/** Migration: add stock_portfolio and stock_trade_log tables for the stock trading batch job. */
+function ensureStockTradingTables(): void {
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS stock_portfolio (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      symbol TEXT NOT NULL,
+      qty REAL NOT NULL DEFAULT 0,
+      avg_entry_price REAL NOT NULL DEFAULT 0,
+      mode TEXT NOT NULL DEFAULT 'paper',
+      last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, symbol, mode)
+    );
+    CREATE INDEX IF NOT EXISTS idx_stock_portfolio_user ON stock_portfolio(user_id, mode);
+
+    CREATE TABLE IF NOT EXISTS stock_trade_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      schedule_run_id TEXT,
+      alpaca_order_id TEXT,
+      symbol TEXT NOT NULL,
+      side TEXT NOT NULL CHECK(side IN ('buy', 'sell')),
+      qty REAL,
+      notional REAL,
+      fill_price REAL,
+      status TEXT NOT NULL,
+      mode TEXT NOT NULL DEFAULT 'paper',
+      error_message TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_stock_trade_log_user ON stock_trade_log(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_stock_trade_log_run ON stock_trade_log(schedule_run_id);
+  `);
+
+  // Add stock_trading schedule seed if not already present
+  if (!tableExists("scheduler_schedules")) return;
+  const suppressedScheduleKeys = getSuppressedScheduleKeys();
+  if (suppressedScheduleKeys.has("workflow.stock_trading.pipeline")) return;
+
+  const existing = db.prepare("SELECT id FROM scheduler_schedules WHERE schedule_key = ?").get("workflow.stock_trading.pipeline") as { id: string } | undefined;
+  if (existing) return;
+
+  const id = require("uuid").v4 as () => string;
+  const schedId = id();
+  db.prepare(
+    `INSERT INTO scheduler_schedules (
+      id, schedule_key, name, owner_type, owner_id, handler_type,
+      trigger_type, trigger_expr, timezone, status, max_concurrency,
+      retry_policy_json, misfire_policy, next_run_at
+    ) VALUES (?, ?, ?, 'system', NULL, ?, 'cron', ?, 'UTC', ?, 1, ?, 'skip', datetime('now'))`
+  ).run(
+    schedId,
+    "workflow.stock_trading.pipeline",
+    "Stock Trading Pipeline",
+    "workflow.stock_trading",
+    "45 14 * * 1-5",
+    "paused",
+    JSON.stringify({ strategy: "none", maxAttempts: 1 })
+  );
+
+  db.prepare(
+    `INSERT INTO scheduler_tasks (
+      id, schedule_id, task_key, name, handler_name, execution_mode,
+      sequence_no, enabled, config_json
+    ) VALUES (?, ?, ?, ?, ?, 'sync', 0, 1, ?)`
+  ).run(
+    `sched_task_${schedId}_run`,
+    schedId,
+    "run",
+    "Stock Trading Cycle",
+    "workflow.stock_trading.run",
+    JSON.stringify({ mode: "paper", maxPositionPct: 20, stopLossPct: 5, dailyLossCap: 10, maxIterations: 20 })
+  );
+}
+
 /** Migration #297: add deterministic task definition columns to scheduler_tasks. */
 function ensureSchedulerTaskDeterministicColumns(): void {
   if (!tableExists("scheduler_tasks")) return;
@@ -1086,6 +1163,7 @@ export function initializeDatabase(): void {
   revokeExpiredKeys();
   cleanupDuplicatedSchedulerPromptPrefixes();
   ensureSchedulerTaskDeterministicColumns();
+  ensureStockTradingTables();
   // Migration: remove deprecated Alexa config keys and tool policies
   try { db.prepare("DELETE FROM config WHERE key IN ('alexa.ubid_main', 'alexa.at_main')").run(); } catch { /* table may not exist */ }
   try { db.prepare("DELETE FROM tool_policies WHERE tool_name LIKE 'builtin.alexa_%'").run(); } catch { /* table may not exist */ }
