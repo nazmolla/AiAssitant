@@ -28,7 +28,7 @@ const ALLOWED_TABLES = new Set([
   "scheduler_schedules", "scheduler_tasks", "scheduler_runs",
   "scheduler_task_runs", "scheduler_claims", "scheduler_events",
   "knowledge_embeddings", "devices", "voice_profiles",
-  "stock_portfolio", "stock_trade_log",
+  "user_integrations", "trading_portfolio", "trading_trade_log",
 ]);
 
 // ─── Helper: get column names for a table ─────────────────────
@@ -1034,80 +1034,55 @@ function cleanupDuplicatedSchedulerPromptPrefixes(): void {
   }
 }
 
-/** Migration: add stock_portfolio and stock_trade_log tables for the stock trading batch job. */
-function ensureStockTradingTables(): void {
+/** Migration: create Kraken trading tables and seed a paused trading schedule. */
+function ensureTradingTables(): void {
   const db = getDb();
   db.exec(`
-    CREATE TABLE IF NOT EXISTS stock_portfolio (
+    CREATE TABLE IF NOT EXISTS user_integrations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      api_key TEXT NOT NULL,
+      api_secret TEXT NOT NULL,
+      config_json TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, provider)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_integrations_user ON user_integrations(user_id, provider);
+
+    CREATE TABLE IF NOT EXISTS trading_portfolio (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      symbol TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'kraken',
+      pair TEXT NOT NULL,
       qty REAL NOT NULL DEFAULT 0,
       avg_entry_price REAL NOT NULL DEFAULT 0,
-      mode TEXT NOT NULL DEFAULT 'paper',
       last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(user_id, symbol, mode)
+      UNIQUE(user_id, provider, pair)
     );
-    CREATE INDEX IF NOT EXISTS idx_stock_portfolio_user ON stock_portfolio(user_id, mode);
+    CREATE INDEX IF NOT EXISTS idx_trading_portfolio_user ON trading_portfolio(user_id, provider);
 
-    CREATE TABLE IF NOT EXISTS stock_trade_log (
+    CREATE TABLE IF NOT EXISTS trading_trade_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       schedule_run_id TEXT,
-      alpaca_order_id TEXT,
-      symbol TEXT NOT NULL,
+      exchange_order_id TEXT,
+      provider TEXT NOT NULL DEFAULT 'kraken',
+      pair TEXT NOT NULL,
       side TEXT NOT NULL CHECK(side IN ('buy', 'sell')),
       qty REAL,
-      notional REAL,
+      volume_usd REAL,
       fill_price REAL,
+      fee_usd REAL,
       status TEXT NOT NULL,
-      mode TEXT NOT NULL DEFAULT 'paper',
+      reasoning TEXT,
       error_message TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
-    CREATE INDEX IF NOT EXISTS idx_stock_trade_log_user ON stock_trade_log(user_id, created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_stock_trade_log_run ON stock_trade_log(schedule_run_id);
+    CREATE INDEX IF NOT EXISTS idx_trading_trade_log_user ON trading_trade_log(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_trading_trade_log_run ON trading_trade_log(schedule_run_id);
   `);
-
-  // Add stock_trading schedule seed if not already present
-  if (!tableExists("scheduler_schedules")) return;
-  const suppressedScheduleKeys = getSuppressedScheduleKeys();
-  if (suppressedScheduleKeys.has("workflow.stock_trading.pipeline")) return;
-
-  const existing = db.prepare("SELECT id FROM scheduler_schedules WHERE schedule_key = ?").get("workflow.stock_trading.pipeline") as { id: string } | undefined;
-  if (existing) return;
-
-  const id = require("uuid").v4 as () => string;
-  const schedId = id();
-  db.prepare(
-    `INSERT INTO scheduler_schedules (
-      id, schedule_key, name, owner_type, owner_id, handler_type,
-      trigger_type, trigger_expr, timezone, status, max_concurrency,
-      retry_policy_json, misfire_policy, next_run_at
-    ) VALUES (?, ?, ?, 'system', NULL, ?, 'cron', ?, 'UTC', ?, 1, ?, 'skip', datetime('now'))`
-  ).run(
-    schedId,
-    "workflow.stock_trading.pipeline",
-    "Stock Trading Pipeline",
-    "workflow.stock_trading",
-    "45 14 * * 1-5",
-    "paused",
-    JSON.stringify({ strategy: "none", maxAttempts: 1 })
-  );
-
-  db.prepare(
-    `INSERT INTO scheduler_tasks (
-      id, schedule_id, task_key, name, handler_name, execution_mode,
-      sequence_no, enabled, config_json
-    ) VALUES (?, ?, ?, ?, ?, 'sync', 0, 1, ?)`
-  ).run(
-    `sched_task_${schedId}_run`,
-    schedId,
-    "run",
-    "Stock Trading Cycle",
-    "workflow.stock_trading.run",
-    JSON.stringify({ mode: "paper", maxPositionPct: 20, stopLossPct: 5, dailyLossCap: 10, maxIterations: 20 })
-  );
 }
 
 /** Migration #297: add deterministic task definition columns to scheduler_tasks. */
@@ -1163,7 +1138,7 @@ export function initializeDatabase(): void {
   revokeExpiredKeys();
   cleanupDuplicatedSchedulerPromptPrefixes();
   ensureSchedulerTaskDeterministicColumns();
-  ensureStockTradingTables();
+  ensureTradingTables();
   // Migration: remove deprecated Alexa config keys and tool policies
   try { db.prepare("DELETE FROM config WHERE key IN ('alexa.ubid_main', 'alexa.at_main')").run(); } catch { /* table may not exist */ }
   try { db.prepare("DELETE FROM tool_policies WHERE tool_name LIKE 'builtin.alexa_%'").run(); } catch { /* table may not exist */ }

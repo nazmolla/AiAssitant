@@ -49,7 +49,7 @@ describe("scheduler handler registry", () => {
     runUnifiedSchedulerEngineTickForTests();
     const handlers = getRegisteredHandlers();
 
-    // All 7 expected handler names from batch jobs + agent.prompt
+    // All 8 expected handler names from batch jobs + agent.prompt
     const expected = [
       "agent.prompt",
       "system.proactive.scan",
@@ -59,8 +59,9 @@ describe("scheduler handler registry", () => {
       "system.knowledge_maintenance.run_due",
       // Job Scout now uses orchestrator-driven single handler
       "workflow.job_scout.run",
-      // Stock Trading pipeline
-      "workflow.stock_trading.run",
+      // Crypto Trading pipeline (two handlers: cycle + daily summary)
+      "workflow.trading.run",
+      "workflow.trading.daily_summary",
     ];
 
     for (const name of expected) {
@@ -110,11 +111,12 @@ describe("batch job getHandlerNames", () => {
     }
   });
 
-  test("getAllHandlerNames returns batch job handlers including stock_trading", () => {
+  test("getAllHandlerNames returns batch job handlers including trading", () => {
     const { getAllHandlerNames } = require("@/lib/scheduler/batch-jobs");
     const names = getAllHandlerNames();
-    // 6 handlers across 6 batch jobs (proactive, email, cleanup, knowledge, job_scout, stock_trading)
-    expect(names).toHaveLength(6);
-    expect(names).toContain("workflow.stock_trading.run");
+    // 7 handlers across 5 batch jobs (proactive, email, cleanup+knowledge, job_scout, trading x2)
+    expect(names).toHaveLength(7);
+    expect(names).toContain("workflow.trading.run");
+    expect(names).toContain("workflow.trading.daily_summary");
   });
 });

@@ -495,39 +495,58 @@ CREATE TABLE IF NOT EXISTS voice_profiles (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_profiles_user ON voice_profiles(user_id);
 
--- ═══ Stock Trading ═══
+-- ═══ Trading (Kraken crypto) ═══
 
-CREATE TABLE IF NOT EXISTS stock_portfolio (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+-- Per-user API credentials for third-party trading integrations (encrypted).
+CREATE TABLE IF NOT EXISTS user_integrations (
+    id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    symbol TEXT NOT NULL,
-    qty REAL NOT NULL DEFAULT 0,
-    avg_entry_price REAL NOT NULL DEFAULT 0,
-    mode TEXT NOT NULL DEFAULT 'paper',     -- 'paper' | 'live'
-    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, symbol, mode)
+    provider TEXT NOT NULL,              -- 'kraken'
+    api_key TEXT NOT NULL,              -- encrypted
+    api_secret TEXT NOT NULL,           -- encrypted
+    config_json TEXT,                   -- optional extra config (encrypted)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, provider)
 );
 
-CREATE INDEX IF NOT EXISTS idx_stock_portfolio_user ON stock_portfolio(user_id, mode);
+CREATE INDEX IF NOT EXISTS idx_user_integrations_user ON user_integrations(user_id, provider);
 
-CREATE TABLE IF NOT EXISTS stock_trade_log (
+-- Current positions ledger (synced from exchange).
+CREATE TABLE IF NOT EXISTS trading_portfolio (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL DEFAULT 'kraken',
+    pair TEXT NOT NULL,                 -- e.g. 'XBTUSD'
+    qty REAL NOT NULL DEFAULT 0,
+    avg_entry_price REAL NOT NULL DEFAULT 0,
+    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, provider, pair)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trading_portfolio_user ON trading_portfolio(user_id, provider);
+
+-- Immutable audit log of every order attempted.
+CREATE TABLE IF NOT EXISTS trading_trade_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     schedule_run_id TEXT,
-    alpaca_order_id TEXT,
-    symbol TEXT NOT NULL,
+    exchange_order_id TEXT,
+    provider TEXT NOT NULL DEFAULT 'kraken',
+    pair TEXT NOT NULL,
     side TEXT NOT NULL CHECK(side IN ('buy', 'sell')),
     qty REAL,
-    notional REAL,
+    volume_usd REAL,
     fill_price REAL,
-    status TEXT NOT NULL,                   -- 'filled' | 'cancelled' | 'error' | 'pending'
-    mode TEXT NOT NULL DEFAULT 'paper',     -- 'paper' | 'live'
+    fee_usd REAL,
+    status TEXT NOT NULL,               -- 'filled' | 'partial' | 'cancelled' | 'error' | 'pending'
+    reasoning TEXT,                     -- plain-English rationale from the agent
     error_message TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_stock_trade_log_user ON stock_trade_log(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_stock_trade_log_run ON stock_trade_log(schedule_run_id);
+CREATE INDEX IF NOT EXISTS idx_trading_trade_log_user ON trading_trade_log(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_trading_trade_log_run ON trading_trade_log(schedule_run_id);
 
 -- ═══ Performance Indexes ═══
 
