@@ -171,7 +171,7 @@ export class TradingBatchJob extends BatchJob {
       if (err instanceof KrakenError && err.isAuthError) {
         createNotification({
           userId,
-          type: "error",
+          type: "system_error",
           title: "Trading error — Kraken authentication failed.",
           body: "Check your API key and secret in Settings → Integrations.",
         });
@@ -373,7 +373,7 @@ export class TradingBatchJob extends BatchJob {
         if (err instanceof KrakenError && err.isInsufficientFunds) {
           createNotification({
             userId,
-            type: "error",
+            type: "system_error",
             title: `Trade failed — insufficient funds for ${rec.pair}.`,
             body: msg,
           });
@@ -393,7 +393,7 @@ export class TradingBatchJob extends BatchJob {
     if (errors.length > 0) {
       createNotification({
         userId,
-        type: "error",
+        type: "system_error",
         title: `${errors.length} trade error${errors.length > 1 ? "s" : ""} during trading cycle.`,
         body: errors.join("; "),
       });
