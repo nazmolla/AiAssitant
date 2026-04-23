@@ -142,7 +142,7 @@ export async function executeToolWithPolicy(
             `Requester: ${requester}\n` +
             `Action: ${toolCall.name}\n` +
             `Reason: ${reason}\n` +
-            `Reply with \"approve\" to continue or \"reject\" to cancel.\n` +
+            `Reply with \"approve\" to continue, \"reject\" to cancel, or \"always\" to always approve this tool.\n` +
             `<!-- INLINE_APPROVAL:${inlineMeta} -->`,
           tool_calls: null,
           tool_results: null,

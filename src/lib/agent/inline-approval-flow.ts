@@ -17,8 +17,14 @@ import {
 import {
   isAffirmativeApproval,
   isNegativeApproval,
+  isAlwaysApproval,
   extractLatestInlineApproval,
 } from "./approval-handler";
+import {
+  upsertApprovalPreferenceFromApproval,
+  upsertWildcardApprovalPreference,
+  type ApprovalRequest,
+} from "@/lib/db";
 import type { AgentResponse } from "./loop";
 import { TOOL_RESULT_TRUNCATION_LIMIT } from "@/lib/constants";
 import { createLogger } from "@/lib/logging/logger";
@@ -57,9 +63,11 @@ export async function processInlineApproval(
     return { handled: false };
   }
 
-  // User message is not a clear approve/reject — ask for clarity
-  if (!isAffirmativeApproval(userMessage) && !isNegativeApproval(userMessage)) {
-    const guidance = `I need a clear decision for ${inlinePayload.tool_name}. Reply with "approve" to continue or "reject" to cancel.`;
+  const isAlways = isAlwaysApproval(userMessage);
+
+  // User message is not a clear approve/reject/always — ask for clarity
+  if (!isAffirmativeApproval(userMessage) && !isNegativeApproval(userMessage) && !isAlways) {
+    const guidance = `I need a clear decision for ${inlinePayload.tool_name}. Reply with "approve" to continue, "reject" to cancel, or "always" to always approve this tool.`;
     const guidanceMsg = addMessage({
       thread_id: threadId,
       role: "assistant",
@@ -79,6 +87,22 @@ export async function processInlineApproval(
   if (isNegativeApproval(userMessage)) {
     log.info("Inline approval rejected by user", { threadId, toolName: inlinePayload.tool_name });
     updateThreadStatus(threadId, "active");
+    const thread = getThread(threadId);
+    if (thread?.user_id) {
+      const syntheticApproval: ApprovalRequest = {
+        id: `inline-${threadId}-${Date.now()}`,
+        thread_id: threadId,
+        tool_name: inlinePayload.tool_name,
+        args: JSON.stringify(inlinePayload.args),
+        reasoning: inlinePayload.reason ?? null,
+        nl_request: inlinePayload.reason ?? null,
+        source: "chat",
+        status: "rejected",
+        expires_at: null,
+        created_at: new Date().toISOString(),
+      };
+      upsertApprovalPreferenceFromApproval(thread.user_id, syntheticApproval, "rejected");
+    }
     const cancelled = `Understood. I cancelled ${inlinePayload.tool_name}.`;
     const cancelledMsg = addMessage({
       thread_id: threadId,
@@ -96,8 +120,28 @@ export async function processInlineApproval(
     };
   }
 
-  // User approved — execute the tool
-  log.info("Inline approval granted by user", { threadId, toolName: inlinePayload.tool_name });
+  // User approved (one-time or always) — execute the tool
+  log.info("Inline approval granted by user", { threadId, toolName: inlinePayload.tool_name, always: isAlways });
+  const approveThread = getThread(threadId);
+  if (approveThread?.user_id) {
+    if (isAlways) {
+      upsertWildcardApprovalPreference(approveThread.user_id, inlinePayload.tool_name, "approved");
+    } else {
+      const syntheticApproval: ApprovalRequest = {
+        id: `inline-${threadId}-${Date.now()}`,
+        thread_id: threadId,
+        tool_name: inlinePayload.tool_name,
+        args: JSON.stringify(inlinePayload.args),
+        reasoning: inlinePayload.reason ?? null,
+        nl_request: inlinePayload.reason ?? null,
+        source: "chat",
+        status: "approved",
+        expires_at: null,
+        created_at: new Date().toISOString(),
+      };
+      upsertApprovalPreferenceFromApproval(approveThread.user_id, syntheticApproval, "approved");
+    }
+  }
   onStatus?.({ step: "Executing approved tool", detail: inlinePayload.tool_name });
   const { executeApprovedTool } = await import("./gatekeeper");
   const approvedResult = await executeApprovedTool(

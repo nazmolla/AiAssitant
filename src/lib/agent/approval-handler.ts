@@ -31,6 +31,11 @@ export function isNegativeApproval(text: string): boolean {
   return /^(no|n|reject|rejected|deny|denied|cancel|stop|ignore)\b/.test(normalized);
 }
 
+export function isAlwaysApproval(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return /^(always approve|trust always|trust this|trust|always)\s*$/.test(normalized);
+}
+
 export function extractLatestInlineApproval(messages: Message[]): InlineApprovalPayload | null {
   log.enter("extractLatestInlineApproval", { messageCount: messages.length });
   for (let i = messages.length - 1; i >= 0; i--) {

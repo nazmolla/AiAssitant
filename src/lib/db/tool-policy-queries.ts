@@ -195,13 +195,19 @@ export function findApprovalPreferenceDecision(
     nlRequest,
   });
 
+  // Exact match takes priority over wildcard
   const row = getDb().prepare(
-    `SELECT decision FROM approval_preferences
+    `SELECT decision,
+            CASE WHEN request_key = '*' AND device_key = '*' AND reason_key = '*' THEN 1 ELSE 0 END AS is_wildcard
+     FROM approval_preferences
      WHERE user_id = ?
        AND tool_name = ?
-       AND request_key = ?
-       AND device_key = ?
-       AND reason_key = ?`
+       AND (
+         (request_key = ? AND device_key = ? AND reason_key = ?)
+         OR (request_key = '*' AND device_key = '*' AND reason_key = '*')
+       )
+     ORDER BY is_wildcard ASC
+     LIMIT 1`
   ).get(
     userId,
     toolName,
@@ -211,6 +217,19 @@ export function findApprovalPreferenceDecision(
   ) as { decision: "approved" | "rejected" | "ignored" } | undefined;
 
   return row?.decision ?? null;
+}
+
+export function upsertWildcardApprovalPreference(
+  userId: string,
+  toolName: string,
+  decision: "approved" | "rejected" | "ignored"
+): void {
+  getDb().prepare(
+    `INSERT INTO approval_preferences (id, user_id, tool_name, request_key, device_key, reason_key, decision)
+     VALUES (?, ?, ?, '*', '*', '*', ?)
+     ON CONFLICT(user_id, tool_name, request_key, device_key, reason_key)
+     DO UPDATE SET decision = excluded.decision, updated_at = CURRENT_TIMESTAMP`
+  ).run(uuid(), userId, toolName, decision);
 }
 
 export function listApprovalPreferences(userId: string): ApprovalPreference[] {
