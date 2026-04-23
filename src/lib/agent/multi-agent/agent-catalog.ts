@@ -102,4 +102,13 @@ export const DEFAULT_AGENT_CATALOG: AgentTypeDefinition[] = [
     capabilities: ["knowledge_management", "information_extraction", "memory", "organisation"],
     systemPrompt: MULTI_AGENT_SYSTEM_PROMPTS.knowledge_manager,
   },
+  /* ── Crypto Trading ──────────────────────────────────── */
+  {
+    id: "crypto-market-analyst",
+    name: "Crypto Market Analyst",
+    description:
+      "Analyses crypto trading pairs using OHLC price data and recent news, scores each 1–10 for short-term bullish momentum, and returns ranked buy candidates with plain-English reasoning. Used by the Kraken trading pipeline.",
+    capabilities: ["crypto_research", "market_analysis", "news_sentiment", "scoring"],
+    systemPrompt: MULTI_AGENT_SYSTEM_PROMPTS.crypto_market_analyst,
+  },
 ];

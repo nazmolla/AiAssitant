@@ -28,6 +28,7 @@ const ALLOWED_TABLES = new Set([
   "scheduler_schedules", "scheduler_tasks", "scheduler_runs",
   "scheduler_task_runs", "scheduler_claims", "scheduler_events",
   "knowledge_embeddings", "devices", "voice_profiles",
+  "user_integrations", "trading_portfolio", "trading_trade_log",
 ]);
 
 // ─── Helper: get column names for a table ─────────────────────
@@ -1033,6 +1034,57 @@ function cleanupDuplicatedSchedulerPromptPrefixes(): void {
   }
 }
 
+/** Migration: create Kraken trading tables and seed a paused trading schedule. */
+function ensureTradingTables(): void {
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_integrations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      api_key TEXT NOT NULL,
+      api_secret TEXT NOT NULL,
+      config_json TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, provider)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_integrations_user ON user_integrations(user_id, provider);
+
+    CREATE TABLE IF NOT EXISTS trading_portfolio (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL DEFAULT 'kraken',
+      pair TEXT NOT NULL,
+      qty REAL NOT NULL DEFAULT 0,
+      avg_entry_price REAL NOT NULL DEFAULT 0,
+      last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, provider, pair)
+    );
+    CREATE INDEX IF NOT EXISTS idx_trading_portfolio_user ON trading_portfolio(user_id, provider);
+
+    CREATE TABLE IF NOT EXISTS trading_trade_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      schedule_run_id TEXT,
+      exchange_order_id TEXT,
+      provider TEXT NOT NULL DEFAULT 'kraken',
+      pair TEXT NOT NULL,
+      side TEXT NOT NULL CHECK(side IN ('buy', 'sell')),
+      qty REAL,
+      volume_usd REAL,
+      fill_price REAL,
+      fee_usd REAL,
+      status TEXT NOT NULL,
+      reasoning TEXT,
+      error_message TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_trading_trade_log_user ON trading_trade_log(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_trading_trade_log_run ON trading_trade_log(schedule_run_id);
+  `);
+}
+
 /** Migration #297: add deterministic task definition columns to scheduler_tasks. */
 function ensureSchedulerTaskDeterministicColumns(): void {
   if (!tableExists("scheduler_tasks")) return;
@@ -1086,6 +1138,7 @@ export function initializeDatabase(): void {
   revokeExpiredKeys();
   cleanupDuplicatedSchedulerPromptPrefixes();
   ensureSchedulerTaskDeterministicColumns();
+  ensureTradingTables();
   // Migration: remove deprecated Alexa config keys and tool policies
   try { db.prepare("DELETE FROM config WHERE key IN ('alexa.ubid_main', 'alexa.at_main')").run(); } catch { /* table may not exist */ }
   try { db.prepare("DELETE FROM tool_policies WHERE tool_name LIKE 'builtin.alexa_%'").run(); } catch { /* table may not exist */ }

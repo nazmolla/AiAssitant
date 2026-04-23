@@ -15,12 +15,14 @@ import { ProactiveBatchJob } from "./proactive";
 import { MaintenanceBatchJob } from "./maintenance";
 import { EmailBatchJob } from "./email";
 import { JobScoutBatchJob } from "./job-scout";
+import { TradingBatchJob } from "./trading";
 
 const REGISTRY: Record<BatchJobType, BatchJob> = {
   proactive: new ProactiveBatchJob(),
   maintenance: new MaintenanceBatchJob(),
   email: new EmailBatchJob(),
   job_scout: new JobScoutBatchJob(),
+  trading: new TradingBatchJob(),
 };
 
 export function getBatchJob(type: BatchJobType): BatchJob {
