@@ -45,6 +45,7 @@ import StorageIcon from "@mui/icons-material/Storage";
 import BuildIcon from "@mui/icons-material/Build";
 import LockIcon from "@mui/icons-material/Lock";
 import GroupIcon from "@mui/icons-material/Group";
+import CurrencyBitcoinIcon from "@mui/icons-material/CurrencyBitcoin";
 import { useTheme, THEMES } from "@/components/theme-provider";
 import { AppPageBackbone } from "@/components/app-page-backbone";
 
@@ -73,6 +74,7 @@ const DbManagementConfig = dynamic(() => import("@/components/db-management-conf
 const StandingOrdersConfig = dynamic(() => import("@/components/standing-orders-config").then(m => ({ default: m.StandingOrdersConfig })), { ssr: false });
 const DevicesConfig = dynamic(() => import("@/components/devices-config").then(m => ({ default: m.DevicesConfig })), { ssr: false });
 const VoiceProfileConfig = dynamic(() => import("@/components/voice-profile-config").then(m => ({ default: m.VoiceProfileConfig })), { ssr: false });
+const KrakenConfig = dynamic(() => import("@/components/kraken-config").then(m => ({ default: m.KrakenConfig })), { ssr: false });
 
 /* ── URL ↔ tab mapping (module-level for stable references) ── */
 const TAB_FROM_PATH: Record<string, string> = {
@@ -270,7 +272,7 @@ export default function HomePage() {
             aria-label={t.label}
           >
             {t.icon}
-            <span className="ng-tip">{t.label}</span>
+            <span className="ng-nav-label">{t.label}</span>
           </button>
         ))}
 
@@ -284,7 +286,7 @@ export default function HomePage() {
           title="Profile"
         >
           <div className="ng-avatar" style={{ width: 28, height: 28, fontSize: 12 }}>{initials}</div>
-          <span className="ng-tip">{displayName || session.user?.email}</span>
+          <span className="ng-nav-label">{displayName || session.user?.email}</span>
         </button>
       </nav>
 
@@ -426,6 +428,7 @@ const SETTINGS_PAGES: SettingsPage[] = [
   { key: "llm", label: "Providers", Icon: SmartToyIcon, permKey: "llm_config" },
   { key: "channels", label: "Channels", Icon: HubIcon, permKey: "channels" },
   { key: "mcp", label: "MCP Servers", Icon: ExtensionIcon, permKey: "mcp_servers" },
+  { key: "kraken", label: "Kraken", Icon: CurrencyBitcoinIcon },
   { key: "policies", label: "Tool Policies", Icon: GavelIcon, permKey: "mcp_servers" },
   { key: "standing-orders", label: "Standing Orders", Icon: AssignmentIcon },
   { key: "devices", label: "Devices", Icon: DevicesIcon },
@@ -446,7 +449,7 @@ interface SettingsGroup {
 }
 
 const SETTINGS_GROUPS: SettingsGroup[] = [
-  { label: "Integrations", keys: ["llm", "channels", "mcp"] },
+  { label: "Integrations", keys: ["llm", "channels", "mcp", "kraken"] },
   { label: "Agent Behavior", keys: ["policies", "standing-orders", "custom-tools", "scheduler"] },
   { label: "Voice & Hardware", keys: ["devices", "voice-profile", "whisper"] },
   { label: "System", keys: ["logging", "search-providers", "db-management", "auth", "users"] },
@@ -455,6 +458,7 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
 const SETTINGS_HEADERS: Record<string, { title: string; subtitle: string }> = {
   profile: { title: "Owner Profile", subtitle: "Your identity, skills, and contact info. Nexus uses this to personalize responses." },
   scheduler: { title: "Batch Scheduler", subtitle: "Configure batch job scheduling for proactive scans, knowledge maintenance, cleanup, and email reading." },
+  kraken: { title: "Kraken Integration", subtitle: "Connect your Kraken account so the agent can check balances, prices, and place trades on your behalf." },
   llm: { title: "LLM Providers", subtitle: "Centralize Azure OpenAI, OpenAI, and Anthropic credentials." },
   channels: { title: "Communication Channels", subtitle: "Connect messaging platforms so Nexus can chat with you anywhere." },
   mcp: { title: "MCP Servers", subtitle: "Manage Model Context Protocol server connections." },
@@ -670,6 +674,7 @@ function SettingsPanel({ userRole, perms, isUserMetaLoading, activePage, onNavig
                   {active === "custom-tools" && userRole === "admin" && <CustomToolsConfig />}
                   {active === "auth" && userRole === "admin" && <AuthConfig />}
                   {active === "users" && userRole === "admin" && <UserManagement />}
+                  {active === "kraken" && <KrakenConfig />}
                   {active === "scheduler" && userRole === "admin" && <SchedulerConfig />}
                 </>
               )}
