@@ -42,6 +42,36 @@ export function getKnowledgeEntry(id: number): KnowledgeEntry | undefined {
   ).get(id) as KnowledgeEntry | undefined;
 }
 
+/**
+ * Fetch entries whose attribute matches common identity/profile keywords.
+ * Used to supplement semantic search for content-generation queries where
+ * the user's personal facts (name, company, role, etc.) won't score high
+ * on cosine similarity against the query text.
+ */
+export function getProfileKnowledgeEntries(userId: string, limit = 10): KnowledgeEntry[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM user_knowledge
+       WHERE user_id = ?
+         AND lower(trim(attribute)) IN (
+           'name','full name','first name','last name',
+           'company','employer','organization','workplace',
+           'title','job title','role','position','occupation',
+           'email','email address',
+           'phone','phone number','mobile',
+           'location','city','country','address',
+           'bio','biography','about',
+           'website','linkedin','github','twitter',
+           'nationality','language','languages',
+           'skills','expertise','industry',
+           'education','degree','university'
+         )
+       ORDER BY last_updated DESC
+       LIMIT ?`
+    )
+    .all(userId, limit) as KnowledgeEntry[];
+}
+
 export function searchKnowledge(query: string, userId?: string): KnowledgeEntry[] {
   if (!userId) return [];
   const pattern = `%${query}%`;

@@ -3,6 +3,7 @@ import {
   listKnowledgeEmbeddings,
   getKnowledgeEntriesByIds,
   searchKnowledge,
+  getProfileKnowledgeEntries,
   upsertKnowledgeEmbedding,
   type KnowledgeEntry,
 } from "@/lib/db";
@@ -93,6 +94,18 @@ const NO_KNOWLEDGE_SIGNALS = [
 export function needsKnowledgeRetrieval(message: string): boolean {
   if (!message || message.trim().length === 0) return false;
   return !NO_KNOWLEDGE_SIGNALS.some((r) => r.test(message));
+}
+
+/**
+ * Fetch identity/profile vault entries for the user.
+ * Returns entries whose attribute matches common profile keywords
+ * (name, company, role, etc.) regardless of query relevance.
+ * Used to supplement semantic search so the agent always has
+ * basic "who is this person" context for content-generation tasks.
+ */
+export function retrieveProfileEntries(userId: string | undefined, limit = 10): KnowledgeEntry[] {
+  if (!userId) return [];
+  return getProfileKnowledgeEntries(userId, limit);
 }
 
 export async function retrieveKnowledge(query: string, limit = 6, userId?: string): Promise<KnowledgeEntry[]> {

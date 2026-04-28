@@ -115,3 +115,70 @@ describe("MIN_SIMILARITY filtering", () => {
     expect(score).toBeLessThan(1.0);
   });
 });
+
+// ─── Profile entry attribute matching ────────────────────────
+// Mirror of the attribute list in getProfileKnowledgeEntries so
+// tests stay in sync with the DB query.
+
+const PROFILE_ATTRIBUTES = new Set([
+  "name", "full name", "first name", "last name",
+  "company", "employer", "organization", "workplace",
+  "title", "job title", "role", "position", "occupation",
+  "email", "email address",
+  "phone", "phone number", "mobile",
+  "location", "city", "country", "address",
+  "bio", "biography", "about",
+  "website", "linkedin", "github", "twitter",
+  "nationality", "language", "languages",
+  "skills", "expertise", "industry",
+  "education", "degree", "university",
+]);
+
+function isProfileAttribute(attribute: string): boolean {
+  return PROFILE_ATTRIBUTES.has(attribute.toLowerCase().trim());
+}
+
+describe("Profile attribute matching", () => {
+  test("common identity attributes are matched", () => {
+    expect(isProfileAttribute("name")).toBe(true);
+    expect(isProfileAttribute("full name")).toBe(true);
+    expect(isProfileAttribute("company")).toBe(true);
+    expect(isProfileAttribute("job title")).toBe(true);
+    expect(isProfileAttribute("role")).toBe(true);
+    expect(isProfileAttribute("email")).toBe(true);
+    expect(isProfileAttribute("bio")).toBe(true);
+    expect(isProfileAttribute("linkedin")).toBe(true);
+  });
+
+  test("attribute matching is case-insensitive and trims whitespace", () => {
+    expect(isProfileAttribute("  Company  ")).toBe(true);
+    expect(isProfileAttribute("JOB TITLE")).toBe(true);
+    expect(isProfileAttribute("ROLE")).toBe(true);
+  });
+
+  test("non-profile attributes are not matched", () => {
+    expect(isProfileAttribute("prefers dark mode")).toBe(false);
+    expect(isProfileAttribute("favorite color")).toBe(false);
+    expect(isProfileAttribute("announcement tone")).toBe(false);
+    expect(isProfileAttribute("meeting preference")).toBe(false);
+  });
+
+  test("profile entries survive deduplication against semantic results", () => {
+    type Entry = { id: number; attribute: string };
+    const semantic: Entry[] = [
+      { id: 1, attribute: "prefers dark mode" },
+      { id: 2, attribute: "company" },
+    ];
+    const profile: Entry[] = [
+      { id: 2, attribute: "company" },   // duplicate — should be dropped
+      { id: 3, attribute: "job title" }, // new — should be included
+    ];
+    const seenIds = new Set(semantic.map((k) => k.id));
+    const merged = [
+      ...semantic,
+      ...profile.filter((k) => !seenIds.has(k.id)),
+    ];
+    expect(merged).toHaveLength(3);
+    expect(merged.map((k) => k.id)).toEqual([1, 2, 3]);
+  });
+});
