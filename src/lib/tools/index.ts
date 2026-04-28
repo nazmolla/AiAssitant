@@ -38,6 +38,7 @@ export {
 } from "./communication-tools";
 export { fileTools, FileTools, BUILTIN_FILE_TOOLS, isFileTool, executeBuiltinFileTool, FILE_TOOLS_REQUIRING_APPROVAL, FILE_TOOL_NAMES } from "./file-tools";
 export { krakenTools, KrakenTools, BUILTIN_KRAKEN_TOOLS, isKrakenTool, executeBuiltinKrakenTool, KRAKEN_TOOLS_REQUIRING_APPROVAL, KRAKEN_TOOL_NAMES } from "./kraken-tools";
+export { knowledgeTools, KnowledgeTools, BUILTIN_KNOWLEDGE_TOOLS, isKnowledgeTool, executeBuiltinKnowledgeTool, KNOWLEDGE_TOOL_NAMES } from "./knowledge-tools";
 export {
   customTools, CustomTools,
   isCustomTool, executeCustomTool, getCustomToolDefinitions, loadCustomToolsFromDb,
