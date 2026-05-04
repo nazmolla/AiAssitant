@@ -231,7 +231,7 @@ export function runKnowledgeMaintenanceIfDue(now = new Date()): KnowledgeMainten
     metadata: JSON.stringify(result),
   });
   if (!result.skipped) {
-    log.warning("Knowledge maintenance run completed", { deletedEmpty: result.deletedEmpty, deduplicated: result.deduplicated, durationMs: result.durationMs });
+    log.warning("Knowledge maintenance run completed", { deletedEmpty: result.deletedEmpty, deduplicated: result.deduplicated, fuzzyDeduplicated: result.fuzzyDeduplicated, durationMs: result.durationMs });
   }
   log.exit("runKnowledgeMaintenanceIfDue", { skipped: result.skipped }, Date.now() - t0);
   return result;

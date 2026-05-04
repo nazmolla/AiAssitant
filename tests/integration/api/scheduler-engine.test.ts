@@ -228,12 +228,12 @@ describe("scheduler engine: job scout pipeline", () => {
     expect(taskRuns).toHaveLength(1);
     expect(taskRuns[0].status).toBe("success");
 
-    // OrchestratorAgent calls runAgentLoop at least once.
+    // Job scout calls runAgentLoop directly.
     expect((runAgentLoop as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(1);
 
-    // Output JSON records orchestration metadata.
+    // Output JSON records run metadata.
     const output0 = JSON.parse(taskRuns[0].output_json ?? "{}") as { kind: string; threadId: string };
-    expect(output0.kind).toBe("job_scout_orchestrated");
+    expect(output0.kind).toBe("job_scout_direct");
     expect(typeof output0.threadId).toBe("string");
   });
 
