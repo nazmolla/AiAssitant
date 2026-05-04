@@ -11,6 +11,7 @@ import {
   type StepExecutionResult,
   type LogFn,
 } from "./base";
+import { OrchestratorAgent, AgentRegistry } from "@/lib/agent/multi-agent";
 import { JOB_SCOUT_TASK_PROMPT } from "@/lib/prompts";
 
 export class JobScoutBatchJob extends BatchJob {
@@ -92,44 +93,30 @@ export class JobScoutBatchJob extends BatchJob {
       log("warning", "No career knowledge found for user — job scout may abort.", logCtx);
     }
 
-    // Build the single user message: career knowledge + task prompt.
-    // Run directly via runAgentLoop so the LLM executes all steps itself without
-    // decomposition — OrchestratorAgent would delegate to sub-agents that don't
-    // reliably forward the career profile when formulating search queries.
-    const parts = [additionalContext, knowledgeContext].filter(Boolean);
-    const userMessage = parts.length > 0
-      ? `${parts.join("\n\n")}\n\n${JOB_SCOUT_TASK_PROMPT}`
-      : JOB_SCOUT_TASK_PROMPT;
-
-    const { runAgentLoop } = await import("@/lib/agent");
-    const result = await runAgentLoop(
-      runThreadId,
-      userMessage,
-      undefined,
-      undefined,
-      false,
-      userId,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      maxIterations,
+    const fullContext = [additionalContext, knowledgeContext].filter(Boolean).join("\n");
+    const registry = AgentRegistry.getInstance();
+    const orchestrator = new OrchestratorAgent(registry);
+    const result = await orchestrator.run(
+      JOB_SCOUT_TASK_PROMPT,
+      { userId, threadId: runThreadId, maxIterations, additionalContext: fullContext || undefined },
     );
 
-    log("info", "Job scout run completed.", logCtx, {
-      threadId: runThreadId,
+    log("info", "Job scout orchestration completed.", logCtx, {
+      threadId: result.threadId,
+      agentsDispatched: result.agentsDispatched,
       toolsUsed: result.toolsUsed,
-      response: result.content.slice(0, 500),
+      response: result.response.slice(0, 500),
     });
 
     return {
-      pipelineThreadId: runThreadId,
+      pipelineThreadId: result.threadId,
       outputJson: {
-        kind: "job_scout_direct",
-        threadId: runThreadId,
+        kind: "job_scout_orchestrated",
+        threadId: result.threadId,
         userId,
+        agentsDispatched: result.agentsDispatched,
         toolsUsed: result.toolsUsed,
-        response: result.content,
+        response: result.response,
       },
     };
   }

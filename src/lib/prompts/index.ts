@@ -131,8 +131,9 @@ export const JOB_SCOUT_TASK_PROMPT =
   "1. Load user profile: Read the '## Pre-loaded career profile from knowledge vault' section in your context — it is already injected above. " +
   "Extract from it: role preferences, skills, experience level, location, work mode (remote/hybrid/onsite), visa/work-authorisation constraints, salary expectations, companies to avoid, and any other career preferences. " +
   "IMPORTANT: Do NOT declare the profile missing — the data is pre-loaded in your context. If the section is absent or empty, send an in-app notification via builtin.channel_notify asking the user to add career preferences to their profile, then stop.\n" +
-  "2. Search jobs: Use builtin.web_search with multiple targeted queries across job boards (LinkedIn Jobs, Indeed, Glassdoor, Google Jobs, Levels.fyi for tech). " +
-  "Match queries precisely to the user's role, seniority, location, and constraints. Collect 10-20 raw candidates.\n" +
+  "2. Search jobs: Call builtin.web_search DIRECTLY — do NOT delegate this step to a sub-agent. " +
+  "Use the career profile from step 1 to construct multiple targeted queries (minimum 3) that include the user's specific role title, skills, seniority level, location, and work-mode preferences. " +
+  "Search across job boards (LinkedIn Jobs, Indeed, Glassdoor, Google Jobs, Levels.fyi for tech). Collect 10-20 raw candidates.\n" +
   "   **Classifying search result URLs:**\n" +
   "   - A URL is a *job posting* if it identifies a specific company and role (e.g., linkedin.com/jobs/view/12345, indeed.com/jobs?jk=abc, simplyhired.ca/job/...). Score it directly.\n" +
   "   - A URL is a *listing page* if it shows many jobs (e.g., linkedin.com/jobs/search, indeed.com/jobs?q=, glassdoor.com/Job/...-jobs-...). For listing pages: call builtin.web_fetch to extract individual job titles, companies, and their direct URLs. Each extracted job becomes a scoreable candidate — treat them as job postings, not listing pages. If web_fetch fails (403/blocked), log 'listing page blocked: [url]' and skip only that listing page URL — do NOT skip the jobs you already found.\n" +
@@ -185,6 +186,8 @@ export const JOB_SCOUT_TASK_PROMPT =
   "   If any item was NOT executed, execute it now before finishing.\n\n" +
   "Rules:\n" +
   "- Never dispatch to data_analyst — do all scoring and analysis yourself.\n" +
+  "- Never dispatch a sub-agent for the job search step (step 2) — call builtin.web_search directly.\n" +
+  "- When dispatching any sub-agent (e.g., resume_writer), always pass the full '## Pre-loaded career profile from knowledge vault' section verbatim as the `additionalContext` argument to builtin.dispatch_agent. Without it the sub-agent has no profile data.\n" +
   "- Never fabricate experience or credentials in resumes — only use what is in the user profile.\n" +
   "- If the user profile has no career data, send an in-app notification via builtin.channel_notify asking them to add career preferences to their profile, then stop.\n" +
   "- Do NOT apply to jobs — only research, match, generate, and notify.\n" +
